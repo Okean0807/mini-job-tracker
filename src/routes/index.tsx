@@ -72,7 +72,7 @@ function DashboardPage() {
   return (
     <main className="mx-auto max-w-lg px-4 pt-6">
       <header className="mb-5">
-        <p className="text-sm text-muted-foreground">Guten Tag 👋</p>
+        <p className="text-sm text-muted-foreground">Guten Tag</p>
         <h1 className="text-2xl font-extrabold tracking-tight">MiniJob Tracker</h1>
       </header>
 
