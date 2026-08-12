@@ -198,7 +198,7 @@ function CloudSync({ shiftCount }: { shiftCount: number }) {
       .from("backups")
       .upsert({
         user_id: session.user.id,
-        payload: getData() as unknown as Record<string, unknown>,
+        payload: JSON.parse(JSON.stringify(getData())),
         updated_at: new Date().toISOString(),
       });
     setBusy(false);
