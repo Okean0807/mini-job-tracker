@@ -88,7 +88,7 @@ function DashboardPage() {
         <StatCard
           label="Ø Stundenlohn"
           value={formatEuro(avg)}
-          hint={`${monthShifts.length} Schichten`}
+          hint={`${monthShifts.length} ${monthShifts.length === 1 ? "Schicht" : "Schichten"}`}
           icon={TrendingUp}
         />
         <StatCard
