@@ -188,3 +188,74 @@
   --chart-1: oklch(0.55 0.21 300);
   --sidebar-primary: oklch(0.55 0.21 300);
 }
+
+/* Hoher Kontrast */
+.high-contrast {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.14 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.14 0 0);
+  --muted: oklch(0.95 0 0);
+  --muted-foreground: oklch(0.3 0 0);
+  --border: oklch(0.35 0 0);
+  --input: oklch(0.35 0 0);
+  --secondary: oklch(0.93 0 0);
+  --secondary-foreground: oklch(0.14 0 0);
+  --shadow-card: none;
+  --shadow-float: 0 6px 16px -8px oklch(0 0 0 / 0.5);
+}
+.high-contrast.dark {
+  --background: oklch(0.12 0 0);
+  --foreground: oklch(0.99 0 0);
+  --card: oklch(0.16 0 0);
+  --card-foreground: oklch(0.99 0 0);
+  --muted: oklch(0.22 0 0);
+  --muted-foreground: oklch(0.85 0 0);
+  --border: oklch(0.75 0 0);
+  --input: oklch(0.75 0 0);
+  --secondary: oklch(0.24 0 0);
+  --secondary-foreground: oklch(0.99 0 0);
+}
+.high-contrast * {
+  border-color: var(--color-border);
+}
+.high-contrast :focus-visible {
+  outline: 3px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+/* Bewegung reduzieren */
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Große Bedienelemente / Handschuh-Modus */
+[data-touch="large"] button,
+[data-touch="large"] [role="button"],
+[data-touch="large"] a[href],
+[data-touch="large"] input,
+[data-touch="large"] select,
+[data-touch="large"] textarea {
+  min-height: 3rem;
+}
+[data-touch="glove"] button,
+[data-touch="glove"] [role="button"],
+[data-touch="glove"] a[href],
+[data-touch="glove"] input,
+[data-touch="glove"] select,
+[data-touch="glove"] textarea {
+  min-height: 3.75rem;
+  font-size: 1.05rem;
+}
+[data-touch="glove"] button,
+[data-touch="glove"] [role="button"] {
+  padding-inline: 1.25rem;
+}
+[data-touch="glove"] nav a[href] {
+  padding-block: 0.9rem;
+}

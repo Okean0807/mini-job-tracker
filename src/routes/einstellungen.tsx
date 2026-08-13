@@ -23,7 +23,15 @@ import { getData, replaceAll, updateSettings, updateSupplements, useAppData } fr
 import { LANGUAGES, useT } from "@/lib/i18n";
 import type { Lang } from "@/lib/i18n";
 import { ACCENTS, THEME_MODES } from "@/lib/minijob/theme";
-import { BUNDESLAENDER, COUNTRIES, type AppData, type NotificationSettings } from "@/lib/minijob/types";
+import { UI_MODES } from "@/lib/minijob/uimode";
+import {
+  BUNDESLAENDER,
+  COUNTRIES,
+  type AppData,
+  type NotificationSettings,
+  type TextSize,
+  type TouchSize,
+} from "@/lib/minijob/types";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/einstellungen")({
@@ -243,7 +251,91 @@ function SettingsPage() {
               ))}
             </div>
           </Section>
+
+          <Section title={t("ui.title")}>
+            <p className="text-xs text-muted-foreground">{t("ui.hint")}</p>
+            <div className="grid gap-2">
+              {UI_MODES.map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => updateSettings({ uiMode: mode })}
+                  aria-pressed={settings.uiMode === mode}
+                  className={cn(
+                    "rounded-xl border px-3 py-3 text-left",
+                    settings.uiMode === mode ? "border-primary bg-primary/10" : "bg-card",
+                  )}
+                >
+                  <span className="block text-sm font-semibold">{t(`ui.${mode}`)}</span>
+                  <span className="block text-xs text-muted-foreground">{t(`ui.${mode}Desc`)}</span>
+                </button>
+              ))}
+            </div>
+          </Section>
+
+          <Section title={t("a11y.title")}>
+            <div className="grid gap-2">
+              <Label>{t("a11y.textSize")}</Label>
+              <div className="grid grid-cols-4 gap-2">
+                {(["s", "m", "l", "xl"] as TextSize[]).map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => updateSettings({ textSize: size })}
+                    aria-pressed={settings.textSize === size}
+                    className={cn(
+                      "rounded-xl border py-2 text-sm font-medium",
+                      settings.textSize === size ? "border-primary bg-primary/10" : "bg-card",
+                    )}
+                  >
+                    {t(`a11y.size.${size}`)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>{t("a11y.touch")}</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {(["normal", "large", "glove"] as TouchSize[]).map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => updateSettings({ touchSize: size })}
+                    aria-pressed={settings.touchSize === size}
+                    className={cn(
+                      "rounded-xl border px-2 py-2 text-xs font-medium",
+                      settings.touchSize === size ? "border-primary bg-primary/10" : "bg-card",
+                    )}
+                  >
+                    {t(`a11y.touch.${size}`)}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">{t("a11y.touchHint")}</p>
+            </div>
+
+            <ToggleRow
+              title={t("a11y.contrast")}
+              description={t("a11y.contrastDesc")}
+              checked={settings.highContrast}
+              onChange={(highContrast) => updateSettings({ highContrast })}
+            />
+            <ToggleRow
+              title={t("a11y.motion")}
+              description={t("a11y.motionDesc")}
+              checked={settings.reduceMotion}
+              onChange={(reduceMotion) => updateSettings({ reduceMotion })}
+            />
+
+            <div className="rounded-xl border bg-card p-3">
+              <p className="text-xs text-muted-foreground">{t("a11y.preview")}</p>
+              <p className="mt-1 text-sm font-semibold">{t("app.name")}</p>
+              <Button className="mt-2 w-full">{t("dash.newEntry")}</Button>
+            </div>
+          </Section>
         </TabsContent>
+
 
         <TabsContent value="lohn" className="mt-4 space-y-3 pb-6">
           <p className="text-xs text-muted-foreground">{t("set.wage.hint")}</p>

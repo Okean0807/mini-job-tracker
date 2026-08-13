@@ -1,6 +1,7 @@
 import { getData, useAppData } from "@/lib/minijob/store";
 
 import { LANGUAGES, LOCALES, mergeBundles, type Bundle, type Lang } from "./core";
+import { a11y } from "./dict/a11y";
 import { assistant } from "./dict/assistant";
 import { common } from "./dict/common";
 import { dashboard } from "./dict/dashboard";
@@ -22,6 +23,7 @@ const BUNDLE: Bundle = mergeBundles([
   wizard,
   assistant,
   v2,
+  a11y,
 ]);
 
 export type Vars = Record<string, string | number>;
