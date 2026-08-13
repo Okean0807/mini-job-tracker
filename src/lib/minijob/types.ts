@@ -1,3 +1,7 @@
+import type { Lang } from "@/lib/i18n/core";
+
+export type { Lang };
+
 export type WorkMode = "flex" | "fest" | "selbststaendig";
 
 export type ShiftKind = "arbeit" | "urlaub" | "krank" | "feiertag";
@@ -143,7 +147,7 @@ export interface Settings {
   pin?: string;
   biometric: boolean;
   autoBackup: boolean;
-  language: "de";
+  language: Lang;
   onboarded: boolean;
   notifications: NotificationSettings;
 }

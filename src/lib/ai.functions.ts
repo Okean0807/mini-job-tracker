@@ -4,6 +4,7 @@ import { z } from "zod";
 const schema = z.object({
   question: z.string().min(1).max(2000),
   context: z.string().max(20000),
+  language: z.string().max(50).optional(),
 });
 
 export const askAssistant = createServerFn({ method: "POST" })
@@ -24,7 +25,7 @@ export const askAssistant = createServerFn({ method: "POST" })
           {
             role: "system",
             content:
-              "Du bist der KI-Assistent der App MiniJob Tracker. Antworte immer auf Deutsch, kurz, freundlich und konkret. " +
+              `Du bist der KI-Assistent der App MiniJob Tracker. Antworte immer auf ${data.language ?? "Deutsch"}, kurz, freundlich und konkret. ` +
               "Du erhältst die Arbeitszeit-Daten des Nutzers als JSON-Zusammenfassung. Rechne sorgfältig, nenne Zahlen mit Einheit " +
               "(Stunden bzw. Euro) und weise auf Trends, Muster oder die Minijob-Grenze hin. Für Prognosen nutze Durchschnitte der " +
               "vorhandenen Monate und kennzeichne sie als Schätzung. Wenn Daten fehlen, sage das offen.",

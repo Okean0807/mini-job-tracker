@@ -1,12 +1,11 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { MONTHS_DE, isoDate, shiftHours } from "@/lib/minijob/calc";
+import { useT } from "@/lib/i18n";
+import { isoDate, monthNames, shiftHours, weekdayNames } from "@/lib/minijob/calc";
 import { holidayName } from "@/lib/minijob/holidays";
 import type { Job, Shift } from "@/lib/minijob/types";
 import { cn } from "@/lib/utils";
-
-const WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 
 interface MonthCalendarProps {
   year: number;
@@ -27,6 +26,8 @@ export function MonthCalendar({
   onChangeMonth,
   onSelectDay,
 }: MonthCalendarProps) {
+  const { t } = useT();
+  const weekdays = weekdayNames(undefined, "short");
   const first = new Date(year, month, 1);
   const offset = (first.getDay() + 6) % 7;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -53,20 +54,20 @@ export function MonthCalendar({
   return (
     <div className="rounded-2xl border bg-card p-4 shadow-card">
       <div className="mb-3 flex items-center justify-between">
-        <Button variant="ghost" size="icon" aria-label="Vorheriger Monat" onClick={() => move(-1)}>
+        <Button variant="ghost" size="icon" aria-label={t("cal.prevMonth")} onClick={() => move(-1)}>
           <ChevronLeft className="size-5" />
         </Button>
         <h2 className="text-base font-semibold">
-          {MONTHS_DE[month]} {year}
+          {monthNames()[month]} {year}
         </h2>
-        <Button variant="ghost" size="icon" aria-label="Nächster Monat" onClick={() => move(1)}>
+        <Button variant="ghost" size="icon" aria-label={t("cal.nextMonth")} onClick={() => move(1)}>
           <ChevronRight className="size-5" />
         </Button>
       </div>
 
       <div className="grid grid-cols-7 gap-1 text-center text-xs text-muted-foreground">
-        {WEEKDAYS.map((d) => (
-          <div key={d} className="py-1 font-medium">
+        {weekdays.map((d, i) => (
+          <div key={`${d}-${i}`} className="py-1 font-medium">
             {d}
           </div>
         ))}

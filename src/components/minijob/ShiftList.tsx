@@ -1,13 +1,9 @@
 import { CalendarDays } from "lucide-react";
 
-import {
-  formatDateDE,
-  formatEuro,
-  formatHours,
-  shiftBreakdown,
-} from "@/lib/minijob/calc";
+import { useT } from "@/lib/i18n";
+import { formatDate, formatEuro, formatHours, shiftBreakdown } from "@/lib/minijob/calc";
 import type { ResolveOptions } from "@/lib/minijob/resolve";
-import { SHIFT_KIND_LABEL, type Job, type Shift } from "@/lib/minijob/types";
+import type { Job, Shift } from "@/lib/minijob/types";
 
 interface ShiftListProps {
   shifts: Shift[];
@@ -17,13 +13,13 @@ interface ShiftListProps {
 }
 
 export function ShiftList({ shifts, jobs, resolve, onSelect }: ShiftListProps) {
+  const { t } = useT();
+
   if (shifts.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed bg-card/50 p-8 text-center">
         <CalendarDays className="mx-auto size-8 text-muted-foreground" />
-        <p className="mt-3 text-sm text-muted-foreground">
-          Noch keine Einträge in diesem Zeitraum. Tippe auf einen Tag im Kalender.
-        </p>
+        <p className="mt-3 text-sm text-muted-foreground">{t("list.empty")}</p>
       </div>
     );
   }
@@ -47,18 +43,18 @@ export function ShiftList({ shifts, jobs, resolve, onSelect }: ShiftListProps) {
               />
               <div className="min-w-0 flex-1">
                 <p className="truncate font-semibold">
-                  {formatDateDE(s.date)}
+                  {formatDate(s.date)}
                   {job ? ` · ${job.name}` : ""}
                 </p>
                 <p className="truncate text-xs text-muted-foreground">
                   {s.kind === "arbeit"
-                    ? `${s.start}–${s.end}${s.breakMinutes ? ` · ${s.breakMinutes} Min. Pause` : ""}`
-                    : SHIFT_KIND_LABEL[s.kind]}
-                  {` · ${formatEuro(s.rate)}/Std.`}
+                    ? `${s.start}–${s.end}${s.breakMinutes ? ` ${t("list.breakMinutes", { minutes: s.breakMinutes })}` : ""}`
+                    : t(`kind.${s.kind}`)}
+                  {` ${t("list.perHour", { amount: formatEuro(s.rate) })}`}
                 </p>
                 {b.labels.length ? (
                   <p className="mt-1 text-[11px] font-medium text-primary">
-                    Zuschlag: {b.labels.join(", ")}
+                    {t("list.supplement", { labels: b.labels.join(", ") })}
                   </p>
                 ) : null}
                 {s.note ? <p className="mt-1 truncate text-xs text-muted-foreground">{s.note}</p> : null}

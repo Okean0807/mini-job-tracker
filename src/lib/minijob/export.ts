@@ -2,8 +2,10 @@ import * as XLSX from "xlsx";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
+import { t } from "@/lib/i18n";
+
 import {
-  formatDateDE,
+  formatDate,
   formatEuro,
   formatHours,
   shiftBreakdown,
@@ -11,7 +13,7 @@ import {
   sumHours,
 } from "./calc";
 import { isHoliday } from "./holidays";
-import { SHIFT_KIND_LABEL, type Job, type Shift } from "./types";
+import type { Job, Shift } from "./types";
 
 export interface ExportContext {
   jobs: Job[];
@@ -32,64 +34,99 @@ function total(shifts: Shift[], ctx: ExportContext) {
 }
 
 function rows(shifts: Shift[], ctx: ExportContext) {
+  const dateLabel = t("label.date");
+  const jobLabel = t("label.job");
+  const kindLabel = t("label.kind");
+  const startLabel = t("label.start");
+  const endLabel = t("label.end");
+  const breakLabel = t("label.breakMinutes");
+  const hoursLabel = t("label.hours");
+  const rateLabel = t("report.rateEur");
+  const bonusLabel = t("report.bonusEur");
+  const earningsLabel = t("report.earningsEur");
+  const noteLabel = t("label.note");
+
   return sorted(shifts).map((s) => {
     const b = resolve(s, ctx);
     return {
-      Datum: formatDateDE(s.date),
-      Job: ctx.jobs.find((j) => j.id === s.jobId)?.name ?? "–",
-      Art: SHIFT_KIND_LABEL[s.kind],
-      Beginn: s.start,
-      Ende: s.end,
-      "Pause (Min.)": s.breakMinutes,
-      Stunden: Number(shiftHours(s).toFixed(2)),
-      "Stundenlohn (EUR)": Number((s.rate || 0).toFixed(2)),
-      "Zuschläge (EUR)": Number(b.bonus.toFixed(2)),
-      "Verdienst (EUR)": Number(b.total.toFixed(2)),
-      Notiz: s.note ?? "",
+      [dateLabel]: formatDate(s.date),
+      [jobLabel]: ctx.jobs.find((j) => j.id === s.jobId)?.name ?? "–",
+      [kindLabel]: t(`kind.${s.kind}`),
+      [startLabel]: s.start,
+      [endLabel]: s.end,
+      [breakLabel]: s.breakMinutes,
+      [hoursLabel]: Number(shiftHours(s).toFixed(2)),
+      [rateLabel]: Number((s.rate || 0).toFixed(2)),
+      [bonusLabel]: Number(b.bonus.toFixed(2)),
+      [earningsLabel]: Number(b.total.toFixed(2)),
+      [noteLabel]: s.note ?? "",
     };
   });
 }
 
 export function exportXlsx(shifts: Shift[], title: string, ctx: ExportContext) {
+  const dateLabel = t("label.date");
+  const jobLabel = t("label.job");
+  const kindLabel = t("label.kind");
+  const startLabel = t("label.start");
+  const endLabel = t("label.end");
+  const breakLabel = t("label.breakMinutes");
+  const hoursLabel = t("label.hours");
+  const rateLabel = t("report.rateEur");
+  const bonusLabel = t("report.bonusEur");
+  const earningsLabel = t("report.earningsEur");
+  const noteLabel = t("label.note");
+
   const data = rows(shifts, ctx);
   data.push({
-    Datum: "Gesamt",
-    Job: "",
-    Art: "",
-    Beginn: "",
-    Ende: "",
-    "Pause (Min.)": "" as unknown as number,
-    Stunden: Number(sumHours(shifts).toFixed(2)),
-    "Stundenlohn (EUR)": "" as unknown as number,
-    "Zuschläge (EUR)": "" as unknown as number,
-    "Verdienst (EUR)": Number(total(shifts, ctx).toFixed(2)),
-    Notiz: "",
+    [dateLabel]: t("label.total"),
+    [jobLabel]: "",
+    [kindLabel]: "",
+    [startLabel]: "",
+    [endLabel]: "",
+    [breakLabel]: "" as unknown as number,
+    [hoursLabel]: Number(sumHours(shifts).toFixed(2)),
+    [rateLabel]: "" as unknown as number,
+    [bonusLabel]: "" as unknown as number,
+    [earningsLabel]: Number(total(shifts, ctx).toFixed(2)),
+    [noteLabel]: "",
   });
   const sheet = XLSX.utils.json_to_sheet(data);
   sheet["!cols"] = [12, 16, 10, 8, 8, 12, 10, 16, 14, 16, 24].map((wch) => ({ wch }));
   const book = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(book, sheet, "Arbeitszeiten");
+  XLSX.utils.book_append_sheet(book, sheet, t("report.sheetName"));
   XLSX.writeFile(book, `${title}.xlsx`);
 }
 
 export function exportPdf(shifts: Shift[], title: string, ctx: ExportContext) {
   const doc = new jsPDF();
   doc.setFontSize(16);
-  doc.text("MiniJob Tracker", 14, 18);
+  doc.text(t("app.name"), 14, 18);
   doc.setFontSize(11);
   doc.text(title, 14, 26);
 
   autoTable(doc, {
     startY: 32,
-    head: [["Datum", "Job", "Art", "Zeit", "Pause", "Stunden", "Zuschlag", "Verdienst"]],
+    head: [
+      [
+        t("label.date"),
+        t("label.job"),
+        t("label.kind"),
+        t("label.time"),
+        t("label.break"),
+        t("label.hours"),
+        t("label.bonus"),
+        t("label.earnings"),
+      ],
+    ],
     body: sorted(shifts).map((s) => {
       const b = resolve(s, ctx);
       return [
-        formatDateDE(s.date),
+        formatDate(s.date),
         ctx.jobs.find((j) => j.id === s.jobId)?.name ?? "–",
-        SHIFT_KIND_LABEL[s.kind],
+        t(`kind.${s.kind}`),
         `${s.start}–${s.end}`,
-        `${s.breakMinutes} Min.`,
+        `${s.breakMinutes} ${t("label.minutes")}`,
         formatHours(b.hours),
         formatEuro(b.bonus),
         formatEuro(b.total),
@@ -97,7 +134,7 @@ export function exportPdf(shifts: Shift[], title: string, ctx: ExportContext) {
     }),
     foot: [
       [
-        "Gesamt",
+        t("label.total"),
         "",
         "",
         "",

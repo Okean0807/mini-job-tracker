@@ -15,11 +15,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { formatDateDE, formatEuro, formatHours, shiftBreakdown } from "@/lib/minijob/calc";
+import { useT } from "@/lib/i18n";
+import { formatDate, formatEuro, formatHours, shiftBreakdown } from "@/lib/minijob/calc";
 import { holidayName } from "@/lib/minijob/holidays";
 import { deleteShift, newId, saveShift } from "@/lib/minijob/store";
 import {
-  SHIFT_KIND_LABEL,
   type Customer,
   type Job,
   type Project,
@@ -53,6 +53,7 @@ export function ShiftDialog({
   projects,
   settings,
 }: ShiftDialogProps) {
+  const { t, locale } = useT();
   const [jobId, setJobId] = useState<string | undefined>(undefined);
   const [kind, setKind] = useState<ShiftKind>("arbeit");
   const [start, setStart] = useState("09:00");
@@ -106,13 +107,13 @@ export function ShiftDialog({
         setStart(parsed.start);
         setEnd(parsed.end);
         setBreakMinutes(String(parsed.breakMinutes));
-        toast.success(`Erkannt: ${parsed.start}–${parsed.end}`);
+        toast.success(t("shift.recognized", { start: parsed.start, end: parsed.end }));
       } else {
         setNote(text);
-        toast.message("Als Notiz übernommen", { description: text });
+        toast.message(t("shift.noteTaken"), { description: text });
       }
     } catch {
-      toast.error("Spracheingabe nicht möglich.");
+      toast.error(t("shift.voiceError"));
     }
   }
 
@@ -132,7 +133,7 @@ export function ShiftDialog({
     if (customerId) next.customerId = customerId;
     if (projectId) next.projectId = projectId;
     saveShift(next);
-    toast.success(shift ? "Eintrag aktualisiert" : "Eintrag gespeichert");
+    toast.success(shift ? t("shift.updated") : t("shift.saved"));
     onOpenChange(false);
   }
 
@@ -142,9 +143,9 @@ export function ShiftDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{shift ? "Eintrag bearbeiten" : "Neuer Eintrag"}</DialogTitle>
+          <DialogTitle>{shift ? t("shift.editTitle") : t("shift.newTitle")}</DialogTitle>
           <DialogDescription>
-            {formatDateDE(date)}
+            {formatDate(date, locale)}
             {holiday ? ` · ${holiday}` : ""}
           </DialogDescription>
         </DialogHeader>
@@ -152,7 +153,7 @@ export function ShiftDialog({
         <div className="space-y-4">
           {jobs.length > 1 ? (
             <div className="grid gap-2">
-              <Label>Job</Label>
+              <Label>{t("label.job")}</Label>
               <div className="flex flex-wrap gap-2">
                 {jobs.map((j) => (
                   <button
@@ -176,7 +177,7 @@ export function ShiftDialog({
           ) : null}
 
           <div className="grid gap-2">
-            <Label>Art</Label>
+            <Label>{t("label.kind")}</Label>
             <div className="grid grid-cols-4 gap-1.5">
               {KINDS.map((k) => (
                 <button
@@ -188,7 +189,7 @@ export function ShiftDialog({
                     kind === k ? "border-primary bg-primary/10" : "bg-card",
                   )}
                 >
-                  {SHIFT_KIND_LABEL[k]}
+                  {t("kind." + k)}
                 </button>
               ))}
             </div>
@@ -196,18 +197,18 @@ export function ShiftDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
-              <Label htmlFor="von">Beginn</Label>
+              <Label htmlFor="von">{t("label.start")}</Label>
               <Input id="von" type="time" value={start} onChange={(e) => setStart(e.target.value)} />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="bis">Ende</Label>
+              <Label htmlFor="bis">{t("label.end")}</Label>
               <Input id="bis" type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
-              <Label htmlFor="pause">Pause (Min.)</Label>
+              <Label htmlFor="pause">{t("label.breakMinutes")}</Label>
               <Input
                 id="pause"
                 type="number"
@@ -218,7 +219,7 @@ export function ShiftDialog({
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="lohn">Stundenlohn (€)</Label>
+              <Label htmlFor="lohn">{t("label.rateEuro")}</Label>
               <Input
                 id="lohn"
                 type="number"
@@ -234,13 +235,13 @@ export function ShiftDialog({
           {selfEmployed ? (
             <div className="grid gap-3 rounded-xl border p-3">
               <div className="grid gap-1.5">
-                <Label className="text-xs">Kunde</Label>
+                <Label className="text-xs">{t("label.customer")}</Label>
                 <select
                   value={customerId ?? ""}
                   onChange={(e) => setCustomerId(e.target.value || undefined)}
                   className="h-9 rounded-md border bg-background px-2 text-sm"
                 >
-                  <option value="">– kein Kunde –</option>
+                  <option value="">{t("shift.noCustomer")}</option>
                   {customers.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -249,13 +250,13 @@ export function ShiftDialog({
                 </select>
               </div>
               <div className="grid gap-1.5">
-                <Label className="text-xs">Projekt</Label>
+                <Label className="text-xs">{t("label.project")}</Label>
                 <select
                   value={projectId ?? ""}
                   onChange={(e) => setProjectId(e.target.value || undefined)}
                   className="h-9 rounded-md border bg-background px-2 text-sm"
                 >
-                  <option value="">– kein Projekt –</option>
+                  <option value="">{t("shift.noProject")}</option>
                   {projects
                     .filter((p) => !customerId || p.customerId === customerId)
                     .map((p) => (
@@ -270,18 +271,18 @@ export function ShiftDialog({
 
           <div className="flex items-center justify-between rounded-xl border p-3">
             <div>
-              <p className="text-sm font-medium">Als Überstunden werten</p>
-              <p className="text-xs text-muted-foreground">Überstundenzuschlag anwenden</p>
+              <p className="text-sm font-medium">{t("shift.overtimeTitle")}</p>
+              <p className="text-xs text-muted-foreground">{t("shift.overtimeDesc")}</p>
             </div>
-            <Switch checked={overtime} onCheckedChange={setOvertime} aria-label="Überstunden" />
+            <Switch checked={overtime} onCheckedChange={setOvertime} aria-label={t("shift.overtimeAria")} />
           </div>
 
           <div className="grid gap-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="notiz">Notiz</Label>
+              <Label htmlFor="notiz">{t("label.note")}</Label>
               {voiceSupported() ? (
                 <Button variant="ghost" size="sm" onClick={voice}>
-                  <Mic className="size-4" /> Sprache
+                  <Mic className="size-4" /> {t("shift.voice")}
                 </Button>
               ) : null}
             </div>
@@ -290,24 +291,26 @@ export function ShiftDialog({
               rows={2}
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="z. B. Spätschicht Filiale Nord"
+              placeholder={t("shift.notePlaceholder")}
             />
           </div>
 
           <div className="rounded-xl bg-muted p-3 text-sm">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Dauer</span>
-              <span className="font-semibold tabular-nums">{formatHours(preview.hours)}</span>
+              <span className="text-muted-foreground">{t("shift.duration")}</span>
+              <span className="font-semibold tabular-nums">{formatHours(preview.hours, locale)}</span>
             </div>
             {preview.bonus > 0 ? (
               <div className="mt-1 flex justify-between">
-                <span className="text-muted-foreground">Zuschläge ({preview.labels.join(", ")})</span>
-                <span className="font-semibold tabular-nums">{formatEuro(preview.bonus)}</span>
+                <span className="text-muted-foreground">
+                  {t("shift.bonusLabel", { labels: preview.labels.join(", ") })}
+                </span>
+                <span className="font-semibold tabular-nums">{formatEuro(preview.bonus, locale)}</span>
               </div>
             ) : null}
             <div className="mt-1 flex justify-between">
-              <span className="text-muted-foreground">Verdienst</span>
-              <span className="font-semibold tabular-nums">{formatEuro(preview.total)}</span>
+              <span className="text-muted-foreground">{t("label.earnings")}</span>
+              <span className="font-semibold tabular-nums">{formatEuro(preview.total, locale)}</span>
             </div>
           </div>
         </div>
@@ -319,16 +322,16 @@ export function ShiftDialog({
               className="text-destructive"
               onClick={() => {
                 deleteShift(shift.id);
-                toast.success("Eintrag gelöscht");
+                toast.success(t("shift.deleted"));
                 onOpenChange(false);
               }}
             >
-              <Trash2 className="size-4" /> Löschen
+              <Trash2 className="size-4" /> {t("action.delete")}
             </Button>
           ) : (
             <span />
           )}
-          <Button onClick={save}>Speichern</Button>
+          <Button onClick={save}>{t("action.save")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

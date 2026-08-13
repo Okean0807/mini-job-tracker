@@ -9,11 +9,12 @@ import { ShiftList } from "@/components/minijob/ShiftList";
 import { StatCard } from "@/components/minijob/StatCard";
 import { WorkTimer } from "@/components/minijob/WorkTimer";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/lib/i18n";
 import {
-  MONTHS_DE,
   formatEuro,
   formatHours,
   isoDate,
+  monthNames,
   shiftsInMonth,
   shiftsInYear,
   sumEarnings,
@@ -44,6 +45,7 @@ export const Route = createFileRoute("/")({
 });
 
 function DashboardPage() {
+  const { t } = useT();
   const { shifts, jobs, customers, projects, settings, timer } = useAppData();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -66,6 +68,7 @@ function DashboardPage() {
   const avg = hours > 0 ? earnings / hours : 0;
   const limitShare = settings.monthlyLimit > 0 ? (earnings / settings.monthlyLimit) * 100 : 0;
   const yearShare = settings.yearlyLimit > 0 ? (yearEarnings / settings.yearlyLimit) * 100 : 0;
+  const monthLabel = monthNames()[month] ?? "";
 
   function openNew(date: string) {
     setSelectedDate(date);
@@ -82,8 +85,8 @@ function DashboardPage() {
   return (
     <main className="mx-auto max-w-lg px-4 pt-6">
       <header className="mb-5">
-        <p className="text-sm text-muted-foreground">Guten Tag</p>
-        <h1 className="text-2xl font-extrabold tracking-tight">MiniJob Tracker</h1>
+        <p className="text-sm text-muted-foreground">{t("app.greeting")}</p>
+        <h1 className="text-2xl font-extrabold tracking-tight">{t("app.name")}</h1>
       </header>
 
       <WorkTimer timer={timer} jobs={jobs} settings={settings} />
@@ -93,47 +96,50 @@ function DashboardPage() {
           tone="over"
           text={
             limitShare >= 100
-              ? `Die Monatsgrenze von ${formatEuro(settings.monthlyLimit)} ist überschritten.`
-              : `Die Jahresgrenze von ${formatEuro(settings.yearlyLimit)} ist überschritten.`
+              ? t("dash.limitMonthOver", { amount: formatEuro(settings.monthlyLimit) })
+              : t("dash.limitYearOver", { amount: formatEuro(settings.yearlyLimit) })
           }
         />
       ) : limitShare >= 85 || yearShare >= 85 ? (
         <LimitBanner
           tone="near"
-          text={`Du näherst dich der Minijob-Grenze (${Math.round(Math.max(limitShare, yearShare))} %).`}
+          text={t("dash.limitNear", { percent: Math.round(Math.max(limitShare, yearShare)) })}
         />
       ) : null}
 
-      <section className="mt-4 grid grid-cols-2 gap-3" aria-label="Monatsübersicht">
+      <section className="mt-4 grid grid-cols-2 gap-3" aria-label={t("dash.monthOverview")}>
         <StatCard
-          label="Verdienst"
+          label={t("dash.earnings")}
           value={formatEuro(earnings)}
-          hint={`${MONTHS_DE[month]} ${year}`}
+          hint={`${monthLabel} ${year}`}
           icon={Euro}
           highlight
         />
-        <StatCard label="Stunden" value={formatHours(hours)} hint="im Monat" icon={Clock} />
         <StatCard
-          label="Ø Stundenlohn"
+          label={t("dash.hours")}
+          value={formatHours(hours)}
+          hint={t("dash.inMonth")}
+          icon={Clock}
+        />
+        <StatCard
+          label={t("dash.avgRate")}
           value={formatEuro(avg)}
-          hint={`${monthShifts.length} ${monthShifts.length === 1 ? "Eintrag" : "Einträge"}`}
+          hint={t("label.entries", { count: monthShifts.length })}
           icon={TrendingUp}
         />
         <StatCard
-          label="Minijob-Grenze"
+          label={t("dash.limit")}
           value={`${Math.round(limitShare)} %`}
-          hint={`von ${formatEuro(settings.monthlyLimit)}`}
+          hint={t("dash.ofAmount", { amount: formatEuro(settings.monthlyLimit) })}
           icon={Euro}
         />
       </section>
 
       {jobs.length === 0 ? (
         <div className="mt-4 rounded-2xl border border-dashed p-5 text-center">
-          <p className="text-sm text-muted-foreground">
-            Lege zuerst einen Job an, um Farben, Stundenlohn und Zuschläge zu nutzen.
-          </p>
+          <p className="text-sm text-muted-foreground">{t("dash.noJobsHint")}</p>
           <Button asChild className="mt-3">
-            <Link to="/jobs">Job anlegen</Link>
+            <Link to="/jobs">{t("dash.createJob")}</Link>
           </Button>
         </div>
       ) : null}
@@ -163,7 +169,7 @@ function DashboardPage() {
 
       <section className="mt-5">
         <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
-          Einträge im {MONTHS_DE[month]}
+          {t("dash.entriesInMonth", { month: monthLabel })}
         </h2>
         <ShiftList shifts={monthShifts} jobs={jobs} resolve={resolve} onSelect={openEdit} />
       </section>
@@ -173,7 +179,7 @@ function DashboardPage() {
         onClick={() => openNew(isoDate(new Date()))}
         className="fixed bottom-20 right-4 z-40 h-14 rounded-full px-5 shadow-float"
       >
-        <Plus className="size-5" /> Eintrag
+        <Plus className="size-5" /> {t("dash.newEntry")}
       </Button>
 
       <ShiftDialog

@@ -18,11 +18,12 @@ import { toast } from "sonner";
 import { StatCard } from "@/components/minijob/StatCard";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useT } from "@/lib/i18n";
 import {
-  MONTHS_DE,
-  MONTHS_SHORT_DE,
   formatEuro,
   formatHours,
+  monthNames,
+  monthNamesShort,
   shiftEarnings,
   shiftHours,
   shiftsInMonth,
@@ -55,11 +56,15 @@ export const Route = createFileRoute("/statistik")({
 });
 
 function StatsPage() {
+  const { t } = useT();
   const { shifts, jobs, settings } = useAppData();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
   const [jobFilter, setJobFilter] = useState<string>("alle");
+
+  const months = monthNames();
+  const monthsShort = monthNamesShort();
 
   const resolve = useMemo(() => makeResolver(jobs, settings), [jobs, settings]);
   const filtered = useMemo(
@@ -72,7 +77,7 @@ function StatsPage() {
 
   const monthlyData = useMemo(
     () =>
-      MONTHS_SHORT_DE.map((label, idx) => {
+      monthsShort.map((label, idx) => {
         const list = shiftsInMonth(filtered, year, idx);
         return {
           monat: label,
@@ -80,7 +85,7 @@ function StatsPage() {
           verdienst: Number(sumEarnings(list, resolve).toFixed(2)),
         };
       }),
-    [filtered, year, resolve],
+    [filtered, year, resolve, monthsShort],
   );
 
   const dailyData = useMemo(
@@ -115,12 +120,12 @@ function StatsPage() {
 
   function doExport(kind: "xlsx" | "pdf", list: Shift[], title: string) {
     if (list.length === 0) {
-      toast.error("Keine Daten für diesen Zeitraum.");
+      toast.error(t("stats.toast.noData"));
       return;
     }
     if (kind === "xlsx") exportXlsx(list, title, ctx);
     else exportPdf(list, title, ctx);
-    toast.success("Export erstellt");
+    toast.success(t("stats.toast.exportSuccess"));
   }
 
   const monthEarnings = sumEarnings(monthShifts, resolve);
@@ -130,7 +135,7 @@ function StatsPage() {
 
   return (
     <main className="mx-auto max-w-lg px-4 pt-6">
-      <h1 className="text-2xl font-extrabold tracking-tight">Statistik</h1>
+      <h1 className="text-2xl font-extrabold tracking-tight">{t("stats.title")}</h1>
 
       <div className="mt-3 flex items-center gap-2">
         <Button variant="outline" size="sm" onClick={() => setYear(year - 1)}>
@@ -151,7 +156,7 @@ function StatsPage() {
               jobFilter === "alle" ? "border-primary bg-primary/10" : "bg-card"
             }`}
           >
-            Alle Jobs
+            {t("stats.allJobs")}
           </button>
           {jobs.map((j) => (
             <button
@@ -172,19 +177,19 @@ function StatsPage() {
       <Tabs defaultValue="monat" className="mt-5">
         <TabsList className="w-full">
           <TabsTrigger value="monat" className="flex-1">
-            Monat
+            {t("stats.tab.month")}
           </TabsTrigger>
           <TabsTrigger value="jahr" className="flex-1">
-            Jahr
+            {t("stats.tab.year")}
           </TabsTrigger>
           <TabsTrigger value="jobs" className="flex-1">
-            Jobs
+            {t("stats.tab.jobs")}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="monat" className="mt-4 space-y-4">
           <div className="flex flex-wrap gap-1">
-            {MONTHS_SHORT_DE.map((label, idx) => (
+            {monthsShort.map((label, idx) => (
               <button
                 key={label}
                 type="button"
@@ -200,16 +205,21 @@ function StatsPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <StatCard
-              label="Verdienst"
+              label={t("stats.card.earnings")}
               value={formatEuro(monthEarnings)}
-              hint={`${MONTHS_DE[month]} ${year}`}
+              hint={`${months[month]} ${year}`}
               icon={Euro}
               highlight
             />
-            <StatCard label="Stunden" value={formatHours(monthHours)} hint="im Monat" icon={Clock} />
+            <StatCard
+              label={t("stats.card.hoursLabel")}
+              value={formatHours(monthHours)}
+              hint={t("stats.card.hoursHint")}
+              icon={Clock}
+            />
           </div>
 
-          <ChartCard title="Verdienst pro Tag">
+          <ChartCard title={t("stats.chart.earningsDay")}>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={dailyData}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
@@ -221,7 +231,7 @@ function StatsPage() {
             </ResponsiveContainer>
           </ChartCard>
 
-          <ChartCard title="Stunden pro Tag">
+          <ChartCard title={t("stats.chart.hoursDay")}>
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={dailyData}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
@@ -237,7 +247,11 @@ function StatsPage() {
             <Button
               variant="outline"
               onClick={() =>
-                doExport("xlsx", monthShifts, `Monatsbericht ${MONTHS_DE[month]} ${year}`)
+                doExport(
+                  "xlsx",
+                  monthShifts,
+                  t("report.monthTitle", { month: months[month]!, year }),
+                )
               }
             >
               <FileSpreadsheet className="size-4" /> Excel
@@ -245,7 +259,11 @@ function StatsPage() {
             <Button
               variant="outline"
               onClick={() =>
-                doExport("pdf", monthShifts, `Monatsbericht ${MONTHS_DE[month]} ${year}`)
+                doExport(
+                  "pdf",
+                  monthShifts,
+                  t("report.monthTitle", { month: months[month]!, year }),
+                )
               }
             >
               <FileDown className="size-4" /> PDF
@@ -256,35 +274,35 @@ function StatsPage() {
         <TabsContent value="jahr" className="mt-4 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <StatCard
-              label="Jahresverdienst"
+              label={t("stats.card.yearEarnings")}
               value={formatEuro(yearEarnings)}
               hint={String(year)}
               icon={Euro}
               highlight
             />
             <StatCard
-              label="Jahresstunden"
+              label={t("stats.card.yearHours")}
               value={formatHours(yearHours)}
-              hint={`${yearShifts.length} Einträge`}
+              hint={t("stats.entriesHint", { count: yearShifts.length })}
               icon={Clock}
             />
             <StatCard
-              label="Ø Stundenlohn"
+              label={t("stats.card.avgRate")}
               value={formatEuro(yearHours > 0 ? yearEarnings / yearHours : 0)}
-              hint="im Jahr"
+              hint={t("stats.card.avgRateHint")}
               icon={TrendingUp}
             />
             <StatCard
-              label="Jahresgrenze"
+              label={t("stats.card.yearLimit")}
               value={`${Math.round(
                 settings.yearlyLimit > 0 ? (yearEarnings / settings.yearlyLimit) * 100 : 0,
               )} %`}
-              hint={`von ${formatEuro(settings.yearlyLimit)}`}
+              hint={t("stats.card.yearLimitHint", { amount: formatEuro(settings.yearlyLimit) })}
               icon={Euro}
             />
           </div>
 
-          <ChartCard title="Verdienst pro Monat">
+          <ChartCard title={t("stats.chart.earningsMonth")}>
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={monthlyData}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
@@ -303,7 +321,7 @@ function StatsPage() {
             </ResponsiveContainer>
           </ChartCard>
 
-          <ChartCard title="Stunden pro Monat">
+          <ChartCard title={t("stats.chart.hoursMonth")}>
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={monthlyData}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
@@ -318,13 +336,13 @@ function StatsPage() {
           <div className="grid grid-cols-2 gap-3 pb-4">
             <Button
               variant="outline"
-              onClick={() => doExport("xlsx", yearShifts, `Jahresbericht ${year}`)}
+              onClick={() => doExport("xlsx", yearShifts, t("report.yearTitle", { year }))}
             >
               <FileSpreadsheet className="size-4" /> Excel
             </Button>
             <Button
               variant="outline"
-              onClick={() => doExport("pdf", yearShifts, `Jahresbericht ${year}`)}
+              onClick={() => doExport("pdf", yearShifts, t("report.yearTitle", { year }))}
             >
               <FileDown className="size-4" /> PDF
             </Button>
@@ -334,7 +352,7 @@ function StatsPage() {
         <TabsContent value="jobs" className="mt-4 space-y-3 pb-4">
           {perJob.length === 0 ? (
             <p className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-              Noch keine Jobs angelegt.
+              {t("stats.noJobs")}
             </p>
           ) : (
             perJob.map(({ job, hours, earnings }) => (
@@ -349,7 +367,9 @@ function StatsPage() {
                 />
                 <div className="flex-1">
                   <p className="font-semibold">{job.name}</p>
-                  <p className="text-xs text-muted-foreground">{formatHours(hours)} in {year}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t("stats.jobHoursYear", { hours: formatHours(hours), year })}
+                  </p>
                 </div>
                 <p className="font-semibold tabular-nums">{formatEuro(earnings)}</p>
               </div>

@@ -20,6 +20,8 @@ import { exportXlsx } from "@/lib/minijob/export";
 import { holidaysFor } from "@/lib/minijob/holidays";
 import { markBackup, notificationPermission, requestNotificationPermission } from "@/lib/minijob/notify";
 import { getData, replaceAll, updateSettings, updateSupplements, useAppData } from "@/lib/minijob/store";
+import { LANGUAGES, useT } from "@/lib/i18n";
+import type { Lang } from "@/lib/i18n";
 import { ACCENTS, THEME_MODES } from "@/lib/minijob/theme";
 import { BUNDESLAENDER, COUNTRIES, type AppData, type NotificationSettings } from "@/lib/minijob/types";
 import { cn } from "@/lib/utils";
@@ -45,55 +47,56 @@ export const Route = createFileRoute("/einstellungen")({
 
 function SettingsPage() {
   const { settings, shifts } = useAppData();
+  const { t } = useT();
 
   return (
     <main className="mx-auto max-w-lg px-4 pt-6">
-      <h1 className="text-2xl font-extrabold tracking-tight">Einstellungen</h1>
+      <h1 className="text-2xl font-extrabold tracking-tight">{t("set.title")}</h1>
 
       <Tabs defaultValue="allgemein" className="mt-4">
         <TabsList className="w-full">
           <TabsTrigger value="allgemein" className="flex-1">
-            Allgemein
+            {t("set.tabs.general")}
           </TabsTrigger>
           <TabsTrigger value="design" className="flex-1">
-            Design
+            {t("set.tabs.design")}
           </TabsTrigger>
           <TabsTrigger value="lohn" className="flex-1">
-            Lohn
+            {t("set.tabs.wage")}
           </TabsTrigger>
           <TabsTrigger value="konto" className="flex-1">
-            Konto
+            {t("set.tabs.account")}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="allgemein" className="mt-4 space-y-4 pb-6">
-          <Section title="Standardwerte">
+          <Section title={t("set.defaults.title")}>
             <NumberField
               id="std-lohn"
-              label="Standard-Stundenlohn (€)"
+              label={t("set.defaults.rate")}
               value={settings.defaultRate}
               step="0.5"
               onCommit={(v) => updateSettings({ defaultRate: v })}
             />
             <NumberField
               id="grenze"
-              label="Monatliche Minijob-Grenze (€)"
+              label={t("set.defaults.monthlyLimit")}
               value={settings.monthlyLimit}
               step="10"
               onCommit={(v) => updateSettings({ monthlyLimit: v })}
             />
             <NumberField
               id="jahr-grenze"
-              label="Jährliche Minijob-Grenze (€)"
+              label={t("set.defaults.yearlyLimit")}
               value={settings.yearlyLimit}
               step="100"
               onCommit={(v) => updateSettings({ yearlyLimit: v })}
             />
           </Section>
 
-          <Section title="Feiertage">
+          <Section title={t("set.holidays.title")}>
             <div className="grid gap-2">
-              <Label htmlFor="staat">Land</Label>
+              <Label htmlFor="staat">{t("label.country")}</Label>
               <select
                 id="staat"
                 value={settings.country}
@@ -108,7 +111,7 @@ function SettingsPage() {
               </select>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="land">Bundesland</Label>
+              <Label htmlFor="land">{t("label.state")}</Label>
               <select
                 id="land"
                 value={settings.bundesland}
@@ -132,30 +135,32 @@ function SettingsPage() {
             </ul>
           </Section>
 
-          <Section title="Sprache">
-            <p className="text-xs text-muted-foreground">
-              Die App ist vollständig auf Deutsch. Weitere Sprachen folgen.
-            </p>
+          <Section title={t("set.language.title")}>
+            <p className="text-xs text-muted-foreground">{t("set.language.hint")}</p>
             <select
-              value="de"
-              disabled
-              className="h-10 rounded-md border bg-muted px-2 text-sm"
-              aria-label="Sprache"
+              value={settings.language}
+              onChange={(e) => updateSettings({ language: e.target.value as Lang })}
+              className="h-10 rounded-md border bg-background px-2 text-sm"
+              aria-label={t("label.language")}
             >
-              <option value="de">Deutsch</option>
+              {LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.native}
+                </option>
+              ))}
             </select>
           </Section>
 
-          <Section title="Sicherheit">
+          <Section title={t("set.security.title")}>
             <ToggleRow
-              title="PIN-Schutz"
-              description="App beim Start mit PIN sperren"
+              title={t("set.security.pin")}
+              description={t("set.security.pinDesc")}
               checked={settings.pinEnabled}
               onChange={(checked) => updateSettings({ pinEnabled: checked })}
             />
             {settings.pinEnabled ? (
               <div className="grid gap-2">
-                <Label htmlFor="pin">PIN (4–8 Ziffern)</Label>
+                <Label htmlFor="pin">{t("set.security.pinLabel")}</Label>
                 <Input
                   id="pin"
                   type="password"
@@ -167,8 +172,8 @@ function SettingsPage() {
               </div>
             ) : null}
             <ToggleRow
-              title="Biometrisch entsperren"
-              description="Fingerabdruck oder Gesichtserkennung nutzen"
+              title={t("set.security.biometric")}
+              description={t("set.security.biometricDesc")}
               checked={settings.biometric}
               onChange={(checked) => updateSettings({ biometric: checked })}
             />
@@ -180,10 +185,8 @@ function SettingsPage() {
 
           <LocalBackup shiftCount={shifts.length} />
 
-          <Section title="Einrichtung">
-            <p className="text-xs text-muted-foreground">
-              Den Einrichtungsassistenten erneut starten (Arbeitsart, Region, Lohn, Zuschläge).
-            </p>
+          <Section title={t("set.setup.title")}>
+            <p className="text-xs text-muted-foreground">{t("set.setup.desc")}</p>
             <Button
               variant="outline"
               onClick={() => {
@@ -191,13 +194,13 @@ function SettingsPage() {
                 window.location.reload();
               }}
             >
-              Assistent starten
+              {t("set.setup.start")}
             </Button>
           </Section>
         </TabsContent>
 
         <TabsContent value="design" className="mt-4 space-y-4 pb-6">
-          <Section title="Modus">
+          <Section title={t("set.design.mode")}>
             <div className="grid grid-cols-3 gap-2">
               {THEME_MODES.map((m) => (
                 <button
@@ -215,7 +218,7 @@ function SettingsPage() {
             </div>
           </Section>
 
-          <Section title="Akzentfarbe">
+          <Section title={t("set.design.accent")}>
             <div className="grid grid-cols-3 gap-2">
               {ACCENTS.map((a) => (
                 <button
@@ -236,32 +239,30 @@ function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="lohn" className="mt-4 space-y-3 pb-6">
-          <p className="text-xs text-muted-foreground">
-            Standard-Zuschläge für alle Jobs ohne eigene Regeln. Prozent oder fester Betrag pro Stunde.
-          </p>
+          <p className="text-xs text-muted-foreground">{t("set.wage.hint")}</p>
           <SupplementRow
-            label="Samstag"
+            label={t("supp.saturday")}
             value={settings.supplements.saturday}
             onChange={(v) => updateSupplements({ saturday: v })}
           />
           <SupplementRow
-            label="Sonntag"
+            label={t("supp.sunday")}
             value={settings.supplements.sunday}
             onChange={(v) => updateSupplements({ sunday: v })}
           />
           <SupplementRow
-            label="Feiertag"
+            label={t("supp.holiday")}
             value={settings.supplements.holiday}
             onChange={(v) => updateSupplements({ holiday: v })}
           />
           <SupplementRow
-            label="Nacht"
+            label={t("supp.night")}
             value={settings.supplements.night}
             onChange={(v) => updateSupplements({ night: v })}
           />
           <div className="grid grid-cols-2 gap-2">
             <div className="grid gap-1">
-              <Label className="text-xs">Nacht ab</Label>
+              <Label className="text-xs">{t("set.wage.nightFrom")}</Label>
               <Input
                 type="time"
                 value={settings.supplements.nightStart}
@@ -269,7 +270,7 @@ function SettingsPage() {
               />
             </div>
             <div className="grid gap-1">
-              <Label className="text-xs">Nacht bis</Label>
+              <Label className="text-xs">{t("set.wage.nightTo")}</Label>
               <Input
                 type="time"
                 value={settings.supplements.nightEnd}
@@ -278,7 +279,7 @@ function SettingsPage() {
             </div>
           </div>
           <SupplementRow
-            label="Überstunden"
+            label={t("supp.overtime")}
             value={settings.supplements.overtime}
             onChange={(v) => updateSupplements({ overtime: v })}
           />
@@ -356,6 +357,8 @@ function NumberField({
 }
 
 function LocalBackup({ shiftCount }: { shiftCount: number }) {
+  const { t } = useT();
+
   function download() {
     const blob = new Blob([JSON.stringify(getData(), null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -364,7 +367,7 @@ function LocalBackup({ shiftCount }: { shiftCount: number }) {
     a.download = `minijob-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success("Backup-Datei erstellt");
+    toast.success(t("set.localBackup.created"));
   }
 
   function upload(file: File) {
@@ -372,26 +375,24 @@ function LocalBackup({ shiftCount }: { shiftCount: number }) {
     reader.onload = () => {
       try {
         replaceAll(JSON.parse(String(reader.result)) as AppData);
-        toast.success("Backup wiederhergestellt");
+        toast.success(t("set.localBackup.restored"));
       } catch {
-        toast.error("Datei konnte nicht gelesen werden.");
+        toast.error(t("error.fileRead"));
       }
     };
     reader.readAsText(file);
   }
 
   return (
-    <Section title="Lokales Backup">
-      <p className="text-xs text-muted-foreground">
-        {shiftCount} Einträge auf diesem Gerät gespeichert.
-      </p>
+    <Section title={t("set.localBackup.title")}>
+      <p className="text-xs text-muted-foreground">{t("set.localBackup.desc", { count: shiftCount })}</p>
       <div className="grid grid-cols-2 gap-3">
         <Button variant="outline" onClick={download}>
-          Exportieren
+          {t("set.localBackup.export")}
         </Button>
         <Button variant="outline" asChild>
           <label className="cursor-pointer">
-            Importieren
+            {t("set.localBackup.import")}
             <input
               type="file"
               accept="application/json"
@@ -410,6 +411,7 @@ function LocalBackup({ shiftCount }: { shiftCount: number }) {
 }
 
 function CloudSync({ autoBackup }: { autoBackup: boolean }) {
+  const { t } = useT();
   const [session, setSession] = useState<Session | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -423,7 +425,7 @@ function CloudSync({ autoBackup }: { autoBackup: boolean }) {
     try {
       await lovable.auth.signInWithOAuth(provider, { redirect_uri: window.location.origin });
     } catch {
-      toast.error("Anmeldung nicht möglich. Bitte erneut versuchen.");
+      toast.error(t("error.signIn"));
     }
   }
 
@@ -433,15 +435,15 @@ function CloudSync({ autoBackup }: { autoBackup: boolean }) {
       if (action === "backup") {
         await backupNow();
         markBackup();
-        toast.success("In der Cloud gesichert");
+        toast.success(t("set.account.cloud.backupSuccess"));
       } else {
         const ok = await restoreNow();
         toast[ok ? "success" : "error"](
-          ok ? "Daten aus der Cloud geladen" : "Keine Cloud-Sicherung gefunden.",
+          ok ? t("set.account.cloud.restoreSuccess") : t("set.account.cloud.restoreEmpty"),
         );
       }
     } catch {
-      toast.error("Synchronisierung fehlgeschlagen.");
+      toast.error(t("error.sync"));
     } finally {
       setBusy(false);
     }
@@ -449,36 +451,35 @@ function CloudSync({ autoBackup }: { autoBackup: boolean }) {
 
   if (!session) {
     return (
-      <Section title="Anmelden">
-        <p className="text-xs text-muted-foreground">
-          Melde dich an, damit deine Daten automatisch gesichert und auf einem neuen Gerät
-          wiederhergestellt werden.
-        </p>
+      <Section title={t("set.account.signIn.title")}>
+        <p className="text-xs text-muted-foreground">{t("set.account.signIn.desc")}</p>
         <Button className="w-full" onClick={() => oauth("google")}>
-          Mit Google anmelden
+          {t("set.account.signIn.google")}
         </Button>
         <Button variant="outline" className="w-full" onClick={() => oauth("apple")}>
-          Mit Apple anmelden
+          {t("set.account.signIn.apple")}
         </Button>
       </Section>
     );
   }
 
   return (
-    <Section title="Cloud-Sicherung">
-      <p className="text-xs text-muted-foreground">Angemeldet als {session.user.email}</p>
+    <Section title={t("set.account.cloud.title")}>
+      <p className="text-xs text-muted-foreground">
+        {t("set.account.cloud.signedInAs", { email: session.user.email ?? "" })}
+      </p>
       <ToggleRow
-        title="Automatisches Backup"
-        description="Änderungen automatisch in der Cloud sichern"
+        title={t("set.account.cloud.autoBackup")}
+        description={t("set.account.cloud.autoBackupDesc")}
         checked={autoBackup}
         onChange={(checked) => updateSettings({ autoBackup: checked })}
       />
       <div className="grid grid-cols-2 gap-3">
         <Button onClick={() => run("backup")} disabled={busy}>
-          <CloudUpload className="size-4" /> Sichern
+          <CloudUpload className="size-4" /> {t("set.account.cloud.backup")}
         </Button>
         <Button variant="outline" onClick={() => run("restore")} disabled={busy}>
-          <CloudDownload className="size-4" /> Laden
+          <CloudDownload className="size-4" /> {t("set.account.cloud.restore")}
         </Button>
       </div>
       <Button
@@ -486,16 +487,17 @@ function CloudSync({ autoBackup }: { autoBackup: boolean }) {
         className="w-full text-muted-foreground"
         onClick={async () => {
           await supabase.auth.signOut();
-          toast.success("Abgemeldet");
+          toast.success(t("set.account.cloud.signedOut"));
         }}
       >
-        <LogOut className="size-4" /> Abmelden
+        <LogOut className="size-4" /> {t("set.account.cloud.signOut")}
       </Button>
     </Section>
   );
 }
 
 function Notifications({ value }: { value: NotificationSettings }) {
+  const { t } = useT();
   const [permission, setPermission] = useState<string>("default");
 
   useEffect(() => setPermission(notificationPermission()), []);
@@ -508,11 +510,11 @@ function Notifications({ value }: { value: NotificationSettings }) {
     const granted = await requestNotificationPermission();
     setPermission(notificationPermission());
     if (!granted) {
-      toast.error("Benachrichtigungen wurden im Browser blockiert.");
+      toast.error(t("set.notifications.blocked"));
       return;
     }
     updateSettings({ notifications: { ...value, enabled: true } });
-    toast.success("Benachrichtigungen aktiviert");
+    toast.success(t("set.notifications.enabled"));
   }
 
   function patch(part: Partial<NotificationSettings>) {
@@ -520,36 +522,34 @@ function Notifications({ value }: { value: NotificationSettings }) {
   }
 
   return (
-    <Section title="Benachrichtigungen">
+    <Section title={t("set.notifications.title")}>
       {permission === "unsupported" ? (
-        <p className="text-xs text-muted-foreground">
-          Dieses Gerät unterstützt keine Benachrichtigungen.
-        </p>
+        <p className="text-xs text-muted-foreground">{t("set.notifications.unsupported")}</p>
       ) : (
         <>
           <ToggleRow
-            title="Push-Nachrichten"
-            description="Erinnerungen und Minijob-Warnungen erhalten"
+            title={t("set.notifications.push")}
+            description={t("set.notifications.pushDesc")}
             checked={value.enabled}
             onChange={(checked) => void enable(checked)}
           />
           {value.enabled ? (
             <>
               <ToggleRow
-                title="Start-Erinnerung"
-                description="Erinnerung, die Zeiterfassung zu starten"
+                title={t("set.notifications.startReminder")}
+                description={t("set.notifications.startReminderDesc")}
                 checked={value.startReminder}
                 onChange={(startReminder) => patch({ startReminder })}
               />
               <ToggleRow
-                title="Ende-Erinnerung"
-                description="Erinnerung, die laufende Zeit zu beenden"
+                title={t("set.notifications.endReminder")}
+                description={t("set.notifications.endReminderDesc")}
                 checked={value.endReminder}
                 onChange={(endReminder) => patch({ endReminder })}
               />
               <div className="grid grid-cols-2 gap-2">
                 <div className="grid gap-1">
-                  <Label className="text-xs">Start ab</Label>
+                  <Label className="text-xs">{t("set.notifications.startFrom")}</Label>
                   <Input
                     type="time"
                     value={value.startTime}
@@ -557,7 +557,7 @@ function Notifications({ value }: { value: NotificationSettings }) {
                   />
                 </div>
                 <div className="grid gap-1">
-                  <Label className="text-xs">Ende ab</Label>
+                  <Label className="text-xs">{t("set.notifications.endFrom")}</Label>
                   <Input
                     type="time"
                     value={value.endTime}
@@ -566,20 +566,20 @@ function Notifications({ value }: { value: NotificationSettings }) {
                 </div>
               </div>
               <ToggleRow
-                title="Fehlende Schicht"
-                description="Hinweis, wenn an einem Werktag nichts erfasst wurde"
+                title={t("set.notifications.missingShift")}
+                description={t("set.notifications.missingShiftDesc")}
                 checked={value.missingShift}
                 onChange={(missingShift) => patch({ missingShift })}
               />
               <ToggleRow
-                title="Backup-Erinnerung"
-                description="Wöchentlich an eine Sicherung erinnern"
+                title={t("set.notifications.backupReminder")}
+                description={t("set.notifications.backupReminderDesc")}
                 checked={value.backupReminder}
                 onChange={(backupReminder) => patch({ backupReminder })}
               />
               <ToggleRow
-                title="Minijob-Limit"
-                description="Warnung bei 75 %, 90 % und 100 % der Grenze"
+                title={t("set.notifications.limit")}
+                description={t("set.notifications.limitDesc")}
                 checked={value.limitAlerts}
                 onChange={(limitAlerts) => patch({ limitAlerts })}
               />
@@ -592,37 +592,36 @@ function Notifications({ value }: { value: NotificationSettings }) {
 }
 
 function DataMigration({ shiftCount }: { shiftCount: number }) {
+  const { t } = useT();
   const { shifts, jobs, settings } = useAppData();
   const [importOpen, setImportOpen] = useState(false);
   const stamp = new Date().toISOString().slice(0, 10);
 
   return (
-    <Section title="Datenübertragung">
-      <p className="text-xs text-muted-foreground">
-        {shiftCount} Einträge exportieren oder Daten aus CSV, Excel bzw. JSON importieren.
-      </p>
+    <Section title={t("set.migration.title")}>
+      <p className="text-xs text-muted-foreground">{t("set.migration.desc", { count: shiftCount })}</p>
       <div className="grid grid-cols-2 gap-3">
         <Button
           variant="outline"
           onClick={() => {
             downloadText(`minijob-${stamp}.csv`, shiftsToCsv(shifts, jobs));
-            toast.success("CSV exportiert");
+            toast.success(t("set.migration.csvExported"));
           }}
         >
-          CSV export
+          {t("set.migration.csv")}
         </Button>
         <Button
           variant="outline"
           onClick={() => {
             exportXlsx(shifts, `minijob-${stamp}`, { jobs, bundesland: settings.bundesland });
-            toast.success("Excel exportiert");
+            toast.success(t("set.migration.excelExported"));
           }}
         >
-          Excel export
+          {t("set.migration.excel")}
         </Button>
       </div>
       <Button className="w-full" onClick={() => setImportOpen(true)}>
-        <FileUp className="size-4" /> Daten importieren
+        <FileUp className="size-4" /> {t("set.migration.import")}
       </Button>
       <ImportDialog open={importOpen} onOpenChange={setImportOpen} jobs={jobs} settings={settings} />
     </Section>

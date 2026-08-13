@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { useT } from "@/lib/i18n";
 import { formatClock, isoDate, timeFromDate } from "@/lib/minijob/calc";
 import { clearTimer, newId, saveShift, startTimer, updateTimerBreak } from "@/lib/minijob/store";
 import type { Job, RunningTimer, Settings } from "@/lib/minijob/types";
@@ -14,6 +15,7 @@ interface WorkTimerProps {
 }
 
 export function WorkTimer({ timer, jobs, settings }: WorkTimerProps) {
+  const { t } = useT();
   const [seconds, setSeconds] = useState(0);
 
   useEffect(() => {
@@ -31,7 +33,7 @@ export function WorkTimer({ timer, jobs, settings }: WorkTimerProps) {
 
   function start() {
     startTimer(activeJob?.id);
-    toast.success("Arbeit gestartet");
+    toast.success(t("timer.startedToast"));
   }
 
   function stop() {
@@ -50,7 +52,7 @@ export function WorkTimer({ timer, jobs, settings }: WorkTimerProps) {
     };
     saveShift(shift);
     clearTimer();
-    toast.success("Arbeitszeit gespeichert");
+    toast.success(t("timer.savedToast"));
   }
 
   return (
@@ -58,32 +60,32 @@ export function WorkTimer({ timer, jobs, settings }: WorkTimerProps) {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Zeiterfassung
+            {t("timer.tracking")}
           </p>
           <p className="mt-1 text-3xl font-bold tabular-nums">
             {timer ? formatClock(seconds) : "00:00:00"}
           </p>
           <p className="text-xs text-muted-foreground">
-            {activeJob ? activeJob.name : "Kein Job ausgewählt"}
-            {timer?.breakMinutes ? ` · ${timer.breakMinutes} Min. Pause` : ""}
+            {activeJob ? activeJob.name : t("timer.noJob")}
+            {timer?.breakMinutes ? ` ${t("timer.breakMinutes", { minutes: timer.breakMinutes })}` : ""}
           </p>
         </div>
         {timer ? (
           <div className="flex flex-col gap-2">
             <Button variant="destructive" onClick={stop}>
-              <Square className="size-4" /> Feierabend
+              <Square className="size-4" /> {t("timer.finish")}
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={() => updateTimerBreak(timer.breakMinutes + 15)}
             >
-              <Coffee className="size-4" /> +15 Min.
+              <Coffee className="size-4" /> {t("timer.addBreak")}
             </Button>
           </div>
         ) : (
           <Button size="lg" onClick={start}>
-            <Play className="size-4" /> Start
+            <Play className="size-4" /> {t("timer.start")}
           </Button>
         )}
       </div>

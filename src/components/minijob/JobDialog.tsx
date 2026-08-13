@@ -14,13 +14,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { WEEKDAYS_DE } from "@/lib/minijob/calc";
+import { useT } from "@/lib/i18n";
+import { weekdayNames } from "@/lib/minijob/calc";
 import { deleteJob, newId, nextJobColor, saveJob } from "@/lib/minijob/store";
 import {
   DEFAULT_SUPPLEMENTS,
   EMPTY_WEEK,
   JOB_COLORS,
-  WORK_MODE_LABEL,
   type FixedDay,
   type Job,
   type Supplement,
@@ -36,7 +36,10 @@ interface JobDialogProps {
   defaultRate: number;
 }
 
+const WORK_MODES: WorkMode[] = ["flex", "fest", "selbststaendig"];
+
 export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogProps) {
+  const { t, locale } = useT();
   const [name, setName] = useState("");
   const [color, setColor] = useState(JOB_COLORS[0]!);
   const [rate, setRate] = useState(String(defaultRate));
@@ -49,6 +52,8 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
   const [week, setWeek] = useState<FixedDay[]>(EMPTY_WEEK);
   const [weeklyTarget, setWeeklyTarget] = useState("20");
   const [supplements, setSupplements] = useState<Supplements>(DEFAULT_SUPPLEMENTS);
+
+  const weekdays = weekdayNames(locale);
 
   useEffect(() => {
     if (!open) return;
@@ -68,7 +73,7 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
 
   function save() {
     if (!name.trim()) {
-      toast.error("Bitte einen Namen für den Job eingeben.");
+      toast.error(t("job.errorName"));
       return;
     }
     const next: Job = {
@@ -89,7 +94,7 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
       next.weeklyTarget = Number(weeklyTarget.replace(",", ".")) || 0;
     }
     saveJob(next);
-    toast.success(job ? "Job aktualisiert" : "Job angelegt");
+    toast.success(job ? t("job.updated") : t("job.created"));
     onOpenChange(false);
   }
 
@@ -97,36 +102,36 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{job ? "Job bearbeiten" : "Neuer Job"}</DialogTitle>
+          <DialogTitle>{job ? t("job.editTitle") : t("job.newTitle")}</DialogTitle>
         </DialogHeader>
 
         <Tabs defaultValue="basis">
           <TabsList className="w-full">
             <TabsTrigger value="basis" className="flex-1">
-              Basis
+              {t("job.tabBasis")}
             </TabsTrigger>
             <TabsTrigger value="kontakt" className="flex-1">
-              Kontakt
+              {t("job.tabContact")}
             </TabsTrigger>
             <TabsTrigger value="zuschlag" className="flex-1">
-              Zuschläge
+              {t("job.tabSupplements")}
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="basis" className="mt-4 space-y-4">
             <div className="grid gap-2">
-              <Label htmlFor="job-name">Name</Label>
+              <Label htmlFor="job-name">{t("label.name")}</Label>
               <Input id="job-name" value={name} onChange={(e) => setName(e.target.value)} />
             </div>
 
             <div className="grid gap-2">
-              <Label>Farbe</Label>
+              <Label>{t("label.color")}</Label>
               <div className="flex flex-wrap gap-2">
                 {JOB_COLORS.map((c) => (
                   <button
                     key={c}
                     type="button"
-                    aria-label={`Farbe ${c}`}
+                    aria-label={t("job.colorAria", { color: c })}
                     onClick={() => setColor(c)}
                     style={{ backgroundColor: c }}
                     className={cn(
@@ -139,9 +144,9 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
             </div>
 
             <div className="grid gap-2">
-              <Label>Arbeitsmodell</Label>
+              <Label>{t("job.workMode")}</Label>
               <div className="grid gap-2">
-                {(Object.keys(WORK_MODE_LABEL) as WorkMode[]).map((m) => (
+                {WORK_MODES.map((m) => (
                   <button
                     key={m}
                     type="button"
@@ -151,14 +156,14 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
                       mode === m ? "border-primary bg-primary/10 font-semibold" : "bg-card",
                     )}
                   >
-                    {WORK_MODE_LABEL[m]}
+                    {t("mode." + m)}
                   </button>
                 ))}
               </div>
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="job-rate">Stundenlohn (€)</Label>
+              <Label htmlFor="job-rate">{t("label.rateEuro")}</Label>
               <Input
                 id="job-rate"
                 type="number"
@@ -171,17 +176,17 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
 
             {mode === "fest" ? (
               <div className="space-y-3 rounded-xl border p-3">
-                <p className="text-sm font-semibold">Wochenplan</p>
+                <p className="text-sm font-semibold">{t("job.weeklyPlan")}</p>
                 {week.map((day, idx) => (
-                  <div key={WEEKDAYS_DE[idx]} className="space-y-2">
+                  <div key={weekdays[idx]} className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm">{WEEKDAYS_DE[idx]}</span>
+                      <span className="text-sm">{weekdays[idx]}</span>
                       <Switch
                         checked={day.active}
                         onCheckedChange={(checked) =>
                           setWeek(week.map((d, i) => (i === idx ? { ...d, active: checked } : d)))
                         }
-                        aria-label={`${WEEKDAYS_DE[idx]} aktiv`}
+                        aria-label={t("job.weekdayActive", { day: weekdays[idx] ?? "" })}
                       />
                     </div>
                     {day.active ? (
@@ -215,14 +220,14 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
                               ),
                             )
                           }
-                          aria-label="Pause in Minuten"
+                          aria-label={t("job.breakMinutesAria")}
                         />
                       </div>
                     ) : null}
                   </div>
                 ))}
                 <div className="grid gap-2">
-                  <Label htmlFor="soll">Sollstunden pro Woche</Label>
+                  <Label htmlFor="soll">{t("job.weeklyTarget")}</Label>
                   <Input
                     id="soll"
                     type="number"
@@ -236,37 +241,37 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
           </TabsContent>
 
           <TabsContent value="kontakt" className="mt-4 space-y-3">
-            <Field label="Arbeitgeber" value={employer} onChange={setEmployer} />
-            <Field label="Ansprechpartner" value={contact} onChange={setContact} />
-            <Field label="Telefon" value={phone} onChange={setPhone} type="tel" />
-            <Field label="E-Mail" value={email} onChange={setEmail} type="email" />
-            <Field label="Adresse" value={address} onChange={setAddress} />
+            <Field label={t("label.employer")} value={employer} onChange={setEmployer} />
+            <Field label={t("label.contact")} value={contact} onChange={setContact} />
+            <Field label={t("label.phone")} value={phone} onChange={setPhone} type="tel" />
+            <Field label={t("label.email")} value={email} onChange={setEmail} type="email" />
+            <Field label={t("label.address")} value={address} onChange={setAddress} />
           </TabsContent>
 
           <TabsContent value="zuschlag" className="mt-4 space-y-3">
             <SupplementRow
-              label="Samstag"
+              label={t("supp.saturday")}
               value={supplements.saturday}
               onChange={(v) => setSupplements({ ...supplements, saturday: v })}
             />
             <SupplementRow
-              label="Sonntag"
+              label={t("supp.sunday")}
               value={supplements.sunday}
               onChange={(v) => setSupplements({ ...supplements, sunday: v })}
             />
             <SupplementRow
-              label="Feiertag"
+              label={t("supp.holiday")}
               value={supplements.holiday}
               onChange={(v) => setSupplements({ ...supplements, holiday: v })}
             />
             <SupplementRow
-              label="Nacht"
+              label={t("supp.night")}
               value={supplements.night}
               onChange={(v) => setSupplements({ ...supplements, night: v })}
             />
             <div className="grid grid-cols-2 gap-2">
               <div className="grid gap-1">
-                <Label className="text-xs">Nacht ab</Label>
+                <Label className="text-xs">{t("job.nightFrom")}</Label>
                 <Input
                   type="time"
                   value={supplements.nightStart}
@@ -274,7 +279,7 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
                 />
               </div>
               <div className="grid gap-1">
-                <Label className="text-xs">Nacht bis</Label>
+                <Label className="text-xs">{t("job.nightTo")}</Label>
                 <Input
                   type="time"
                   value={supplements.nightEnd}
@@ -283,7 +288,7 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
               </div>
             </div>
             <SupplementRow
-              label="Überstunden"
+              label={t("supp.overtime")}
               value={supplements.overtime}
               onChange={(v) => setSupplements({ ...supplements, overtime: v })}
             />
@@ -297,16 +302,16 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
               className="text-destructive"
               onClick={() => {
                 deleteJob(job.id);
-                toast.success("Job gelöscht");
+                toast.success(t("job.deleted"));
                 onOpenChange(false);
               }}
             >
-              <Trash2 className="size-4" /> Löschen
+              <Trash2 className="size-4" /> {t("action.delete")}
             </Button>
           ) : (
             <span />
           )}
-          <Button onClick={save}>Speichern</Button>
+          <Button onClick={save}>{t("action.save")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -341,6 +346,7 @@ export function SupplementRow({
   value: Supplement;
   onChange: (value: Supplement) => void;
 }) {
+  const { t } = useT();
   return (
     <div className="rounded-xl border p-3">
       <div className="flex items-center justify-between">
@@ -348,7 +354,7 @@ export function SupplementRow({
         <Switch
           checked={value.enabled}
           onCheckedChange={(enabled) => onChange({ ...value, enabled })}
-          aria-label={`${label}-Zuschlag`}
+          aria-label={t("job.supplementAria", { label })}
         />
       </div>
       {value.enabled ? (
@@ -359,14 +365,14 @@ export function SupplementRow({
               onClick={() => onChange({ ...value, mode: "prozent" })}
               className={cn("px-2 py-1.5", value.mode === "prozent" && "bg-primary text-primary-foreground")}
             >
-              %
+              {t("job.percent")}
             </button>
             <button
               type="button"
               onClick={() => onChange({ ...value, mode: "fest" })}
               className={cn("px-2 py-1.5", value.mode === "fest" && "bg-primary text-primary-foreground")}
             >
-              €/h
+              {t("job.perHourShort")}
             </button>
           </div>
           <Input

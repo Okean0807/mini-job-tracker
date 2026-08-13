@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Settings } from "@/lib/minijob/types";
+import { useT } from "@/lib/i18n";
 
 interface PinLockProps {
   settings: Settings;
@@ -11,6 +12,7 @@ interface PinLockProps {
 }
 
 export function PinLock({ settings, onUnlock }: PinLockProps) {
+  const { t } = useT();
   const [value, setValue] = useState("");
   const [error, setError] = useState(false);
 
@@ -49,8 +51,8 @@ export function PinLock({ settings, onUnlock }: PinLockProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background px-6">
       <div className="w-full max-w-xs text-center">
         <Lock className="mx-auto size-10 text-primary" />
-        <h1 className="mt-4 text-xl font-bold">App gesperrt</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Bitte PIN eingeben</p>
+        <h1 className="mt-4 text-xl font-bold">{t("pin.locked")}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{t("pin.enterPin")}</p>
         <Input
           type="password"
           inputMode="numeric"
@@ -62,15 +64,15 @@ export function PinLock({ settings, onUnlock }: PinLockProps) {
           }}
           onKeyDown={(e) => e.key === "Enter" && submit()}
           className="mt-4 text-center text-lg tracking-[0.4em]"
-          aria-label="PIN"
+          aria-label={t("pin.enterPin")}
         />
-        {error ? <p className="mt-2 text-xs text-destructive">Falsche PIN</p> : null}
+        {error ? <p className="mt-2 text-xs text-destructive">{t("pin.wrong")}</p> : null}
         <Button className="mt-4 w-full" onClick={submit}>
-          Entsperren
+          {t("pin.unlock")}
         </Button>
         {settings.biometric ? (
           <Button variant="outline" className="mt-2 w-full" onClick={biometric}>
-            <Fingerprint className="size-4" /> Biometrisch entsperren
+            <Fingerprint className="size-4" /> {t("pin.biometric")}
           </Button>
         ) : null}
       </div>

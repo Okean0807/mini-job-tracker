@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 
+import { LANGUAGES, detectLanguage } from "@/lib/i18n/core";
+
 import { applyAppearance } from "./theme";
 import {
   DEFAULT_NOTIFICATIONS,
@@ -74,6 +76,9 @@ export function normalize(input: Partial<AppData>): AppData {
   if (!raw.settings?.["themeMode"] && (legacyTheme === "dark" || legacyTheme === "light")) {
     settings.themeMode = legacyTheme;
   }
+  if (!LANGUAGES.some((l) => l.code === settings.language)) {
+    settings.language = detectLanguage();
+  }
   return {
     shifts: (Array.isArray(raw.shifts) ? raw.shifts : []).map((s) => ({
       ...s,
@@ -96,10 +101,14 @@ export function loadFromStorage() {
     if (raw) {
       state = normalize(JSON.parse(raw) as Partial<AppData>);
       emit(false);
+      return;
     }
   } catch {
     /* ungültige Daten ignorieren */
   }
+  // Erststart: Sprache aus dem Browser übernehmen (später manuell änderbar)
+  state = { ...state, settings: { ...state.settings, language: detectLanguage() } };
+  emit(false);
 }
 
 function subscribe(listener: () => void) {

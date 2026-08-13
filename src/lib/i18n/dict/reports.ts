@@ -1,0 +1,230 @@
+import type { Bundle } from "../core";
+
+/** Statistik, Diagramme, PDF/Excel/CSV-Exporte. */
+export const reports: Bundle = {
+  de: {
+    "stats.title": "Statistik",
+    "stats.allJobs": "Alle Jobs",
+    "stats.tab.month": "Monat",
+    "stats.tab.year": "Jahr",
+    "stats.tab.jobs": "Jobs",
+
+    "stats.card.earnings": "Verdienst",
+    "stats.card.hoursLabel": "Stunden",
+    "stats.card.hoursHint": "im Monat",
+    "stats.card.yearEarnings": "Jahresverdienst",
+    "stats.card.yearHours": "Jahresstunden",
+    "stats.card.avgRate": "Ø Stundenlohn",
+    "stats.card.avgRateHint": "im Jahr",
+    "stats.card.yearLimit": "Jahresgrenze",
+    "stats.card.yearLimitHint": "von {amount}",
+
+    "stats.entriesHint_one": "{count} Eintrag",
+    "stats.entriesHint_other": "{count} Einträge",
+
+    "stats.chart.earningsDay": "Verdienst pro Tag",
+    "stats.chart.hoursDay": "Stunden pro Tag",
+    "stats.chart.earningsMonth": "Verdienst pro Monat",
+    "stats.chart.hoursMonth": "Stunden pro Monat",
+
+    "stats.noJobs": "Noch keine Jobs angelegt.",
+    "stats.jobHoursYear": "{hours} in {year}",
+
+    "stats.toast.noData": "Keine Daten für diesen Zeitraum.",
+    "stats.toast.exportSuccess": "Export erstellt",
+
+    "report.monthTitle": "Monatsbericht {month} {year}",
+    "report.yearTitle": "Jahresbericht {year}",
+    "report.sheetName": "Arbeitszeiten",
+    "report.rateEur": "Stundenlohn (€)",
+    "report.bonusEur": "Zuschläge (€)",
+    "report.earningsEur": "Verdienst (€)",
+
+    "csv.error.date": "Datum ungültig",
+    "csv.error.start": "Beginn ungültig",
+    "csv.error.end": "Ende ungültig",
+    "csv.error.break": "Pause ungültig",
+    "csv.error.rate": "Stundenlohn ungültig",
+    "csv.template.note": "Frühschicht",
+  },
+  en: {
+    "stats.title": "Statistics",
+    "stats.allJobs": "All jobs",
+    "stats.tab.month": "Month",
+    "stats.tab.year": "Year",
+    "stats.tab.jobs": "Jobs",
+
+    "stats.card.earnings": "Earnings",
+    "stats.card.hoursLabel": "Hours",
+    "stats.card.hoursHint": "this month",
+    "stats.card.yearEarnings": "Yearly earnings",
+    "stats.card.yearHours": "Yearly hours",
+    "stats.card.avgRate": "Avg. hourly rate",
+    "stats.card.avgRateHint": "this year",
+    "stats.card.yearLimit": "Yearly limit",
+    "stats.card.yearLimitHint": "of {amount}",
+
+    "stats.entriesHint_one": "{count} entry",
+    "stats.entriesHint_other": "{count} entries",
+
+    "stats.chart.earningsDay": "Earnings per day",
+    "stats.chart.hoursDay": "Hours per day",
+    "stats.chart.earningsMonth": "Earnings per month",
+    "stats.chart.hoursMonth": "Hours per month",
+
+    "stats.noJobs": "No jobs created yet.",
+    "stats.jobHoursYear": "{hours} in {year}",
+
+    "stats.toast.noData": "No data for this period.",
+    "stats.toast.exportSuccess": "Export created",
+
+    "report.monthTitle": "Monthly report {month} {year}",
+    "report.yearTitle": "Annual report {year}",
+    "report.sheetName": "Working hours",
+    "report.rateEur": "Hourly rate (€)",
+    "report.bonusEur": "Supplements (€)",
+    "report.earningsEur": "Earnings (€)",
+
+    "csv.error.date": "Invalid date",
+    "csv.error.start": "Invalid start time",
+    "csv.error.end": "Invalid end time",
+    "csv.error.break": "Invalid break",
+    "csv.error.rate": "Invalid hourly rate",
+    "csv.template.note": "Early shift",
+  },
+  ru: {
+    "stats.title": "Статистика",
+    "stats.allJobs": "Все работы",
+    "stats.tab.month": "Месяц",
+    "stats.tab.year": "Год",
+    "stats.tab.jobs": "Работы",
+
+    "stats.card.earnings": "Заработок",
+    "stats.card.hoursLabel": "Часы",
+    "stats.card.hoursHint": "за месяц",
+    "stats.card.yearEarnings": "Годовой заработок",
+    "stats.card.yearHours": "Годовые часы",
+    "stats.card.avgRate": "Ср. ставка в час",
+    "stats.card.avgRateHint": "за год",
+    "stats.card.yearLimit": "Годовой лимит",
+    "stats.card.yearLimitHint": "из {amount}",
+
+    "stats.entriesHint_one": "{count} запись",
+    "stats.entriesHint_other": "{count} записей",
+
+    "stats.chart.earningsDay": "Заработок по дням",
+    "stats.chart.hoursDay": "Часы по дням",
+    "stats.chart.earningsMonth": "Заработок по месяцам",
+    "stats.chart.hoursMonth": "Часы по месяцам",
+
+    "stats.noJobs": "Работы ещё не созданы.",
+    "stats.jobHoursYear": "{hours} за {year}",
+
+    "stats.toast.noData": "Нет данных за этот период.",
+    "stats.toast.exportSuccess": "Экспорт создан",
+
+    "report.monthTitle": "Отчёт за {month} {year}",
+    "report.yearTitle": "Годовой отчёт за {year}",
+    "report.sheetName": "Рабочее время",
+    "report.rateEur": "Ставка в час (€)",
+    "report.bonusEur": "Надбавки (€)",
+    "report.earningsEur": "Заработок (€)",
+
+    "csv.error.date": "Неверная дата",
+    "csv.error.start": "Неверное время начала",
+    "csv.error.end": "Неверное время окончания",
+    "csv.error.break": "Неверный перерыв",
+    "csv.error.rate": "Неверная ставка в час",
+    "csv.template.note": "Утренняя смена",
+  },
+  tr: {
+    "stats.title": "İstatistik",
+    "stats.allJobs": "Tüm işler",
+    "stats.tab.month": "Ay",
+    "stats.tab.year": "Yıl",
+    "stats.tab.jobs": "İşler",
+
+    "stats.card.earnings": "Kazanç",
+    "stats.card.hoursLabel": "Saat",
+    "stats.card.hoursHint": "bu ay",
+    "stats.card.yearEarnings": "Yıllık kazanç",
+    "stats.card.yearHours": "Yıllık saat",
+    "stats.card.avgRate": "Ort. saatlik ücret",
+    "stats.card.avgRateHint": "bu yıl",
+    "stats.card.yearLimit": "Yıllık sınır",
+    "stats.card.yearLimitHint": "{amount} üzerinden",
+
+    "stats.entriesHint_one": "{count} kayıt",
+    "stats.entriesHint_other": "{count} kayıt",
+
+    "stats.chart.earningsDay": "Günlük kazanç",
+    "stats.chart.hoursDay": "Günlük saat",
+    "stats.chart.earningsMonth": "Aylık kazanç",
+    "stats.chart.hoursMonth": "Aylık saat",
+
+    "stats.noJobs": "Henüz iş oluşturulmadı.",
+    "stats.jobHoursYear": "{year} yılında {hours}",
+
+    "stats.toast.noData": "Bu dönem için veri yok.",
+    "stats.toast.exportSuccess": "Dışa aktarma oluşturuldu",
+
+    "report.monthTitle": "{month} {year} Aylık Rapor",
+    "report.yearTitle": "{year} Yıllık Rapor",
+    "report.sheetName": "Çalışma Saatleri",
+    "report.rateEur": "Saatlik ücret (€)",
+    "report.bonusEur": "Ek ödemeler (€)",
+    "report.earningsEur": "Kazanç (€)",
+
+    "csv.error.date": "Geçersiz tarih",
+    "csv.error.start": "Geçersiz başlangıç saati",
+    "csv.error.end": "Geçersiz bitiş saati",
+    "csv.error.break": "Geçersiz mola",
+    "csv.error.rate": "Geçersiz saatlik ücret",
+    "csv.template.note": "Sabah vardiyası",
+  },
+  pl: {
+    "stats.title": "Statystyki",
+    "stats.allJobs": "Wszystkie prace",
+    "stats.tab.month": "Miesiąc",
+    "stats.tab.year": "Rok",
+    "stats.tab.jobs": "Prace",
+
+    "stats.card.earnings": "Zarobek",
+    "stats.card.hoursLabel": "Godziny",
+    "stats.card.hoursHint": "w tym miesiącu",
+    "stats.card.yearEarnings": "Roczny zarobek",
+    "stats.card.yearHours": "Roczne godziny",
+    "stats.card.avgRate": "Śr. stawka godzinowa",
+    "stats.card.avgRateHint": "w tym roku",
+    "stats.card.yearLimit": "Roczny limit",
+    "stats.card.yearLimitHint": "z {amount}",
+
+    "stats.entriesHint_one": "{count} wpis",
+    "stats.entriesHint_other": "{count} wpisów",
+
+    "stats.chart.earningsDay": "Zarobek dziennie",
+    "stats.chart.hoursDay": "Godziny dziennie",
+    "stats.chart.earningsMonth": "Zarobek miesięcznie",
+    "stats.chart.hoursMonth": "Godziny miesięcznie",
+
+    "stats.noJobs": "Nie utworzono jeszcze żadnej pracy.",
+    "stats.jobHoursYear": "{hours} w {year}",
+
+    "stats.toast.noData": "Brak danych za ten okres.",
+    "stats.toast.exportSuccess": "Eksport utworzony",
+
+    "report.monthTitle": "Raport miesięczny {month} {year}",
+    "report.yearTitle": "Raport roczny {year}",
+    "report.sheetName": "Godziny pracy",
+    "report.rateEur": "Stawka godzinowa (€)",
+    "report.bonusEur": "Dodatki (€)",
+    "report.earningsEur": "Zarobek (€)",
+
+    "csv.error.date": "Nieprawidłowa data",
+    "csv.error.start": "Nieprawidłowa godzina rozpoczęcia",
+    "csv.error.end": "Nieprawidłowa godzina zakończenia",
+    "csv.error.break": "Nieprawidłowa przerwa",
+    "csv.error.rate": "Nieprawidłowa stawka godzinowa",
+    "csv.template.note": "Zmiana poranna",
+  },
+};

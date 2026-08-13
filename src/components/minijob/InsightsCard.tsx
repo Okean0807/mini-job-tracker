@@ -1,6 +1,7 @@
 import { Award, CalendarCheck, Sparkles, TrendingUp } from "lucide-react";
 
-import { MONTHS_DE, formatEuro, formatHours } from "@/lib/minijob/calc";
+import { useT } from "@/lib/i18n";
+import { formatEuro, formatHours, monthNames } from "@/lib/minijob/calc";
 import type { Insights } from "@/lib/minijob/insights";
 
 export function InsightsCard({
@@ -12,39 +13,42 @@ export function InsightsCard({
   month: number;
   year: number;
 }) {
+  const { t } = useT();
+  const monthLabel = monthNames()[month] ?? "";
+
   const items = [
     {
       icon: TrendingUp,
-      label: "Verdienst & Stunden",
+      label: t("insights.earningsHours"),
       value: `${formatEuro(insights.monthEarnings)} · ${formatHours(insights.monthHours)}`,
     },
     {
       icon: Sparkles,
-      label: "Ø Stundenverdienst",
+      label: t("insights.avgHourly"),
       value: formatEuro(insights.avgRate),
     },
     {
       icon: CalendarCheck,
-      label: "Bester Tag",
+      label: t("insights.bestDay"),
       value: insights.bestDay
         ? `${insights.bestDay.label} · ${formatEuro(insights.bestDay.earnings)}`
-        : "Noch keine Daten",
+        : t("insights.noData"),
     },
     {
       icon: Award,
-      label: `Bester Monat ${year}`,
+      label: t("insights.bestMonth", { year }),
       value: insights.bestMonth
         ? `${insights.bestMonth.label} · ${formatEuro(insights.bestMonth.earnings)}`
-        : "Noch keine Daten",
+        : t("insights.noData"),
     },
   ];
 
   return (
-    <section className="rounded-2xl border bg-card p-4 shadow-card" aria-label="Monatsauswertung">
+    <section className="rounded-2xl border bg-card p-4 shadow-card" aria-label={t("insights.title", { month: monthLabel })}>
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold">Auswertung {MONTHS_DE[month]}</h2>
+        <h2 className="text-sm font-semibold">{t("insights.title", { month: monthLabel })}</h2>
         <span className="text-xs text-muted-foreground">
-          {insights.entries} {insights.entries === 1 ? "Eintrag" : "Einträge"}
+          {t("insights.entries", { count: insights.entries })}
         </span>
       </div>
       <ul className="mt-3 space-y-2.5">
