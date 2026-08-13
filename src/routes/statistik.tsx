@@ -38,6 +38,7 @@ import { exportArbeitsnachweisPdf } from "@/lib/minijob/arbeitsnachweis";
 import { exportWorkReportPdf } from "@/lib/minijob/worklog";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { yearlyLimitOf } from "@/lib/minijob/limits";
+import { canUse } from "@/lib/minijob/premium";
 import { useAppData } from "@/lib/minijob/store";
 import type { Shift } from "@/lib/minijob/types";
 
@@ -131,6 +132,10 @@ function StatsPage() {
   function doExport(kind: "xlsx" | "pdf", list: Shift[], title: string) {
     if (list.length === 0) {
       toast.error(t("stats.toast.noData"));
+      return;
+    }
+    if (kind === "xlsx" && !canUse(settings, "excel")) {
+      toast.error(t("premium.title"), { description: t("premium.excel") });
       return;
     }
     if (kind === "xlsx") exportXlsx(list, title, ctx);
