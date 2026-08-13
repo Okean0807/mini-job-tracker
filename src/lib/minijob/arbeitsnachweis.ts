@@ -42,19 +42,6 @@ function num(value: number, digits = 2): string {
   return value.toFixed(digits).replace(".", ",");
 }
 
-function slug(text: string): string {
-  return (
-    text
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/ä/gi, "ae")
-      .replace(/ö/gi, "oe")
-      .replace(/ü/gi, "ue")
-      .replace(/ß/g, "ss")
-      .replace(/[^A-Za-z0-9]+/g, "_")
-      .replace(/^_+|_+$/g, "") || "Mitarbeiter"
-  );
-}
 
 /** Kompakte Adresszeile: „Musterstraße 15, 3. OG, links“. */
 export function addressLine(shift: Shift, jobs: Job[] = []): string {
@@ -93,13 +80,14 @@ export interface ArbeitsnachweisContext {
   customCodes?: { code: string; label: string }[];
 }
 
-/** DATEV-inspirierter Arbeitsnachweis: A4 quer, Schwarz-Weiß, druckfertig. */
+/** DATEV-inspirierter Arbeitsnachweis: A4 hoch, Schwarz-Weiß, druckfertig. */
 export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisContext) {
-  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 14;
-  const monthLabel = `${MONTHS_DE[ctx.month] ?? ""} ${ctx.year}`;
+  const margin = 12;
+  const monthName = MONTHS_DE[ctx.month] ?? "";
+  const monthLabel = `${monthName} ${ctx.year}`;
   const list = [...shifts].sort((a, b) => (a.date > b.date ? 1 : -1));
   const totalHours = sumHours(list);
 
@@ -109,27 +97,32 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
     doc.setFontSize(14);
     doc.text("Arbeitsnachweis", margin, 14);
 
+    doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    const info = [
-      `Mitarbeiter: ${ctx.employeeName || "—"}`,
-      `Monat: ${monthLabel}`,
-      ctx.employer ? `Auftraggeber: ${ctx.employer}` : "",
-    ]
-      .filter(Boolean)
-      .join("     ·     ");
-    doc.text(info, margin, 21);
+    const col2 = margin + 62;
+    const col3 = margin + 124;
+    doc.setTextColor(80, 80, 80);
+    doc.text("Mitarbeiter:", margin, 20);
+    doc.text("Monat:", col2, 20);
+    doc.text("Arbeitgeber:", col3, 20);
+    doc.setTextColor(0, 0, 0);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9.5);
+    doc.text(ctx.employeeName || "—", margin, 25);
+    doc.text(monthLabel, col2, 25);
+    doc.text(ctx.employer || "—", col3, 25);
+
     doc.setDrawColor(0, 0, 0);
     doc.setLineWidth(0.4);
-    doc.line(margin, 24, pageWidth - margin, 24);
+    doc.line(margin, 28, pageWidth - margin, 28);
   };
 
   autoTable(doc, {
-    startY: 28,
-    margin: { left: margin, right: margin, top: 28, bottom: 16 },
+    startY: 32,
+    margin: { left: margin, right: margin, top: 32, bottom: 14 },
     theme: "grid",
     head: [
-      ["Datum", "Beginn", "Pause", "Ende", "Std. (h)", "Erfasst am", "Bemerkung"],
+      ["Datum", "Beginn", "Pause", "Ende", "Arbeitszeit (h)", "Erfasst am", "Bemerkung"],
     ],
     body: list.map((s) => [
       de(s.date),
@@ -150,8 +143,8 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
     ],
     styles: {
       font: "helvetica",
-      fontSize: 7,
-      cellPadding: { top: 0.6, bottom: 0.6, left: 1.5, right: 1.5 },
+      fontSize: 6.5,
+      cellPadding: { top: 0.5, bottom: 0.5, left: 1.2, right: 1.2 },
       minCellHeight: 0,
       textColor: [0, 0, 0],
       lineColor: [0, 0, 0],
@@ -163,22 +156,24 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
       fillColor: [235, 235, 235],
       textColor: [0, 0, 0],
       fontStyle: "bold",
+      fontSize: 6.5,
       lineWidth: 0.3,
       halign: "left",
     },
     footStyles: {
-      fillColor: [255, 255, 255],
+      fillColor: [225, 225, 225],
       textColor: [0, 0, 0],
       fontStyle: "bold",
-      lineWidth: 0.3,
+      fontSize: 8,
+      lineWidth: 0.4,
     },
     columnStyles: {
-      0: { cellWidth: 20 },
-      1: { cellWidth: 15, halign: "center" },
-      2: { cellWidth: 15, halign: "center" },
-      3: { cellWidth: 15, halign: "center" },
-      4: { cellWidth: 16, halign: "right" },
-      5: { cellWidth: 20 },
+      0: { cellWidth: 17 },
+      1: { cellWidth: 12, halign: "center" },
+      2: { cellWidth: 12, halign: "center" },
+      3: { cellWidth: 12, halign: "center" },
+      4: { cellWidth: 19, halign: "right" },
+      5: { cellWidth: 17 },
       6: { cellWidth: "auto" },
     },
     rowPageBreak: "avoid",
@@ -196,25 +191,27 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
   const legend = used.map((c) => `${c} = ${labels.get(c) ?? c}`).join("   ·   ");
 
   const last = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable;
-  let y = (last?.finalY ?? 60) + 10;
-  if (y > pageHeight - 26) {
+  let y = (last?.finalY ?? 60) + 8;
+  if (y > pageHeight - 32) {
     doc.addPage();
     header();
-    y = 38;
+    y = 40;
   }
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.5);
+  doc.setFontSize(7);
   doc.setTextColor(0, 0, 0);
   if (legend) {
-    doc.text(doc.splitTextToSize(legend, pageWidth - margin * 2), margin, y);
-    y += 8;
+    const lines = doc.splitTextToSize(legend, pageWidth - margin * 2);
+    doc.text(lines, margin, y);
+    y += lines.length * 3.4 + 6;
   }
-  y += 6;
+  y += 8;
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.3);
-  const rightX = pageWidth / 2 + 20;
-  doc.line(margin, y, margin + 80, y);
-  doc.line(rightX, y, rightX + 80, y);
+  const colWidth = (pageWidth - margin * 2 - 16) / 2;
+  const rightX = margin + colWidth + 16;
+  doc.line(margin, y, margin + colWidth, y);
+  doc.line(rightX, y, rightX + colWidth, y);
   doc.setFontSize(8);
   doc.text("Ort, Datum", margin, y + 4);
   doc.text("Unterschrift Mitarbeiter", rightX, y + 4);
@@ -224,14 +221,14 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
   for (let i = 1; i <= pages; i += 1) {
     doc.setPage(i);
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
+    doc.setFontSize(7.5);
     doc.setTextColor(0, 0, 0);
-    doc.text(`Seite ${i} von ${pages}`, pageWidth - margin, pageHeight - 8, {
+    doc.text(`Seite ${i} von ${pages}`, pageWidth - margin, pageHeight - 7, {
       align: "right",
     });
-    doc.text(`Arbeitsnachweis · ${monthLabel}`, margin, pageHeight - 8);
+    doc.text(`Arbeitsnachweis · ${monthLabel}`, margin, pageHeight - 7);
   }
 
-  const mm = String(ctx.month + 1).padStart(2, "0");
-  doc.save(`Arbeitsnachweis_${slug(ctx.employeeName)}_${mm}_${ctx.year}.pdf`);
+  doc.save(`Arbeitsnachweis_${monthName}_${ctx.year}.pdf`);
 }
+
