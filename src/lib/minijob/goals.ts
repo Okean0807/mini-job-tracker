@@ -1,5 +1,6 @@
 import { isoDate, sumEarnings } from "./calc";
-import type { Goal, Job, Resolved, Shift } from "./types";
+import type { Resolver } from "./resolve";
+import type { Goal, Job, Shift } from "./types";
 
 export interface GoalProgress {
   goal: Goal;
@@ -27,7 +28,7 @@ function daysBetween(a: string, b: string): number {
 export function autoSaved(
   goal: Goal,
   shifts: Shift[],
-  resolve: (shift: Shift) => Resolved,
+  resolve: Resolver,
 ): number {
   const list = shifts.filter((s) => {
     if (goal.jobId && s.jobId !== goal.jobId) return false;
@@ -43,7 +44,7 @@ export function goalProgress(
   goal: Goal,
   shifts: Shift[],
   jobs: Job[],
-  resolve: (shift: Shift) => Resolved,
+  resolve: Resolver,
 ): GoalProgress {
   const saved =
     goal.kind === "manual" ? (goal.manualSaved ?? 0) : autoSaved(goal, shifts, resolve);
@@ -72,7 +73,7 @@ export function goalsProgress(
   goals: Goal[],
   shifts: Shift[],
   jobs: Job[],
-  resolve: (shift: Shift) => Resolved,
+  resolve: Resolver,
 ): GoalProgress[] {
   return goals
     .map((g) => goalProgress(g, shifts, jobs, resolve))
