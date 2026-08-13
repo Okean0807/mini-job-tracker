@@ -125,7 +125,7 @@ export function buildAnnualReport(
     .sort((a, b) => b.earnings - a.earnings);
 
   const activeMonths = months.filter((m) => m.entries > 0).length;
-  const limit = settings.yearlyLimit;
+  const limit = yearlyLimitOf(settings);
 
   return {
     year,

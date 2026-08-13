@@ -80,7 +80,7 @@ export function yearUsage(
   const list = shiftsInYear(shifts, year);
   return usage(
     sumEarnings(list, resolve),
-    settings.yearlyLimit,
+    yearlyLimitOf(settings),
     sumHours(list),
     monthlyHoursLimit(settings) * 12,
   );

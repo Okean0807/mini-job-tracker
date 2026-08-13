@@ -208,8 +208,10 @@ export interface Settings {
   defaultRate: number;
   monthlyLimit: number;
   yearlyLimit: number;
-  /** Stundengrenze pro Monat; 0 = automatisch aus Limit / Stundenlohn */
+  /** Stundengrenze pro Monat; nur im erweiterten Modus genutzt */
   hoursLimitMonthly: number;
+  /** Erweiterter Modus: Jahres- und Stundengrenze manuell überschreiben */
+  limitsManual: boolean;
   themeMode: ThemeMode;
   accent: Accent;
   uiMode: UiMode;
@@ -253,6 +255,7 @@ export const DEFAULT_SETTINGS: Settings = {
   monthlyLimit: 556,
   yearlyLimit: 6672,
   hoursLimitMonthly: 0,
+  limitsManual: false,
   themeMode: "system",
   accent: "teal",
   uiMode: "standard",
