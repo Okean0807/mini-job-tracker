@@ -1,4 +1,6 @@
-import { isoDate, shiftsInMonth, shiftsInYear, sumEarnings, timeFromDate } from "./calc";
+import { t } from "@/lib/i18n";
+
+import { formatDate, isoDate, shiftsInMonth, shiftsInYear, sumEarnings, timeFromDate } from "./calc";
 import { makeResolver } from "./resolve";
 import { getData } from "./store";
 
@@ -76,12 +78,12 @@ export function runNotificationChecks() {
   if (n.startReminder && clock >= n.startTime && clock < addMinutes(n.startTime, 90) && !data.timer) {
     const hasToday = data.shifts.some((s) => s.date === today);
     if (!hasToday) {
-      notifyOnce("start", today, "Arbeitszeit starten", "Denk daran, deine Arbeitszeit zu starten.");
+      notifyOnce("start", today, t("notify.start.title"), t("notify.start.body"));
     }
   }
 
   if (n.endReminder && data.timer && clock >= n.endTime) {
-    notifyOnce("end", today, "Arbeitszeit beenden", "Deine Zeiterfassung läuft noch. Jetzt beenden?");
+    notifyOnce("end", today, t("notify.end.title"), t("notify.end.body"));
   }
 
   if (n.missingShift) {
@@ -89,7 +91,7 @@ export function runNotificationChecks() {
     const day = yesterday.getDay();
     const iso = isoDate(yesterday);
     if (day !== 0 && day !== 6 && !data.shifts.some((s) => s.date === iso)) {
-      notifyOnce("missing", iso, "Eintrag fehlt", `Für den ${iso.split("-").reverse().join(".")} ist keine Schicht erfasst.`);
+      notifyOnce("missing", iso, t("notify.missing.title"), t("notify.missing.body", { date: formatDate(iso) }));
     }
   }
 
@@ -97,7 +99,7 @@ export function runNotificationChecks() {
     const last = readFlags()["lastBackup"];
     const stale = !last || Date.now() - new Date(last).getTime() > 7 * 86_400_000;
     if (stale) {
-      notifyOnce("backup", today.slice(0, 7), "Backup erstellen", "Sichere deine Daten in der Cloud oder als Datei.");
+      notifyOnce("backup", today.slice(0, 7), t("notify.backup.title"), t("notify.backup.body"));
     }
   }
 }
@@ -130,11 +132,11 @@ export function checkLimits() {
   const { monthShare } = limitStatus();
   const stamp = new Date().toISOString().slice(0, 7);
   if (monthShare >= 100) {
-    notifyOnce("limit-100", stamp, "Minijob-Limit überschritten", "Minijob-Limit überschritten.");
+    notifyOnce("limit-100", stamp, t("notify.limit100.title"), t("notify.limit100.body"));
   } else if (monthShare >= 90) {
-    notifyOnce("limit-90", stamp, "Minijob-Limit", "Sie nähern sich dem Minijob-Limit.");
+    notifyOnce("limit-90", stamp, t("notify.limit90.title"), t("notify.limit90.body"));
   } else if (monthShare >= 75) {
-    notifyOnce("limit-75", stamp, "Minijob-Limit", "Sie haben 75% Ihres Minijob-Limits erreicht.");
+    notifyOnce("limit-75", stamp, t("notify.limit75.title"), t("notify.limit75.body"));
   }
 }
 

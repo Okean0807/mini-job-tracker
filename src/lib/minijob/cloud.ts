@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
 
 import { getData, onDataChange, replaceAll } from "./store";
@@ -25,12 +26,12 @@ function scheduleBackup(data: AppData) {
 }
 
 export async function backupNow(): Promise<void> {
-  if (!userId) throw new Error("Nicht angemeldet");
+  if (!userId) throw new Error(t("error.notSignedIn"));
   await push(getData());
 }
 
 export async function restoreNow(): Promise<boolean> {
-  if (!userId) throw new Error("Nicht angemeldet");
+  if (!userId) throw new Error(t("error.notSignedIn"));
   const { data, error } = await supabase
     .from("backups")
     .select("payload")
