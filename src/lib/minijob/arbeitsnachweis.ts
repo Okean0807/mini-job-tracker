@@ -137,7 +137,14 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
       de(s.createdAt),
       remarkText(s, ctx.jobs),
     ]),
-    foot: [["Gesamtstunden:", "", "", "", `${num(totalHours)} h`, "", ""]],
+    foot: [
+      [
+        { content: "Gesamtstunden:", colSpan: 4, styles: { halign: "right" as const } },
+        { content: `${num(totalHours)} h`, styles: { halign: "right" as const } },
+        "",
+        "",
+      ],
+    ],
     styles: {
       font: "helvetica",
       fontSize: 9,
@@ -169,6 +176,7 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
       5: { cellWidth: 26 },
       6: { cellWidth: "auto" },
     },
+    rowPageBreak: "avoid",
     showHead: "everyPage",
     showFoot: "lastPage",
     didDrawPage: () => {
