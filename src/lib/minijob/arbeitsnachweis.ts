@@ -173,12 +173,12 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
       lineWidth: 0.3,
     },
     columnStyles: {
-      0: { cellWidth: 24 },
-      1: { cellWidth: 20, halign: "center" },
-      2: { cellWidth: 20, halign: "center" },
-      3: { cellWidth: 20, halign: "center" },
-      4: { cellWidth: 28, halign: "right" },
-      5: { cellWidth: 26 },
+      0: { cellWidth: 20 },
+      1: { cellWidth: 15, halign: "center" },
+      2: { cellWidth: 15, halign: "center" },
+      3: { cellWidth: 15, halign: "center" },
+      4: { cellWidth: 20, halign: "right" },
+      5: { cellWidth: 20 },
       6: { cellWidth: "auto" },
     },
     rowPageBreak: "avoid",
@@ -189,23 +189,35 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
     },
   });
 
-  // Unterschriftsbereich auf der letzten Seite
+  // Legende der verwendeten Leistungsarten + Unterschriftsbereich
+  const labels = new Map<string, string>(Object.entries(WORK_CODE_LABELS));
+  (ctx.customCodes ?? []).forEach((c) => labels.set(c.code, c.label));
+  const used = [...new Set(list.map((s) => (s.workCode ?? "").trim()).filter(Boolean))].sort();
+  const legend = used.map((c) => `${c} = ${labels.get(c) ?? c}`).join("   ·   ");
+
   const last = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable;
-  let y = (last?.finalY ?? 60) + 22;
-  if (y > pageHeight - 30) {
+  let y = (last?.finalY ?? 60) + 10;
+  if (y > pageHeight - 26) {
     doc.addPage();
     header();
-    y = 70;
+    y = 38;
   }
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(0, 0, 0);
+  if (legend) {
+    doc.text(doc.splitTextToSize(legend, pageWidth - margin * 2), margin, y);
+    y += 8;
+  }
+  y += 6;
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.3);
   const rightX = pageWidth / 2 + 20;
   doc.line(margin, y, margin + 80, y);
   doc.line(rightX, y, rightX + 80, y);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.text("Ort, Datum", margin, y + 5);
-  doc.text("Unterschrift Mitarbeiter", rightX, y + 5);
+  doc.setFontSize(8);
+  doc.text("Ort, Datum", margin, y + 4);
+  doc.text("Unterschrift Mitarbeiter", rightX, y + 4);
 
   // Seitenzahlen
   const pages = doc.getNumberOfPages();
