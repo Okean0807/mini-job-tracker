@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import { LANGUAGES, detectLanguage } from "@/lib/i18n/core";
 
+import { normalizeDashboard } from "./dashboard";
 import { applyAppearance } from "./theme";
 import {
   DEFAULT_NOTIFICATIONS,
