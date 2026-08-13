@@ -106,35 +106,27 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
   const header = () => {
     doc.setTextColor(0, 0, 0);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.text("Arbeitsnachweis", margin, 18);
+    doc.setFontSize(14);
+    doc.text("Arbeitsnachweis", margin, 14);
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    const left = margin;
-    const col2 = margin + 60;
-    doc.text("Mitarbeiter:", left, 27);
-    doc.text("Monat:", col2, 27);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.text(ctx.employeeName || "—", left, 32.5);
-    doc.text(monthLabel, col2, 32.5);
-    if (ctx.employer) {
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
-      doc.text("Auftraggeber / Job:", margin + 130, 27);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-      doc.text(ctx.employer, margin + 130, 32.5);
-    }
+    const info = [
+      `Mitarbeiter: ${ctx.employeeName || "—"}`,
+      `Monat: ${monthLabel}`,
+      ctx.employer ? `Auftraggeber: ${ctx.employer}` : "",
+    ]
+      .filter(Boolean)
+      .join("     ·     ");
+    doc.text(info, margin, 21);
     doc.setDrawColor(0, 0, 0);
     doc.setLineWidth(0.4);
-    doc.line(margin, 36, pageWidth - margin, 36);
+    doc.line(margin, 24, pageWidth - margin, 24);
   };
 
   autoTable(doc, {
-    startY: 41,
-    margin: { left: margin, right: margin, top: 41, bottom: 24 },
+    startY: 28,
+    margin: { left: margin, right: margin, top: 28, bottom: 16 },
     theme: "grid",
     head: [
       ["Datum", "Beginn", "Pause", "Ende", "Arbeitszeit (h)", "Erfasst am", "Bemerkung"],
