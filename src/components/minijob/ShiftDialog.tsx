@@ -1,4 +1,4 @@
-import { Mic, Trash2 } from "lucide-react";
+import { Camera, MapPin, Mic, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
