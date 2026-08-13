@@ -291,6 +291,157 @@ export function ShiftDialog({
             <Switch checked={overtime} onCheckedChange={setOvertime} aria-label={t("shift.overtimeAria")} />
           </div>
 
+          <div className="grid gap-3 rounded-xl border p-3">
+            <p className="text-sm font-semibold">{t("worklog.section")}</p>
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="einsatzort" className="text-xs">
+                {t("worklog.workplace")}
+              </Label>
+              <Input
+                id="einsatzort"
+                value={workplace}
+                placeholder={t("worklog.workplacePlaceholder")}
+                onChange={(e) => setWorkplace(e.target.value)}
+              />
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-xs">{t("worklog.tasks")}</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {CLEANING_TASKS.map((key) => {
+                  const value = templateValue(key);
+                  const active = tasks.includes(value);
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() =>
+                        setTasks(
+                          active ? tasks.filter((x) => x !== value) : [...tasks, value],
+                        )
+                      }
+                      className={cn(
+                        "rounded-full border px-2.5 py-1 text-xs font-medium",
+                        active ? "border-primary bg-primary/10" : "bg-card",
+                      )}
+                    >
+                      {t(`task.${key}`)}
+                    </button>
+                  );
+                })}
+              </div>
+              {tasks.some((x) => !x.startsWith("#")) ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {tasks
+                    .filter((x) => !x.startsWith("#"))
+                    .map((x) => (
+                      <button
+                        key={x}
+                        type="button"
+                        onClick={() => setTasks(tasks.filter((y) => y !== x))}
+                        className="flex items-center gap-1 rounded-full border border-primary bg-primary/10 px-2.5 py-1 text-xs"
+                      >
+                        {x}
+                        <X className="size-3" />
+                      </button>
+                    ))}
+                </div>
+              ) : null}
+              <div className="flex gap-2">
+                <Input
+                  value={customTask}
+                  placeholder={t("worklog.customTask")}
+                  onChange={(e) => setCustomTask(e.target.value)}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    const value = customTask.trim();
+                    if (!value || tasks.includes(value)) return;
+                    setTasks([...tasks, value]);
+                    setCustomTask("");
+                  }}
+                >
+                  {t("worklog.addTask")}
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-xs">{t("worklog.photos")}</Label>
+              {photos.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {photos.map((src, i) => (
+                    <div key={src.slice(-24) + i} className="relative">
+                      <img
+                        src={src}
+                        alt={t("worklog.photos")}
+                        className="size-16 rounded-lg object-cover"
+                      />
+                      <button
+                        type="button"
+                        aria-label={t("worklog.remove")}
+                        onClick={() => setPhotos(photos.filter((_, idx) => idx !== i))}
+                        className="absolute -right-1.5 -top-1.5 rounded-full bg-destructive p-0.5 text-destructive-foreground"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium">
+                <Camera className="size-4" />
+                {t("worklog.addPhoto")}
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={async (e) => {
+                    const files = [...(e.target.files ?? [])];
+                    e.target.value = "";
+                    try {
+                      const next = await Promise.all(files.map((f) => compressPhoto(f)));
+                      setPhotos((prev) => [...prev, ...next]);
+                    } catch {
+                      toast.error(t("worklog.photoError"));
+                    }
+                  }}
+                />
+              </label>
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-xs">
+                <p className="font-medium">{t("worklog.gps")}</p>
+                <p className="text-muted-foreground">{gps ? formatGps(gps) : "–"}</p>
+              </div>
+              <div className="flex gap-1">
+                {gps ? (
+                  <Button variant="ghost" size="sm" onClick={() => setGps(undefined)}>
+                    <X className="size-4" />
+                  </Button>
+                ) : null}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      setGps(await currentPosition());
+                    } catch {
+                      toast.error(t("worklog.gpsError"));
+                    }
+                  }}
+                >
+                  <MapPin className="size-4" /> {t("worklog.gpsAdd")}
+                </Button>
+              </div>
+            </div>
+          </div>
+
           <div className="grid gap-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="notiz">{t("label.note")}</Label>
