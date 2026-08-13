@@ -253,6 +253,8 @@ export interface Settings {
   onboarded: boolean;
   /** Name für Arbeitsnachweis / Berichte */
   employeeName?: string;
+  /** Eigene Leistungsarten (Code + Bezeichnung) */
+  workCodes?: WorkCodeDef[];
   notifications: NotificationSettings;
   dashboard: DashboardConfig;
 }
