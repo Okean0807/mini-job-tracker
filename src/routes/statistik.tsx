@@ -314,6 +314,7 @@ function StatsPage() {
                 month,
                 year,
                 employeeName: settings.employeeName ?? "",
+                customCodes: settings.workCodes ?? [],
                 ...(jobs.length === 1 && jobs[0]
                   ? { employer: jobs[0].employer ?? jobs[0].name }
                   : {}),
