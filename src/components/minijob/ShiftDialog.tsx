@@ -28,6 +28,13 @@ import {
   type ShiftKind,
 } from "@/lib/minijob/types";
 import { listenOnce, parseVoice, voiceSupported } from "@/lib/minijob/voice";
+import {
+  CLEANING_TASKS,
+  compressPhoto,
+  currentPosition,
+  formatGps,
+  templateValue,
+} from "@/lib/minijob/worklog";
 import { cn } from "@/lib/utils";
 
 interface ShiftDialogProps {
