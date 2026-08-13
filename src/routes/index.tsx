@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { AlertTriangle, Clock, Euro, Plus, TrendingUp } from "lucide-react";
+import { AlertTriangle, Clock, Euro, LayoutGrid, Plus, TrendingUp } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { DashboardCustomizer } from "@/components/minijob/DashboardCustomizer";
 import { LimitCard } from "@/components/minijob/LimitCard";
 import { PaydayCard } from "@/components/minijob/PaydayCard";
 import { InsightsCard } from "@/components/minijob/InsightsCard";
@@ -22,13 +23,13 @@ import {
   sumEarnings,
   sumHours,
 } from "@/lib/minijob/calc";
+import { activeWidgets, spanClass, widgetSize } from "@/lib/minijob/dashboard";
 import { buildInsights } from "@/lib/minijob/insights";
 import { monthUsage, yearUsage } from "@/lib/minijob/limits";
 import { payPeriods } from "@/lib/minijob/payday";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { useAppData } from "@/lib/minijob/store";
-import { visible } from "@/lib/minijob/uimode";
-import type { Shift } from "@/lib/minijob/types";
+import type { Shift, WidgetId } from "@/lib/minijob/types";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -58,6 +59,7 @@ function DashboardPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(isoDate(now));
   const [editing, setEditing] = useState<Shift | null>(null);
+  const [customizeOpen, setCustomizeOpen] = useState(false);
 
   const resolve = useMemo(() => makeResolver(jobs, settings), [jobs, settings]);
   const monthShifts = useMemo(() => shiftsInMonth(shifts, year, month), [shifts, year, month]);
@@ -241,6 +243,12 @@ function DashboardPage() {
       >
         <Plus className="size-5" /> {t("dash.newEntry")}
       </Button>
+
+      <DashboardCustomizer
+        open={customizeOpen}
+        onOpenChange={setCustomizeOpen}
+        config={dash}
+      />
 
       <ShiftDialog
         open={dialogOpen}
