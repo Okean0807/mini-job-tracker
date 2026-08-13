@@ -20,6 +20,8 @@ import { initNotifications } from "../lib/minijob/notify";
 import { getData, loadFromStorage, useAppData } from "../lib/minijob/store";
 import { useT } from "@/lib/i18n";
 import { applyAppearance } from "../lib/minijob/theme";
+import { visible, type Feature } from "../lib/minijob/uimode";
+import type { UiMode } from "../lib/minijob/types";
 import { registerServiceWorker } from "../lib/pwa";
 
 function NotFoundComponent() {
@@ -121,20 +123,26 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
-const NAV = [
+const NAV: {
+  to: string;
+  labelKey: string;
+  icon: typeof CalendarDays;
+  feature?: Feature;
+}[] = [
   { to: "/", labelKey: "nav.overview", icon: CalendarDays },
-  { to: "/statistik", labelKey: "nav.stats", icon: BarChart3 },
-  { to: "/jobs", labelKey: "nav.jobs", icon: Briefcase },
-  { to: "/assistent", labelKey: "nav.ai", icon: Bot },
+  { to: "/statistik", labelKey: "nav.stats", icon: BarChart3, feature: "nav.stats" },
+  { to: "/jobs", labelKey: "nav.jobs", icon: Briefcase, feature: "nav.jobs" },
+  { to: "/assistent", labelKey: "nav.ai", icon: Bot, feature: "nav.ai" },
   { to: "/einstellungen", labelKey: "nav.settings", icon: Settings },
-] as const;
+];
 
-function BottomNav() {
+function BottomNav({ uiMode }: { uiMode: UiMode }) {
   const { t } = useT();
+  const items = NAV.filter((n) => !n.feature || visible(n.feature, uiMode));
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 backdrop-blur">
       <ul className="mx-auto flex max-w-lg">
-        {NAV.map(({ to, labelKey, icon: Icon }) => (
+        {items.map(({ to, labelKey, icon: Icon }) => (
           <li key={to} className="flex-1">
             <Link
               to={to}
@@ -191,7 +199,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <div className="min-h-screen pb-20">{ready ? <Outlet /> : null}</div>
 
-      <BottomNav />
+      <BottomNav uiMode={settings.uiMode} />
       {locked ? <PinLock settings={settings} onUnlock={() => setUnlocked(true)} /> : null}
       {ready && showWizard && !locked ? (
         <OnboardingWizard settings={settings} onDone={() => setShowWizard(false)} />
