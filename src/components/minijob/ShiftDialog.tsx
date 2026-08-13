@@ -137,7 +137,24 @@ export function ShiftDialog({
     setDoorSide(shift?.doorSide ?? "");
     setWorkCode(shift?.workCode ?? "");
     setWorkCodeNote(shift?.workCodeNote ?? "");
+    setAdvanced(
+      Boolean(
+        shift &&
+          (shift.workplace ||
+            shift.street ||
+            shift.floor ||
+            shift.doorSide ||
+            shift.workCode ||
+            shift.note ||
+            shift.overtime ||
+            shift.customerId ||
+            (shift.tasks?.length ?? 0) > 0 ||
+            (shift.photos?.length ?? 0) > 0 ||
+            shift.gps),
+      ),
+    );
   }, [open, shift, jobs, settings.activeJobId, settings.defaultRate]);
+
 
   const job = jobs.find((j) => j.id === jobId);
   const holiday = holidayName(date, settings.bundesland);
