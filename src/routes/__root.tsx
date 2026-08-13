@@ -181,9 +181,8 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="min-h-screen pb-20">
-        <Outlet />
-      </div>
+      <div className="min-h-screen pb-20">{ready ? <Outlet /> : null}</div>
+
       <BottomNav />
       {locked ? <PinLock settings={settings} onUnlock={() => setUnlocked(true)} /> : null}
       {ready && showWizard && !locked ? (
