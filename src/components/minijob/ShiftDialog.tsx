@@ -18,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/lib/i18n";
 import { formatDate, formatEuro, formatHours, shiftBreakdown } from "@/lib/minijob/calc";
 import { holidayName } from "@/lib/minijob/holidays";
-import { deleteShift, newId, saveShift } from "@/lib/minijob/store";
+import { deleteShift, newId, saveShift, updateSettings } from "@/lib/minijob/store";
 import {
   type Customer,
   type Job,
@@ -77,10 +77,38 @@ export function ShiftDialog({
   const [photos, setPhotos] = useState<string[]>([]);
   const [gps, setGps] = useState<{ lat: number; lng: number } | undefined>(undefined);
   const [customTask, setCustomTask] = useState("");
+  const [street, setStreet] = useState("");
+  const [houseNo, setHouseNo] = useState("");
   const [floor, setFloor] = useState("");
   const [doorSide, setDoorSide] = useState("");
   const [workCode, setWorkCode] = useState("");
   const [workCodeNote, setWorkCodeNote] = useState("");
+  const [newCode, setNewCode] = useState("");
+  const [newCodeLabel, setNewCodeLabel] = useState("");
+  const customCodes = settings.workCodes ?? [];
+  const allCodes = [
+    ...WORK_CODES.map((code) => ({ code: code as string, label: WORK_CODE_LABELS[code] })),
+    ...customCodes,
+  ];
+
+  function addCustomCode() {
+    const code = newCode.trim().toUpperCase();
+    const label = newCodeLabel.trim();
+    if (!code || !label) return;
+    if (allCodes.some((c) => c.code === code)) {
+      toast.error(t("worklog.codeExists"));
+      return;
+    }
+    updateSettings({ workCodes: [...customCodes, { code, label }] });
+    setWorkCode(code);
+    setNewCode("");
+    setNewCodeLabel("");
+  }
+
+  function removeCustomCode(code: string) {
+    updateSettings({ workCodes: customCodes.filter((c) => c.code !== code) });
+    if (workCode === code) setWorkCode("");
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -100,6 +128,8 @@ export function ShiftDialog({
     setPhotos(shift?.photos ?? []);
     setGps(shift?.gps);
     setCustomTask("");
+    setStreet(shift?.street ?? "");
+    setHouseNo(shift?.houseNo ?? "");
     setFloor(shift?.floor ?? "");
     setDoorSide(shift?.doorSide ?? "");
     setWorkCode(shift?.workCode ?? "");
@@ -162,10 +192,12 @@ export function ShiftDialog({
     if (tasks.length > 0) next.tasks = tasks;
     if (photos.length > 0) next.photos = photos;
     if (gps) next.gps = gps;
+    if (street.trim()) next.street = street.trim();
+    if (houseNo.trim()) next.houseNo = houseNo.trim();
     if (floor.trim()) next.floor = floor.trim();
     if (doorSide.trim()) next.doorSide = doorSide.trim();
     if (workCode) next.workCode = workCode;
-    if (workCode === "SR" && workCodeNote.trim()) next.workCodeNote = workCodeNote.trim();
+    if (workCode && workCodeNote.trim()) next.workCodeNote = workCodeNote.trim();
     next.createdAt = shift?.createdAt ?? new Date().toISOString().slice(0, 10);
     saveShift(next);
     toast.success(shift ? t("shift.updated") : t("shift.saved"));
@@ -327,6 +359,31 @@ export function ShiftDialog({
               />
             </div>
 
+            <div className="grid grid-cols-[2fr_1fr] gap-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="strasse" className="text-xs">
+                  {t("worklog.street")}
+                </Label>
+                <Input
+                  id="strasse"
+                  value={street}
+                  placeholder={t("worklog.streetPlaceholder")}
+                  onChange={(e) => setStreet(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="hausnr" className="text-xs">
+                  {t("worklog.houseNo")}
+                </Label>
+                <Input
+                  id="hausnr"
+                  value={houseNo}
+                  placeholder="15"
+                  onChange={(e) => setHouseNo(e.target.value)}
+                />
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-2">
               <div className="grid gap-1.5">
                 <Label htmlFor="etage" className="text-xs">
@@ -355,7 +412,7 @@ export function ShiftDialog({
             <div className="grid gap-1.5">
               <Label className="text-xs">{t("worklog.workCode")}</Label>
               <div className="flex flex-wrap gap-1.5">
-                {WORK_CODES.map((code) => (
+                {allCodes.map(({ code, label }) => (
                   <button
                     key={code}
                     type="button"
@@ -365,16 +422,47 @@ export function ShiftDialog({
                       workCode === code ? "border-primary bg-primary/10" : "bg-card",
                     )}
                   >
-                    {code} · {WORK_CODE_LABELS[code]}
+                    {code} · {label}
                   </button>
                 ))}
               </div>
-              {workCode === "SR" ? (
+              {workCode ? (
                 <Input
                   value={workCodeNote}
                   placeholder={t("worklog.workCodeNotePlaceholder")}
                   onChange={(e) => setWorkCodeNote(e.target.value)}
                 />
+              ) : null}
+              <div className="grid grid-cols-[70px_1fr_auto] gap-1.5">
+                <Input
+                  value={newCode}
+                  maxLength={4}
+                  placeholder={t("worklog.codeShort")}
+                  onChange={(e) => setNewCode(e.target.value.toUpperCase())}
+                />
+                <Input
+                  value={newCodeLabel}
+                  placeholder={t("worklog.codeLabel")}
+                  onChange={(e) => setNewCodeLabel(e.target.value)}
+                />
+                <Button type="button" variant="secondary" size="sm" onClick={addCustomCode}>
+                  {t("worklog.addTask")}
+                </Button>
+              </div>
+              {customCodes.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {customCodes.map((c) => (
+                    <button
+                      key={c.code}
+                      type="button"
+                      onClick={() => removeCustomCode(c.code)}
+                      className="flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] text-muted-foreground"
+                    >
+                      {c.code}
+                      <X className="size-3" />
+                    </button>
+                  ))}
+                </div>
               ) : null}
             </div>
 

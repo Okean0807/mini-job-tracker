@@ -128,6 +128,10 @@ export interface Shift {
   overtime?: boolean;
   /** Leistungsnachweis: Einsatzort / Objekt */
   workplace?: string;
+  /** Arbeitsnachweis: Straße */
+  street?: string;
+  /** Arbeitsnachweis: Hausnummer */
+  houseNo?: string;
   /** Leistungsnachweis: Tätigkeiten ("#key" = Vorlage, sonst freier Text) */
   tasks?: string[];
   /** Leistungsnachweis: Fotos als komprimierte Data-URLs */
@@ -222,6 +226,12 @@ export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
   payday: true,
 };
 
+/** Frei definierbare Leistungsart. */
+export interface WorkCodeDef {
+  code: string;
+  label: string;
+}
+
 export interface Settings {
   defaultRate: number;
   monthlyLimit: number;
@@ -249,6 +259,8 @@ export interface Settings {
   onboarded: boolean;
   /** Name für Arbeitsnachweis / Berichte */
   employeeName?: string;
+  /** Eigene Leistungsarten (Code + Bezeichnung) */
+  workCodes?: WorkCodeDef[];
   notifications: NotificationSettings;
   dashboard: DashboardConfig;
 }
