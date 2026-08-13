@@ -27,6 +27,7 @@ import { monthUsage, yearUsage } from "@/lib/minijob/limits";
 import { payPeriods } from "@/lib/minijob/payday";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { useAppData } from "@/lib/minijob/store";
+import { visible } from "@/lib/minijob/uimode";
 import type { Shift } from "@/lib/minijob/types";
 
 export const Route = createFileRoute("/")({
@@ -85,6 +86,7 @@ function DashboardPage() {
   const limitShare = monthLimit.share;
   const yearShare = yearLimit.share;
   const monthLabel = monthNames()[month] ?? "";
+  const ui = settings.uiMode;
 
   function openNew(date: string) {
     setSelectedDate(date);
@@ -137,18 +139,22 @@ function DashboardPage() {
           hint={t("dash.inMonth")}
           icon={Clock}
         />
+        {ui === "simple" ? null : (
         <StatCard
           label={t("dash.avgRate")}
           value={formatEuro(avg)}
           hint={t("label.entries", { count: monthShifts.length })}
           icon={TrendingUp}
         />
+        )}
+        {ui === "simple" ? null : (
         <StatCard
           label={t("dash.limit")}
           value={`${Math.round(limitShare)} %`}
           hint={t("dash.ofAmount", { amount: formatEuro(settings.monthlyLimit) })}
           icon={Euro}
         />
+        )}
       </section>
 
       <section className="mt-4 space-y-3" aria-label={t("limit.title")}>
@@ -158,17 +164,21 @@ function DashboardPage() {
           rate={settings.defaultRate}
           auto={!settings.hoursLimitMonthly}
         />
-        <LimitCard
-          usage={yearLimit}
-          scopeLabel={`${t("limit.year")} · ${year}`}
-          rate={settings.defaultRate}
-          auto={!settings.hoursLimitMonthly}
-        />
+        {visible("dash.limitYear", ui) ? (
+          <LimitCard
+            usage={yearLimit}
+            scopeLabel={`${t("limit.year")} · ${year}`}
+            rate={settings.defaultRate}
+            auto={!settings.hoursLimitMonthly}
+          />
+        ) : null}
       </section>
 
-      <section className="mt-4">
-        <PaydayCard periods={periods} />
-      </section>
+      {visible("dash.payday", ui) ? (
+        <section className="mt-4">
+          <PaydayCard periods={periods} />
+        </section>
+      ) : null}
 
       {jobs.length === 0 ? (
         <div className="mt-4 rounded-2xl border border-dashed p-5 text-center">
@@ -179,9 +189,11 @@ function DashboardPage() {
         </div>
       ) : null}
 
-      <section className="mt-4">
-        <InsightsCard insights={insights} month={month} year={year} />
-      </section>
+      {visible("dash.insights", ui) ? (
+        <section className="mt-4">
+          <InsightsCard insights={insights} month={month} year={year} />
+        </section>
+      ) : null}
 
       <section className="mt-5">
         <MonthCalendar
