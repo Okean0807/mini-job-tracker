@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useT } from "@/lib/i18n";
 import { formatEuro } from "@/lib/minijob/calc";
 import { weeklyPlanHours } from "@/lib/minijob/schedule";
 import {
@@ -19,7 +20,7 @@ import {
   updateSettings,
   useAppData,
 } from "@/lib/minijob/store";
-import { WORK_MODE_LABEL, type Job } from "@/lib/minijob/types";
+import { type Job } from "@/lib/minijob/types";
 
 export const Route = createFileRoute("/jobs")({
   head: () => ({
@@ -41,21 +42,22 @@ export const Route = createFileRoute("/jobs")({
 });
 
 function JobsPage() {
+  const { t } = useT();
   const { jobs, customers, projects, settings, shifts } = useAppData();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Job | null>(null);
 
   return (
     <main className="mx-auto max-w-lg px-4 pt-6">
-      <h1 className="text-2xl font-extrabold tracking-tight">Jobs</h1>
+      <h1 className="text-2xl font-extrabold tracking-tight">{t("job.pageTitle")}</h1>
 
       <Tabs defaultValue="jobs" className="mt-4">
         <TabsList className="w-full">
           <TabsTrigger value="jobs" className="flex-1">
-            Jobs
+            {t("job.tabJobs")}
           </TabsTrigger>
           <TabsTrigger value="kunden" className="flex-1">
-            Kunden &amp; Projekte
+            {t("job.tabCustomers")}
           </TabsTrigger>
         </TabsList>
 
@@ -63,9 +65,7 @@ function JobsPage() {
           {jobs.length === 0 ? (
             <div className="rounded-2xl border border-dashed p-8 text-center">
               <Briefcase className="mx-auto size-8 text-muted-foreground" />
-              <p className="mt-3 text-sm text-muted-foreground">
-                Noch kein Job angelegt. Lege deinen ersten Job an, um Schichten zuzuordnen.
-              </p>
+              <p className="mt-3 text-sm text-muted-foreground">{t("job.empty")}</p>
             </div>
           ) : null}
 
@@ -89,12 +89,15 @@ function JobsPage() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold">{job.name}</p>
                   <p className="truncate text-xs text-muted-foreground">
-                    {WORK_MODE_LABEL[job.mode]} · {formatEuro(job.rate)}/Std.
-                    {job.mode === "fest" ? ` · ${weeklyPlanHours(job).toFixed(1)} h/Woche` : ""}
+                    {t("mode." + job.mode)} · {formatEuro(job.rate)}
+                    {t("job.perHour")}
+                    {job.mode === "fest"
+                      ? ` · ${t("job.hoursPerWeek", { hours: weeklyPlanHours(job).toFixed(1) })}`
+                      : ""}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {count} {count === 1 ? "Eintrag" : "Einträge"}
-                    {settings.activeJobId === job.id ? " · aktiv" : ""}
+                    {t(count === 1 ? "job.entries_one" : "job.entries_other", { count })}
+                    {settings.activeJobId === job.id ? t("job.activeSuffix") : ""}
                   </p>
                 </div>
                 <span
@@ -103,12 +106,12 @@ function JobsPage() {
                   onClick={(e) => {
                     e.stopPropagation();
                     updateSettings({ activeJobId: job.id });
-                    toast.success(`${job.name} ist jetzt aktiv`);
+                    toast.success(t("job.setActiveToast", { name: job.name }));
                   }}
                   onKeyDown={(e) => e.stopPropagation()}
                   className="rounded-lg border px-2 py-1 text-xs"
                 >
-                  Aktiv
+                  {t("job.setActive")}
                 </span>
               </button>
             );
@@ -121,19 +124,17 @@ function JobsPage() {
               setOpen(true);
             }}
           >
-            <Plus className="size-4" /> Job hinzufügen
+            <Plus className="size-4" /> {t("job.add")}
           </Button>
         </TabsContent>
 
         <TabsContent value="kunden" className="mt-4 space-y-4">
           <section className="space-y-3">
-            <h2 className="text-sm font-semibold">Kunden</h2>
+            <h2 className="text-sm font-semibold">{t("cust.title")}</h2>
             {customers.length === 0 ? (
               <div className="rounded-2xl border border-dashed p-6 text-center">
                 <Users className="mx-auto size-7 text-muted-foreground" />
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Für selbstständige Tätigkeiten: Kunden anlegen und Schichten zuordnen.
-                </p>
+                <p className="mt-2 text-xs text-muted-foreground">{t("cust.empty")}</p>
               </div>
             ) : (
               <ul className="space-y-2">
@@ -145,7 +146,10 @@ function JobsPage() {
                     <div>
                       <p className="text-sm font-semibold">{c.name}</p>
                       {c.rate ? (
-                        <p className="text-xs text-muted-foreground">{formatEuro(c.rate)}/Std.</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatEuro(c.rate)}
+                          {t("job.perHour")}
+                        </p>
                       ) : null}
                     </div>
                     <Button
@@ -154,7 +158,7 @@ function JobsPage() {
                       className="text-destructive"
                       onClick={() => deleteCustomer(c.id)}
                     >
-                      Löschen
+                      {t("action.delete")}
                     </Button>
                   </li>
                 ))}
@@ -164,7 +168,7 @@ function JobsPage() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="text-sm font-semibold">Projekte</h2>
+            <h2 className="text-sm font-semibold">{t("cust.projectsTitle")}</h2>
             <ul className="space-y-2">
               {projects.map((p) => (
                 <li
@@ -174,8 +178,8 @@ function JobsPage() {
                   <div>
                     <p className="text-sm font-semibold">{p.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {customers.find((c) => c.id === p.customerId)?.name ?? "Ohne Kunde"}
-                      {p.rate ? ` · ${formatEuro(p.rate)}/Std.` : ""}
+                      {customers.find((c) => c.id === p.customerId)?.name ?? t("cust.noCustomer")}
+                      {p.rate ? ` · ${formatEuro(p.rate)}${t("job.perHour")}` : ""}
                     </p>
                   </div>
                   <Button
@@ -184,7 +188,7 @@ function JobsPage() {
                     className="text-destructive"
                     onClick={() => deleteProject(p.id)}
                   >
-                    Löschen
+                    {t("action.delete")}
                   </Button>
                 </li>
               ))}
@@ -205,20 +209,25 @@ function JobsPage() {
 }
 
 function AddCustomer() {
+  const { t } = useT();
   const [name, setName] = useState("");
   const [rate, setRate] = useState("");
 
   return (
     <div className="space-y-2 rounded-2xl border bg-card p-3">
-      <Label className="text-xs">Neuer Kunde</Label>
+      <Label className="text-xs">{t("cust.newCustomer")}</Label>
       <div className="flex gap-2">
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={t("cust.namePlaceholder")}
+        />
         <Input
           className="w-24"
           type="number"
           value={rate}
           onChange={(e) => setRate(e.target.value)}
-          placeholder="€/h"
+          placeholder={t("cust.ratePlaceholder")}
         />
         <Button
           onClick={() => {
@@ -231,7 +240,7 @@ function AddCustomer() {
             saveCustomer(customer);
             setName("");
             setRate("");
-            toast.success("Kunde angelegt");
+            toast.success(t("cust.created"));
           }}
         >
           <Plus className="size-4" />
@@ -242,22 +251,27 @@ function AddCustomer() {
 }
 
 function AddProject() {
+  const { t } = useT();
   const { customers } = useAppData();
   const [name, setName] = useState("");
   const [customerId, setCustomerId] = useState("");
 
   return (
     <div className="space-y-2 rounded-2xl border bg-card p-3">
-      <Label className="text-xs">Neues Projekt</Label>
+      <Label className="text-xs">{t("cust.newProject")}</Label>
       <div className="flex gap-2">
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Projektname" />
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={t("cust.projectNamePlaceholder")}
+        />
         <select
           value={customerId}
           onChange={(e) => setCustomerId(e.target.value)}
           className="h-9 rounded-md border bg-background px-2 text-sm"
-          aria-label="Kunde"
+          aria-label={t("cust.customerOption")}
         >
-          <option value="">Kunde</option>
+          <option value="">{t("cust.customerOption")}</option>
           {customers.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
@@ -269,7 +283,7 @@ function AddProject() {
             if (!name.trim()) return;
             saveProject({ id: newId(), name: name.trim(), customerId });
             setName("");
-            toast.success("Projekt angelegt");
+            toast.success(t("cust.projectCreated"));
           }}
         >
           <Plus className="size-4" />
