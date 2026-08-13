@@ -108,7 +108,8 @@ function DocumentsPage() {
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     return docs.filter((d) => {
-      if (filterFolder === "none" ? d.folder_id !== null : filterFolder !== "all" && d.folder_id !== filterFolder)
+      if (filterFolder === "none" && d.folder_id !== null) return false;
+      if (filterFolder !== "all" && filterFolder !== "none" && d.folder_id !== filterFolder)
         return false;
       if (filterTag !== "all" && !(d.tags ?? []).includes(filterTag)) return false;
       if (!q) return true;
