@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { AlertTriangle, Clock, Euro, Plus, TrendingUp } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { InsightsCard } from "@/components/minijob/InsightsCard";
 import { MonthCalendar } from "@/components/minijob/MonthCalendar";
 import { ShiftDialog } from "@/components/minijob/ShiftDialog";
 import { ShiftList } from "@/components/minijob/ShiftList";
@@ -18,6 +19,7 @@ import {
   sumEarnings,
   sumHours,
 } from "@/lib/minijob/calc";
+import { buildInsights } from "@/lib/minijob/insights";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { useAppData } from "@/lib/minijob/store";
 import type { Shift } from "@/lib/minijob/types";
@@ -53,6 +55,10 @@ function DashboardPage() {
   const resolve = useMemo(() => makeResolver(jobs, settings), [jobs, settings]);
   const monthShifts = useMemo(() => shiftsInMonth(shifts, year, month), [shifts, year, month]);
   const yearShifts = useMemo(() => shiftsInYear(shifts, year), [shifts, year]);
+  const insights = useMemo(
+    () => buildInsights(shifts, year, month, resolve),
+    [shifts, year, month, resolve],
+  );
 
   const hours = sumHours(monthShifts);
   const earnings = sumEarnings(monthShifts, resolve);
@@ -131,6 +137,10 @@ function DashboardPage() {
           </Button>
         </div>
       ) : null}
+
+      <section className="mt-4">
+        <InsightsCard insights={insights} month={month} year={year} />
+      </section>
 
       <section className="mt-5">
         <MonthCalendar

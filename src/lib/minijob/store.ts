@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import { applyAppearance } from "./theme";
 import {
+  DEFAULT_NOTIFICATIONS,
   DEFAULT_SETTINGS,
   DEFAULT_SUPPLEMENTS,
   JOB_COLORS,
@@ -64,6 +65,10 @@ export function normalize(input: Partial<AppData>): AppData {
     supplements: {
       ...DEFAULT_SUPPLEMENTS,
       ...((raw.settings as Partial<Settings> | undefined)?.supplements ?? {}),
+    },
+    notifications: {
+      ...DEFAULT_NOTIFICATIONS,
+      ...((raw.settings as Partial<Settings> | undefined)?.notifications ?? {}),
     },
   };
   if (!raw.settings?.["themeMode"] && (legacyTheme === "dark" || legacyTheme === "light")) {
