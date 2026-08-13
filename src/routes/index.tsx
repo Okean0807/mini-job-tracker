@@ -3,6 +3,7 @@ import { AlertTriangle, Clock, Euro, LayoutGrid, Plus, TrendingUp } from "lucide
 import { useMemo, useState } from "react";
 
 import { DashboardCustomizer } from "@/components/minijob/DashboardCustomizer";
+import { GoalsCard } from "@/components/minijob/GoalsCard";
 import { LimitCard } from "@/components/minijob/LimitCard";
 import { PaydayCard } from "@/components/minijob/PaydayCard";
 import { InsightsCard } from "@/components/minijob/InsightsCard";
@@ -24,6 +25,7 @@ import {
   sumHours,
 } from "@/lib/minijob/calc";
 import { activeWidgets, spanClass, widgetSize } from "@/lib/minijob/dashboard";
+import { goalsProgress } from "@/lib/minijob/goals";
 import { buildInsights } from "@/lib/minijob/insights";
 import { monthUsage, yearUsage } from "@/lib/minijob/limits";
 import { payPeriods } from "@/lib/minijob/payday";
@@ -52,7 +54,7 @@ export const Route = createFileRoute("/")({
 
 function DashboardPage() {
   const { t } = useT();
-  const { shifts, jobs, customers, projects, payments, settings, timer } = useAppData();
+  const { shifts, jobs, customers, projects, payments, goals, settings, timer } = useAppData();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
@@ -80,6 +82,10 @@ function DashboardPage() {
   const yearLimit = useMemo(
     () => yearUsage(shifts, resolve, settings, year),
     [shifts, resolve, settings, year],
+  );
+  const goalList = useMemo(
+    () => goalsProgress(goals, shifts, jobs, resolve),
+    [goals, shifts, jobs, resolve],
   );
   const periods = useMemo(
     () => payPeriods(jobs, shifts, payments, resolve, year, month),
@@ -157,6 +163,7 @@ function DashboardPage() {
       />
     ),
     payday: <PaydayCard periods={periods} />,
+    goals: <GoalsCard goals={goalList} jobs={jobs} />,
     insights: <InsightsCard insights={insights} month={month} year={year} />,
     calendar: (
       <MonthCalendar

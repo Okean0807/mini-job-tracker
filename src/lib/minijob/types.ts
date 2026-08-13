@@ -128,6 +128,27 @@ export interface Shift {
   overtime?: boolean;
 }
 
+/** Sparziel: automatisch aus Verdienst oder manuell gepflegt. */
+export interface Goal {
+  id: string;
+  name: string;
+  /** Zielbetrag in EUR */
+  target: number;
+  kind: "auto" | "manual";
+  /** Nur bei kind = "manual": bereits angespart */
+  manualSaved?: number;
+  /** Nur bei kind = "auto": Anteil des Verdienstes in Prozent (Standard 100) */
+  share?: number;
+  /** Nur Verdienst dieses Jobs zählen */
+  jobId?: string;
+  /** Zählt ab diesem Datum (ISO) */
+  from?: string;
+  /** Frist (ISO) */
+  deadline?: string;
+  note?: string;
+  icon?: string;
+}
+
 export type ThemeMode = "system" | "light" | "dark";
 /** Oberflächen-Modus: Einfach, Standard, Profi */
 export type UiMode = "simple" | "standard" | "pro";
@@ -146,6 +167,7 @@ export type WidgetId =
   | "payday"
   | "insights"
   | "calendar"
+  | "goals"
   | "shifts";
 export type WidgetSize = "small" | "medium" | "large";
 export type DashboardLayout = "work" | "stats" | "compact";
@@ -221,6 +243,7 @@ export interface AppData {
   customers: Customer[];
   projects: Project[];
   payments: Payment[];
+  goals: Goal[];
   settings: Settings;
   timer?: RunningTimer | null;
 }
@@ -248,7 +271,17 @@ export const DEFAULT_SETTINGS: Settings = {
   notifications: DEFAULT_NOTIFICATIONS,
   dashboard: {
     layout: "work",
-    order: ["timer", "stats", "limitMonth", "limitYear", "payday", "insights", "calendar", "shifts"],
+    order: [
+      "timer",
+      "stats",
+      "limitMonth",
+      "limitYear",
+      "payday",
+      "insights",
+      "goals",
+      "calendar",
+      "shifts",
+    ],
     hidden: [],
     pinned: [],
     sizes: {},

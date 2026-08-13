@@ -8,6 +8,7 @@ export const WIDGET_IDS: WidgetId[] = [
   "limitYear",
   "payday",
   "insights",
+  "goals",
   "calendar",
   "shifts",
 ];
@@ -19,6 +20,7 @@ const WIDGET_FEATURE: Partial<Record<WidgetId, Feature>> = {
   limitYear: "dash.limitYear",
   payday: "dash.payday",
   insights: "dash.insights",
+  goals: "dash.goals",
   calendar: "dash.calendar",
 };
 
@@ -29,6 +31,7 @@ export const WIDGET_LABEL_KEY: Record<WidgetId, string> = {
   limitYear: "widget.limitYear",
   payday: "widget.payday",
   insights: "widget.insights",
+  goals: "widget.goals",
   calendar: "widget.calendar",
   shifts: "widget.shifts",
 };
@@ -48,7 +51,17 @@ export function presetConfig(layout: DashboardLayout): DashboardConfig {
   if (layout === "stats") {
     return {
       layout,
-      order: ["stats", "insights", "limitMonth", "limitYear", "payday", "calendar", "timer", "shifts"],
+      order: [
+        "stats",
+        "insights",
+        "limitMonth",
+        "limitYear",
+        "payday",
+        "goals",
+        "calendar",
+        "timer",
+        "shifts",
+      ],
       hidden: [],
       pinned: ["stats"],
       sizes: { stats: "large", insights: "large" },
@@ -57,8 +70,18 @@ export function presetConfig(layout: DashboardLayout): DashboardConfig {
   if (layout === "compact") {
     return {
       layout,
-      order: ["timer", "stats", "limitMonth", "shifts", "calendar", "insights", "payday", "limitYear"],
-      hidden: ["limitYear", "payday", "insights"],
+      order: [
+        "timer",
+        "stats",
+        "limitMonth",
+        "shifts",
+        "calendar",
+        "insights",
+        "goals",
+        "payday",
+        "limitYear",
+      ],
+      hidden: ["limitYear", "payday", "insights", "goals"],
       pinned: [],
       sizes: { stats: "small", timer: "small" },
     };

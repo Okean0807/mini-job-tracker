@@ -11,6 +11,7 @@ import {
   JOB_COLORS,
   type AppData,
   type Customer,
+  type Goal,
   type Job,
   type Payment,
   type Project,
@@ -27,6 +28,7 @@ export const EMPTY_DATA: AppData = {
   customers: [],
   projects: [],
   payments: [],
+  goals: [],
   settings: DEFAULT_SETTINGS,
   timer: null,
 };
@@ -93,6 +95,7 @@ export function normalize(input: Partial<AppData>): AppData {
     customers: Array.isArray(raw.customers) ? raw.customers : [],
     projects: Array.isArray(raw.projects) ? raw.projects : [],
     payments: Array.isArray(raw.payments) ? raw.payments : [],
+    goals: Array.isArray(raw.goals) ? raw.goals : [],
     settings,
     timer: raw.timer ?? null,
   };
@@ -232,6 +235,18 @@ export function savePayment(payment: Payment) {
 
 export function deletePayment(id: string) {
   commit({ ...state, payments: state.payments.filter((p) => p.id !== id) });
+}
+
+/* ---------- Sparziele ---------- */
+
+export function saveGoal(goal: Goal) {
+  const exists = state.goals.some((g) => g.id === goal.id);
+  const goals = exists ? state.goals.map((g) => (g.id === goal.id ? goal : g)) : [...state.goals, goal];
+  commit({ ...state, goals });
+}
+
+export function deleteGoal(id: string) {
+  commit({ ...state, goals: state.goals.filter((g) => g.id !== id) });
 }
 
 /* ---------- Einstellungen ---------- */
