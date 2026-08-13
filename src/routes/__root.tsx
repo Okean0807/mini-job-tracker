@@ -7,13 +7,16 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { BarChart3, CalendarDays, Settings } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
+import { BarChart3, Bot, Briefcase, CalendarDays, Settings } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { Toaster } from "@/components/ui/sonner";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
-import { applyTheme, getData, loadFromStorage } from "../lib/minijob/store";
+import { PinLock } from "@/components/minijob/PinLock";
+import { initCloudSync } from "../lib/minijob/cloud";
+import { getData, loadFromStorage, useAppData } from "../lib/minijob/store";
+import { applyAppearance } from "../lib/minijob/theme";
 import { registerServiceWorker } from "../lib/pwa";
 
 function NotFoundComponent() {
@@ -122,6 +125,8 @@ function RootShell({ children }: { children: ReactNode }) {
 const NAV = [
   { to: "/", label: "Übersicht", icon: CalendarDays },
   { to: "/statistik", label: "Statistik", icon: BarChart3 },
+  { to: "/jobs", label: "Jobs", icon: Briefcase },
+  { to: "/assistent", label: "KI", icon: Bot },
   { to: "/einstellungen", label: "Einstellungen", icon: Settings },
 ] as const;
 
@@ -151,11 +156,25 @@ function BottomNav() {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
+  const { settings } = useAppData();
+  const [ready, setReady] = useState(false);
+  const [unlocked, setUnlocked] = useState(false);
+
   useEffect(() => {
     loadFromStorage();
-    applyTheme(getData().settings.theme);
+    const loaded = getData().settings;
+    applyAppearance(loaded.themeMode, loaded.accent);
+    initCloudSync();
     registerServiceWorker();
+    setUnlocked(!(loaded.pinEnabled && loaded.pin));
+    setReady(true);
   }, []);
+
+  useEffect(() => {
+    applyAppearance(settings.themeMode, settings.accent);
+  }, [settings.themeMode, settings.accent]);
+
+  const locked = ready && settings.pinEnabled && Boolean(settings.pin) && !unlocked;
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -163,6 +182,7 @@ function RootComponent() {
         <Outlet />
       </div>
       <BottomNav />
+      {locked ? <PinLock settings={settings} onUnlock={() => setUnlocked(true)} /> : null}
       <Toaster position="top-center" />
     </QueryClientProvider>
   );
