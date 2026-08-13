@@ -55,7 +55,8 @@ function commit(next: AppData, sync = true) {
 }
 
 /** Alte Datenstände (v1) auf das neue Modell heben. */
-export function normalize(raw: Partial<AppData> & { settings?: Record<string, unknown> }): AppData {
+export function normalize(input: Partial<AppData>): AppData {
+  const raw = input as Partial<AppData> & { settings?: Record<string, unknown> };
   const legacyTheme = raw.settings?.["theme"];
   const settings: Settings = {
     ...DEFAULT_SETTINGS,
@@ -142,7 +143,7 @@ export function saveJob(job: Job) {
   const jobs = exists ? state.jobs.map((j) => (j.id === job.id ? job : j)) : [...state.jobs, job];
   const settings = state.settings.activeJobId
     ? state.settings
-    : { ...state.settings, activeJobId: job.id };
+    : withActiveJob(state.settings, job.id);
   commit({ ...state, jobs, settings });
 }
 
@@ -153,9 +154,16 @@ export function deleteJob(id: string) {
     shifts: state.shifts.filter((s) => s.jobId !== id),
     settings:
       state.settings.activeJobId === id
-        ? { ...state.settings, activeJobId: state.jobs.find((j) => j.id !== id)?.id }
+        ? withActiveJob(state.settings, state.jobs.find((j) => j.id !== id)?.id)
         : state.settings,
   });
+}
+
+function withActiveJob(settings: Settings, jobId: string | undefined): Settings {
+  const next = { ...settings };
+  if (jobId) next.activeJobId = jobId;
+  else delete next.activeJobId;
+  return next;
 }
 
 export function nextJobColor(): string {
@@ -208,7 +216,9 @@ export function updateSupplements(patch: Partial<Settings["supplements"]>) {
 /* ---------- Timer ---------- */
 
 export function startTimer(jobId?: string) {
-  commit({ ...state, timer: { jobId, startedAt: Date.now(), breakMinutes: 0 } }, false);
+  const timer: RunningTimer = { startedAt: Date.now(), breakMinutes: 0 };
+  if (jobId) timer.jobId = jobId;
+  commit({ ...state, timer }, false);
 }
 
 export function updateTimerBreak(minutes: number) {
