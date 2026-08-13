@@ -1,4 +1,4 @@
-import type { Accent, ThemeMode } from "./types";
+import type { Accent, Settings, TextSize, ThemeMode } from "./types";
 
 export const ACCENTS: { id: Accent; label: string; swatch: string }[] = [
   { id: "teal", label: "Türkis", swatch: "#0d9488" },
@@ -15,14 +15,32 @@ export const THEME_MODES: { id: ThemeMode; label: string }[] = [
   { id: "dark", label: "Dunkel" },
 ];
 
+export const TEXT_SCALE: Record<TextSize, string> = {
+  s: "93.75%",
+  m: "100%",
+  l: "112.5%",
+  xl: "125%",
+};
+
 export function prefersDark(): boolean {
   if (typeof window === "undefined" || !window.matchMedia) return false;
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
-export function applyAppearance(mode: ThemeMode, accent: Accent) {
+type AppearanceInput = Pick<
+  Settings,
+  "themeMode" | "accent" | "textSize" | "touchSize" | "highContrast" | "reduceMotion" | "uiMode"
+>;
+
+export function applyAppearance(settings: AppearanceInput) {
   if (typeof document === "undefined") return;
-  const dark = mode === "dark" || (mode === "system" && prefersDark());
-  document.documentElement.classList.toggle("dark", dark);
-  document.documentElement.dataset["accent"] = accent;
+  const root = document.documentElement;
+  const dark = settings.themeMode === "dark" || (settings.themeMode === "system" && prefersDark());
+  root.classList.toggle("dark", dark);
+  root.classList.toggle("high-contrast", Boolean(settings.highContrast));
+  root.classList.toggle("reduce-motion", Boolean(settings.reduceMotion));
+  root.dataset["accent"] = settings.accent;
+  root.dataset["touch"] = settings.touchSize ?? "normal";
+  root.dataset["ui"] = settings.uiMode ?? "standard";
+  root.style.fontSize = TEXT_SCALE[settings.textSize ?? "m"] ?? "100%";
 }
