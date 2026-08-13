@@ -326,6 +326,57 @@ export function ShiftDialog({
               />
             </div>
 
+            <div className="grid grid-cols-2 gap-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="etage" className="text-xs">
+                  {t("worklog.floor")}
+                </Label>
+                <Input
+                  id="etage"
+                  value={floor}
+                  placeholder={t("worklog.floorPlaceholder")}
+                  onChange={(e) => setFloor(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="tuerseite" className="text-xs">
+                  {t("worklog.doorSide")}
+                </Label>
+                <Input
+                  id="tuerseite"
+                  value={doorSide}
+                  placeholder={t("worklog.doorSidePlaceholder")}
+                  onChange={(e) => setDoorSide(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-xs">{t("worklog.workCode")}</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {WORK_CODES.map((code) => (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => setWorkCode(workCode === code ? "" : code)}
+                    className={cn(
+                      "rounded-full border px-3 py-1.5 text-xs font-medium",
+                      workCode === code ? "border-primary bg-primary/10" : "bg-card",
+                    )}
+                  >
+                    {code} · {WORK_CODE_LABELS[code]}
+                  </button>
+                ))}
+              </div>
+              {workCode === "SR" ? (
+                <Input
+                  value={workCodeNote}
+                  placeholder={t("worklog.workCodeNotePlaceholder")}
+                  onChange={(e) => setWorkCodeNote(e.target.value)}
+                />
+              ) : null}
+            </div>
+
             <div className="grid gap-1.5">
               <Label className="text-xs">{t("worklog.tasks")}</Label>
               <div className="flex flex-wrap gap-1.5">
