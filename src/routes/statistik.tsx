@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Clock, Euro, FileDown, FileSpreadsheet, TrendingUp } from "lucide-react";
+import { ClipboardList, Clock, Euro, FileDown, FileSpreadsheet, TrendingUp } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
   Bar,
@@ -34,6 +34,7 @@ import {
 } from "@/lib/minijob/calc";
 import { buildAnnualReport } from "@/lib/minijob/annual";
 import { exportPdf, exportXlsx } from "@/lib/minijob/export";
+import { exportWorkReportPdf } from "@/lib/minijob/worklog";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { yearlyLimitOf } from "@/lib/minijob/limits";
 import { useAppData } from "@/lib/minijob/store";
@@ -280,6 +281,24 @@ function StatsPage() {
               <FileDown className="size-4" /> PDF
             </Button>
           </div>
+
+          <Button
+            className="w-full"
+            onClick={() => {
+              if (monthShifts.length === 0) {
+                toast.error(t("stats.toast.noData"));
+                return;
+              }
+              exportWorkReportPdf(monthShifts, {
+                jobs,
+                month: `${months[month]!} ${year}`,
+                includePhotos: true,
+              });
+              toast.success(t("stats.toast.exportSuccess"));
+            }}
+          >
+            <ClipboardList className="size-4" /> {t("worklog.export")}
+          </Button>
         </TabsContent>
 
         <TabsContent value="jahr" className="mt-4 space-y-4">

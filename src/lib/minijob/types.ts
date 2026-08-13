@@ -126,6 +126,14 @@ export interface Shift {
   note?: string | undefined;
   /** Als Überstunden werten */
   overtime?: boolean;
+  /** Leistungsnachweis: Einsatzort / Objekt */
+  workplace?: string;
+  /** Leistungsnachweis: Tätigkeiten ("#key" = Vorlage, sonst freier Text) */
+  tasks?: string[];
+  /** Leistungsnachweis: Fotos als komprimierte Data-URLs */
+  photos?: string[];
+  /** Leistungsnachweis: GPS-Standort */
+  gps?: { lat: number; lng: number };
 }
 
 /** Sparziel: automatisch aus Verdienst oder manuell gepflegt. */

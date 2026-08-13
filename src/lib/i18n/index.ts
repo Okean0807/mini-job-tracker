@@ -14,6 +14,7 @@ import { settingsDict } from "./dict/settings";
 import { v2 } from "./dict/v2";
 import { widgets } from "./dict/widgets";
 import { wizard } from "./dict/wizard";
+import { worklog } from "./dict/worklog";
 
 export { LANGUAGES, LOCALES, detectLanguage } from "./core";
 export type { Lang } from "./core";
@@ -32,6 +33,7 @@ const BUNDLE: Bundle = mergeBundles([
   annual,
   goalsDict,
   docsDict,
+  worklog,
 ]);
 
 export type Vars = Record<string, string | number>;
