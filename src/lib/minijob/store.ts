@@ -11,6 +11,7 @@ import {
   type AppData,
   type Customer,
   type Job,
+  type Payment,
   type Project,
   type RunningTimer,
   type Settings,
@@ -24,6 +25,7 @@ export const EMPTY_DATA: AppData = {
   jobs: [],
   customers: [],
   projects: [],
+  payments: [],
   settings: DEFAULT_SETTINGS,
   timer: null,
 };
@@ -88,6 +90,7 @@ export function normalize(input: Partial<AppData>): AppData {
     jobs: Array.isArray(raw.jobs) ? raw.jobs : [],
     customers: Array.isArray(raw.customers) ? raw.customers : [],
     projects: Array.isArray(raw.projects) ? raw.projects : [],
+    payments: Array.isArray(raw.payments) ? raw.payments : [],
     settings,
     timer: raw.timer ?? null,
   };
@@ -213,6 +216,20 @@ export function saveProject(project: Project) {
 
 export function deleteProject(id: string) {
   commit({ ...state, projects: state.projects.filter((p) => p.id !== id) });
+}
+
+/* ---------- Lohnzahlungen ---------- */
+
+export function savePayment(payment: Payment) {
+  const exists = state.payments.some((p) => p.id === payment.id);
+  const payments = exists
+    ? state.payments.map((p) => (p.id === payment.id ? payment : p))
+    : [...state.payments, payment];
+  commit({ ...state, payments });
+}
+
+export function deletePayment(id: string) {
+  commit({ ...state, payments: state.payments.filter((p) => p.id !== id) });
 }
 
 /* ---------- Einstellungen ---------- */
