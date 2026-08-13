@@ -20,17 +20,21 @@ export interface LimitUsage {
  * ergibt sie sich aus Einkommensgrenze / Stundenlohn (z. B. 556 € / 15,50 € = 35,87 h).
  */
 export function monthlyHoursLimit(settings: Settings): number {
-  if (settings.limitsManual && settings.hoursLimitMonthly && settings.hoursLimitMonthly > 0) {
+  if (!settings.hoursLimitAuto && settings.hoursLimitMonthly && settings.hoursLimitMonthly > 0) {
     return settings.hoursLimitMonthly;
   }
+  return autoHoursLimit(settings);
+}
+
+/** Stundengrenze aus Monatsgrenze ÷ Stundenlohn. */
+export function autoHoursLimit(settings: Settings): number {
   const rate = settings.defaultRate;
   if (!rate || rate <= 0 || !settings.monthlyLimit) return 0;
   return settings.monthlyLimit / rate;
 }
 
-/** Jahresgrenze: automatisch Monatsgrenze × 12, im erweiterten Modus manuell. */
+/** Jahresgrenze: immer Monatsgrenze × 12. */
 export function yearlyLimitOf(settings: Settings): number {
-  if (settings.limitsManual && settings.yearlyLimit > 0) return settings.yearlyLimit;
   return settings.monthlyLimit * 12;
 }
 
