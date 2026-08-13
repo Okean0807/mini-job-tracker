@@ -247,6 +247,8 @@ export interface Settings {
   autoBackup: boolean;
   language: Lang;
   onboarded: boolean;
+  /** Name für Arbeitsnachweis / Berichte */
+  employeeName?: string;
   notifications: NotificationSettings;
   dashboard: DashboardConfig;
 }
