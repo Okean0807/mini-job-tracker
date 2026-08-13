@@ -117,6 +117,11 @@ function StatsPage() {
     [jobs, shifts, year, resolve],
   );
 
+  const annualReport = useMemo(
+    () => buildAnnualReport(filtered, jobs, settings, year, resolve),
+    [filtered, jobs, settings, year, resolve],
+  );
+
   const ctx = { jobs, bundesland: settings.bundesland };
 
   function doExport(kind: "xlsx" | "pdf", list: Shift[], title: string) {
