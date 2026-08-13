@@ -6,6 +6,7 @@ import { annual } from "./dict/annual";
 import { assistant } from "./dict/assistant";
 import { common } from "./dict/common";
 import { dashboard } from "./dict/dashboard";
+import { goalsDict } from "./dict/goals";
 import { jobsDict } from "./dict/jobs";
 import { reports } from "./dict/reports";
 import { settingsDict } from "./dict/settings";
@@ -28,6 +29,7 @@ const BUNDLE: Bundle = mergeBundles([
   a11y,
   widgets,
   annual,
+  goalsDict,
 ]);
 
 export type Vars = Record<string, string | number>;
