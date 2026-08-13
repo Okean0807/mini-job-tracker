@@ -206,6 +206,7 @@ export interface Settings {
   language: Lang;
   onboarded: boolean;
   notifications: NotificationSettings;
+  dashboard: DashboardConfig;
 }
 
 export interface RunningTimer {
