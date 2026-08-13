@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 
+import { AnnualReportCard } from "@/components/minijob/AnnualReportCard";
 import { StatCard } from "@/components/minijob/StatCard";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -31,6 +32,7 @@ import {
   sumEarnings,
   sumHours,
 } from "@/lib/minijob/calc";
+import { buildAnnualReport } from "@/lib/minijob/annual";
 import { exportPdf, exportXlsx } from "@/lib/minijob/export";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { useAppData } from "@/lib/minijob/store";
@@ -116,6 +118,11 @@ function StatsPage() {
     [jobs, shifts, year, resolve],
   );
 
+  const annualReport = useMemo(
+    () => buildAnnualReport(filtered, jobs, settings, year, resolve),
+    [filtered, jobs, settings, year, resolve],
+  );
+
   const ctx = { jobs, bundesland: settings.bundesland };
 
   function doExport(kind: "xlsx" | "pdf", list: Shift[], title: string) {
@@ -184,6 +191,9 @@ function StatsPage() {
           </TabsTrigger>
           <TabsTrigger value="jobs" className="flex-1">
             {t("stats.tab.jobs")}
+          </TabsTrigger>
+          <TabsTrigger value="bericht" className="flex-1">
+            {t("stats.tab.report")}
           </TabsTrigger>
         </TabsList>
 
@@ -375,6 +385,10 @@ function StatsPage() {
               </div>
             ))
           )}
+        </TabsContent>
+
+        <TabsContent value="bericht" className="mt-4">
+          <AnnualReportCard report={annualReport} />
         </TabsContent>
       </Tabs>
     </main>
