@@ -140,6 +140,7 @@ export interface NotificationSettings {
   missingShift: boolean;
   backupReminder: boolean;
   limitAlerts: boolean;
+  payday?: boolean;
 }
 
 export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
@@ -151,6 +152,7 @@ export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
   missingShift: true,
   backupReminder: true,
   limitAlerts: true,
+  payday: true,
 };
 
 export interface Settings {
