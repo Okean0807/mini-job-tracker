@@ -142,6 +142,10 @@ export function ShiftDialog({
     if (overtime) next.overtime = true;
     if (customerId) next.customerId = customerId;
     if (projectId) next.projectId = projectId;
+    if (workplace.trim()) next.workplace = workplace.trim();
+    if (tasks.length > 0) next.tasks = tasks;
+    if (photos.length > 0) next.photos = photos;
+    if (gps) next.gps = gps;
     saveShift(next);
     toast.success(shift ? t("shift.updated") : t("shift.saved"));
     onOpenChange(false);
