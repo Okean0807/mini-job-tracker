@@ -1,3 +1,7 @@
+import type { Lang } from "@/lib/i18n/core";
+
+export type { Lang };
+
 export type WorkMode = "flex" | "fest" | "selbststaendig";
 
 export type ShiftKind = "arbeit" | "urlaub" | "krank" | "feiertag";
