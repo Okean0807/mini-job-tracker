@@ -263,7 +263,7 @@ export const DEFAULT_SETTINGS: Settings = {
   monthlyLimit: 556,
   yearlyLimit: 6672,
   hoursLimitMonthly: 0,
-  limitsManual: false,
+  hoursLimitAuto: false,
   themeMode: "system",
   accent: "teal",
   uiMode: "standard",
