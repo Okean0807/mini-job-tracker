@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Clock, Euro, FileDown, FileSpreadsheet, TrendingUp } from "lucide-react";
+import { ClipboardList, Clock, Euro, FileDown, FileSpreadsheet, TrendingUp } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
   Bar,
@@ -34,6 +34,7 @@ import {
 } from "@/lib/minijob/calc";
 import { buildAnnualReport } from "@/lib/minijob/annual";
 import { exportPdf, exportXlsx } from "@/lib/minijob/export";
+import { exportWorkReportPdf } from "@/lib/minijob/worklog";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { yearlyLimitOf } from "@/lib/minijob/limits";
 import { useAppData } from "@/lib/minijob/store";
