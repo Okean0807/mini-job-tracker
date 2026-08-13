@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { Session } from "@supabase/supabase-js";
-import { CloudDownload, CloudUpload, FileUp, LogOut } from "lucide-react";
+import { CloudDownload, CloudUpload, FileUp, Lock, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -13,7 +13,8 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { lovable } from "@/integrations/lovable";
 import { supabase } from "@/integrations/supabase/client";
-import { formatDateDE } from "@/lib/minijob/calc";
+import { formatDateDE, formatEuro, formatHours } from "@/lib/minijob/calc";
+import { monthlyHoursLimit } from "@/lib/minijob/limits";
 import { backupNow, restoreNow } from "@/lib/minijob/cloud";
 import { downloadText, shiftsToCsv } from "@/lib/minijob/csv";
 import { exportXlsx } from "@/lib/minijob/export";

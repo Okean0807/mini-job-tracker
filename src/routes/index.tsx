@@ -151,7 +151,7 @@ function DashboardPage() {
         usage={monthLimit}
         scopeLabel={`${t("limit.month")} · ${monthLabel}`}
         rate={settings.defaultRate}
-        auto={!settings.hoursLimitMonthly}
+        auto={!(settings.limitsManual && settings.hoursLimitMonthly > 0)}
       />
     ),
     limitYear: (
@@ -159,7 +159,7 @@ function DashboardPage() {
         usage={yearLimit}
         scopeLabel={`${t("limit.year")} · ${year}`}
         rate={settings.defaultRate}
-        auto={!settings.hoursLimitMonthly}
+        auto={!(settings.limitsManual && settings.hoursLimitMonthly > 0)}
       />
     ),
     payday: <PaydayCard periods={periods} />,
