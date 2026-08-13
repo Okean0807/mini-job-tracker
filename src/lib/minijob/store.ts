@@ -246,6 +246,10 @@ export function updateSupplements(patch: Partial<Settings["supplements"]>) {
   updateSettings({ supplements: { ...state.settings.supplements, ...patch } });
 }
 
+export function updateDashboard(patch: Partial<Settings["dashboard"]>) {
+  updateSettings({ dashboard: { ...state.settings.dashboard, ...patch } });
+}
+
 /* ---------- Timer ---------- */
 
 export function startTimer(jobId?: string) {
