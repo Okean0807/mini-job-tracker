@@ -1,5 +1,6 @@
-import { Camera, MapPin, Mic, Trash2, X } from "lucide-react";
+import { Camera, ChevronDown, MapPin, Mic, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
+
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -85,7 +86,9 @@ export function ShiftDialog({
   const [workCodeNote, setWorkCodeNote] = useState("");
   const [newCode, setNewCode] = useState("");
   const [newCodeLabel, setNewCodeLabel] = useState("");
+  const [advanced, setAdvanced] = useState(false);
   const customCodes = settings.workCodes ?? [];
+
   const allCodes = [
     ...WORK_CODES.map((code) => ({ code: code as string, label: WORK_CODE_LABELS[code] })),
     ...customCodes,
@@ -134,7 +137,24 @@ export function ShiftDialog({
     setDoorSide(shift?.doorSide ?? "");
     setWorkCode(shift?.workCode ?? "");
     setWorkCodeNote(shift?.workCodeNote ?? "");
+    setAdvanced(
+      Boolean(
+        shift &&
+          (shift.workplace ||
+            shift.street ||
+            shift.floor ||
+            shift.doorSide ||
+            shift.workCode ||
+            shift.note ||
+            shift.overtime ||
+            shift.customerId ||
+            (shift.tasks?.length ?? 0) > 0 ||
+            (shift.photos?.length ?? 0) > 0 ||
+            shift.gps),
+      ),
+    );
   }, [open, shift, jobs, settings.activeJobId, settings.defaultRate]);
+
 
   const job = jobs.find((j) => j.id === jobId);
   const holiday = holidayName(date, settings.bundesland);
@@ -299,7 +319,25 @@ export function ShiftDialog({
             </div>
           </div>
 
+          {!advanced ? (
+            <p className="text-xs text-muted-foreground">{t("entry.quickHint")}</p>
+          ) : null}
+
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full justify-between"
+            onClick={() => setAdvanced((v) => !v)}
+            aria-expanded={advanced}
+          >
+            {advanced ? t("entry.less") : t("entry.more")}
+            <ChevronDown className={cn("size-4 transition-transform", advanced && "rotate-180")} />
+          </Button>
+
+          {advanced ? (
+            <div className="space-y-4">
           {selfEmployed ? (
+
             <div className="grid gap-3 rounded-xl border p-3">
               <div className="grid gap-1.5">
                 <Label className="text-xs">{t("label.customer")}</Label>
@@ -619,6 +657,9 @@ export function ShiftDialog({
               placeholder={t("shift.notePlaceholder")}
             />
           </div>
+            </div>
+          ) : null}
+
 
           <div className="rounded-xl bg-muted p-3 text-sm">
             <div className="flex justify-between">

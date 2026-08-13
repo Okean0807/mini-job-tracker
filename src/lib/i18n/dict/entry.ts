@@ -1,0 +1,80 @@
+import type { Bundle } from "../core";
+
+/** Schnellerfassung / erweiterte Angaben und Premium-Hinweise. */
+export const entry: Bundle = {
+  de: {
+    "entry.more": "Zusätzliche Angaben",
+    "entry.less": "Zusätzliche Angaben ausblenden",
+    "entry.quickHint": "In unter 15 Sekunden erfasst – Details sind optional.",
+    "premium.badge": "Premium",
+    "premium.title": "Premium-Funktion",
+    "premium.multiJob": "Mehrere Arbeitgeber sind Teil von Premium.",
+    "premium.excel": "Excel-Export ist Teil von Premium.",
+    "premium.unlock": "Premium aktivieren",
+    "premium.settingsTitle": "Premium",
+    "premium.settingsDesc":
+      "Mehrere Arbeitgeber, KI-Analyse, Cloud-Sync, Excel-Export und erweiterte Berichte.",
+    "premium.active": "Premium aktiv",
+    "premium.activated": "Premium aktiviert",
+  },
+  en: {
+    "entry.more": "Additional details",
+    "entry.less": "Hide additional details",
+    "entry.quickHint": "Logged in under 15 seconds – details are optional.",
+    "premium.badge": "Premium",
+    "premium.title": "Premium feature",
+    "premium.multiJob": "Multiple employers are part of Premium.",
+    "premium.excel": "Excel export is part of Premium.",
+    "premium.unlock": "Activate Premium",
+    "premium.settingsTitle": "Premium",
+    "premium.settingsDesc":
+      "Multiple employers, AI analysis, cloud sync, Excel export and advanced reports.",
+    "premium.active": "Premium active",
+    "premium.activated": "Premium activated",
+  },
+  ru: {
+    "entry.more": "Дополнительные данные",
+    "entry.less": "Скрыть дополнительные данные",
+    "entry.quickHint": "Запись меньше чем за 15 секунд — детали необязательны.",
+    "premium.badge": "Premium",
+    "premium.title": "Функция Premium",
+    "premium.multiJob": "Несколько работодателей доступны в Premium.",
+    "premium.excel": "Экспорт в Excel доступен в Premium.",
+    "premium.unlock": "Активировать Premium",
+    "premium.settingsTitle": "Premium",
+    "premium.settingsDesc":
+      "Несколько работодателей, ИИ-анализ, облачная синхронизация, экспорт Excel и расширенные отчёты.",
+    "premium.active": "Premium активен",
+    "premium.activated": "Premium активирован",
+  },
+  tr: {
+    "entry.more": "Ek bilgiler",
+    "entry.less": "Ek bilgileri gizle",
+    "entry.quickHint": "15 saniyeden kısa sürede kaydedin – detaylar isteğe bağlı.",
+    "premium.badge": "Premium",
+    "premium.title": "Premium özellik",
+    "premium.multiJob": "Birden fazla işveren Premium kapsamındadır.",
+    "premium.excel": "Excel dışa aktarma Premium kapsamındadır.",
+    "premium.unlock": "Premium'u etkinleştir",
+    "premium.settingsTitle": "Premium",
+    "premium.settingsDesc":
+      "Birden fazla işveren, yapay zekâ analizi, bulut senkronizasyonu, Excel dışa aktarma ve gelişmiş raporlar.",
+    "premium.active": "Premium etkin",
+    "premium.activated": "Premium etkinleştirildi",
+  },
+  pl: {
+    "entry.more": "Dodatkowe dane",
+    "entry.less": "Ukryj dodatkowe dane",
+    "entry.quickHint": "Wpis w mniej niż 15 sekund – szczegóły są opcjonalne.",
+    "premium.badge": "Premium",
+    "premium.title": "Funkcja Premium",
+    "premium.multiJob": "Wielu pracodawców to część Premium.",
+    "premium.excel": "Eksport do Excela to część Premium.",
+    "premium.unlock": "Aktywuj Premium",
+    "premium.settingsTitle": "Premium",
+    "premium.settingsDesc":
+      "Wielu pracodawców, analiza AI, synchronizacja w chmurze, eksport Excel i rozszerzone raporty.",
+    "premium.active": "Premium aktywne",
+    "premium.activated": "Premium aktywowane",
+  },
+};

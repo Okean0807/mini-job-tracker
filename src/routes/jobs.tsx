@@ -20,6 +20,7 @@ import {
   updateSettings,
   useAppData,
 } from "@/lib/minijob/store";
+import { canAddJob } from "@/lib/minijob/premium";
 import { type Job } from "@/lib/minijob/types";
 
 export const Route = createFileRoute("/jobs")({
@@ -120,11 +121,20 @@ function JobsPage() {
           <Button
             className="w-full"
             onClick={() => {
+              if (!canAddJob(settings, jobs.length)) {
+                toast.error(t("premium.title"), { description: t("premium.multiJob") });
+                return;
+              }
               setEditing(null);
               setOpen(true);
             }}
           >
             <Plus className="size-4" /> {t("job.add")}
+            {!canAddJob(settings, jobs.length) ? (
+              <span className="rounded-full bg-primary-foreground/20 px-2 py-0.5 text-[10px] font-semibold">
+                {t("premium.badge")}
+              </span>
+            ) : null}
           </Button>
         </TabsContent>
 

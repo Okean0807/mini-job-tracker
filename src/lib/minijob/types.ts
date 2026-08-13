@@ -256,7 +256,10 @@ export interface Settings {
   biometric: boolean;
   autoBackup: boolean;
   language: Lang;
+  /** Premium freigeschaltet (mehrere Jobs, KI, Cloud, Excel) */
+  premium?: boolean;
   onboarded: boolean;
+
   /** Name für Arbeitsnachweis / Berichte */
   employeeName?: string;
   /** Eigene Leistungsarten (Code + Bezeichnung) */
