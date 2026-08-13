@@ -150,12 +150,14 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
     ],
     styles: {
       font: "helvetica",
-      fontSize: 9,
-      cellPadding: 2,
+      fontSize: 7.5,
+      cellPadding: { top: 0.9, bottom: 0.9, left: 1.5, right: 1.5 },
+      minCellHeight: 0,
       textColor: [0, 0, 0],
       lineColor: [0, 0, 0],
-      lineWidth: 0.2,
+      lineWidth: 0.15,
       valign: "top",
+      overflow: "linebreak",
     },
     headStyles: {
       fillColor: [235, 235, 235],
