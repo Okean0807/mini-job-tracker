@@ -1,21 +1,28 @@
+import { t } from "@/lib/i18n";
+
 import { newId } from "./store";
 import type { Job, Shift } from "./types";
 
-export const CSV_HEADERS = [
-  "Datum",
-  "Beginn",
-  "Ende",
-  "Pause",
-  "Stundenlohn",
-  "Job",
-  "Notiz",
-] as const;
+/** Übersetzte Spaltenüberschriften für Export/Vorlage (nur für die Anzeige, der Parser ist sprachunabhängig). */
+export function csvHeaders(): string[] {
+  return [
+    t("label.date"),
+    t("label.start"),
+    t("label.end"),
+    t("label.break"),
+    t("label.rate"),
+    t("label.job"),
+    t("label.note"),
+  ];
+}
 
-export const CSV_TEMPLATE = [
-  CSV_HEADERS.join(";"),
-  "01.03.2026;09:00;17:00;30;13,50;Café Nord;Frühschicht",
-  "2026-03-02;18:00;23:30;0;15,00;Café Nord;",
-].join("\n");
+export function csvTemplate(): string {
+  return [
+    csvHeaders().join(";"),
+    `01.03.2026;09:00;17:00;30;13,50;Café Nord;${t("csv.template.note")}`,
+    "2026-03-02;18:00;23:30;0;15,00;Café Nord;",
+  ].join("\n");
+}
 
 export interface CsvRow {
   line: number;
@@ -95,8 +102,10 @@ export function parseCsv(
     ? ";"
     : ",";
 
-  const first = splitLine(lines[0]!, delimiter).map((c) => c.toLowerCase());
-  const hasHeader = first.some((c) => c.includes("datum") || c.includes("date"));
+  // Sprachunabhängige Erkennung: Kopfzeile liegt vor, wenn die erste Zelle
+  // sich nicht als Datum parsen lässt (unabhängig vom verwendeten Wort/Sprache).
+  const firstCells = splitLine(lines[0]!, delimiter);
+  const hasHeader = parseDate(firstCells[0] ?? "") === null;
   const body = hasHeader ? lines.slice(1) : lines;
 
   body.forEach((line, index) => {
@@ -106,15 +115,15 @@ export function parseCsv(
       cells;
 
     const date = parseDate(dateCell);
-    if (!date) errors.push("Datum ungültig");
+    if (!date) errors.push(t("csv.error.date"));
     const start = parseTime(startCell);
-    if (!start) errors.push("Beginn ungültig");
+    if (!start) errors.push(t("csv.error.start"));
     const end = parseTime(endCell);
-    if (!end) errors.push("Ende ungültig");
+    if (!end) errors.push(t("csv.error.end"));
     const breakMinutes = parseNumber(breakCell);
-    if (breakMinutes === null || breakMinutes < 0) errors.push("Pause ungültig");
+    if (breakMinutes === null || breakMinutes < 0) errors.push(t("csv.error.break"));
     const rate = parseNumber(rateCell);
-    if (rate === null || rate < 0) errors.push("Stundenlohn ungültig");
+    if (rate === null || rate < 0) errors.push(t("csv.error.rate"));
 
     const row: CsvRow = {
       line: index + (hasHeader ? 2 : 1),
@@ -159,7 +168,7 @@ export function parseCsv(
 
 export function shiftsToCsv(shifts: Shift[], jobs: Job[]): string {
   const esc = (v: string) => (/[";\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
-  const lines = [CSV_HEADERS.join(";")];
+  const lines = [csvHeaders().join(";")];
   for (const s of [...shifts].sort((a, b) => (a.date > b.date ? 1 : -1))) {
     lines.push(
       [

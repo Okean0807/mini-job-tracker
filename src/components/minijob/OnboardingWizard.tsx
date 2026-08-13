@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { lovable } from "@/integrations/lovable";
+import { LANGUAGES } from "@/lib/i18n/core";
+import { useT } from "@/lib/i18n";
 import { newId, nextJobColor, saveJob, updateSettings } from "@/lib/minijob/store";
 import {
   BUNDESLAENDER,
@@ -20,22 +22,28 @@ import {
 } from "@/lib/minijob/types";
 import { cn } from "@/lib/utils";
 
-const STEPS = [
-  "Sprache",
-  "Arbeitsart",
-  "Region",
-  "Stundenlohn",
-  "Zuschläge",
-  "Cloud",
-  "Erster Job",
-];
-
 interface Props {
   settings: Settings;
   onDone: () => void;
 }
 
 export function OnboardingWizard({ settings, onDone }: Props) {
+  const { t } = useT();
+  const STEPS = [
+    t("wiz.step.language"),
+    t("wiz.step.workMode"),
+    t("wiz.step.region"),
+    t("wiz.step.rate"),
+    t("wiz.step.supplements"),
+    t("wiz.step.cloud"),
+    t("wiz.step.firstJob"),
+  ];
+  const WORK_MODE_KEY: Record<WorkMode, string> = {
+    flex: "mode.flex",
+    fest: "mode.fest",
+    selbststaendig: "mode.selbststaendig",
+  };
+
   const [step, setStep] = useState(0);
   const [mode, setMode] = useState<WorkMode>("flex");
   const [country, setCountry] = useState(settings.country);
@@ -67,7 +75,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
         supplements,
       });
     }
-    toast.success("Einrichtung abgeschlossen");
+    toast.success(t("wiz.toast.done"));
     onDone();
   }
 
@@ -76,7 +84,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
     try {
       await lovable.auth.signInWithOAuth(provider, { redirect_uri: window.location.origin });
     } catch {
-      toast.error("Anmeldung nicht möglich. Bitte erneut versuchen.");
+      toast.error(t("error.signIn"));
     }
   }
 
@@ -85,9 +93,9 @@ export function OnboardingWizard({ settings, onDone }: Props) {
       <div className="mx-auto flex min-h-screen max-w-lg flex-col px-4 py-6">
         <header>
           <p className="text-xs font-medium text-muted-foreground">
-            Schritt {step + 1} von {STEPS.length} · {STEPS[step]}
+            {t("wiz.stepOf", { current: step + 1, total: STEPS.length, step: STEPS[step] ?? "" })}
           </p>
-          <h1 className="mt-1 text-2xl font-extrabold tracking-tight">Einrichtungsassistent</h1>
+          <h1 className="mt-1 text-2xl font-extrabold tracking-tight">{t("wiz.title")}</h1>
           <div className="mt-3 flex gap-1" aria-hidden>
             {STEPS.map((s, i) => (
               <span
@@ -100,17 +108,24 @@ export function OnboardingWizard({ settings, onDone }: Props) {
 
         <div className="mt-6 flex-1 space-y-4">
           {step === 0 ? (
-            <Card title="Sprache wählen" hint="Weitere Sprachen folgen.">
-              <Choice label="Deutsch" active onClick={() => undefined} />
+            <Card title={t("wiz.language.title")} hint={t("wiz.language.hint")}>
+              {LANGUAGES.map((l) => (
+                <Choice
+                  key={l.code}
+                  label={l.native}
+                  active={settings.language === l.code}
+                  onClick={() => updateSettings({ language: l.code })}
+                />
+              ))}
             </Card>
           ) : null}
 
           {step === 1 ? (
-            <Card title="Wie arbeitest du?" hint="Bestimmt, wie Schichten erfasst werden.">
+            <Card title={t("wiz.workMode.title")} hint={t("wiz.workMode.hint")}>
               {(Object.keys(WORK_MODE_LABEL) as WorkMode[]).map((m) => (
                 <Choice
                   key={m}
-                  label={WORK_MODE_LABEL[m]}
+                  label={t(WORK_MODE_KEY[m])}
                   active={mode === m}
                   onClick={() => setMode(m)}
                 />
@@ -119,9 +134,9 @@ export function OnboardingWizard({ settings, onDone }: Props) {
           ) : null}
 
           {step === 2 ? (
-            <Card title="Land und Region" hint="Für automatische Feiertage.">
+            <Card title={t("wiz.region.title")} hint={t("wiz.region.hint")}>
               <div className="grid gap-2">
-                <Label htmlFor="ob-land">Land</Label>
+                <Label htmlFor="ob-land">{t("wiz.region.country")}</Label>
                 <select
                   id="ob-land"
                   value={country}
@@ -137,7 +152,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
               </div>
               {country === "DE" ? (
                 <div className="grid gap-2">
-                  <Label htmlFor="ob-bl">Bundesland</Label>
+                  <Label htmlFor="ob-bl">{t("wiz.region.state")}</Label>
                   <select
                     id="ob-bl"
                     value={bundesland}
@@ -152,17 +167,15 @@ export function OnboardingWizard({ settings, onDone }: Props) {
                   </select>
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground">
-                  Feiertage können später manuell als Eintrag erfasst werden.
-                </p>
+                <p className="text-xs text-muted-foreground">{t("wiz.region.noStateHint")}</p>
               )}
             </Card>
           ) : null}
 
           {step === 3 ? (
-            <Card title="Stundenlohn" hint="Kann pro Job und pro Schicht angepasst werden.">
+            <Card title={t("wiz.rate.title")} hint={t("wiz.rate.hint")}>
               <div className="grid gap-2">
-                <Label htmlFor="ob-rate">Standard-Stundenlohn (€)</Label>
+                <Label htmlFor="ob-rate">{t("wiz.rate.label")}</Label>
                 <Input
                   id="ob-rate"
                   type="number"
@@ -177,16 +190,17 @@ export function OnboardingWizard({ settings, onDone }: Props) {
           ) : null}
 
           {step === 4 ? (
-            <Card title="Zuschläge" hint="Prozent vom Stundenlohn. Später änderbar.">
+            <Card title={t("wiz.supplements.title")} hint={t("wiz.supplements.hint")}>
               {(
                 [
-                  ["sunday", "Sonntag"],
-                  ["holiday", "Feiertag"],
-                  ["night", "Nachtschicht"],
-                  ["overtime", "Überstunden"],
+                  ["sunday", "supp.sunday"],
+                  ["holiday", "supp.holiday"],
+                  ["night", "supp.night"],
+                  ["overtime", "supp.overtime"],
                 ] as const
-              ).map(([key, label]) => {
+              ).map(([key, labelKey]) => {
                 const value = supplements[key] as Supplement;
+                const label = t(labelKey);
                 return (
                   <div key={key} className="flex items-center gap-3">
                     <Switch
@@ -218,35 +232,30 @@ export function OnboardingWizard({ settings, onDone }: Props) {
           ) : null}
 
           {step === 5 ? (
-            <Card
-              title="Cloud-Backup aktivieren"
-              hint="Deine Daten werden nach der Anmeldung automatisch gesichert und auf einem neuen Gerät wiederhergestellt."
-            >
+            <Card title={t("wiz.cloud.title")} hint={t("wiz.cloud.hint")}>
               <Button className="w-full" onClick={() => oauth("google")}>
-                Mit Google anmelden
+                {t("wiz.cloud.google")}
               </Button>
               <Button variant="outline" className="w-full" onClick={() => oauth("apple")}>
-                Mit Apple anmelden
+                {t("wiz.cloud.apple")}
               </Button>
-              <p className="text-xs text-muted-foreground">
-                Du kannst diesen Schritt überspringen und dich später in den Einstellungen anmelden.
-              </p>
+              <p className="text-xs text-muted-foreground">{t("wiz.cloud.skipHint")}</p>
             </Card>
           ) : null}
 
           {step === 6 ? (
-            <Card title="Ersten Job anlegen" hint="Name genügt – Details später ergänzen.">
+            <Card title={t("wiz.firstJob.title")} hint={t("wiz.firstJob.hint")}>
               <div className="grid gap-2">
-                <Label htmlFor="ob-job">Jobname</Label>
+                <Label htmlFor="ob-job">{t("wiz.firstJob.name")}</Label>
                 <Input
                   id="ob-job"
                   value={jobName}
-                  placeholder="z. B. Café Nord"
+                  placeholder={t("wiz.firstJob.namePlaceholder")}
                   onChange={(e) => setJobName(e.target.value)}
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="ob-emp">Arbeitgeber (optional)</Label>
+                <Label htmlFor="ob-emp">{t("wiz.firstJob.employer")}</Label>
                 <Input id="ob-emp" value={employer} onChange={(e) => setEmployer(e.target.value)} />
               </div>
             </Card>
@@ -256,7 +265,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
         <footer className="sticky bottom-0 mt-6 flex gap-3 bg-background py-3">
           {step > 0 ? (
             <Button variant="outline" onClick={() => setStep((s) => s - 1)}>
-              <ArrowLeft className="size-4" /> Zurück
+              <ArrowLeft className="size-4" /> {t("action.back")}
             </Button>
           ) : (
             <Button
@@ -267,16 +276,16 @@ export function OnboardingWizard({ settings, onDone }: Props) {
                 onDone();
               }}
             >
-              Überspringen
+              {t("action.skip")}
             </Button>
           )}
           {step < STEPS.length - 1 ? (
             <Button className="flex-1" onClick={() => setStep((s) => s + 1)}>
-              Weiter <ArrowRight className="size-4" />
+              {t("action.next")} <ArrowRight className="size-4" />
             </Button>
           ) : (
             <Button className="flex-1" onClick={finish}>
-              <Check className="size-4" /> Fertig
+              <Check className="size-4" /> {t("action.finish")}
             </Button>
           )}
         </footer>

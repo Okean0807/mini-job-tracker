@@ -20,6 +20,7 @@ import { exportXlsx } from "@/lib/minijob/export";
 import { holidaysFor } from "@/lib/minijob/holidays";
 import { markBackup, notificationPermission, requestNotificationPermission } from "@/lib/minijob/notify";
 import { getData, replaceAll, updateSettings, updateSupplements, useAppData } from "@/lib/minijob/store";
+import { LANGUAGES, useT } from "@/lib/i18n";
 import { ACCENTS, THEME_MODES } from "@/lib/minijob/theme";
 import { BUNDESLAENDER, COUNTRIES, type AppData, type NotificationSettings } from "@/lib/minijob/types";
 import { cn } from "@/lib/utils";

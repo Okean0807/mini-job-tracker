@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  CSV_TEMPLATE,
+  csvTemplate,
   downloadText,
   parseCsv,
   type CsvParseResult,
@@ -148,7 +148,7 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
             <Button
               variant="outline"
               className="w-full"
-              onClick={() => downloadText("minijob-vorlage.csv", CSV_TEMPLATE)}
+              onClick={() => downloadText("minijob-vorlage.csv", csvTemplate())}
             >
               <Download className="size-4" /> CSV-Vorlage herunterladen
             </Button>

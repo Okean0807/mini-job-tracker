@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { languageLabel, useT } from "@/lib/i18n";
 import { askAssistant } from "@/lib/ai.functions";
 import {
   MONTHS_DE,
@@ -38,20 +39,21 @@ export const Route = createFileRoute("/assistent")({
   component: AssistantPage,
 });
 
-const SUGGESTIONS = [
-  "Wie viele Stunden habe ich diesen Monat gearbeitet?",
-  "Wie viel habe ich dieses Jahr verdient?",
-  "Welcher Monat war mein bester?",
-  "Wie viel verdiene ich voraussichtlich nächsten Monat?",
-  "Analysiere meine Arbeitsmuster.",
-];
-
 function AssistantPage() {
+  const { t, lang } = useT();
   const data = useAppData();
   const call = useServerFn(askAssistant);
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<{ role: "user" | "ai"; text: string }[]>([]);
   const [busy, setBusy] = useState(false);
+
+  const SUGGESTIONS = [
+    t("ai.suggestion.hours"),
+    t("ai.suggestion.earnings"),
+    t("ai.suggestion.bestMonth"),
+    t("ai.suggestion.forecast"),
+    t("ai.suggestion.patterns"),
+  ];
 
   const context = useMemo(() => {
     const resolve = makeResolver(data.jobs, data.settings);
@@ -95,10 +97,10 @@ function AssistantPage() {
     setQuestion("");
     setBusy(true);
     try {
-      const result = await call({ data: { question: q, context } });
+      const result = await call({ data: { question: q, context, language: languageLabel(lang) } });
       setMessages((m) => [...m, { role: "ai", text: result.answer }]);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Die KI konnte nicht antworten.");
+      toast.error(error instanceof Error ? error.message : t("ai.error.generic"));
     } finally {
       setBusy(false);
     }
@@ -109,16 +111,14 @@ function AssistantPage() {
       const text = await listenOnce();
       setQuestion(text);
     } catch {
-      toast.error("Spracheingabe nicht möglich.");
+      toast.error(t("ai.error.voice"));
     }
   }
 
   return (
     <main className="mx-auto max-w-lg px-4 pt-6">
-      <h1 className="text-2xl font-extrabold tracking-tight">KI-Assistent</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Stelle Fragen zu deinen Arbeitszeiten, deinem Verdienst und deinen Prognosen.
-      </p>
+      <h1 className="text-2xl font-extrabold tracking-tight">{t("ai.title")}</h1>
+      <p className="mt-1 text-sm text-muted-foreground">{t("ai.intro")}</p>
 
       {messages.length === 0 ? (
         <div className="mt-5 space-y-2">
@@ -148,9 +148,7 @@ function AssistantPage() {
               {m.text}
             </div>
           ))}
-          {busy ? (
-            <p className="text-xs text-muted-foreground">Der Assistent denkt nach …</p>
-          ) : null}
+          {busy ? <p className="text-xs text-muted-foreground">{t("ai.thinking")}</p> : null}
         </div>
       )}
 
@@ -159,7 +157,7 @@ function AssistantPage() {
           rows={2}
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          placeholder="Deine Frage …"
+          placeholder={t("ai.placeholder")}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
@@ -168,11 +166,11 @@ function AssistantPage() {
           }}
         />
         {voiceSupported() ? (
-          <Button variant="outline" size="icon" onClick={speak} aria-label="Spracheingabe">
+          <Button variant="outline" size="icon" onClick={speak} aria-label={t("ai.voiceInput")}>
             <Mic className="size-4" />
           </Button>
         ) : null}
-        <Button size="icon" onClick={() => ask(question)} disabled={busy} aria-label="Senden">
+        <Button size="icon" onClick={() => ask(question)} disabled={busy} aria-label={t("ai.send")}>
           <Send className="size-4" />
         </Button>
       </div>
