@@ -99,6 +99,10 @@ export function ShiftDialog({
     setPhotos(shift?.photos ?? []);
     setGps(shift?.gps);
     setCustomTask("");
+    setFloor(shift?.floor ?? "");
+    setDoorSide(shift?.doorSide ?? "");
+    setWorkCode(shift?.workCode ?? "");
+    setWorkCodeNote(shift?.workCodeNote ?? "");
   }, [open, shift, jobs, settings.activeJobId, settings.defaultRate]);
 
   const job = jobs.find((j) => j.id === jobId);
