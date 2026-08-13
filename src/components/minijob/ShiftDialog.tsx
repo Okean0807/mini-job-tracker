@@ -27,6 +27,7 @@ import {
   type Shift,
   type ShiftKind,
 } from "@/lib/minijob/types";
+import { WORK_CODES, WORK_CODE_LABELS } from "@/lib/minijob/arbeitsnachweis";
 import { listenOnce, parseVoice, voiceSupported } from "@/lib/minijob/voice";
 import {
   CLEANING_TASKS,
