@@ -9,6 +9,7 @@ import { jobsDict } from "./dict/jobs";
 import { reports } from "./dict/reports";
 import { settingsDict } from "./dict/settings";
 import { v2 } from "./dict/v2";
+import { widgets } from "./dict/widgets";
 import { wizard } from "./dict/wizard";
 
 export { LANGUAGES, LOCALES, detectLanguage } from "./core";
@@ -24,6 +25,7 @@ const BUNDLE: Bundle = mergeBundles([
   assistant,
   v2,
   a11y,
+  widgets,
 ]);
 
 export type Vars = Record<string, string | number>;

@@ -137,6 +137,27 @@ export type TextSize = "s" | "m" | "l" | "xl";
 export type TouchSize = "normal" | "large" | "glove";
 export type Accent = "teal" | "blue" | "green" | "orange" | "red" | "purple";
 
+/** Dashboard-Widgets */
+export type WidgetId =
+  | "timer"
+  | "stats"
+  | "limitMonth"
+  | "limitYear"
+  | "payday"
+  | "insights"
+  | "calendar"
+  | "shifts";
+export type WidgetSize = "small" | "medium" | "large";
+export type DashboardLayout = "work" | "stats" | "compact";
+
+export interface DashboardConfig {
+  layout: DashboardLayout;
+  order: WidgetId[];
+  hidden: WidgetId[];
+  pinned: WidgetId[];
+  sizes: Partial<Record<WidgetId, WidgetSize>>;
+}
+
 export interface NotificationSettings {
   enabled: boolean;
   startReminder: boolean;
@@ -185,6 +206,7 @@ export interface Settings {
   language: Lang;
   onboarded: boolean;
   notifications: NotificationSettings;
+  dashboard: DashboardConfig;
 }
 
 export interface RunningTimer {
@@ -224,6 +246,13 @@ export const DEFAULT_SETTINGS: Settings = {
   language: "de",
   onboarded: false,
   notifications: DEFAULT_NOTIFICATIONS,
+  dashboard: {
+    layout: "work",
+    order: ["timer", "stats", "limitMonth", "limitYear", "payday", "insights", "calendar", "shifts"],
+    hidden: [],
+    pinned: [],
+    sizes: {},
+  },
 };
 
 export const COUNTRIES: { code: string; name: string }[] = [

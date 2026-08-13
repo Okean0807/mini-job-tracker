@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import { LANGUAGES, detectLanguage } from "@/lib/i18n/core";
 
+import { normalizeDashboard } from "./dashboard";
 import { applyAppearance } from "./theme";
 import {
   DEFAULT_NOTIFICATIONS,
@@ -74,6 +75,7 @@ export function normalize(input: Partial<AppData>): AppData {
       ...DEFAULT_NOTIFICATIONS,
       ...((raw.settings as Partial<Settings> | undefined)?.notifications ?? {}),
     },
+    dashboard: normalizeDashboard((raw.settings as Partial<Settings> | undefined)?.dashboard),
   };
   if (!raw.settings?.["themeMode"] && (legacyTheme === "dark" || legacyTheme === "light")) {
     settings.themeMode = legacyTheme;
@@ -242,6 +244,10 @@ export function updateSettings(patch: Partial<Settings>) {
 
 export function updateSupplements(patch: Partial<Settings["supplements"]>) {
   updateSettings({ supplements: { ...state.settings.supplements, ...patch } });
+}
+
+export function updateDashboard(patch: Partial<Settings["dashboard"]>) {
+  updateSettings({ dashboard: { ...state.settings.dashboard, ...patch } });
 }
 
 /* ---------- Timer ---------- */
