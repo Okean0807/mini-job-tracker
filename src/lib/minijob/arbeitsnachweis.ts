@@ -42,19 +42,6 @@ function num(value: number, digits = 2): string {
   return value.toFixed(digits).replace(".", ",");
 }
 
-function slug(text: string): string {
-  return (
-    text
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/ä/gi, "ae")
-      .replace(/ö/gi, "oe")
-      .replace(/ü/gi, "ue")
-      .replace(/ß/g, "ss")
-      .replace(/[^A-Za-z0-9]+/g, "_")
-      .replace(/^_+|_+$/g, "") || "Mitarbeiter"
-  );
-}
 
 /** Kompakte Adresszeile: „Musterstraße 15, 3. OG, links“. */
 export function addressLine(shift: Shift, jobs: Job[] = []): string {
