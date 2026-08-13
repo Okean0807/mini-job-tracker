@@ -86,6 +86,13 @@ function SettingsPage() {
               onCommit={(v) => updateSettings({ monthlyLimit: v })}
             />
             <NumberField
+              id="stunden-grenze"
+              label={t("set.defaults.hoursLimit")}
+              value={settings.hoursLimitMonthly}
+              step="1"
+              onCommit={(v) => updateSettings({ hoursLimitMonthly: v })}
+            />
+            <NumberField
               id="jahr-grenze"
               label={t("set.defaults.yearlyLimit")}
               value={settings.yearlyLimit}

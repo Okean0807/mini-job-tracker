@@ -1,6 +1,8 @@
 import { t } from "@/lib/i18n";
 
-import { formatDate, isoDate, shiftsInMonth, shiftsInYear, sumEarnings, timeFromDate } from "./calc";
+import { formatDate, formatEuro, isoDate, shiftsInYear, sumEarnings, timeFromDate } from "./calc";
+import { monthUsage } from "./limits";
+import { payPeriods } from "./payday";
 import { makeResolver } from "./resolve";
 import { getData } from "./store";
 
@@ -95,12 +97,35 @@ export function runNotificationChecks() {
     }
   }
 
+  if (n.payday !== false) checkPayday(today);
+
   if (n.backupReminder) {
     const last = readFlags()["lastBackup"];
     const stale = !last || Date.now() - new Date(last).getTime() > 7 * 86_400_000;
     if (stale) {
       notifyOnce("backup", today.slice(0, 7), t("notify.backup.title"), t("notify.backup.body"));
     }
+  }
+}
+
+/** Erinnerung am erwarteten Zahltag je Job. */
+function checkPayday(today: string) {
+  const { shifts, jobs, payments, settings } = getData();
+  const resolve = makeResolver(jobs, settings);
+  const now = new Date();
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const periods = [
+    ...payPeriods(jobs, shifts, payments, resolve, prev.getFullYear(), prev.getMonth()),
+    ...payPeriods(jobs, shifts, payments, resolve, now.getFullYear(), now.getMonth()),
+  ];
+  for (const p of periods) {
+    if (p.dueDate !== today || p.payment) continue;
+    notifyOnce(
+      `payday-${p.job.id}`,
+      today,
+      t("notify.payday.title"),
+      t("notify.payday.body", { job: p.job.name, amount: formatEuro(p.expected) }),
+    );
   }
 }
 
@@ -112,6 +137,7 @@ function addMinutes(time: string, minutes: number): string {
 
 export interface LimitStatus {
   monthShare: number;
+  monthHoursShare: number;
   yearShare: number;
 }
 
@@ -119,18 +145,27 @@ export function limitStatus(): LimitStatus {
   const { shifts, jobs, settings } = getData();
   const resolve = makeResolver(jobs, settings);
   const now = new Date();
-  const monthEarnings = sumEarnings(shiftsInMonth(shifts, now.getFullYear(), now.getMonth()), resolve);
+  const month = monthUsage(shifts, resolve, settings, now.getFullYear(), now.getMonth());
   const yearEarnings = sumEarnings(shiftsInYear(shifts, now.getFullYear()), resolve);
   return {
-    monthShare: settings.monthlyLimit > 0 ? (monthEarnings / settings.monthlyLimit) * 100 : 0,
+    monthShare: month.earningsShare,
+    monthHoursShare: month.hoursShare,
     yearShare: settings.yearlyLimit > 0 ? (yearEarnings / settings.yearlyLimit) * 100 : 0,
   };
 }
 
 /** Minijob-Schwellen 75 / 90 / 100 Prozent – einmal pro Monat je Stufe. */
 export function checkLimits() {
-  const { monthShare } = limitStatus();
+  const { monthShare, monthHoursShare } = limitStatus();
   const stamp = new Date().toISOString().slice(0, 7);
+  if (monthHoursShare >= 90) {
+    notifyOnce(
+      "limit-hours",
+      stamp,
+      t("notify.limitHours.title"),
+      t("notify.limitHours.body", { percent: Math.round(monthHoursShare) }),
+    );
+  }
   if (monthShare >= 100) {
     notifyOnce("limit-100", stamp, t("notify.limit100.title"), t("notify.limit100.body"));
   } else if (monthShare >= 90) {
