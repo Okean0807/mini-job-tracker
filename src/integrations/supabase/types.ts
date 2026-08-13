@@ -32,6 +32,45 @@ export type Database = {
         }
         Relationships: []
       }
+      documents: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          job_id: string | null
+          mime_type: string | null
+          name: string
+          note: string | null
+          path: string
+          size: number
+          user_id: string
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          mime_type?: string | null
+          name: string
+          note?: string | null
+          path: string
+          size?: number
+          user_id: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          mime_type?: string | null
+          name?: string
+          note?: string | null
+          path?: string
+          size?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

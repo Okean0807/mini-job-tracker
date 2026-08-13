@@ -7,7 +7,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { BarChart3, Bot, Briefcase, CalendarDays, Settings } from "lucide-react";
+import { BarChart3, Bot, Briefcase, CalendarDays, FileText, Settings } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { Toaster } from "@/components/ui/sonner";
@@ -132,6 +132,7 @@ const NAV: {
   { to: "/", labelKey: "nav.overview", icon: CalendarDays },
   { to: "/statistik", labelKey: "nav.stats", icon: BarChart3, feature: "nav.stats" },
   { to: "/jobs", labelKey: "nav.jobs", icon: Briefcase, feature: "nav.jobs" },
+  { to: "/dokumente", labelKey: "nav.docs", icon: FileText, feature: "nav.docs" },
   { to: "/assistent", labelKey: "nav.ai", icon: Bot, feature: "nav.ai" },
   { to: "/einstellungen", labelKey: "nav.settings", icon: Settings },
 ];
