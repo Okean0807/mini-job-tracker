@@ -76,6 +76,9 @@ export function normalize(input: Partial<AppData>): AppData {
   if (!raw.settings?.["themeMode"] && (legacyTheme === "dark" || legacyTheme === "light")) {
     settings.themeMode = legacyTheme;
   }
+  if (!LANGUAGES.some((l) => l.code === settings.language)) {
+    settings.language = detectLanguage();
+  }
   return {
     shifts: (Array.isArray(raw.shifts) ? raw.shifts : []).map((s) => ({
       ...s,
