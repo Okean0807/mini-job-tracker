@@ -1,15 +1,42 @@
 import { useSyncExternalStore } from "react";
 
-import { DEFAULT_SETTINGS, type AppData, type Settings, type Shift } from "./types";
+import { applyAppearance } from "./theme";
+import {
+  DEFAULT_SETTINGS,
+  DEFAULT_SUPPLEMENTS,
+  JOB_COLORS,
+  type AppData,
+  type Customer,
+  type Job,
+  type Project,
+  type RunningTimer,
+  type Settings,
+  type Shift,
+} from "./types";
 
 const STORAGE_KEY = "minijob-tracker-v1";
 
-let state: AppData = { shifts: [], settings: DEFAULT_SETTINGS };
+export const EMPTY_DATA: AppData = {
+  shifts: [],
+  jobs: [],
+  customers: [],
+  projects: [],
+  settings: DEFAULT_SETTINGS,
+  timer: null,
+};
+
+let state: AppData = EMPTY_DATA;
 let loaded = false;
 const listeners = new Set<() => void>();
+let changeHook: ((data: AppData) => void) | null = null;
 
-function emit() {
+export function onDataChange(hook: ((data: AppData) => void) | null) {
+  changeHook = hook;
+}
+
+function emit(sync = true) {
   listeners.forEach((l) => l());
+  if (sync && changeHook) changeHook(state);
 }
 
 function persist() {
@@ -21,18 +48,48 @@ function persist() {
   }
 }
 
+function commit(next: AppData, sync = true) {
+  state = next;
+  persist();
+  emit(sync);
+}
+
+/** Alte Datenstände (v1) auf das neue Modell heben. */
+export function normalize(raw: Partial<AppData> & { settings?: Record<string, unknown> }): AppData {
+  const legacyTheme = raw.settings?.["theme"];
+  const settings: Settings = {
+    ...DEFAULT_SETTINGS,
+    ...(raw.settings as Partial<Settings> | undefined),
+    supplements: {
+      ...DEFAULT_SUPPLEMENTS,
+      ...((raw.settings as Partial<Settings> | undefined)?.supplements ?? {}),
+    },
+  };
+  if (!raw.settings?.["themeMode"] && (legacyTheme === "dark" || legacyTheme === "light")) {
+    settings.themeMode = legacyTheme;
+  }
+  return {
+    shifts: (Array.isArray(raw.shifts) ? raw.shifts : []).map((s) => ({
+      ...s,
+      kind: s.kind ?? "arbeit",
+      breakMinutes: s.breakMinutes ?? 0,
+    })),
+    jobs: Array.isArray(raw.jobs) ? raw.jobs : [],
+    customers: Array.isArray(raw.customers) ? raw.customers : [],
+    projects: Array.isArray(raw.projects) ? raw.projects : [],
+    settings,
+    timer: raw.timer ?? null,
+  };
+}
+
 export function loadFromStorage() {
   if (loaded || typeof window === "undefined") return;
   loaded = true;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw) as Partial<AppData>;
-      state = {
-        shifts: Array.isArray(parsed.shifts) ? parsed.shifts : [],
-        settings: { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) },
-      };
-      emit();
+      state = normalize(JSON.parse(raw) as Partial<AppData>);
+      emit(false);
     }
   } catch {
     /* ungültige Daten ignorieren */
@@ -44,13 +101,11 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
-const serverSnapshot: AppData = { shifts: [], settings: DEFAULT_SETTINGS };
-
 export function useAppData(): AppData {
   return useSyncExternalStore(
     subscribe,
     () => state,
-    () => serverSnapshot,
+    () => EMPTY_DATA,
   );
 }
 
@@ -58,43 +113,123 @@ export function getData(): AppData {
   return state;
 }
 
+/* ---------- Schichten ---------- */
+
 export function saveShift(shift: Shift) {
   const exists = state.shifts.some((s) => s.id === shift.id);
   const shifts = exists
     ? state.shifts.map((s) => (s.id === shift.id ? shift : s))
     : [...state.shifts, shift];
   shifts.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-  state = { ...state, shifts };
-  persist();
-  emit();
+  commit({ ...state, shifts });
+}
+
+export function saveShifts(list: Shift[]) {
+  const map = new Map(state.shifts.map((s) => [s.id, s]));
+  for (const s of list) map.set(s.id, s);
+  const shifts = [...map.values()].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  commit({ ...state, shifts });
 }
 
 export function deleteShift(id: string) {
-  state = { ...state, shifts: state.shifts.filter((s) => s.id !== id) };
-  persist();
-  emit();
+  commit({ ...state, shifts: state.shifts.filter((s) => s.id !== id) });
 }
+
+/* ---------- Jobs ---------- */
+
+export function saveJob(job: Job) {
+  const exists = state.jobs.some((j) => j.id === job.id);
+  const jobs = exists ? state.jobs.map((j) => (j.id === job.id ? job : j)) : [...state.jobs, job];
+  const settings = state.settings.activeJobId
+    ? state.settings
+    : { ...state.settings, activeJobId: job.id };
+  commit({ ...state, jobs, settings });
+}
+
+export function deleteJob(id: string) {
+  commit({
+    ...state,
+    jobs: state.jobs.filter((j) => j.id !== id),
+    shifts: state.shifts.filter((s) => s.jobId !== id),
+    settings:
+      state.settings.activeJobId === id
+        ? { ...state.settings, activeJobId: state.jobs.find((j) => j.id !== id)?.id }
+        : state.settings,
+  });
+}
+
+export function nextJobColor(): string {
+  const used = new Set(state.jobs.map((j) => j.color));
+  return JOB_COLORS.find((c) => !used.has(c)) ?? JOB_COLORS[0]!;
+}
+
+/* ---------- Kunden & Projekte ---------- */
+
+export function saveCustomer(customer: Customer) {
+  const exists = state.customers.some((c) => c.id === customer.id);
+  const customers = exists
+    ? state.customers.map((c) => (c.id === customer.id ? customer : c))
+    : [...state.customers, customer];
+  commit({ ...state, customers });
+}
+
+export function deleteCustomer(id: string) {
+  commit({
+    ...state,
+    customers: state.customers.filter((c) => c.id !== id),
+    projects: state.projects.filter((p) => p.customerId !== id),
+  });
+}
+
+export function saveProject(project: Project) {
+  const exists = state.projects.some((p) => p.id === project.id);
+  const projects = exists
+    ? state.projects.map((p) => (p.id === project.id ? project : p))
+    : [...state.projects, project];
+  commit({ ...state, projects });
+}
+
+export function deleteProject(id: string) {
+  commit({ ...state, projects: state.projects.filter((p) => p.id !== id) });
+}
+
+/* ---------- Einstellungen ---------- */
 
 export function updateSettings(patch: Partial<Settings>) {
-  state = { ...state, settings: { ...state.settings, ...patch } };
-  persist();
-  emit();
-  if (patch.theme) applyTheme(patch.theme);
+  const settings = { ...state.settings, ...patch };
+  commit({ ...state, settings });
+  if (patch.themeMode || patch.accent) applyAppearance(settings.themeMode, settings.accent);
 }
 
-export function replaceAll(data: AppData) {
-  state = {
-    shifts: Array.isArray(data.shifts) ? data.shifts : [],
-    settings: { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) },
-  };
-  persist();
-  emit();
-  applyTheme(state.settings.theme);
+export function updateSupplements(patch: Partial<Settings["supplements"]>) {
+  updateSettings({ supplements: { ...state.settings.supplements, ...patch } });
 }
 
-export function applyTheme(theme: "light" | "dark") {
-  if (typeof document === "undefined") return;
-  document.documentElement.classList.toggle("dark", theme === "dark");
+/* ---------- Timer ---------- */
+
+export function startTimer(jobId?: string) {
+  commit({ ...state, timer: { jobId, startedAt: Date.now(), breakMinutes: 0 } }, false);
+}
+
+export function updateTimerBreak(minutes: number) {
+  if (!state.timer) return;
+  commit({ ...state, timer: { ...state.timer, breakMinutes: minutes } }, false);
+}
+
+export function clearTimer() {
+  commit({ ...state, timer: null }, false);
+}
+
+export function getTimer(): RunningTimer | null {
+  return state.timer ?? null;
+}
+
+/* ---------- Import / Export ---------- */
+
+export function replaceAll(data: Partial<AppData>) {
+  const next = normalize(data);
+  commit(next, false);
+  applyAppearance(next.settings.themeMode, next.settings.accent);
 }
 
 export function newId(): string {
