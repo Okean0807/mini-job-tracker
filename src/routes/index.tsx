@@ -27,7 +27,7 @@ import {
 import { activeWidgets, spanClass, widgetSize } from "@/lib/minijob/dashboard";
 import { goalsProgress } from "@/lib/minijob/goals";
 import { buildInsights } from "@/lib/minijob/insights";
-import { monthUsage, yearUsage } from "@/lib/minijob/limits";
+import { monthUsage, yearlyLimitOf, yearUsage } from "@/lib/minijob/limits";
 import { payPeriods } from "@/lib/minijob/payday";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { useAppData } from "@/lib/minijob/store";
@@ -151,7 +151,7 @@ function DashboardPage() {
         usage={monthLimit}
         scopeLabel={`${t("limit.month")} · ${monthLabel}`}
         rate={settings.defaultRate}
-        auto={!settings.hoursLimitMonthly}
+        auto={!(settings.limitsManual && settings.hoursLimitMonthly > 0)}
       />
     ),
     limitYear: (
@@ -159,7 +159,7 @@ function DashboardPage() {
         usage={yearLimit}
         scopeLabel={`${t("limit.year")} · ${year}`}
         rate={settings.defaultRate}
-        auto={!settings.hoursLimitMonthly}
+        auto={!(settings.limitsManual && settings.hoursLimitMonthly > 0)}
       />
     ),
     payday: <PaydayCard periods={periods} />,
@@ -216,7 +216,7 @@ function DashboardPage() {
           text={
             limitShare >= 100
               ? t("dash.limitMonthOver", { amount: formatEuro(settings.monthlyLimit) })
-              : t("dash.limitYearOver", { amount: formatEuro(settings.yearlyLimit) })
+              : t("dash.limitYearOver", { amount: formatEuro(yearlyLimitOf(settings)) })
           }
         />
       ) : limitShare >= 85 || yearShare >= 85 ? (

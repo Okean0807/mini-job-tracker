@@ -35,6 +35,7 @@ import {
 import { buildAnnualReport } from "@/lib/minijob/annual";
 import { exportPdf, exportXlsx } from "@/lib/minijob/export";
 import { makeResolver } from "@/lib/minijob/resolve";
+import { yearlyLimitOf } from "@/lib/minijob/limits";
 import { useAppData } from "@/lib/minijob/store";
 import type { Shift } from "@/lib/minijob/types";
 
@@ -305,9 +306,9 @@ function StatsPage() {
             <StatCard
               label={t("stats.card.yearLimit")}
               value={`${Math.round(
-                settings.yearlyLimit > 0 ? (yearEarnings / settings.yearlyLimit) * 100 : 0,
+                yearlyLimitOf(settings) > 0 ? (yearEarnings / yearlyLimitOf(settings)) * 100 : 0,
               )} %`}
-              hint={t("stats.card.yearLimitHint", { amount: formatEuro(settings.yearlyLimit) })}
+              hint={t("stats.card.yearLimitHint", { amount: formatEuro(yearlyLimitOf(settings)) })}
               icon={Euro}
             />
           </div>

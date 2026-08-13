@@ -17,6 +17,7 @@ import {
   sumHours,
 } from "@/lib/minijob/calc";
 import { makeResolver } from "@/lib/minijob/resolve";
+import { yearlyLimitOf } from "@/lib/minijob/limits";
 import { useAppData } from "@/lib/minijob/store";
 import { listenOnce, voiceSupported } from "@/lib/minijob/voice";
 
@@ -82,7 +83,7 @@ function AssistantPage() {
       jahr: year,
       heute: new Date().toISOString().slice(0, 10),
       monatsgrenze: data.settings.monthlyLimit,
-      jahresgrenze: data.settings.yearlyLimit,
+      jahresgrenze: yearlyLimitOf(data.settings),
       jahresstunden: Number(sumHours(yearList).toFixed(2)),
       jahresverdienst: Number(sumEarnings(yearList, resolve).toFixed(2)),
       monate: months,

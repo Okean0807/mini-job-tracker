@@ -33,6 +33,10 @@ export const v2: Bundle = {
     "job.tabPay": "Lohn",
 
     "set.defaults.hoursLimit": "Stundengrenze pro Monat (0 = automatisch)",
+    "set.limits.auto": "Automatisch berechnet",
+    "set.limits.formula": "Jahresgrenze = Monatsgrenze × 12 · Stundengrenze = Monatsgrenze ÷ Stundenlohn",
+    "set.limits.advanced": "Erweiterter Modus",
+    "set.limits.advancedHint": "Jahres- und Stundengrenze manuell festlegen",
 
     "notify.payday.title": "Zahltag",
     "notify.payday.body": "Für {job} werden heute etwa {amount} erwartet.",
@@ -70,6 +74,10 @@ export const v2: Bundle = {
     "job.tabPay": "Pay",
 
     "set.defaults.hoursLimit": "Monthly hours limit (0 = automatic)",
+    "set.limits.auto": "Automatically calculated",
+    "set.limits.formula": "Yearly limit = monthly limit × 12 · Hours limit = monthly limit ÷ hourly rate",
+    "set.limits.advanced": "Advanced mode",
+    "set.limits.advancedHint": "Set yearly and hours limit manually",
 
     "notify.payday.title": "Payday",
     "notify.payday.body": "About {amount} is expected today for {job}.",
@@ -107,6 +115,10 @@ export const v2: Bundle = {
     "job.tabPay": "Оплата",
 
     "set.defaults.hoursLimit": "Лимит часов в месяц (0 = автоматически)",
+    "set.limits.auto": "Рассчитано автоматически",
+    "set.limits.formula": "Годовой лимит = месячный × 12 · Лимит часов = месячный лимит ÷ ставка",
+    "set.limits.advanced": "Расширенный режим",
+    "set.limits.advancedHint": "Задать годовой лимит и лимит часов вручную",
 
     "notify.payday.title": "День выплаты",
     "notify.payday.body": "Сегодня по «{job}» ожидается около {amount}.",
@@ -144,6 +156,10 @@ export const v2: Bundle = {
     "job.tabPay": "Ücret",
 
     "set.defaults.hoursLimit": "Aylık saat sınırı (0 = otomatik)",
+    "set.limits.auto": "Otomatik hesaplandı",
+    "set.limits.formula": "Yıllık sınır = aylık sınır × 12 · Saat sınırı = aylık sınır ÷ saat ücreti",
+    "set.limits.advanced": "Gelişmiş mod",
+    "set.limits.advancedHint": "Yıllık ve saat sınırını elle belirle",
 
     "notify.payday.title": "Ödeme günü",
     "notify.payday.body": "{job} için bugün yaklaşık {amount} bekleniyor.",
@@ -181,6 +197,10 @@ export const v2: Bundle = {
     "job.tabPay": "Wypłata",
 
     "set.defaults.hoursLimit": "Limit godzin miesięcznie (0 = automatycznie)",
+    "set.limits.auto": "Obliczone automatycznie",
+    "set.limits.formula": "Limit roczny = miesięczny × 12 · Limit godzin = limit miesięczny ÷ stawka",
+    "set.limits.advanced": "Tryb zaawansowany",
+    "set.limits.advancedHint": "Ręczne ustawienie limitu rocznego i godzin",
 
     "notify.payday.title": "Dzień wypłaty",
     "notify.payday.body": "Dziś dla {job} oczekiwane jest ok. {amount}.",

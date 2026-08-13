@@ -1,7 +1,7 @@
 import { t } from "@/lib/i18n";
 
 import { formatDate, formatEuro, isoDate, shiftsInYear, sumEarnings, timeFromDate } from "./calc";
-import { monthUsage } from "./limits";
+import { monthUsage, yearlyLimitOf } from "./limits";
 import { payPeriods } from "./payday";
 import { makeResolver } from "./resolve";
 import { getData } from "./store";
@@ -150,7 +150,7 @@ export function limitStatus(): LimitStatus {
   return {
     monthShare: month.earningsShare,
     monthHoursShare: month.hoursShare,
-    yearShare: settings.yearlyLimit > 0 ? (yearEarnings / settings.yearlyLimit) * 100 : 0,
+    yearShare: yearlyLimitOf(settings) > 0 ? (yearEarnings / yearlyLimitOf(settings)) * 100 : 0,
   };
 }
 

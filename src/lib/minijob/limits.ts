@@ -20,12 +20,18 @@ export interface LimitUsage {
  * ergibt sie sich aus Einkommensgrenze / Stundenlohn (z. B. 556 € / 15,50 € = 35,87 h).
  */
 export function monthlyHoursLimit(settings: Settings): number {
-  if (settings.hoursLimitMonthly && settings.hoursLimitMonthly > 0) {
+  if (settings.limitsManual && settings.hoursLimitMonthly && settings.hoursLimitMonthly > 0) {
     return settings.hoursLimitMonthly;
   }
   const rate = settings.defaultRate;
   if (!rate || rate <= 0 || !settings.monthlyLimit) return 0;
   return settings.monthlyLimit / rate;
+}
+
+/** Jahresgrenze: automatisch Monatsgrenze × 12, im erweiterten Modus manuell. */
+export function yearlyLimitOf(settings: Settings): number {
+  if (settings.limitsManual && settings.yearlyLimit > 0) return settings.yearlyLimit;
+  return settings.monthlyLimit * 12;
 }
 
 function usage(
@@ -74,7 +80,7 @@ export function yearUsage(
   const list = shiftsInYear(shifts, year);
   return usage(
     sumEarnings(list, resolve),
-    settings.yearlyLimit,
+    yearlyLimitOf(settings),
     sumHours(list),
     monthlyHoursLimit(settings) * 12,
   );
