@@ -33,6 +33,7 @@ const BUNDLE: Bundle = mergeBundles([
   annual,
   goalsDict,
   docsDict,
+  worklog,
 ]);
 
 export type Vars = Record<string, string | number>;
