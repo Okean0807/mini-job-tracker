@@ -217,61 +217,6 @@ function DashboardPage() {
         />
       ) : null}
 
-      <section className="mt-4 grid grid-cols-2 gap-3" aria-label={t("dash.monthOverview")}>
-        <StatCard
-          label={t("dash.earnings")}
-          value={formatEuro(earnings)}
-          hint={`${monthLabel} ${year}`}
-          icon={Euro}
-          highlight
-        />
-        <StatCard
-          label={t("dash.hours")}
-          value={formatHours(hours)}
-          hint={t("dash.inMonth")}
-          icon={Clock}
-        />
-        {ui === "simple" ? null : (
-        <StatCard
-          label={t("dash.avgRate")}
-          value={formatEuro(avg)}
-          hint={t("label.entries", { count: monthShifts.length })}
-          icon={TrendingUp}
-        />
-        )}
-        {ui === "simple" ? null : (
-        <StatCard
-          label={t("dash.limit")}
-          value={`${Math.round(limitShare)} %`}
-          hint={t("dash.ofAmount", { amount: formatEuro(settings.monthlyLimit) })}
-          icon={Euro}
-        />
-        )}
-      </section>
-
-      <section className="mt-4 space-y-3" aria-label={t("limit.title")}>
-        <LimitCard
-          usage={monthLimit}
-          scopeLabel={`${t("limit.month")} · ${monthLabel}`}
-          rate={settings.defaultRate}
-          auto={!settings.hoursLimitMonthly}
-        />
-        {visible("dash.limitYear", ui) ? (
-          <LimitCard
-            usage={yearLimit}
-            scopeLabel={`${t("limit.year")} · ${year}`}
-            rate={settings.defaultRate}
-            auto={!settings.hoursLimitMonthly}
-          />
-        ) : null}
-      </section>
-
-      {visible("dash.payday", ui) ? (
-        <section className="mt-4">
-          <PaydayCard periods={periods} />
-        </section>
-      ) : null}
-
       {jobs.length === 0 ? (
         <div className="mt-4 rounded-2xl border border-dashed p-5 text-center">
           <p className="text-sm text-muted-foreground">{t("dash.noJobsHint")}</p>
@@ -281,37 +226,13 @@ function DashboardPage() {
         </div>
       ) : null}
 
-      {visible("dash.insights", ui) ? (
-        <section className="mt-4">
-          <InsightsCard insights={insights} month={month} year={year} />
-        </section>
-      ) : null}
-
-      <section className="mt-5">
-        <MonthCalendar
-          year={year}
-          month={month}
-          shifts={shifts}
-          jobs={jobs}
-          bundesland={settings.bundesland}
-          onChangeMonth={(y, m) => {
-            setYear(y);
-            setMonth(m);
-          }}
-          onSelectDay={(date) => {
-            const existing = shifts.find((s) => s.date === date);
-            if (existing) openEdit(existing);
-            else openNew(date);
-          }}
-        />
-      </section>
-
-      <section className="mt-5">
-        <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
-          {t("dash.entriesInMonth", { month: monthLabel })}
-        </h2>
-        <ShiftList shifts={monthShifts} jobs={jobs} resolve={resolve} onSelect={openEdit} />
-      </section>
+      <div className="mt-4 grid grid-cols-2 items-start gap-3">
+        {widgets.map((id) => (
+          <div key={id} className={spanClass(widgetSize(dash, id))}>
+            {widgetNodes[id]}
+          </div>
+        ))}
+      </div>
 
       <Button
         size="lg"
