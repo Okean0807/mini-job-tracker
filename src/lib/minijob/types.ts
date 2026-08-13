@@ -134,6 +134,16 @@ export interface Shift {
   photos?: string[];
   /** Leistungsnachweis: GPS-Standort */
   gps?: { lat: number; lng: number };
+  /** Arbeitsnachweis: Etage (z. B. "3. OG") */
+  floor?: string;
+  /** Arbeitsnachweis: Türseite / Eingang (z. B. "linke Tür") */
+  doorSide?: string;
+  /** Arbeitsnachweis: Leistungsart (UR, FR, ER, BR, SR) */
+  workCode?: string;
+  /** Arbeitsnachweis: Freitext bei SR */
+  workCodeNote?: string;
+  /** Erfasst am (ISO date yyyy-MM-dd) */
+  createdAt?: string;
 }
 
 /** Sparziel: automatisch aus Verdienst oder manuell gepflegt. */
@@ -237,6 +247,8 @@ export interface Settings {
   autoBackup: boolean;
   language: Lang;
   onboarded: boolean;
+  /** Name für Arbeitsnachweis / Berichte */
+  employeeName?: string;
   notifications: NotificationSettings;
   dashboard: DashboardConfig;
 }

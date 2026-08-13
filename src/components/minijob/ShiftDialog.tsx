@@ -27,6 +27,7 @@ import {
   type Shift,
   type ShiftKind,
 } from "@/lib/minijob/types";
+import { WORK_CODES, WORK_CODE_LABELS } from "@/lib/minijob/arbeitsnachweis";
 import { listenOnce, parseVoice, voiceSupported } from "@/lib/minijob/voice";
 import {
   CLEANING_TASKS,
@@ -76,6 +77,10 @@ export function ShiftDialog({
   const [photos, setPhotos] = useState<string[]>([]);
   const [gps, setGps] = useState<{ lat: number; lng: number } | undefined>(undefined);
   const [customTask, setCustomTask] = useState("");
+  const [floor, setFloor] = useState("");
+  const [doorSide, setDoorSide] = useState("");
+  const [workCode, setWorkCode] = useState("");
+  const [workCodeNote, setWorkCodeNote] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -95,6 +100,10 @@ export function ShiftDialog({
     setPhotos(shift?.photos ?? []);
     setGps(shift?.gps);
     setCustomTask("");
+    setFloor(shift?.floor ?? "");
+    setDoorSide(shift?.doorSide ?? "");
+    setWorkCode(shift?.workCode ?? "");
+    setWorkCodeNote(shift?.workCodeNote ?? "");
   }, [open, shift, jobs, settings.activeJobId, settings.defaultRate]);
 
   const job = jobs.find((j) => j.id === jobId);
@@ -153,6 +162,11 @@ export function ShiftDialog({
     if (tasks.length > 0) next.tasks = tasks;
     if (photos.length > 0) next.photos = photos;
     if (gps) next.gps = gps;
+    if (floor.trim()) next.floor = floor.trim();
+    if (doorSide.trim()) next.doorSide = doorSide.trim();
+    if (workCode) next.workCode = workCode;
+    if (workCode === "SR" && workCodeNote.trim()) next.workCodeNote = workCodeNote.trim();
+    next.createdAt = shift?.createdAt ?? new Date().toISOString().slice(0, 10);
     saveShift(next);
     toast.success(shift ? t("shift.updated") : t("shift.saved"));
     onOpenChange(false);
@@ -311,6 +325,57 @@ export function ShiftDialog({
                 placeholder={t("worklog.workplacePlaceholder")}
                 onChange={(e) => setWorkplace(e.target.value)}
               />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="etage" className="text-xs">
+                  {t("worklog.floor")}
+                </Label>
+                <Input
+                  id="etage"
+                  value={floor}
+                  placeholder={t("worklog.floorPlaceholder")}
+                  onChange={(e) => setFloor(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="tuerseite" className="text-xs">
+                  {t("worklog.doorSide")}
+                </Label>
+                <Input
+                  id="tuerseite"
+                  value={doorSide}
+                  placeholder={t("worklog.doorSidePlaceholder")}
+                  onChange={(e) => setDoorSide(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-xs">{t("worklog.workCode")}</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {WORK_CODES.map((code) => (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => setWorkCode(workCode === code ? "" : code)}
+                    className={cn(
+                      "rounded-full border px-3 py-1.5 text-xs font-medium",
+                      workCode === code ? "border-primary bg-primary/10" : "bg-card",
+                    )}
+                  >
+                    {code} · {WORK_CODE_LABELS[code]}
+                  </button>
+                ))}
+              </div>
+              {workCode === "SR" ? (
+                <Input
+                  value={workCodeNote}
+                  placeholder={t("worklog.workCodeNotePlaceholder")}
+                  onChange={(e) => setWorkCodeNote(e.target.value)}
+                />
+              ) : null}
             </div>
 
             <div className="grid gap-1.5">
