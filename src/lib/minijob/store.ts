@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 
+import { detectLanguage } from "@/lib/i18n/core";
+
 import { applyAppearance } from "./theme";
 import {
   DEFAULT_NOTIFICATIONS,
