@@ -300,7 +300,25 @@ export function ShiftDialog({
             </div>
           </div>
 
+          {!advanced ? (
+            <p className="text-xs text-muted-foreground">{t("entry.quickHint")}</p>
+          ) : null}
+
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full justify-between"
+            onClick={() => setAdvanced((v) => !v)}
+            aria-expanded={advanced}
+          >
+            {advanced ? t("entry.less") : t("entry.more")}
+            <ChevronDown className={cn("size-4 transition-transform", advanced && "rotate-180")} />
+          </Button>
+
+          {advanced ? (
+            <div className="space-y-4">
           {selfEmployed ? (
+
             <div className="grid gap-3 rounded-xl border p-3">
               <div className="grid gap-1.5">
                 <Label className="text-xs">{t("label.customer")}</Label>
