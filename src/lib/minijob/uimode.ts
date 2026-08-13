@@ -5,6 +5,7 @@ export type Feature =
   | "nav.jobs"
   | "nav.ai"
   | "nav.stats"
+  | "nav.docs"
   | "dash.statGrid"
   | "dash.limitMonth"
   | "dash.limitYear"
@@ -24,6 +25,7 @@ const STANDARD: Feature[] = [
   "dash.insights",
   "dash.payday",
   "dash.goals",
+  "nav.docs",
 ];
 
 const PRO: Feature[] = [...STANDARD, "settings.advanced"];
