@@ -34,6 +34,7 @@ import {
 } from "@/lib/minijob/calc";
 import { buildAnnualReport } from "@/lib/minijob/annual";
 import { exportPdf, exportXlsx } from "@/lib/minijob/export";
+import { exportArbeitsnachweisPdf } from "@/lib/minijob/arbeitsnachweis";
 import { exportWorkReportPdf } from "@/lib/minijob/worklog";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { yearlyLimitOf } from "@/lib/minijob/limits";
@@ -298,6 +299,29 @@ function StatsPage() {
             }}
           >
             <ClipboardList className="size-4" /> {t("worklog.export")}
+          </Button>
+
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => {
+              if (monthShifts.length === 0) {
+                toast.error(t("stats.toast.noData"));
+                return;
+              }
+              exportArbeitsnachweisPdf(monthShifts, {
+                jobs,
+                month,
+                year,
+                employeeName: settings.employeeName ?? "",
+                ...(jobs.length === 1 && jobs[0]
+                  ? { employer: jobs[0].employer ?? jobs[0].name }
+                  : {}),
+              });
+              toast.success(t("stats.toast.exportSuccess"));
+            }}
+          >
+            <FileDown className="size-4" /> {t("worklog.exportProof")}
           </Button>
         </TabsContent>
 
