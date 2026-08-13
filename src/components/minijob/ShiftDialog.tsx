@@ -620,6 +620,9 @@ export function ShiftDialog({
               placeholder={t("shift.notePlaceholder")}
             />
           </div>
+            </div>
+          ) : null}
+
 
           <div className="rounded-xl bg-muted p-3 text-sm">
             <div className="flex justify-between">
