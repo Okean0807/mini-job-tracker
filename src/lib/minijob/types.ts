@@ -226,6 +226,12 @@ export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
   payday: true,
 };
 
+/** Frei definierbare Leistungsart. */
+export interface WorkCodeDef {
+  code: string;
+  label: string;
+}
+
 export interface Settings {
   defaultRate: number;
   monthlyLimit: number;
