@@ -151,3 +151,40 @@
 @utility shadow-float {
   box-shadow: var(--shadow-float);
 }
+
+/* Akzentfarben */
+[data-accent="blue"] {
+  --primary: oklch(0.55 0.19 258);
+  --primary-glow: oklch(0.7 0.16 255);
+  --ring: oklch(0.55 0.19 258);
+  --chart-1: oklch(0.55 0.19 258);
+  --sidebar-primary: oklch(0.55 0.19 258);
+}
+[data-accent="green"] {
+  --primary: oklch(0.58 0.16 145);
+  --primary-glow: oklch(0.72 0.15 145);
+  --ring: oklch(0.58 0.16 145);
+  --chart-1: oklch(0.58 0.16 145);
+  --sidebar-primary: oklch(0.58 0.16 145);
+}
+[data-accent="orange"] {
+  --primary: oklch(0.66 0.17 55);
+  --primary-glow: oklch(0.78 0.15 60);
+  --ring: oklch(0.66 0.17 55);
+  --chart-1: oklch(0.66 0.17 55);
+  --sidebar-primary: oklch(0.66 0.17 55);
+}
+[data-accent="red"] {
+  --primary: oklch(0.58 0.21 25);
+  --primary-glow: oklch(0.7 0.18 25);
+  --ring: oklch(0.58 0.21 25);
+  --chart-1: oklch(0.58 0.21 25);
+  --sidebar-primary: oklch(0.58 0.21 25);
+}
+[data-accent="purple"] {
+  --primary: oklch(0.55 0.21 300);
+  --primary-glow: oklch(0.68 0.18 300);
+  --ring: oklch(0.55 0.21 300);
+  --chart-1: oklch(0.55 0.21 300);
+  --sidebar-primary: oklch(0.55 0.21 300);
+}
