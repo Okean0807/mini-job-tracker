@@ -83,6 +83,11 @@ export function ShiftDialog({
     setOvertime(shift?.overtime ?? false);
     setCustomerId(shift?.customerId);
     setProjectId(shift?.projectId);
+    setWorkplace(shift?.workplace ?? "");
+    setTasks(shift?.tasks ?? []);
+    setPhotos(shift?.photos ?? []);
+    setGps(shift?.gps);
+    setCustomTask("");
   }, [open, shift, jobs, settings.activeJobId, settings.defaultRate]);
 
   const job = jobs.find((j) => j.id === jobId);
