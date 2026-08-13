@@ -441,6 +441,14 @@ function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="konto" className="mt-4 space-y-4 pb-6">
+          <Section title={t("premium.settingsTitle")}>
+            <ToggleRow
+              title={settings.premium ? t("premium.active") : t("premium.unlock")}
+              description={t("premium.settingsDesc")}
+              checked={settings.premium === true}
+              onChange={(v) => updateSettings({ premium: v })}
+            />
+          </Section>
           <CloudSync autoBackup={settings.autoBackup} />
         </TabsContent>
       </Tabs>
