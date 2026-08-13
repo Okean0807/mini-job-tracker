@@ -3,6 +3,9 @@ import type { Bundle } from "../core";
 /** Texte der KI-Assistenten-Seite. */
 export const assistant: Bundle = {
   de: {
+    "voice.error.unsupported": "Spracherkennung wird von diesem Browser nicht unterstützt.",
+    "voice.error.recording": "Sprachaufnahme fehlgeschlagen.",
+    "voice.error.noSpeech": "Keine Sprache erkannt.",
     "ai.title": "KI-Assistent",
     "ai.intro": "Stelle Fragen zu deinen Arbeitszeiten, deinem Verdienst und deinen Prognosen.",
     "ai.suggestion.hours": "Wie viele Stunden habe ich diesen Monat gearbeitet?",
@@ -18,6 +21,9 @@ export const assistant: Bundle = {
     "ai.error.voice": "Spracheingabe nicht möglich.",
   },
   en: {
+    "voice.error.unsupported": "Speech recognition is not supported by this browser.",
+    "voice.error.recording": "Voice recording failed.",
+    "voice.error.noSpeech": "No speech detected.",
     "ai.title": "AI Assistant",
     "ai.intro": "Ask questions about your working hours, earnings and forecasts.",
     "ai.suggestion.hours": "How many hours have I worked this month?",
@@ -33,6 +39,9 @@ export const assistant: Bundle = {
     "ai.error.voice": "Voice input is not possible.",
   },
   ru: {
+    "voice.error.unsupported": "Распознавание речи не поддерживается этим браузером.",
+    "voice.error.recording": "Запись голоса не удалась.",
+    "voice.error.noSpeech": "Речь не распознана.",
     "ai.title": "ИИ-ассистент",
     "ai.intro": "Задавайте вопросы о рабочем времени, заработке и прогнозах.",
     "ai.suggestion.hours": "Сколько часов я отработал(а) в этом месяце?",
@@ -48,6 +57,9 @@ export const assistant: Bundle = {
     "ai.error.voice": "Голосовой ввод недоступен.",
   },
   tr: {
+    "voice.error.unsupported": "Bu tarayıcı ses tanımayı desteklemiyor.",
+    "voice.error.recording": "Ses kaydı başarısız oldu.",
+    "voice.error.noSpeech": "Konuşma algılanamadı.",
     "ai.title": "YZ Asistanı",
     "ai.intro": "Çalışma saatlerin, kazancın ve tahminlerinle ilgili sorular sor.",
     "ai.suggestion.hours": "Bu ay kaç saat çalıştım?",
@@ -63,6 +75,9 @@ export const assistant: Bundle = {
     "ai.error.voice": "Sesli giriş yapılamıyor.",
   },
   pl: {
+    "voice.error.unsupported": "Ta przeglądarka nie obsługuje rozpoznawania mowy.",
+    "voice.error.recording": "Nagrywanie głosu nie powiodło się.",
+    "voice.error.noSpeech": "Nie wykryto mowy.",
     "ai.title": "Asystent AI",
     "ai.intro": "Zadawaj pytania dotyczące czasu pracy, zarobków i prognoz.",
     "ai.suggestion.hours": "Ile godzin przepracowałem/am w tym miesiącu?",

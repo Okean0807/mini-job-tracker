@@ -25,6 +25,7 @@ import {
   getData,
 } from "@/lib/minijob/store";
 import type { AppData, Job, Settings } from "@/lib/minijob/types";
+import { useT } from "@/lib/i18n";
 
 interface Props {
   open: boolean;
@@ -34,6 +35,7 @@ interface Props {
 }
 
 export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
+  const { t } = useT();
   const fileRef = useRef<HTMLInputElement>(null);
   const [result, setResult] = useState<CsvParseResult | null>(null);
   const [fileName, setFileName] = useState("");
@@ -52,11 +54,11 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
       try {
         const data = JSON.parse(await file.text()) as Partial<AppData>;
         replaceAll(data);
-        toast.success("JSON-Daten importiert");
+        toast.success(t("imp.jsonSuccess"));
         onOpenChange(false);
         reset();
       } catch {
-        toast.error("JSON-Datei konnte nicht gelesen werden");
+        toast.error(t("imp.jsonError"));
       }
       return;
     }
@@ -67,7 +69,7 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
       const book = XLSX.read(await file.arrayBuffer(), { type: "array" });
       const sheetName = book.SheetNames[0];
       if (!sheetName) {
-        toast.error("Die Datei enthält keine Tabelle");
+        toast.error(t("imp.noSheet"));
         return;
       }
       text = XLSX.utils.sheet_to_csv(book.Sheets[sheetName]!, { FS: ";" });
@@ -77,7 +79,7 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
 
     const parsed = parseCsv(text, { jobs, defaultRate: settings.defaultRate });
     if (parsed.rows.length === 0) {
-      toast.error("Keine Datenzeilen gefunden");
+      toast.error(t("imp.noRows"));
       return;
     }
     setResult(parsed);
@@ -109,7 +111,7 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
       return shift;
     });
     saveShifts(shifts);
-    toast.success(`${shifts.length} Einträge importiert`);
+    toast.success(t("imp.imported", { count: shifts.length }));
     onOpenChange(false);
     reset();
   }
@@ -124,10 +126,8 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
     >
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Daten importieren</DialogTitle>
-          <DialogDescription>
-            CSV, Excel (XLSX) oder JSON-Sicherung einlesen. Daten werden vor dem Import geprüft.
-          </DialogDescription>
+          <DialogTitle>{t("imp.title")}</DialogTitle>
+          <DialogDescription>{t("imp.desc")}</DialogDescription>
         </DialogHeader>
 
         {!result ? (
@@ -143,29 +143,27 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
               }}
             />
             <Button className="w-full" onClick={() => fileRef.current?.click()}>
-              <FileUp className="size-4" /> Datei auswählen
+              <FileUp className="size-4" /> {t("imp.selectFile")}
             </Button>
             <Button
               variant="outline"
               className="w-full"
               onClick={() => downloadText("minijob-vorlage.csv", csvTemplate())}
             >
-              <Download className="size-4" /> CSV-Vorlage herunterladen
+              <Download className="size-4" /> {t("imp.downloadTemplate")}
             </Button>
-            <p className="text-xs text-muted-foreground">
-              Spalten: Datum, Beginn, Ende, Pause (Min.), Stundenlohn, Job, Notiz.
-            </p>
+            <p className="text-xs text-muted-foreground">{t("imp.columnsHint")}</p>
           </div>
         ) : (
           <div className="space-y-3">
             <p className="text-sm">
-              <span className="font-medium">{fileName}</span> · {result.valid.length} gültig,{" "}
-              {result.invalid.length} fehlerhaft
+              <span className="font-medium">{fileName}</span> ·{" "}
+              {t("imp.summary", { valid: result.valid.length, invalid: result.invalid.length })}
             </p>
 
             {result.newJobs.length > 0 ? (
               <p className="rounded-xl bg-muted p-3 text-xs">
-                Neue Jobs werden angelegt: {result.newJobs.join(", ")}
+                {t("imp.newJobs", { jobs: result.newJobs.join(", ") })}
               </p>
             ) : null}
 
@@ -174,9 +172,7 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
                 {result.invalid.slice(0, 20).map((row) => (
                   <li key={row.line} className="flex gap-2">
                     <AlertTriangle className="mt-0.5 size-3 shrink-0" />
-                    <span>
-                      Zeile {row.line}: {row.errors.join(", ")}
-                    </span>
+                    <span>{t("imp.lineError", { line: row.line, errors: row.errors.join(", ") })}</span>
                   </li>
                 ))}
               </ul>
@@ -195,10 +191,10 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
 
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1" onClick={reset}>
-                Andere Datei
+                {t("imp.otherFile")}
               </Button>
               <Button className="flex-1" disabled={result.valid.length === 0} onClick={confirmImport}>
-                <Check className="size-4" /> {result.valid.length} importieren
+                <Check className="size-4" /> {t("imp.confirm", { count: result.valid.length })}
               </Button>
             </div>
           </div>

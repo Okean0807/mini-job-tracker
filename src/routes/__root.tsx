@@ -18,24 +18,24 @@ import { OnboardingWizard } from "@/components/minijob/OnboardingWizard";
 import { initCloudSync } from "../lib/minijob/cloud";
 import { initNotifications } from "../lib/minijob/notify";
 import { getData, loadFromStorage, useAppData } from "../lib/minijob/store";
+import { useT } from "@/lib/i18n";
 import { applyAppearance } from "../lib/minijob/theme";
 import { registerServiceWorker } from "../lib/pwa";
 
 function NotFoundComponent() {
+  const { t } = useT();
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
         <h1 className="text-7xl font-bold text-foreground">404</h1>
-        <h2 className="mt-4 text-xl font-semibold text-foreground">Seite nicht gefunden</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Diese Seite existiert nicht oder wurde verschoben.
-        </p>
+        <h2 className="mt-4 text-xl font-semibold text-foreground">{t("error.notFoundTitle")}</h2>
+        <p className="mt-2 text-sm text-muted-foreground">{t("error.notFoundHint")}</p>
         <div className="mt-6">
           <Link
             to="/"
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
-            Zur Startseite
+            {t("error.toHome")}
           </Link>
         </div>
       </div>
@@ -46,6 +46,7 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
+  const { t } = useT();
   useEffect(() => {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
@@ -53,12 +54,8 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">
-          Diese Seite konnte nicht geladen werden
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Bitte lade die Seite neu oder kehre zur Startseite zurück.
-        </p>
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">{t("error.pageLoad")}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{t("error.pageLoadHint")}</p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
@@ -67,13 +64,13 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
             }}
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
-            Erneut versuchen
+            {t("action.retry")}
           </button>
           <a
             href="/"
             className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
-            Zur Startseite
+            {t("error.toHome")}
           </a>
         </div>
       </div>
@@ -125,18 +122,19 @@ function RootShell({ children }: { children: ReactNode }) {
 }
 
 const NAV = [
-  { to: "/", label: "Übersicht", icon: CalendarDays },
-  { to: "/statistik", label: "Statistik", icon: BarChart3 },
-  { to: "/jobs", label: "Jobs", icon: Briefcase },
-  { to: "/assistent", label: "KI", icon: Bot },
-  { to: "/einstellungen", label: "Einstellungen", icon: Settings },
+  { to: "/", labelKey: "nav.overview", icon: CalendarDays },
+  { to: "/statistik", labelKey: "nav.stats", icon: BarChart3 },
+  { to: "/jobs", labelKey: "nav.jobs", icon: Briefcase },
+  { to: "/assistent", labelKey: "nav.ai", icon: Bot },
+  { to: "/einstellungen", labelKey: "nav.settings", icon: Settings },
 ] as const;
 
 function BottomNav() {
+  const { t } = useT();
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 backdrop-blur">
       <ul className="mx-auto flex max-w-lg">
-        {NAV.map(({ to, label, icon: Icon }) => (
+        {NAV.map(({ to, labelKey, icon: Icon }) => (
           <li key={to} className="flex-1">
             <Link
               to={to}
@@ -146,7 +144,7 @@ function BottomNav() {
               className="flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium"
             >
               <Icon className="size-5" />
-              {label}
+              {t(labelKey)}
             </Link>
           </li>
         ))}
