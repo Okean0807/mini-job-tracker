@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 
+import { AnnualReportCard } from "@/components/minijob/AnnualReportCard";
 import { StatCard } from "@/components/minijob/StatCard";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
