@@ -129,7 +129,7 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
     margin: { left: margin, right: margin, top: 28, bottom: 16 },
     theme: "grid",
     head: [
-      ["Datum", "Beginn", "Pause", "Ende", "Arbeitszeit (h)", "Erfasst am", "Bemerkung"],
+      ["Datum", "Beginn", "Pause", "Ende", "Std. (h)", "Erfasst am", "Bemerkung"],
     ],
     body: list.map((s) => [
       de(s.date),
@@ -150,8 +150,8 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
     ],
     styles: {
       font: "helvetica",
-      fontSize: 7.5,
-      cellPadding: { top: 0.9, bottom: 0.9, left: 1.5, right: 1.5 },
+      fontSize: 7,
+      cellPadding: { top: 0.6, bottom: 0.6, left: 1.5, right: 1.5 },
       minCellHeight: 0,
       textColor: [0, 0, 0],
       lineColor: [0, 0, 0],
@@ -177,7 +177,7 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
       1: { cellWidth: 15, halign: "center" },
       2: { cellWidth: 15, halign: "center" },
       3: { cellWidth: 15, halign: "center" },
-      4: { cellWidth: 20, halign: "right" },
+      4: { cellWidth: 16, halign: "right" },
       5: { cellWidth: 20 },
       6: { cellWidth: "auto" },
     },
