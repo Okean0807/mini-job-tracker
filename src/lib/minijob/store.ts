@@ -96,10 +96,14 @@ export function loadFromStorage() {
     if (raw) {
       state = normalize(JSON.parse(raw) as Partial<AppData>);
       emit(false);
+      return;
     }
   } catch {
     /* ungültige Daten ignorieren */
   }
+  // Erststart: Sprache aus dem Browser übernehmen (später manuell änderbar)
+  state = { ...state, settings: { ...state.settings, language: detectLanguage() } };
+  emit(false);
 }
 
 function subscribe(listener: () => void) {
