@@ -23,7 +23,15 @@ import { getData, replaceAll, updateSettings, updateSupplements, useAppData } fr
 import { LANGUAGES, useT } from "@/lib/i18n";
 import type { Lang } from "@/lib/i18n";
 import { ACCENTS, THEME_MODES } from "@/lib/minijob/theme";
-import { BUNDESLAENDER, COUNTRIES, type AppData, type NotificationSettings } from "@/lib/minijob/types";
+import { UI_MODES } from "@/lib/minijob/uimode";
+import {
+  BUNDESLAENDER,
+  COUNTRIES,
+  type AppData,
+  type NotificationSettings,
+  type TextSize,
+  type TouchSize,
+} from "@/lib/minijob/types";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/einstellungen")({
