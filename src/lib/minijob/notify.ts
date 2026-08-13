@@ -1,7 +1,7 @@
 import { t } from "@/lib/i18n";
 
 import { formatDate, formatEuro, isoDate, shiftsInYear, sumEarnings, timeFromDate } from "./calc";
-import { monthUsage } from "./limits";
+import { monthUsage, yearlyLimitOf } from "./limits";
 import { payPeriods } from "./payday";
 import { makeResolver } from "./resolve";
 import { getData } from "./store";
