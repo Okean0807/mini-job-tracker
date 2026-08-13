@@ -246,6 +246,13 @@ export const DEFAULT_SETTINGS: Settings = {
   language: "de",
   onboarded: false,
   notifications: DEFAULT_NOTIFICATIONS,
+  dashboard: {
+    layout: "work",
+    order: ["timer", "stats", "limitMonth", "limitYear", "payday", "insights", "calendar", "shifts"],
+    hidden: [],
+    pinned: [],
+    sizes: {},
+  },
 };
 
 export const COUNTRIES: { code: string; name: string }[] = [
