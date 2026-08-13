@@ -86,7 +86,9 @@ export function ShiftDialog({
   const [workCodeNote, setWorkCodeNote] = useState("");
   const [newCode, setNewCode] = useState("");
   const [newCodeLabel, setNewCodeLabel] = useState("");
+  const [advanced, setAdvanced] = useState(false);
   const customCodes = settings.workCodes ?? [];
+
   const allCodes = [
     ...WORK_CODES.map((code) => ({ code: code as string, label: WORK_CODE_LABELS[code] })),
     ...customCodes,
