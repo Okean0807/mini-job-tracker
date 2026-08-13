@@ -379,6 +379,10 @@ function StatsPage() {
             ))
           )}
         </TabsContent>
+
+        <TabsContent value="bericht" className="mt-4">
+          <AnnualReportCard report={annualReport} />
+        </TabsContent>
       </Tabs>
     </main>
   );
