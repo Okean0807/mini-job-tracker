@@ -22,3 +22,5 @@ export function makeResolver(jobs: Job[], settings: Settings) {
 export function jobColor(jobs: Job[], jobId?: string): string | undefined {
   return jobs.find((j) => j.id === jobId)?.color;
 }
+
+export type Resolver = ReturnType<typeof makeResolver>;
