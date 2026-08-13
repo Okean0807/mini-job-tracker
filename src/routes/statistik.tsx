@@ -185,6 +185,9 @@ function StatsPage() {
           <TabsTrigger value="jobs" className="flex-1">
             {t("stats.tab.jobs")}
           </TabsTrigger>
+          <TabsTrigger value="bericht" className="flex-1">
+            {t("stats.tab.report")}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="monat" className="mt-4 space-y-4">
