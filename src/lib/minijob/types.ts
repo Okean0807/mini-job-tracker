@@ -129,6 +129,12 @@ export interface Shift {
 }
 
 export type ThemeMode = "system" | "light" | "dark";
+/** Oberflächen-Modus: Einfach, Standard, Profi */
+export type UiMode = "simple" | "standard" | "pro";
+/** Schriftgröße */
+export type TextSize = "s" | "m" | "l" | "xl";
+/** Bedienelement-Größe (Handschuh-Modus = extra groß) */
+export type TouchSize = "normal" | "large" | "glove";
 export type Accent = "teal" | "blue" | "green" | "orange" | "red" | "purple";
 
 export interface NotificationSettings {
@@ -163,6 +169,11 @@ export interface Settings {
   hoursLimitMonthly: number;
   themeMode: ThemeMode;
   accent: Accent;
+  uiMode: UiMode;
+  textSize: TextSize;
+  touchSize: TouchSize;
+  highContrast: boolean;
+  reduceMotion: boolean;
   country: string;
   bundesland: string;
   activeJobId?: string;
@@ -199,6 +210,11 @@ export const DEFAULT_SETTINGS: Settings = {
   hoursLimitMonthly: 0,
   themeMode: "system",
   accent: "teal",
+  uiMode: "standard",
+  textSize: "m",
+  touchSize: "normal",
+  highContrast: false,
+  reduceMotion: false,
   country: "DE",
   bundesland: "NW",
   supplements: DEFAULT_SUPPLEMENTS,

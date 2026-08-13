@@ -33,7 +33,7 @@ const MAP: Record<UiMode, Feature[]> = {
 };
 
 export function visible(feature: Feature, mode: UiMode): boolean {
-  return MAP[mode].includes(feature);
+  return (MAP[mode] ?? STANDARD).includes(feature);
 }
 
 export const UI_MODES: UiMode[] = ["simple", "standard", "pro"];
