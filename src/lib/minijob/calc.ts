@@ -128,20 +128,82 @@ export function averageRate(shifts: Shift[]): number {
   return h > 0 ? sumEarnings(shifts) / h : 0;
 }
 
-const eur = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
-const num = new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const eurCache = new Map<string, Intl.NumberFormat>();
+const numCache = new Map<string, Intl.NumberFormat>();
+const monthCache = new Map<string, string[]>();
 
-export function formatEuro(value: number): string {
-  return eur.format(value || 0);
+function eurFormat(locale: string) {
+  let f = eurCache.get(locale);
+  if (!f) {
+    f = new Intl.NumberFormat(locale, { style: "currency", currency: "EUR" });
+    eurCache.set(locale, f);
+  }
+  return f;
 }
 
-export function formatHours(value: number): string {
-  return `${num.format(value || 0)} h`;
+function numFormat(locale: string) {
+  let f = numCache.get(locale);
+  if (!f) {
+    f = new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    numCache.set(locale, f);
+  }
+  return f;
 }
 
-export function formatDateDE(iso: string): string {
-  const [y, m, d] = iso.split("-");
-  return `${d}.${m}.${y}`;
+export function formatEuro(value: number, locale = currentLocale()): string {
+  return eurFormat(locale).format(value || 0);
+}
+
+export function formatHours(value: number, locale = currentLocale()): string {
+  return `${numFormat(locale).format(value || 0)} h`;
+}
+
+/** Datum lokalisiert (Standard: eingestellte Sprache). */
+export function formatDate(iso: string, locale = currentLocale()): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  return new Intl.DateTimeFormat(locale, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(y, m - 1, d));
+}
+
+/** @deprecated formatDate verwenden – bleibt für Kompatibilität. */
+export const formatDateDE = formatDate;
+
+function namesFor(locale: string, key: string, build: () => string[]): string[] {
+  const cacheKey = `${locale}:${key}`;
+  let list = monthCache.get(cacheKey);
+  if (!list) {
+    list = build();
+    monthCache.set(cacheKey, list);
+  }
+  return list;
+}
+
+/** Monatsnamen (lang) in der gewünschten Sprache. */
+export function monthNames(locale = currentLocale()): string[] {
+  return namesFor(locale, "long", () => {
+    const f = new Intl.DateTimeFormat(locale, { month: "long" });
+    return Array.from({ length: 12 }, (_, i) => f.format(new Date(2021, i, 1)));
+  });
+}
+
+export function monthNamesShort(locale = currentLocale()): string[] {
+  return namesFor(locale, "short", () => {
+    const f = new Intl.DateTimeFormat(locale, { month: "short" });
+    return Array.from({ length: 12 }, (_, i) => f.format(new Date(2021, i, 1)));
+  });
+}
+
+/** Wochentage ab Montag. */
+export function weekdayNames(locale = currentLocale(), style: "long" | "short" = "long"): string[] {
+  return namesFor(locale, `wd-${style}`, () => {
+    const f = new Intl.DateTimeFormat(locale, { weekday: style });
+    // 2021-03-01 war ein Montag
+    return Array.from({ length: 7 }, (_, i) => f.format(new Date(2021, 2, 1 + i)));
+  });
 }
 
 export const MONTHS_DE = [
