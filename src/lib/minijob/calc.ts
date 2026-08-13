@@ -1,3 +1,5 @@
+import { currentLocale } from "@/lib/i18n";
+
 import { DEFAULT_SUPPLEMENTS, type Job, type Shift, type Supplements } from "./types";
 
 export function toMinutes(time: string): number {
