@@ -10,6 +10,7 @@ export type Feature =
   | "dash.limitYear"
   | "dash.payday"
   | "dash.insights"
+  | "dash.goals"
   | "dash.calendar"
   | "settings.advanced";
 
@@ -22,6 +23,7 @@ const STANDARD: Feature[] = [
   "dash.limitYear",
   "dash.insights",
   "dash.payday",
+  "dash.goals",
 ];
 
 const PRO: Feature[] = [...STANDARD, "settings.advanced"];
