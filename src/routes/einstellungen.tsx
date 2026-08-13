@@ -80,6 +80,15 @@ function SettingsPage() {
 
         <TabsContent value="allgemein" className="mt-4 space-y-4 pb-6">
           <Section title={t("set.defaults.title")}>
+            <div className="grid gap-1.5">
+              <Label htmlFor="mitarbeiter-name">{t("worklog.employeeName")}</Label>
+              <Input
+                id="mitarbeiter-name"
+                value={settings.employeeName ?? ""}
+                placeholder={t("worklog.employeeNamePlaceholder")}
+                onChange={(e) => updateSettings({ employeeName: e.target.value })}
+              />
+            </div>
             <NumberField
               id="std-lohn"
               label={t("set.defaults.rate")}
