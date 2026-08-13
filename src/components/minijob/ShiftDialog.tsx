@@ -64,6 +64,11 @@ export function ShiftDialog({
   const [overtime, setOvertime] = useState(false);
   const [customerId, setCustomerId] = useState<string | undefined>(undefined);
   const [projectId, setProjectId] = useState<string | undefined>(undefined);
+  const [workplace, setWorkplace] = useState("");
+  const [tasks, setTasks] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [gps, setGps] = useState<{ lat: number; lng: number } | undefined>(undefined);
+  const [customTask, setCustomTask] = useState("");
 
   useEffect(() => {
     if (!open) return;
