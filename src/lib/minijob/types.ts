@@ -107,12 +107,35 @@ export interface Shift {
 export type ThemeMode = "system" | "light" | "dark";
 export type Accent = "teal" | "blue" | "green" | "orange" | "red" | "purple";
 
+export interface NotificationSettings {
+  enabled: boolean;
+  startReminder: boolean;
+  startTime: string;
+  endReminder: boolean;
+  endTime: string;
+  missingShift: boolean;
+  backupReminder: boolean;
+  limitAlerts: boolean;
+}
+
+export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
+  enabled: false,
+  startReminder: true,
+  startTime: "08:00",
+  endReminder: true,
+  endTime: "17:00",
+  missingShift: true,
+  backupReminder: true,
+  limitAlerts: true,
+};
+
 export interface Settings {
   defaultRate: number;
   monthlyLimit: number;
   yearlyLimit: number;
   themeMode: ThemeMode;
   accent: Accent;
+  country: string;
   bundesland: string;
   activeJobId?: string;
   supplements: Supplements;
@@ -121,6 +144,8 @@ export interface Settings {
   biometric: boolean;
   autoBackup: boolean;
   language: "de";
+  onboarded: boolean;
+  notifications: NotificationSettings;
 }
 
 export interface RunningTimer {
@@ -144,13 +169,22 @@ export const DEFAULT_SETTINGS: Settings = {
   yearlyLimit: 6672,
   themeMode: "system",
   accent: "teal",
+  country: "DE",
   bundesland: "NW",
   supplements: DEFAULT_SUPPLEMENTS,
   pinEnabled: false,
   biometric: false,
   autoBackup: true,
   language: "de",
+  onboarded: false,
+  notifications: DEFAULT_NOTIFICATIONS,
 };
+
+export const COUNTRIES: { code: string; name: string }[] = [
+  { code: "DE", name: "Deutschland" },
+  { code: "AT", name: "Österreich" },
+  { code: "CH", name: "Schweiz" },
+];
 
 export const JOB_COLORS = [
   "#0d9488",

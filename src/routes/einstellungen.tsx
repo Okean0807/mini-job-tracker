@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { Session } from "@supabase/supabase-js";
-import { CloudDownload, CloudUpload, LogOut } from "lucide-react";
+import { CloudDownload, CloudUpload, FileUp, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { ImportDialog } from "@/components/minijob/ImportDialog";
 import { SupplementRow } from "@/components/minijob/JobDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,10 +15,13 @@ import { lovable } from "@/integrations/lovable";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDateDE } from "@/lib/minijob/calc";
 import { backupNow, restoreNow } from "@/lib/minijob/cloud";
+import { downloadText, shiftsToCsv } from "@/lib/minijob/csv";
+import { exportXlsx } from "@/lib/minijob/export";
 import { holidaysFor } from "@/lib/minijob/holidays";
+import { markBackup, notificationPermission, requestNotificationPermission } from "@/lib/minijob/notify";
 import { getData, replaceAll, updateSettings, updateSupplements, useAppData } from "@/lib/minijob/store";
 import { ACCENTS, THEME_MODES } from "@/lib/minijob/theme";
-import { BUNDESLAENDER, type AppData } from "@/lib/minijob/types";
+import { BUNDESLAENDER, COUNTRIES, type AppData, type NotificationSettings } from "@/lib/minijob/types";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/einstellungen")({
@@ -89,6 +93,21 @@ function SettingsPage() {
 
           <Section title="Feiertage">
             <div className="grid gap-2">
+              <Label htmlFor="staat">Land</Label>
+              <select
+                id="staat"
+                value={settings.country}
+                onChange={(e) => updateSettings({ country: e.target.value })}
+                className="h-10 rounded-md border bg-background px-2 text-sm"
+              >
+                {COUNTRIES.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="grid gap-2">
               <Label htmlFor="land">Bundesland</Label>
               <select
                 id="land"
@@ -155,7 +174,26 @@ function SettingsPage() {
             />
           </Section>
 
+          <Notifications value={settings.notifications} />
+
+          <DataMigration shiftCount={shifts.length} />
+
           <LocalBackup shiftCount={shifts.length} />
+
+          <Section title="Einrichtung">
+            <p className="text-xs text-muted-foreground">
+              Den Einrichtungsassistenten erneut starten (Arbeitsart, Region, Lohn, Zuschläge).
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => {
+                updateSettings({ onboarded: false });
+                window.location.reload();
+              }}
+            >
+              Assistent starten
+            </Button>
+          </Section>
         </TabsContent>
 
         <TabsContent value="design" className="mt-4 space-y-4 pb-6">
@@ -394,6 +432,7 @@ function CloudSync({ autoBackup }: { autoBackup: boolean }) {
     try {
       if (action === "backup") {
         await backupNow();
+        markBackup();
         toast.success("In der Cloud gesichert");
       } else {
         const ok = await restoreNow();
@@ -452,6 +491,140 @@ function CloudSync({ autoBackup }: { autoBackup: boolean }) {
       >
         <LogOut className="size-4" /> Abmelden
       </Button>
+    </Section>
+  );
+}
+
+function Notifications({ value }: { value: NotificationSettings }) {
+  const [permission, setPermission] = useState<string>("default");
+
+  useEffect(() => setPermission(notificationPermission()), []);
+
+  async function enable(checked: boolean) {
+    if (!checked) {
+      updateSettings({ notifications: { ...value, enabled: false } });
+      return;
+    }
+    const granted = await requestNotificationPermission();
+    setPermission(notificationPermission());
+    if (!granted) {
+      toast.error("Benachrichtigungen wurden im Browser blockiert.");
+      return;
+    }
+    updateSettings({ notifications: { ...value, enabled: true } });
+    toast.success("Benachrichtigungen aktiviert");
+  }
+
+  function patch(part: Partial<NotificationSettings>) {
+    updateSettings({ notifications: { ...value, ...part } });
+  }
+
+  return (
+    <Section title="Benachrichtigungen">
+      {permission === "unsupported" ? (
+        <p className="text-xs text-muted-foreground">
+          Dieses Gerät unterstützt keine Benachrichtigungen.
+        </p>
+      ) : (
+        <>
+          <ToggleRow
+            title="Push-Nachrichten"
+            description="Erinnerungen und Minijob-Warnungen erhalten"
+            checked={value.enabled}
+            onChange={(checked) => void enable(checked)}
+          />
+          {value.enabled ? (
+            <>
+              <ToggleRow
+                title="Start-Erinnerung"
+                description="Erinnerung, die Zeiterfassung zu starten"
+                checked={value.startReminder}
+                onChange={(startReminder) => patch({ startReminder })}
+              />
+              <ToggleRow
+                title="Ende-Erinnerung"
+                description="Erinnerung, die laufende Zeit zu beenden"
+                checked={value.endReminder}
+                onChange={(endReminder) => patch({ endReminder })}
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <div className="grid gap-1">
+                  <Label className="text-xs">Start ab</Label>
+                  <Input
+                    type="time"
+                    value={value.startTime}
+                    onChange={(e) => patch({ startTime: e.target.value })}
+                  />
+                </div>
+                <div className="grid gap-1">
+                  <Label className="text-xs">Ende ab</Label>
+                  <Input
+                    type="time"
+                    value={value.endTime}
+                    onChange={(e) => patch({ endTime: e.target.value })}
+                  />
+                </div>
+              </div>
+              <ToggleRow
+                title="Fehlende Schicht"
+                description="Hinweis, wenn an einem Werktag nichts erfasst wurde"
+                checked={value.missingShift}
+                onChange={(missingShift) => patch({ missingShift })}
+              />
+              <ToggleRow
+                title="Backup-Erinnerung"
+                description="Wöchentlich an eine Sicherung erinnern"
+                checked={value.backupReminder}
+                onChange={(backupReminder) => patch({ backupReminder })}
+              />
+              <ToggleRow
+                title="Minijob-Limit"
+                description="Warnung bei 75 %, 90 % und 100 % der Grenze"
+                checked={value.limitAlerts}
+                onChange={(limitAlerts) => patch({ limitAlerts })}
+              />
+            </>
+          ) : null}
+        </>
+      )}
+    </Section>
+  );
+}
+
+function DataMigration({ shiftCount }: { shiftCount: number }) {
+  const { shifts, jobs, settings } = useAppData();
+  const [importOpen, setImportOpen] = useState(false);
+  const stamp = new Date().toISOString().slice(0, 10);
+
+  return (
+    <Section title="Datenübertragung">
+      <p className="text-xs text-muted-foreground">
+        {shiftCount} Einträge exportieren oder Daten aus CSV, Excel bzw. JSON importieren.
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <Button
+          variant="outline"
+          onClick={() => {
+            downloadText(`minijob-${stamp}.csv`, shiftsToCsv(shifts, jobs));
+            toast.success("CSV exportiert");
+          }}
+        >
+          CSV export
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => {
+            exportXlsx(shifts, `minijob-${stamp}`, { jobs, bundesland: settings.bundesland });
+            toast.success("Excel exportiert");
+          }}
+        >
+          Excel export
+        </Button>
+      </div>
+      <Button className="w-full" onClick={() => setImportOpen(true)}>
+        <FileUp className="size-4" /> Daten importieren
+      </Button>
+      <ImportDialog open={importOpen} onOpenChange={setImportOpen} jobs={jobs} settings={settings} />
     </Section>
   );
 }

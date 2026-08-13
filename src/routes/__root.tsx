@@ -14,7 +14,9 @@ import { Toaster } from "@/components/ui/sonner";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { PinLock } from "@/components/minijob/PinLock";
+import { OnboardingWizard } from "@/components/minijob/OnboardingWizard";
 import { initCloudSync } from "../lib/minijob/cloud";
+import { initNotifications } from "../lib/minijob/notify";
 import { getData, loadFromStorage, useAppData } from "../lib/minijob/store";
 import { applyAppearance } from "../lib/minijob/theme";
 import { registerServiceWorker } from "../lib/pwa";
@@ -159,14 +161,17 @@ function RootComponent() {
   const { settings } = useAppData();
   const [ready, setReady] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
 
   useEffect(() => {
     loadFromStorage();
     const loaded = getData().settings;
     applyAppearance(loaded.themeMode, loaded.accent);
     initCloudSync();
+    initNotifications();
     registerServiceWorker();
     setUnlocked(!(loaded.pinEnabled && loaded.pin));
+    setShowWizard(!loaded.onboarded);
     setReady(true);
   }, []);
 
@@ -183,6 +188,9 @@ function RootComponent() {
       </div>
       <BottomNav />
       {locked ? <PinLock settings={settings} onUnlock={() => setUnlocked(true)} /> : null}
+      {ready && showWizard && !locked ? (
+        <OnboardingWizard settings={settings} onDone={() => setShowWizard(false)} />
+      ) : null}
       <Toaster position="top-center" />
     </QueryClientProvider>
   );
