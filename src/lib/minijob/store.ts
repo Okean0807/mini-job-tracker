@@ -237,7 +237,7 @@ export function deletePayment(id: string) {
 export function updateSettings(patch: Partial<Settings>) {
   const settings = { ...state.settings, ...patch };
   commit({ ...state, settings });
-  if (patch.themeMode || patch.accent) applyAppearance(settings.themeMode, settings.accent);
+  applyAppearance(settings);
 }
 
 export function updateSupplements(patch: Partial<Settings["supplements"]>) {
@@ -270,7 +270,7 @@ export function getTimer(): RunningTimer | null {
 export function replaceAll(data: Partial<AppData>) {
   const next = normalize(data);
   commit(next, false);
-  applyAppearance(next.settings.themeMode, next.settings.accent);
+  applyAppearance(next.settings);
 }
 
 export function newId(): string {

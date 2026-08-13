@@ -164,7 +164,7 @@ function RootComponent() {
   useEffect(() => {
     loadFromStorage();
     const loaded = getData().settings;
-    applyAppearance(loaded.themeMode, loaded.accent);
+    applyAppearance(loaded);
     initCloudSync();
     initNotifications();
     registerServiceWorker();
@@ -174,8 +174,16 @@ function RootComponent() {
   }, []);
 
   useEffect(() => {
-    applyAppearance(settings.themeMode, settings.accent);
-  }, [settings.themeMode, settings.accent]);
+    applyAppearance(settings);
+  }, [
+    settings.themeMode,
+    settings.accent,
+    settings.textSize,
+    settings.touchSize,
+    settings.highContrast,
+    settings.reduceMotion,
+    settings.uiMode,
+  ]);
 
   const locked = ready && settings.pinEnabled && Boolean(settings.pin) && !unlocked;
 
