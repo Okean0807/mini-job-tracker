@@ -94,71 +94,66 @@ function SettingsPage() {
               step="10"
               onCommit={(v) => updateSettings({ monthlyLimit: v })}
             />
-            {settings.limitsManual ? (
-              <>
-                <NumberField
-                  id="stunden-grenze"
-                  label={t("set.defaults.hoursLimit")}
-                  value={settings.hoursLimitMonthly}
-                  step="1"
-                  onCommit={(v) => updateSettings({ hoursLimitMonthly: v })}
-                />
-                <NumberField
-                  id="jahr-grenze"
-                  label={t("set.defaults.yearlyLimit")}
-                  value={settings.yearlyLimit}
-                  step="100"
-                  onCommit={(v) => updateSettings({ yearlyLimit: v })}
-                />
-              </>
-            ) : (
+            {settings.hoursLimitAuto ? (
               <div className="rounded-xl border bg-muted/40 p-3">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                   <Lock className="size-3.5" />
                   {t("set.limits.auto")}
                 </div>
-                <dl className="mt-2 space-y-1.5 text-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <dt className="text-muted-foreground">{t("set.defaults.yearlyLimit")}</dt>
-                    <dd className="font-semibold tabular-nums">
-                      {formatEuro(settings.monthlyLimit * 12)}
-                    </dd>
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <dt className="text-muted-foreground">{t("set.defaults.hoursLimit")}</dt>
-                    <dd className="font-semibold tabular-nums">
-                      {formatHours(monthlyHoursLimit(settings))}
-                    </dd>
-                  </div>
-                </dl>
-                <p className="mt-2 text-xs text-muted-foreground">{t("set.limits.formula")}</p>
+                <div className="mt-2 flex items-center justify-between gap-2 text-sm">
+                  <span className="text-muted-foreground">{t("set.defaults.hoursLimit")}</span>
+                  <span className="font-semibold tabular-nums">
+                    {formatHours(monthlyHoursLimit(settings))}
+                  </span>
+                </div>
               </div>
+            ) : (
+              <NumberField
+                id="stunden-grenze"
+                label={t("set.defaults.hoursLimit")}
+                value={settings.hoursLimitMonthly}
+                step="1"
+                onCommit={(v) => updateSettings({ hoursLimitMonthly: v })}
+              />
             )}
 
             <label className="flex items-center justify-between gap-3 pt-1">
               <span className="text-sm">
-                {t("set.limits.advanced")}
+                {t("set.limits.hoursAuto")}
                 <span className="block text-xs text-muted-foreground">
-                  {t("set.limits.advancedHint")}
+                  {t("set.limits.hoursAutoHint")}
                 </span>
               </span>
               <Switch
-                checked={settings.limitsManual}
+                checked={settings.hoursLimitAuto}
                 onCheckedChange={(v) =>
                   updateSettings({
-                    limitsManual: v,
+                    hoursLimitAuto: v,
                     ...(v
-                      ? {
-                          yearlyLimit: settings.yearlyLimit || settings.monthlyLimit * 12,
+                      ? {}
+                      : {
                           hoursLimitMonthly:
                             settings.hoursLimitMonthly ||
                             Math.round(monthlyHoursLimit(settings) * 100) / 100,
-                        }
-                      : {}),
+                        }),
                   })
                 }
               />
             </label>
+
+            <div className="rounded-xl border bg-muted/40 p-3">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <Lock className="size-3.5" />
+                {t("set.limits.auto")}
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-2 text-sm">
+                <span className="text-muted-foreground">{t("set.defaults.yearlyLimit")}</span>
+                <span className="font-semibold tabular-nums">
+                  {formatEuro(settings.monthlyLimit * 12)}
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">{t("set.limits.formula")}</p>
+            </div>
           </Section>
 
           <Section title={t("set.holidays.title")}>
