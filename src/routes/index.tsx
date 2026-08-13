@@ -2,6 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { AlertTriangle, Clock, Euro, Plus, TrendingUp } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { LimitCard } from "@/components/minijob/LimitCard";
+import { PaydayCard } from "@/components/minijob/PaydayCard";
 import { InsightsCard } from "@/components/minijob/InsightsCard";
 import { MonthCalendar } from "@/components/minijob/MonthCalendar";
 import { ShiftDialog } from "@/components/minijob/ShiftDialog";
@@ -21,6 +23,8 @@ import {
   sumHours,
 } from "@/lib/minijob/calc";
 import { buildInsights } from "@/lib/minijob/insights";
+import { monthUsage, yearUsage } from "@/lib/minijob/limits";
+import { payPeriods } from "@/lib/minijob/payday";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { useAppData } from "@/lib/minijob/store";
 import type { Shift } from "@/lib/minijob/types";
@@ -46,7 +50,7 @@ export const Route = createFileRoute("/")({
 
 function DashboardPage() {
   const { t } = useT();
-  const { shifts, jobs, customers, projects, settings, timer } = useAppData();
+  const { shifts, jobs, customers, projects, payments, settings, timer } = useAppData();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
@@ -66,8 +70,20 @@ function DashboardPage() {
   const earnings = sumEarnings(monthShifts, resolve);
   const yearEarnings = sumEarnings(yearShifts, resolve);
   const avg = hours > 0 ? earnings / hours : 0;
-  const limitShare = settings.monthlyLimit > 0 ? (earnings / settings.monthlyLimit) * 100 : 0;
-  const yearShare = settings.yearlyLimit > 0 ? (yearEarnings / settings.yearlyLimit) * 100 : 0;
+  const monthLimit = useMemo(
+    () => monthUsage(shifts, resolve, settings, year, month),
+    [shifts, resolve, settings, year, month],
+  );
+  const yearLimit = useMemo(
+    () => yearUsage(shifts, resolve, settings, year),
+    [shifts, resolve, settings, year],
+  );
+  const periods = useMemo(
+    () => payPeriods(jobs, shifts, payments, resolve, year, month),
+    [jobs, shifts, payments, resolve, year, month],
+  );
+  const limitShare = monthLimit.share;
+  const yearShare = yearLimit.share;
   const monthLabel = monthNames()[month] ?? "";
 
   function openNew(date: string) {
@@ -133,6 +149,25 @@ function DashboardPage() {
           hint={t("dash.ofAmount", { amount: formatEuro(settings.monthlyLimit) })}
           icon={Euro}
         />
+      </section>
+
+      <section className="mt-4 space-y-3" aria-label={t("limit.title")}>
+        <LimitCard
+          usage={monthLimit}
+          scopeLabel={`${t("limit.month")} · ${monthLabel}`}
+          rate={settings.defaultRate}
+          auto={!settings.hoursLimitMonthly}
+        />
+        <LimitCard
+          usage={yearLimit}
+          scopeLabel={`${t("limit.year")} · ${year}`}
+          rate={settings.defaultRate}
+          auto={!settings.hoursLimitMonthly}
+        />
+      </section>
+
+      <section className="mt-4">
+        <PaydayCard periods={periods} />
       </section>
 
       {jobs.length === 0 ? (

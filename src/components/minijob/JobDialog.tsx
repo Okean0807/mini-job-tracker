@@ -52,6 +52,9 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
   const [week, setWeek] = useState<FixedDay[]>(EMPTY_WEEK);
   const [weeklyTarget, setWeeklyTarget] = useState("20");
   const [supplements, setSupplements] = useState<Supplements>(DEFAULT_SUPPLEMENTS);
+  const [notes, setNotes] = useState("");
+  const [payday, setPayday] = useState("15");
+  const [payrollDelay, setPayrollDelay] = useState(1);
 
   const weekdays = weekdayNames(locale);
 
@@ -69,6 +72,9 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
     setWeek(job?.week ?? EMPTY_WEEK);
     setWeeklyTarget(String(job?.weeklyTarget ?? 20));
     setSupplements(job?.supplements ?? DEFAULT_SUPPLEMENTS);
+    setNotes(job?.notes ?? "");
+    setPayday(String(job?.payday ?? 15));
+    setPayrollDelay(job?.payrollDelay ?? 1);
   }, [open, job, defaultRate]);
 
   function save() {
@@ -87,6 +93,9 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
       phone: phone.trim(),
       email: email.trim(),
       address: address.trim(),
+      notes: notes.trim(),
+      payday: Math.min(31, Math.max(1, Number(payday) || 15)),
+      payrollDelay,
       supplements,
     };
     if (mode === "fest") {
@@ -115,6 +124,9 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
             </TabsTrigger>
             <TabsTrigger value="zuschlag" className="flex-1">
               {t("job.tabSupplements")}
+            </TabsTrigger>
+            <TabsTrigger value="lohn" className="flex-1">
+              {t("job.tabPay")}
             </TabsTrigger>
           </TabsList>
 
@@ -246,6 +258,40 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
             <Field label={t("label.phone")} value={phone} onChange={setPhone} type="tel" />
             <Field label={t("label.email")} value={email} onChange={setEmail} type="email" />
             <Field label={t("label.address")} value={address} onChange={setAddress} />
+            <Field label={t("job.notes")} value={notes} onChange={setNotes} />
+          </TabsContent>
+
+          <TabsContent value="lohn" className="mt-4 space-y-4">
+            <div className="grid gap-2">
+              <Label htmlFor="job-payday">{t("job.payday")}</Label>
+              <Input
+                id="job-payday"
+                type="number"
+                min="1"
+                max="31"
+                inputMode="numeric"
+                value={payday}
+                onChange={(e) => setPayday(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>{t("job.payroll")}</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {[0, 1].map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setPayrollDelay(d)}
+                    className={cn(
+                      "rounded-xl border px-3 py-2 text-sm",
+                      payrollDelay === d ? "border-primary bg-primary/10 font-semibold" : "bg-card",
+                    )}
+                  >
+                    {d === 0 ? t("job.payrollSame") : t("job.payrollNext")}
+                  </button>
+                ))}
+              </div>
+            </div>
           </TabsContent>
 
           <TabsContent value="zuschlag" className="mt-4 space-y-3">

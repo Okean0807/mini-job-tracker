@@ -68,7 +68,27 @@ export interface Job {
   /** Soll-Stunden pro Woche (Überstunden-Berechnung) */
   weeklyTarget?: number;
   supplements?: Supplements;
+  notes?: string;
+  /** Zahltag: Tag im Monat (1-31) */
+  payday?: number;
+  /** Abrechnungszeitraum: Auszahlung im selben Monat (0) oder im Folgemonat (1) */
+  payrollDelay?: number;
   archived?: boolean;
+}
+
+/** Erfasste bzw. erwartete Lohnzahlung je Job und Abrechnungsmonat. */
+export interface Payment {
+  id: string;
+  jobId: string;
+  /** Abrechnungsjahr */
+  year: number;
+  /** Abrechnungsmonat (0-11) */
+  month: number;
+  /** Tatsächlich erhaltener Betrag */
+  actual: number;
+  /** Zahlungsdatum ISO */
+  paidOn?: string;
+  note?: string;
 }
 
 export interface Customer {
@@ -120,6 +140,7 @@ export interface NotificationSettings {
   missingShift: boolean;
   backupReminder: boolean;
   limitAlerts: boolean;
+  payday?: boolean;
 }
 
 export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
@@ -131,12 +152,15 @@ export const DEFAULT_NOTIFICATIONS: NotificationSettings = {
   missingShift: true,
   backupReminder: true,
   limitAlerts: true,
+  payday: true,
 };
 
 export interface Settings {
   defaultRate: number;
   monthlyLimit: number;
   yearlyLimit: number;
+  /** Stundengrenze pro Monat; 0 = automatisch aus Limit / Stundenlohn */
+  hoursLimitMonthly: number;
   themeMode: ThemeMode;
   accent: Accent;
   country: string;
@@ -163,6 +187,7 @@ export interface AppData {
   jobs: Job[];
   customers: Customer[];
   projects: Project[];
+  payments: Payment[];
   settings: Settings;
   timer?: RunningTimer | null;
 }
@@ -171,6 +196,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultRate: 13.5,
   monthlyLimit: 556,
   yearlyLimit: 6672,
+  hoursLimitMonthly: 0,
   themeMode: "system",
   accent: "teal",
   country: "DE",
