@@ -100,14 +100,106 @@ function DashboardPage() {
     setDialogOpen(true);
   }
 
+  const dash = settings.dashboard;
+  const widgets = activeWidgets(dash, ui);
+
+  const widgetNodes: Record<WidgetId, React.ReactNode> = {
+    timer: <WorkTimer timer={timer} jobs={jobs} settings={settings} />,
+    stats: (
+      <section className="grid grid-cols-2 gap-3" aria-label={t("dash.monthOverview")}>
+        <StatCard
+          label={t("dash.earnings")}
+          value={formatEuro(earnings)}
+          hint={`${monthLabel} ${year}`}
+          icon={Euro}
+          highlight
+        />
+        <StatCard
+          label={t("dash.hours")}
+          value={formatHours(hours)}
+          hint={t("dash.inMonth")}
+          icon={Clock}
+        />
+        {widgetSize(dash, "stats") === "small" ? null : (
+          <>
+            <StatCard
+              label={t("dash.avgRate")}
+              value={formatEuro(avg)}
+              hint={t("label.entries", { count: monthShifts.length })}
+              icon={TrendingUp}
+            />
+            <StatCard
+              label={t("dash.limit")}
+              value={`${Math.round(limitShare)} %`}
+              hint={t("dash.ofAmount", { amount: formatEuro(settings.monthlyLimit) })}
+              icon={Euro}
+            />
+          </>
+        )}
+      </section>
+    ),
+    limitMonth: (
+      <LimitCard
+        usage={monthLimit}
+        scopeLabel={`${t("limit.month")} · ${monthLabel}`}
+        rate={settings.defaultRate}
+        auto={!settings.hoursLimitMonthly}
+      />
+    ),
+    limitYear: (
+      <LimitCard
+        usage={yearLimit}
+        scopeLabel={`${t("limit.year")} · ${year}`}
+        rate={settings.defaultRate}
+        auto={!settings.hoursLimitMonthly}
+      />
+    ),
+    payday: <PaydayCard periods={periods} />,
+    insights: <InsightsCard insights={insights} month={month} year={year} />,
+    calendar: (
+      <MonthCalendar
+        year={year}
+        month={month}
+        shifts={shifts}
+        jobs={jobs}
+        bundesland={settings.bundesland}
+        onChangeMonth={(y, m) => {
+          setYear(y);
+          setMonth(m);
+        }}
+        onSelectDay={(date) => {
+          const existing = shifts.find((s) => s.date === date);
+          if (existing) openEdit(existing);
+          else openNew(date);
+        }}
+      />
+    ),
+    shifts: (
+      <section>
+        <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
+          {t("dash.entriesInMonth", { month: monthLabel })}
+        </h2>
+        <ShiftList shifts={monthShifts} jobs={jobs} resolve={resolve} onSelect={openEdit} />
+      </section>
+    ),
+  };
+
   return (
     <main className="mx-auto max-w-lg px-4 pt-6">
-      <header className="mb-5">
-        <p className="text-sm text-muted-foreground">{t("app.greeting")}</p>
-        <h1 className="text-2xl font-extrabold tracking-tight">{t("app.name")}</h1>
+      <header className="mb-5 flex items-start justify-between gap-2">
+        <div>
+          <p className="text-sm text-muted-foreground">{t("app.greeting")}</p>
+          <h1 className="text-2xl font-extrabold tracking-tight">{t("app.name")}</h1>
+        </div>
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label={t("dash.customize")}
+          onClick={() => setCustomizeOpen(true)}
+        >
+          <LayoutGrid className="size-5" />
+        </Button>
       </header>
-
-      <WorkTimer timer={timer} jobs={jobs} settings={settings} />
 
       {limitShare >= 100 || yearShare >= 100 ? (
         <LimitBanner
