@@ -161,6 +161,11 @@ export function ShiftDialog({
     if (tasks.length > 0) next.tasks = tasks;
     if (photos.length > 0) next.photos = photos;
     if (gps) next.gps = gps;
+    if (floor.trim()) next.floor = floor.trim();
+    if (doorSide.trim()) next.doorSide = doorSide.trim();
+    if (workCode) next.workCode = workCode;
+    if (workCode === "SR" && workCodeNote.trim()) next.workCodeNote = workCodeNote.trim();
+    next.createdAt = shift?.createdAt ?? new Date().toISOString().slice(0, 10);
     saveShift(next);
     toast.success(shift ? t("shift.updated") : t("shift.saved"));
     onOpenChange(false);
