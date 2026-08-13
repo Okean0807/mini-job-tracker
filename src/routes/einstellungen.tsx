@@ -1,16 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type { Session } from "@supabase/supabase-js";
-import { CloudDownload, CloudUpload, LogOut, Moon, Sun } from "lucide-react";
+import { CloudDownload, CloudUpload, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { SupplementRow } from "@/components/minijob/JobDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { lovable } from "@/integrations/lovable";
 import { supabase } from "@/integrations/supabase/client";
-import { getData, replaceAll, updateSettings, useAppData } from "@/lib/minijob/store";
-import type { AppData } from "@/lib/minijob/types";
+import { formatDateDE } from "@/lib/minijob/calc";
+import { backupNow, restoreNow } from "@/lib/minijob/cloud";
+import { holidaysFor } from "@/lib/minijob/holidays";
+import { getData, replaceAll, updateSettings, updateSupplements, useAppData } from "@/lib/minijob/store";
+import { ACCENTS, THEME_MODES } from "@/lib/minijob/theme";
+import { BUNDESLAENDER, type AppData } from "@/lib/minijob/types";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/einstellungen")({
   head: () => ({
@@ -19,12 +27,12 @@ export const Route = createFileRoute("/einstellungen")({
       {
         name: "description",
         content:
-          "Standard-Stundenlohn, Minijob-Grenze, Dark Mode sowie Cloud-Backup und Wiederherstellung deiner Arbeitszeiten.",
+          "Design und Akzentfarbe, Zuschläge, Feiertage nach Bundesland, PIN-Schutz sowie Cloud-Backup deiner Arbeitszeiten verwalten.",
       },
       { property: "og:title", content: "Einstellungen – MiniJob Tracker" },
       {
         property: "og:description",
-        content: "Stundenlohn, Dark Mode und Cloud-Backup verwalten.",
+        content: "Design, Zuschläge, Feiertage, Sicherheit und Cloud-Backup verwalten.",
       },
     ],
   }),
@@ -33,80 +41,283 @@ export const Route = createFileRoute("/einstellungen")({
 
 function SettingsPage() {
   const { settings, shifts } = useAppData();
-  const [rate, setRate] = useState(String(settings.defaultRate));
-  const [limit, setLimit] = useState(String(settings.monthlyLimit));
-
-  useEffect(() => {
-    setRate(String(settings.defaultRate));
-    setLimit(String(settings.monthlyLimit));
-  }, [settings.defaultRate, settings.monthlyLimit]);
 
   return (
     <main className="mx-auto max-w-lg px-4 pt-6">
       <h1 className="text-2xl font-extrabold tracking-tight">Einstellungen</h1>
 
-      <section className="mt-5 space-y-4 rounded-2xl border bg-card p-4 shadow-card">
-        <h2 className="text-sm font-semibold">Standardwerte</h2>
-        <div className="grid gap-2">
-          <Label htmlFor="std-lohn">Standard-Stundenlohn (€)</Label>
-          <Input
-            id="std-lohn"
-            type="number"
-            step="0.5"
-            min="0"
-            inputMode="decimal"
-            value={rate}
-            onChange={(e) => setRate(e.target.value)}
-            onBlur={() => updateSettings({ defaultRate: Number(rate.replace(",", ".")) || 0 })}
-          />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="grenze">Monatliche Minijob-Grenze (€)</Label>
-          <Input
-            id="grenze"
-            type="number"
-            step="10"
-            min="0"
-            inputMode="decimal"
-            value={limit}
-            onChange={(e) => setLimit(e.target.value)}
-            onBlur={() => updateSettings({ monthlyLimit: Number(limit.replace(",", ".")) || 0 })}
-          />
-        </div>
-      </section>
+      <Tabs defaultValue="allgemein" className="mt-4">
+        <TabsList className="w-full">
+          <TabsTrigger value="allgemein" className="flex-1">
+            Allgemein
+          </TabsTrigger>
+          <TabsTrigger value="design" className="flex-1">
+            Design
+          </TabsTrigger>
+          <TabsTrigger value="lohn" className="flex-1">
+            Lohn
+          </TabsTrigger>
+          <TabsTrigger value="konto" className="flex-1">
+            Konto
+          </TabsTrigger>
+        </TabsList>
 
-      <section className="mt-4 rounded-2xl border bg-card p-4 shadow-card">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {settings.theme === "dark" ? (
-              <Moon className="size-5 text-primary" />
-            ) : (
-              <Sun className="size-5 text-primary" />
-            )}
-            <div>
-              <p className="text-sm font-semibold">Dark Mode</p>
-              <p className="text-xs text-muted-foreground">Dunkles Design aktivieren</p>
+        <TabsContent value="allgemein" className="mt-4 space-y-4 pb-6">
+          <Section title="Standardwerte">
+            <NumberField
+              id="std-lohn"
+              label="Standard-Stundenlohn (€)"
+              value={settings.defaultRate}
+              step="0.5"
+              onCommit={(v) => updateSettings({ defaultRate: v })}
+            />
+            <NumberField
+              id="grenze"
+              label="Monatliche Minijob-Grenze (€)"
+              value={settings.monthlyLimit}
+              step="10"
+              onCommit={(v) => updateSettings({ monthlyLimit: v })}
+            />
+            <NumberField
+              id="jahr-grenze"
+              label="Jährliche Minijob-Grenze (€)"
+              value={settings.yearlyLimit}
+              step="100"
+              onCommit={(v) => updateSettings({ yearlyLimit: v })}
+            />
+          </Section>
+
+          <Section title="Feiertage">
+            <div className="grid gap-2">
+              <Label htmlFor="land">Bundesland</Label>
+              <select
+                id="land"
+                value={settings.bundesland}
+                onChange={(e) => updateSettings({ bundesland: e.target.value })}
+                className="h-10 rounded-md border bg-background px-2 text-sm"
+              >
+                {BUNDESLAENDER.map((b) => (
+                  <option key={b.code} value={b.code}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <ul className="max-h-40 space-y-1 overflow-y-auto text-xs text-muted-foreground">
+              {holidaysFor(new Date().getFullYear(), settings.bundesland).map((h) => (
+                <li key={h.date} className="flex justify-between">
+                  <span>{h.name}</span>
+                  <span className="tabular-nums">{formatDateDE(h.date)}</span>
+                </li>
+              ))}
+            </ul>
+          </Section>
+
+          <Section title="Sprache">
+            <p className="text-xs text-muted-foreground">
+              Die App ist vollständig auf Deutsch. Weitere Sprachen folgen.
+            </p>
+            <select
+              value="de"
+              disabled
+              className="h-10 rounded-md border bg-muted px-2 text-sm"
+              aria-label="Sprache"
+            >
+              <option value="de">Deutsch</option>
+            </select>
+          </Section>
+
+          <Section title="Sicherheit">
+            <ToggleRow
+              title="PIN-Schutz"
+              description="App beim Start mit PIN sperren"
+              checked={settings.pinEnabled}
+              onChange={(checked) => updateSettings({ pinEnabled: checked })}
+            />
+            {settings.pinEnabled ? (
+              <div className="grid gap-2">
+                <Label htmlFor="pin">PIN (4–8 Ziffern)</Label>
+                <Input
+                  id="pin"
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={8}
+                  defaultValue={settings.pin ?? ""}
+                  onBlur={(e) => updateSettings({ pin: e.target.value })}
+                />
+              </div>
+            ) : null}
+            <ToggleRow
+              title="Biometrisch entsperren"
+              description="Fingerabdruck oder Gesichtserkennung nutzen"
+              checked={settings.biometric}
+              onChange={(checked) => updateSettings({ biometric: checked })}
+            />
+          </Section>
+
+          <LocalBackup shiftCount={shifts.length} />
+        </TabsContent>
+
+        <TabsContent value="design" className="mt-4 space-y-4 pb-6">
+          <Section title="Modus">
+            <div className="grid grid-cols-3 gap-2">
+              {THEME_MODES.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => updateSettings({ themeMode: m.id })}
+                  className={cn(
+                    "rounded-xl border py-2 text-sm font-medium",
+                    settings.themeMode === m.id ? "border-primary bg-primary/10" : "bg-card",
+                  )}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </Section>
+
+          <Section title="Akzentfarbe">
+            <div className="grid grid-cols-3 gap-2">
+              {ACCENTS.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => updateSettings({ accent: a.id })}
+                  className={cn(
+                    "flex items-center gap-2 rounded-xl border px-3 py-2 text-sm",
+                    settings.accent === a.id ? "border-primary bg-primary/10 font-semibold" : "bg-card",
+                  )}
+                >
+                  <span className="size-4 rounded-full" style={{ backgroundColor: a.swatch }} />
+                  {a.label}
+                </button>
+              ))}
+            </div>
+          </Section>
+        </TabsContent>
+
+        <TabsContent value="lohn" className="mt-4 space-y-3 pb-6">
+          <p className="text-xs text-muted-foreground">
+            Standard-Zuschläge für alle Jobs ohne eigene Regeln. Prozent oder fester Betrag pro Stunde.
+          </p>
+          <SupplementRow
+            label="Samstag"
+            value={settings.supplements.saturday}
+            onChange={(v) => updateSupplements({ saturday: v })}
+          />
+          <SupplementRow
+            label="Sonntag"
+            value={settings.supplements.sunday}
+            onChange={(v) => updateSupplements({ sunday: v })}
+          />
+          <SupplementRow
+            label="Feiertag"
+            value={settings.supplements.holiday}
+            onChange={(v) => updateSupplements({ holiday: v })}
+          />
+          <SupplementRow
+            label="Nacht"
+            value={settings.supplements.night}
+            onChange={(v) => updateSupplements({ night: v })}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <div className="grid gap-1">
+              <Label className="text-xs">Nacht ab</Label>
+              <Input
+                type="time"
+                value={settings.supplements.nightStart}
+                onChange={(e) => updateSupplements({ nightStart: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-1">
+              <Label className="text-xs">Nacht bis</Label>
+              <Input
+                type="time"
+                value={settings.supplements.nightEnd}
+                onChange={(e) => updateSupplements({ nightEnd: e.target.value })}
+              />
             </div>
           </div>
-          <Switch
-            checked={settings.theme === "dark"}
-            onCheckedChange={(checked) => updateSettings({ theme: checked ? "dark" : "light" })}
-            aria-label="Dark Mode umschalten"
+          <SupplementRow
+            label="Überstunden"
+            value={settings.supplements.overtime}
+            onChange={(v) => updateSupplements({ overtime: v })}
           />
-        </div>
-      </section>
+        </TabsContent>
 
-      <LocalBackup />
-      <CloudSync shiftCount={shifts.length} />
-
-      <p className="mt-6 pb-4 text-center text-xs text-muted-foreground">
-        Deine Daten werden lokal auf diesem Gerät gespeichert. Für ein Backup nutze die Cloud-Sicherung.
-      </p>
+        <TabsContent value="konto" className="mt-4 space-y-4 pb-6">
+          <CloudSync autoBackup={settings.autoBackup} />
+        </TabsContent>
+      </Tabs>
     </main>
   );
 }
 
-function LocalBackup() {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="space-y-3 rounded-2xl border bg-card p-4 shadow-card">
+      <h2 className="text-sm font-semibold">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+function ToggleRow({
+  title,
+  description,
+  checked,
+  onChange,
+}: {
+  title: string;
+  description: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="text-sm font-medium">{title}</p>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+      <Switch checked={checked} onCheckedChange={onChange} aria-label={title} />
+    </div>
+  );
+}
+
+function NumberField({
+  id,
+  label,
+  value,
+  step,
+  onCommit,
+}: {
+  id: string;
+  label: string;
+  value: number;
+  step: string;
+  onCommit: (value: number) => void;
+}) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  return (
+    <div className="grid gap-2">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        type="number"
+        step={step}
+        min="0"
+        inputMode="decimal"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => onCommit(Number(text.replace(",", ".")) || 0)}
+      />
+    </div>
+  );
+}
+
+function LocalBackup({ shiftCount }: { shiftCount: number }) {
   function download() {
     const blob = new Blob([JSON.stringify(getData(), null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -122,8 +333,7 @@ function LocalBackup() {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const parsed = JSON.parse(String(reader.result)) as AppData;
-        replaceAll(parsed);
+        replaceAll(JSON.parse(String(reader.result)) as AppData);
         toast.success("Backup wiederhergestellt");
       } catch {
         toast.error("Datei konnte nicht gelesen werden.");
@@ -133,8 +343,10 @@ function LocalBackup() {
   }
 
   return (
-    <section className="mt-4 space-y-3 rounded-2xl border bg-card p-4 shadow-card">
-      <h2 className="text-sm font-semibold">Lokales Backup</h2>
+    <Section title="Lokales Backup">
+      <p className="text-xs text-muted-foreground">
+        {shiftCount} Einträge auf diesem Gerät gespeichert.
+      </p>
       <div className="grid grid-cols-2 gap-3">
         <Button variant="outline" onClick={download}>
           Exportieren
@@ -155,14 +367,12 @@ function LocalBackup() {
           </label>
         </Button>
       </div>
-    </section>
+    </Section>
   );
 }
 
-function CloudSync({ shiftCount }: { shiftCount: number }) {
+function CloudSync({ autoBackup }: { autoBackup: boolean }) {
   const [session, setSession] = useState<Session | null>(null);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -171,124 +381,77 @@ function CloudSync({ shiftCount }: { shiftCount: number }) {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  async function signIn() {
-    setBusy(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setBusy(false);
-    if (error) toast.error("Anmeldung fehlgeschlagen: " + error.message);
-    else toast.success("Angemeldet");
-  }
-
-  async function signUp() {
-    setBusy(true);
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { emailRedirectTo: window.location.origin },
-    });
-    setBusy(false);
-    if (error) toast.error("Registrierung fehlgeschlagen: " + error.message);
-    else toast.success("Konto erstellt. Bitte E-Mail bestätigen, falls angefordert.");
-  }
-
-  async function push() {
-    if (!session) return;
-    setBusy(true);
-    const { error } = await supabase
-      .from("backups")
-      .upsert({
-        user_id: session.user.id,
-        payload: JSON.parse(JSON.stringify(getData())),
-        updated_at: new Date().toISOString(),
-      });
-    setBusy(false);
-    if (error) toast.error("Sicherung fehlgeschlagen: " + error.message);
-    else toast.success("In der Cloud gesichert");
-  }
-
-  async function pull() {
-    if (!session) return;
-    setBusy(true);
-    const { data, error } = await supabase
-      .from("backups")
-      .select("payload")
-      .eq("user_id", session.user.id)
-      .maybeSingle();
-    setBusy(false);
-    if (error) {
-      toast.error("Laden fehlgeschlagen: " + error.message);
-      return;
+  async function oauth(provider: "google" | "apple") {
+    try {
+      await lovable.auth.signInWithOAuth(provider, { redirect_uri: window.location.origin });
+    } catch {
+      toast.error("Anmeldung nicht möglich. Bitte erneut versuchen.");
     }
-    if (!data?.payload) {
-      toast.error("Keine Cloud-Sicherung gefunden.");
-      return;
+  }
+
+  async function run(action: "backup" | "restore") {
+    setBusy(true);
+    try {
+      if (action === "backup") {
+        await backupNow();
+        toast.success("In der Cloud gesichert");
+      } else {
+        const ok = await restoreNow();
+        toast[ok ? "success" : "error"](
+          ok ? "Daten aus der Cloud geladen" : "Keine Cloud-Sicherung gefunden.",
+        );
+      }
+    } catch {
+      toast.error("Synchronisierung fehlgeschlagen.");
+    } finally {
+      setBusy(false);
     }
-    replaceAll(data.payload as unknown as AppData);
-    toast.success("Daten aus der Cloud geladen");
+  }
+
+  if (!session) {
+    return (
+      <Section title="Anmelden">
+        <p className="text-xs text-muted-foreground">
+          Melde dich an, damit deine Daten automatisch gesichert und auf einem neuen Gerät
+          wiederhergestellt werden.
+        </p>
+        <Button className="w-full" onClick={() => oauth("google")}>
+          Mit Google anmelden
+        </Button>
+        <Button variant="outline" className="w-full" onClick={() => oauth("apple")}>
+          Mit Apple anmelden
+        </Button>
+      </Section>
+    );
   }
 
   return (
-    <section className="mt-4 space-y-3 rounded-2xl border bg-card p-4 shadow-card">
-      <h2 className="text-sm font-semibold">Cloud-Sicherung</h2>
-      {session ? (
-        <>
-          <p className="text-xs text-muted-foreground">
-            Angemeldet als {session.user.email} · {shiftCount} Schichten auf diesem Gerät
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            <Button onClick={push} disabled={busy}>
-              <CloudUpload className="size-4" /> Sichern
-            </Button>
-            <Button variant="outline" onClick={pull} disabled={busy}>
-              <CloudDownload className="size-4" /> Laden
-            </Button>
-          </div>
-          <Button
-            variant="ghost"
-            className="w-full text-muted-foreground"
-            onClick={async () => {
-              await supabase.auth.signOut();
-              toast.success("Abgemeldet");
-            }}
-          >
-            <LogOut className="size-4" /> Abmelden
-          </Button>
-        </>
-      ) : (
-        <>
-          <p className="text-xs text-muted-foreground">
-            Melde dich an, um deine Daten geräteübergreifend zu sichern.
-          </p>
-          <div className="grid gap-2">
-            <Label htmlFor="mail">E-Mail</Label>
-            <Input
-              id="mail"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="pw">Passwort</Label>
-            <Input
-              id="pw"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Button onClick={signIn} disabled={busy || !email || !password}>
-              Anmelden
-            </Button>
-            <Button variant="outline" onClick={signUp} disabled={busy || !email || !password}>
-              Registrieren
-            </Button>
-          </div>
-        </>
-      )}
-    </section>
+    <Section title="Cloud-Sicherung">
+      <p className="text-xs text-muted-foreground">Angemeldet als {session.user.email}</p>
+      <ToggleRow
+        title="Automatisches Backup"
+        description="Änderungen automatisch in der Cloud sichern"
+        checked={autoBackup}
+        onChange={(checked) => updateSettings({ autoBackup: checked })}
+      />
+      <div className="grid grid-cols-2 gap-3">
+        <Button onClick={() => run("backup")} disabled={busy}>
+          <CloudUpload className="size-4" /> Sichern
+        </Button>
+        <Button variant="outline" onClick={() => run("restore")} disabled={busy}>
+          <CloudDownload className="size-4" /> Laden
+        </Button>
+      </div>
+      <Button
+        variant="ghost"
+        className="w-full text-muted-foreground"
+        onClick={async () => {
+          await supabase.auth.signOut();
+          toast.success("Abgemeldet");
+        }}
+      >
+        <LogOut className="size-4" /> Abmelden
+      </Button>
+    </Section>
   );
 }

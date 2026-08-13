@@ -10,7 +10,9 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AssistentRouteImport } from './routes/assistent'
 import { Route as EinstellungenRouteImport } from './routes/einstellungen'
+import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as StatistikRouteImport } from './routes/statistik'
 
 const IndexRoute = IndexRouteImport.update({
@@ -18,9 +20,19 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AssistentRoute = AssistentRouteImport.update({
+  id: '/assistent',
+  path: '/assistent',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EinstellungenRoute = EinstellungenRouteImport.update({
   id: '/einstellungen',
   path: '/einstellungen',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const JobsRoute = JobsRouteImport.update({
+  id: '/jobs',
+  path: '/jobs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const StatistikRoute = StatistikRouteImport.update({
@@ -31,31 +43,40 @@ const StatistikRoute = StatistikRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/assistent': typeof AssistentRoute
   '/einstellungen': typeof EinstellungenRoute
+  '/jobs': typeof JobsRoute
   '/statistik': typeof StatistikRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/assistent': typeof AssistentRoute
   '/einstellungen': typeof EinstellungenRoute
+  '/jobs': typeof JobsRoute
   '/statistik': typeof StatistikRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/assistent': typeof AssistentRoute
   '/einstellungen': typeof EinstellungenRoute
+  '/jobs': typeof JobsRoute
   '/statistik': typeof StatistikRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/einstellungen' | '/statistik'
+  fullPaths: '/' | '/assistent' | '/einstellungen' | '/jobs' | '/statistik'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/einstellungen' | '/statistik'
-  id: '__root__' | '/' | '/einstellungen' | '/statistik'
+  to: '/' | '/assistent' | '/einstellungen' | '/jobs' | '/statistik'
+  id:
+    '__root__' | '/' | '/assistent' | '/einstellungen' | '/jobs' | '/statistik'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AssistentRoute: typeof AssistentRoute
   EinstellungenRoute: typeof EinstellungenRoute
+  JobsRoute: typeof JobsRoute
   StatistikRoute: typeof StatistikRoute
 }
 
@@ -68,11 +89,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/assistent': {
+      id: '/assistent'
+      path: '/assistent'
+      fullPath: '/assistent'
+      preLoaderRoute: typeof AssistentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/einstellungen': {
       id: '/einstellungen'
       path: '/einstellungen'
       fullPath: '/einstellungen'
       preLoaderRoute: typeof EinstellungenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/jobs': {
+      id: '/jobs'
+      path: '/jobs'
+      fullPath: '/jobs'
+      preLoaderRoute: typeof JobsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/statistik': {
@@ -87,7 +122,9 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AssistentRoute: AssistentRoute,
   EinstellungenRoute: EinstellungenRoute,
+  JobsRoute: JobsRoute,
   StatistikRoute: StatistikRoute,
 }
 export const routeTree = rootRouteImport
