@@ -143,7 +143,7 @@ export interface Settings {
   pin?: string;
   biometric: boolean;
   autoBackup: boolean;
-  language: "de";
+  language: Lang;
   onboarded: boolean;
   notifications: NotificationSettings;
 }
