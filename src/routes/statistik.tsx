@@ -32,6 +32,7 @@ import {
   sumEarnings,
   sumHours,
 } from "@/lib/minijob/calc";
+import { buildAnnualReport } from "@/lib/minijob/annual";
 import { exportPdf, exportXlsx } from "@/lib/minijob/export";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { useAppData } from "@/lib/minijob/store";
