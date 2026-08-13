@@ -172,7 +172,7 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
       1: { cellWidth: 12, halign: "center" },
       2: { cellWidth: 12, halign: "center" },
       3: { cellWidth: 12, halign: "center" },
-      4: { cellWidth: 16, halign: "right" },
+      4: { cellWidth: 19, halign: "right" },
       5: { cellWidth: 17 },
       6: { cellWidth: "auto" },
     },
