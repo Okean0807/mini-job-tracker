@@ -1,5 +1,5 @@
+import { Mic, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -13,101 +13,195 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatEuro, formatHours, shiftEarnings, shiftHours } from "@/lib/minijob/calc";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { formatDateDE, formatEuro, formatHours, shiftBreakdown } from "@/lib/minijob/calc";
+import { holidayName } from "@/lib/minijob/holidays";
 import { deleteShift, newId, saveShift } from "@/lib/minijob/store";
-import type { Shift } from "@/lib/minijob/types";
+import {
+  SHIFT_KIND_LABEL,
+  type Customer,
+  type Job,
+  type Project,
+  type Settings,
+  type Shift,
+  type ShiftKind,
+} from "@/lib/minijob/types";
+import { listenOnce, parseVoice, voiceSupported } from "@/lib/minijob/voice";
+import { cn } from "@/lib/utils";
 
 interface ShiftDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   date: string;
   shift?: Shift | null;
-  defaultRate: number;
+  jobs: Job[];
+  customers: Customer[];
+  projects: Project[];
+  settings: Settings;
 }
 
-export function ShiftDialog({ open, onOpenChange, date, shift, defaultRate }: ShiftDialogProps) {
+const KINDS: ShiftKind[] = ["arbeit", "urlaub", "krank", "feiertag"];
+
+export function ShiftDialog({
+  open,
+  onOpenChange,
+  date,
+  shift,
+  jobs,
+  customers,
+  projects,
+  settings,
+}: ShiftDialogProps) {
+  const [jobId, setJobId] = useState<string | undefined>(undefined);
+  const [kind, setKind] = useState<ShiftKind>("arbeit");
   const [start, setStart] = useState("09:00");
-  const [end, setEnd] = useState("13:00");
-  const [breakMinutes, setBreakMinutes] = useState("0");
-  const [rate, setRate] = useState(String(defaultRate));
+  const [end, setEnd] = useState("17:00");
+  const [breakMinutes, setBreakMinutes] = useState("30");
+  const [rate, setRate] = useState(String(settings.defaultRate));
   const [note, setNote] = useState("");
-  const [day, setDay] = useState(date);
+  const [overtime, setOvertime] = useState(false);
+  const [customerId, setCustomerId] = useState<string | undefined>(undefined);
+  const [projectId, setProjectId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (!open) return;
-    setDay(shift?.date ?? date);
+    const fallbackJob = jobs.find((j) => j.id === settings.activeJobId) ?? jobs[0];
+    setJobId(shift?.jobId ?? fallbackJob?.id);
+    setKind(shift?.kind ?? "arbeit");
     setStart(shift?.start ?? "09:00");
-    setEnd(shift?.end ?? "13:00");
-    setBreakMinutes(String(shift?.breakMinutes ?? 0));
-    setRate(String(shift?.rate ?? defaultRate));
+    setEnd(shift?.end ?? "17:00");
+    setBreakMinutes(String(shift?.breakMinutes ?? 30));
+    setRate(String(shift?.rate ?? fallbackJob?.rate ?? settings.defaultRate));
     setNote(shift?.note ?? "");
-  }, [open, shift, date, defaultRate]);
+    setOvertime(shift?.overtime ?? false);
+    setCustomerId(shift?.customerId);
+    setProjectId(shift?.projectId);
+  }, [open, shift, jobs, settings.activeJobId, settings.defaultRate]);
 
-  const preview: Shift = {
-    id: shift?.id ?? "preview",
-    date: day,
+  const job = jobs.find((j) => j.id === jobId);
+  const holiday = holidayName(date, settings.bundesland);
+  const draft: Shift = {
+    id: shift?.id ?? "draft",
+    kind,
+    date,
     start,
     end,
     breakMinutes: Number(breakMinutes) || 0,
     rate: Number(rate.replace(",", ".")) || 0,
+    overtime,
   };
+  if (jobId) draft.jobId = jobId;
+  const preview = shiftBreakdown(draft, {
+    job,
+    supplements: job?.supplements ?? settings.supplements,
+    holiday: Boolean(holiday),
+  });
 
-  function handleSave() {
-    if (!day || !start || !end) {
-      toast.error("Bitte Datum, Beginn und Ende ausfüllen.");
-      return;
+  async function voice() {
+    try {
+      const text = await listenOnce();
+      const parsed = parseVoice(text);
+      if (parsed.type === "shift") {
+        setStart(parsed.start);
+        setEnd(parsed.end);
+        setBreakMinutes(String(parsed.breakMinutes));
+        toast.success(`Erkannt: ${parsed.start}–${parsed.end}`);
+      } else {
+        setNote(text);
+        toast.message("Als Notiz übernommen", { description: text });
+      }
+    } catch {
+      toast.error("Spracheingabe nicht möglich.");
     }
-    if (shiftHours(preview) <= 0) {
-      toast.error("Die Arbeitszeit muss größer als 0 sein.");
-      return;
-    }
-    saveShift({
+  }
+
+  function save() {
+    const next: Shift = {
       id: shift?.id ?? newId(),
-      date: day,
+      kind,
+      date,
       start,
       end,
       breakMinutes: Number(breakMinutes) || 0,
       rate: Number(rate.replace(",", ".")) || 0,
-      note: note.trim() || undefined,
-    });
-    toast.success(shift ? "Schicht aktualisiert" : "Schicht gespeichert");
+    };
+    if (jobId) next.jobId = jobId;
+    if (note.trim()) next.note = note.trim();
+    if (overtime) next.overtime = true;
+    if (customerId) next.customerId = customerId;
+    if (projectId) next.projectId = projectId;
+    saveShift(next);
+    toast.success(shift ? "Eintrag aktualisiert" : "Eintrag gespeichert");
     onOpenChange(false);
   }
 
-  function handleDelete() {
-    if (!shift) return;
-    deleteShift(shift.id);
-    toast.success("Schicht gelöscht");
-    onOpenChange(false);
-  }
+  const selfEmployed = job?.mode === "selbststaendig";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md rounded-2xl">
+      <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{shift ? "Schicht bearbeiten" : "Neue Schicht"}</DialogTitle>
-          <DialogDescription>Arbeitszeiten und Stundenlohn erfassen.</DialogDescription>
+          <DialogTitle>{shift ? "Eintrag bearbeiten" : "Neuer Eintrag"}</DialogTitle>
+          <DialogDescription>
+            {formatDateDE(date)}
+            {holiday ? ` · ${holiday}` : ""}
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4">
+        <div className="space-y-4">
+          {jobs.length > 1 ? (
+            <div className="grid gap-2">
+              <Label>Job</Label>
+              <div className="flex flex-wrap gap-2">
+                {jobs.map((j) => (
+                  <button
+                    key={j.id}
+                    type="button"
+                    onClick={() => {
+                      setJobId(j.id);
+                      setRate(String(j.rate));
+                    }}
+                    className={cn(
+                      "flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium",
+                      jobId === j.id ? "border-primary bg-primary/10" : "bg-card",
+                    )}
+                  >
+                    <span className="size-2.5 rounded-full" style={{ backgroundColor: j.color }} />
+                    {j.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           <div className="grid gap-2">
-            <Label htmlFor="datum">Datum</Label>
-            <Input id="datum" type="date" value={day} onChange={(e) => setDay(e.target.value)} />
+            <Label>Art</Label>
+            <div className="grid grid-cols-4 gap-1.5">
+              {KINDS.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setKind(k)}
+                  className={cn(
+                    "rounded-lg border px-2 py-1.5 text-xs font-medium",
+                    kind === k ? "border-primary bg-primary/10" : "bg-card",
+                  )}
+                >
+                  {SHIFT_KIND_LABEL[k]}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
-              <Label htmlFor="beginn">Beginn</Label>
-              <Input
-                id="beginn"
-                type="time"
-                value={start}
-                onChange={(e) => setStart(e.target.value)}
-              />
+              <Label htmlFor="von">Beginn</Label>
+              <Input id="von" type="time" value={start} onChange={(e) => setStart(e.target.value)} />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="ende">Ende</Label>
-              <Input id="ende" type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
+              <Label htmlFor="bis">Ende</Label>
+              <Input id="bis" type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
             </div>
           </div>
 
@@ -117,8 +211,8 @@ export function ShiftDialog({ open, onOpenChange, date, shift, defaultRate }: Sh
               <Input
                 id="pause"
                 type="number"
-                inputMode="numeric"
                 min="0"
+                inputMode="numeric"
                 value={breakMinutes}
                 onChange={(e) => setBreakMinutes(e.target.value)}
               />
@@ -128,42 +222,113 @@ export function ShiftDialog({ open, onOpenChange, date, shift, defaultRate }: Sh
               <Input
                 id="lohn"
                 type="number"
-                inputMode="decimal"
                 step="0.5"
                 min="0"
+                inputMode="decimal"
                 value={rate}
                 onChange={(e) => setRate(e.target.value)}
               />
             </div>
           </div>
 
+          {selfEmployed ? (
+            <div className="grid gap-3 rounded-xl border p-3">
+              <div className="grid gap-1.5">
+                <Label className="text-xs">Kunde</Label>
+                <select
+                  value={customerId ?? ""}
+                  onChange={(e) => setCustomerId(e.target.value || undefined)}
+                  className="h-9 rounded-md border bg-background px-2 text-sm"
+                >
+                  <option value="">– kein Kunde –</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="text-xs">Projekt</Label>
+                <select
+                  value={projectId ?? ""}
+                  onChange={(e) => setProjectId(e.target.value || undefined)}
+                  className="h-9 rounded-md border bg-background px-2 text-sm"
+                >
+                  <option value="">– kein Projekt –</option>
+                  {projects
+                    .filter((p) => !customerId || p.customerId === customerId)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="flex items-center justify-between rounded-xl border p-3">
+            <div>
+              <p className="text-sm font-medium">Als Überstunden werten</p>
+              <p className="text-xs text-muted-foreground">Überstundenzuschlag anwenden</p>
+            </div>
+            <Switch checked={overtime} onCheckedChange={setOvertime} aria-label="Überstunden" />
+          </div>
+
           <div className="grid gap-2">
-            <Label htmlFor="notiz">Notiz (optional)</Label>
-            <Input
+            <div className="flex items-center justify-between">
+              <Label htmlFor="notiz">Notiz</Label>
+              {voiceSupported() ? (
+                <Button variant="ghost" size="sm" onClick={voice}>
+                  <Mic className="size-4" /> Sprache
+                </Button>
+              ) : null}
+            </div>
+            <Textarea
               id="notiz"
+              rows={2}
               value={note}
-              placeholder="z. B. Spätschicht Filiale Mitte"
               onChange={(e) => setNote(e.target.value)}
+              placeholder="z. B. Spätschicht Filiale Nord"
             />
           </div>
 
-          <div className="flex items-center justify-between rounded-xl bg-muted px-4 py-3 text-sm">
-            <span className="text-muted-foreground">Ergebnis</span>
-            <span className="font-semibold tabular-nums">
-              {formatHours(shiftHours(preview))} · {formatEuro(shiftEarnings(preview))}
-            </span>
+          <div className="rounded-xl bg-muted p-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Dauer</span>
+              <span className="font-semibold tabular-nums">{formatHours(preview.hours)}</span>
+            </div>
+            {preview.bonus > 0 ? (
+              <div className="mt-1 flex justify-between">
+                <span className="text-muted-foreground">Zuschläge ({preview.labels.join(", ")})</span>
+                <span className="font-semibold tabular-nums">{formatEuro(preview.bonus)}</span>
+              </div>
+            ) : null}
+            <div className="mt-1 flex justify-between">
+              <span className="text-muted-foreground">Verdienst</span>
+              <span className="font-semibold tabular-nums">{formatEuro(preview.total)}</span>
+            </div>
           </div>
         </div>
 
-        <DialogFooter className="gap-2 sm:justify-between">
+        <DialogFooter className="mt-2 gap-2 sm:justify-between">
           {shift ? (
-            <Button variant="ghost" onClick={handleDelete} className="text-destructive">
+            <Button
+              variant="ghost"
+              className="text-destructive"
+              onClick={() => {
+                deleteShift(shift.id);
+                toast.success("Eintrag gelöscht");
+                onOpenChange(false);
+              }}
+            >
               <Trash2 className="size-4" /> Löschen
             </Button>
           ) : (
             <span />
           )}
-          <Button onClick={handleSave}>Speichern</Button>
+          <Button onClick={save}>Speichern</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
