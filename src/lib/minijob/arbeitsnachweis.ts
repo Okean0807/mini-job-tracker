@@ -56,21 +56,30 @@ function slug(text: string): string {
   );
 }
 
-/** Bemerkungstext: Adresse, Etage, Türseite + Leistungsart. */
-export function remarkText(shift: Shift, jobs: Job[] = []): string {
-  const place = shift.workplace ?? jobs.find((j) => j.id === shift.jobId)?.name ?? "";
-  const address = [place, shift.floor, shift.doorSide]
+/** Kompakte Adresszeile: „Musterstraße 15, 3. OG, links“. */
+export function addressLine(shift: Shift, jobs: Job[] = []): string {
+  const street = [shift.street, shift.houseNo]
     .map((part) => (part ?? "").trim())
     .filter(Boolean)
-    .join(",\n");
-  const code = shift.workCode;
-  const codeLine = code
-    ? code === "SR" && shift.workCodeNote?.trim()
-      ? `SR - ${shift.workCodeNote.trim()}`
-      : code
-    : "";
-  const extra = shift.note?.trim();
-  return [address, codeLine, extra].filter(Boolean).join("\n\n");
+    .join(" ");
+  const place = street || shift.workplace || jobs.find((j) => j.id === shift.jobId)?.name || "";
+  return [place, shift.floor, shift.doorSide]
+    .map((part) => (part ?? "").trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
+/** Leistungszeile: „UR“ oder „SR: Wasserschaden“. */
+export function codeLine(shift: Shift): string {
+  const code = (shift.workCode ?? "").trim();
+  const detail = (shift.workCodeNote ?? shift.note ?? "").trim().replace(/\s+/g, " ");
+  if (!code) return detail.slice(0, 60);
+  return detail ? `${code}: ${detail.slice(0, 50)}` : code;
+}
+
+/** Maximal zwei Zeilen pro Eintrag: Adresse + Leistungsart. */
+export function remarkText(shift: Shift, jobs: Job[] = []): string {
+  return [addressLine(shift, jobs), codeLine(shift)].filter(Boolean).join("\n");
 }
 
 export interface ArbeitsnachweisContext {
@@ -80,6 +89,8 @@ export interface ArbeitsnachweisContext {
   year: number;
   employeeName: string;
   employer?: string;
+  /** Eigene Leistungsarten für die Legende */
+  customCodes?: { code: string; label: string }[];
 }
 
 /** DATEV-inspirierter Arbeitsnachweis: A4 quer, Schwarz-Weiß, druckfertig. */
