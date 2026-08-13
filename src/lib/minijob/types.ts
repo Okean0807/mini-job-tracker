@@ -128,6 +128,10 @@ export interface Shift {
   overtime?: boolean;
   /** Leistungsnachweis: Einsatzort / Objekt */
   workplace?: string;
+  /** Arbeitsnachweis: Straße */
+  street?: string;
+  /** Arbeitsnachweis: Hausnummer */
+  houseNo?: string;
   /** Leistungsnachweis: Tätigkeiten ("#key" = Vorlage, sonst freier Text) */
   tasks?: string[];
   /** Leistungsnachweis: Fotos als komprimierte Data-URLs */
