@@ -90,7 +90,7 @@ export const annual: Bundle = {
     "annual.best.day": "Лучший день",
     "annual.table.month": "Месяц",
     "annual.table.weekday": "День недели",
-    "annual.table.base": "基 Основная оплата (€)",
+    "annual.table.base": "Основная оплата (€)",
     "annual.table.entries": "Записи",
     "annual.table.share": "Доля (%)",
     "annual.table.metric": "Показатель",
