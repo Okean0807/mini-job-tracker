@@ -27,6 +27,7 @@ const BUNDLE: Bundle = mergeBundles([
   v2,
   a11y,
   widgets,
+  annual,
 ]);
 
 export type Vars = Record<string, string | number>;
