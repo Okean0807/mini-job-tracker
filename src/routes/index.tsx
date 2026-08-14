@@ -42,10 +42,10 @@ export const Route = createFileRoute("/")({
         content:
           "Arbeitszeiten per Timer oder Kalender erfassen, Zuschläge und Verdienst automatisch berechnen – mit Jobs, Statistiken und Export.",
       },
-      { property: "og:title", content: "MiniJob Tracker – Arbeitszeiten & Verdienst" },
+      { property: "og:title", content: "MiniJob Tracker – Arbeitszeiten & Verdienst erfassen" },
       {
         property: "og:description",
-        content: "Schichten erfassen, Zuschläge und Verdienst automatisch berechnen.",
+        content: "Arbeitszeiten per Timer oder Kalender erfassen, Zuschläge und Verdienst automatisch berechnen – mit Jobs, Statistiken und Export.",
       },
     ],
   }),
