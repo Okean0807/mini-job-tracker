@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+
 const schema = z.object({
   question: z.string().min(1).max(2000),
   context: z.string().max(20000),
@@ -8,6 +10,7 @@ const schema = z.object({
 });
 
 export const askAssistant = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => schema.parse(input))
   .handler(async ({ data }) => {
     const apiKey = process.env["LOVABLE_API_KEY"];
