@@ -190,7 +190,11 @@ export function insightsFor(year: number, month: number, ctx: AppContext = conte
   return buildInsights(ctx.data.shifts, year, month, ctx.resolve);
 }
 
-export function limitsForMonth(year: number, month: number, ctx: AppContext = context()): LimitUsage {
+export function limitsForMonth(
+  year: number,
+  month: number,
+  ctx: AppContext = context(),
+): LimitUsage {
   return monthUsage(ctx.data.shifts, ctx.resolve, ctx.data.settings, year, month);
 }
 
@@ -202,7 +206,11 @@ export function goalsOverview(ctx: AppContext = context()): GoalProgress[] {
   return goalsProgress(ctx.data.goals, ctx.data.shifts, ctx.data.jobs, ctx.resolve);
 }
 
-export function paymentsForMonth(year: number, month: number, ctx: AppContext = context()): PayPeriod[] {
+export function paymentsForMonth(
+  year: number,
+  month: number,
+  ctx: AppContext = context(),
+): PayPeriod[] {
   return payPeriods(ctx.data.jobs, ctx.data.shifts, ctx.data.payments, ctx.resolve, year, month);
 }
 
