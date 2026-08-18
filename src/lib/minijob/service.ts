@@ -1,0 +1,331 @@
+/**
+ * Anwendungs-/Geschäftslogik-Schicht (Facade).
+ *
+ * Ziel: UI  ->  service.ts  ->  Datenschicht (store.ts) + Rechenkern (calc/limits/…).
+ * Alle Funktionen sind rein aufrufbar (kein React nötig) und können später
+ * unverändert von einer KI-Schicht genutzt werden.
+ * Bestehende Module bleiben unangetastet – dies ist nur eine stabile Fassade.
+ */
+import {
+  averageRate,
+  isoDate,
+  shiftBreakdown,
+  shiftHours,
+  shiftsInMonth,
+  shiftsInYear,
+  shiftsOnDate,
+  sumEarnings,
+  sumHours,
+  weekday,
+} from "./calc";
+import { goalsProgress, type GoalProgress } from "./goals";
+import { holidaysFor, isHoliday } from "./holidays";
+import { buildInsights, type Insights } from "./insights";
+import { monthUsage, monthlyHoursLimit, yearUsage, yearlyLimitOf, type LimitUsage } from "./limits";
+import { payPeriod, payPeriods, paydayFor, type PayPeriod } from "./payday";
+import { makeResolver, type ResolveOptions, type Resolver } from "./resolve";
+import { generateAbsence, generateFixedMonth, overtimeHours, weeklyPlanHours } from "./schedule";
+import {
+  deleteShift as storeDeleteShift,
+  getData,
+  newId,
+  saveShift as storeSaveShift,
+  saveShifts as storeSaveShifts,
+  updateSettings as storeUpdateSettings,
+  updateSupplements as storeUpdateSupplements,
+} from "./store";
+import type { AppData, Job, Settings, Shift, ShiftKind } from "./types";
+
+/* ---------------- Kontext ---------------- */
+
+export interface AppContext {
+  data: AppData;
+  resolve: Resolver;
+}
+
+/** Aktueller Datenstand + Zuschlags-/Feiertagsauflösung. */
+export function context(data: AppData = getData()): AppContext {
+  return { data, resolve: makeResolver(data.jobs, data.settings) };
+}
+
+/* ---------------- Schichten (CRUD) ---------------- */
+
+export type ShiftInput = Omit<Shift, "id" | "kind"> & { id?: string; kind?: ShiftKind };
+
+/** Neue Schicht anlegen oder bestehende überschreiben. Gibt die gespeicherte Schicht zurück. */
+export function upsertShift(input: ShiftInput): Shift {
+  const shift: Shift = {
+    ...input,
+    id: input.id ?? newId(),
+    kind: input.kind ?? "arbeit",
+    breakMinutes: input.breakMinutes ?? 0,
+    createdAt: input.createdAt ?? isoDate(new Date()),
+  };
+  storeSaveShift(shift);
+  return shift;
+}
+
+export function addShift(input: Omit<ShiftInput, "id">): Shift {
+  return upsertShift(input);
+}
+
+/** Teil-Änderung einer vorhandenen Schicht. */
+export function updateShift(id: string, patch: Partial<Shift>): Shift | undefined {
+  const current = getShift(id);
+  if (!current) return undefined;
+  const next: Shift = { ...current, ...patch, id };
+  storeSaveShift(next);
+  return next;
+}
+
+export function removeShift(id: string): void {
+  storeDeleteShift(id);
+}
+
+export function saveManyShifts(list: Shift[]): void {
+  storeSaveShifts(list);
+}
+
+export function getShift(id: string, data: AppData = getData()): Shift | undefined {
+  return data.shifts.find((s) => s.id === id);
+}
+
+export function listShifts(
+  filter: { from?: string; to?: string; jobId?: string; kind?: ShiftKind } = {},
+  data: AppData = getData(),
+): Shift[] {
+  return data.shifts.filter((s) => {
+    if (filter.from && s.date < filter.from) return false;
+    if (filter.to && s.date > filter.to) return false;
+    if (filter.jobId && s.jobId !== filter.jobId) return false;
+    if (filter.kind && s.kind !== filter.kind) return false;
+    return true;
+  });
+}
+
+export function shiftsForDate(date: string, data: AppData = getData()): Shift[] {
+  return shiftsOnDate(data.shifts, date);
+}
+
+/* ---------------- Berechnungen ---------------- */
+
+/** Arbeitszeit einer Schicht in Stunden (inkl. Nachtschicht über Mitternacht, abzgl. Pause). */
+export function hoursOf(shift: Shift): number {
+  return shiftHours(shift);
+}
+
+/** Verdienst einer Schicht inkl. Zuschlägen – Kontext wird automatisch aufgelöst. */
+export function earningsOf(shift: Shift, ctx: AppContext = context()) {
+  return shiftBreakdown(shift, ctx.resolve(shift));
+}
+
+/** Zuschlags-/Feiertagsregeln für eine Schicht. */
+export function rulesFor(shift: Shift, ctx: AppContext = context()): ResolveOptions {
+  return ctx.resolve(shift);
+}
+
+/**
+ * Gültiger Stundenlohn für ein Datum (optional Job): Job-Satz vor Standard-Satz.
+ * Liefert zusätzlich die an diesem Tag greifenden Zuschläge.
+ */
+export function rateForDate(
+  date: string,
+  jobId?: string,
+  data: AppData = getData(),
+): {
+  rate: number;
+  job?: Job;
+  holiday: boolean;
+  weekday: number;
+  supplements: Settings["supplements"];
+} {
+  const job = data.jobs.find((j) => j.id === (jobId ?? data.settings.activeJobId));
+  return {
+    rate: job?.rate ?? data.settings.defaultRate,
+    ...(job ? { job } : {}),
+    holiday: isHoliday(date, data.settings.bundesland),
+    weekday: weekday(date),
+    supplements: job?.supplements ?? data.settings.supplements,
+  };
+}
+
+/* ---------------- Statistik ---------------- */
+
+export interface PeriodStats {
+  year: number;
+  month?: number;
+  shifts: Shift[];
+  hours: number;
+  earnings: number;
+  avgRate: number;
+  entries: number;
+}
+
+export function monthStats(year: number, month: number, ctx: AppContext = context()): PeriodStats {
+  const list = shiftsInMonth(ctx.data.shifts, year, month);
+  return {
+    year,
+    month,
+    shifts: list,
+    hours: sumHours(list),
+    earnings: sumEarnings(list, ctx.resolve),
+    avgRate: averageRate(list),
+    entries: list.length,
+  };
+}
+
+export function yearStats(year: number, ctx: AppContext = context()): PeriodStats {
+  const list = shiftsInYear(ctx.data.shifts, year);
+  return {
+    year,
+    shifts: list,
+    hours: sumHours(list),
+    earnings: sumEarnings(list, ctx.resolve),
+    avgRate: averageRate(list),
+    entries: list.length,
+  };
+}
+
+export function insightsFor(year: number, month: number, ctx: AppContext = context()): Insights {
+  return buildInsights(ctx.data.shifts, year, month, ctx.resolve);
+}
+
+export function limitsForMonth(year: number, month: number, ctx: AppContext = context()): LimitUsage {
+  return monthUsage(ctx.data.shifts, ctx.resolve, ctx.data.settings, year, month);
+}
+
+export function limitsForYear(year: number, ctx: AppContext = context()): LimitUsage {
+  return yearUsage(ctx.data.shifts, ctx.resolve, ctx.data.settings, year);
+}
+
+export function goalsOverview(ctx: AppContext = context()): GoalProgress[] {
+  return goalsProgress(ctx.data.goals, ctx.data.shifts, ctx.data.jobs, ctx.resolve);
+}
+
+export function paymentsForMonth(year: number, month: number, ctx: AppContext = context()): PayPeriod[] {
+  return payPeriods(ctx.data.jobs, ctx.data.shifts, ctx.data.payments, ctx.resolve, year, month);
+}
+
+export function paymentForJob(
+  job: Job,
+  year: number,
+  month: number,
+  ctx: AppContext = context(),
+): PayPeriod {
+  return payPeriod(job, ctx.data.shifts, ctx.data.payments, ctx.resolve, year, month);
+}
+
+/* ---------------- Dienstplan ---------------- */
+
+export interface CalendarDay {
+  date: string;
+  weekday: number;
+  holiday: boolean;
+  shifts: Shift[];
+  hours: number;
+  earnings: number;
+  /** Geplant laut Wochenplan (Festanstellung), aber noch nicht erfasst */
+  planned: boolean;
+}
+
+/** Kalenderdaten eines Monats – erfasste Schichten plus geplante Tage. */
+export function monthSchedule(
+  year: number,
+  month: number,
+  ctx: AppContext = context(),
+): CalendarDay[] {
+  const { settings, jobs } = ctx.data;
+  const planned = new Set(
+    jobs
+      .filter((j) => !j.archived && j.week)
+      .flatMap((j) =>
+        generateFixedMonth(j, year, month, ctx.data.shifts, settings.bundesland).map((s) => s.date),
+      ),
+  );
+  const days = new Date(year, month + 1, 0).getDate();
+  const result: CalendarDay[] = [];
+  for (let d = 1; d <= days; d++) {
+    const date = isoDate(new Date(year, month, d));
+    const list = shiftsOnDate(ctx.data.shifts, date);
+    result.push({
+      date,
+      weekday: weekday(date),
+      holiday: isHoliday(date, settings.bundesland),
+      shifts: list,
+      hours: sumHours(list),
+      earnings: sumEarnings(list, ctx.resolve),
+      planned: planned.has(date),
+    });
+  }
+  return result;
+}
+
+/** Schichten aus dem Wochenplan einer Festanstellung erzeugen (ohne zu speichern). */
+export function previewFixedMonth(
+  job: Job,
+  year: number,
+  month: number,
+  ctx: AppContext = context(),
+): Shift[] {
+  return generateFixedMonth(job, year, month, ctx.data.shifts, ctx.data.settings.bundesland);
+}
+
+/** Wochenplan anwenden und speichern. Gibt die neu erzeugten Schichten zurück. */
+export function applyFixedMonth(job: Job, year: number, month: number): Shift[] {
+  const created = previewFixedMonth(job, year, month);
+  if (created.length) storeSaveShifts(created);
+  return created;
+}
+
+/** Urlaub / Krank für einen Zeitraum eintragen. */
+export function addAbsence(job: Job, kind: ShiftKind, from: string, to: string): Shift[] {
+  const created = generateAbsence(job, kind, from, to, getData().settings.bundesland);
+  if (created.length) storeSaveShifts(created);
+  return created;
+}
+
+export function plannedWeeklyHours(job: Job): number {
+  return weeklyPlanHours(job);
+}
+
+export function overtimeFor(job: Job, shifts: Shift[], weeks: number): number {
+  return overtimeHours(job, shifts, weeks);
+}
+
+export function holidays(year: number, data: AppData = getData()) {
+  return holidaysFor(year, data.settings.bundesland);
+}
+
+/* ---------------- Einstellungen & Jobs ---------------- */
+
+export function getSettings(data: AppData = getData()): Settings {
+  return data.settings;
+}
+
+export function setSettings(patch: Partial<Settings>): void {
+  storeUpdateSettings(patch);
+}
+
+export function setSupplements(patch: Partial<Settings["supplements"]>): void {
+  storeUpdateSupplements(patch);
+}
+
+export function listJobs(data: AppData = getData()): Job[] {
+  return data.jobs.filter((j) => !j.archived);
+}
+
+export function getJob(id: string | undefined, data: AppData = getData()): Job | undefined {
+  return data.jobs.find((j) => j.id === id);
+}
+
+export function activeJob(data: AppData = getData()): Job | undefined {
+  return getJob(data.settings.activeJobId, data);
+}
+
+export const limitInfo = {
+  monthlyHours: monthlyHoursLimit,
+  yearly: yearlyLimitOf,
+};
+
+export { paydayFor };
+export type { LimitUsage, PayPeriod, Insights, GoalProgress, Resolver, ResolveOptions };
