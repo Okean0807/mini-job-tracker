@@ -219,10 +219,17 @@ export function ShiftDialog({
     if (workCode) next.workCode = workCode;
     if (workCode && workCodeNote.trim()) next.workCodeNote = workCodeNote.trim();
     next.createdAt = shift?.createdAt ?? new Date().toISOString().slice(0, 10);
-    saveShift(next);
+    if (shift) {
+      // vollständiger Datensatz -> id-erhaltendes Überschreiben (identisch zum bisherigen saveShift)
+      upsertShift(next);
+    } else {
+      const { id: _id, ...input } = next;
+      addShift(input);
+    }
     toast.success(shift ? t("shift.updated") : t("shift.saved"));
     onOpenChange(false);
   }
+
 
   const selfEmployed = job?.mode === "selbststaendig";
 
