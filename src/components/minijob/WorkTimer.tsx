@@ -5,7 +5,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n";
 import { formatClock, isoDate, timeFromDate } from "@/lib/minijob/calc";
-import { clearTimer, newId, saveShift, startTimer, updateTimerBreak } from "@/lib/minijob/store";
+import { addShift } from "@/lib/minijob/service";
+import { clearTimer, startTimer, updateTimerBreak } from "@/lib/minijob/store";
 import type { Job, RunningTimer, Settings } from "@/lib/minijob/types";
 
 interface WorkTimerProps {
