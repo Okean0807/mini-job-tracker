@@ -695,7 +695,7 @@ export function ShiftDialog({
               variant="ghost"
               className="text-destructive"
               onClick={() => {
-                deleteShift(shift.id);
+                removeShift(shift.id);
                 toast.success(t("shift.deleted"));
                 onOpenChange(false);
               }}
