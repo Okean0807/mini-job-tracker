@@ -41,8 +41,7 @@ export function WorkTimer({ timer, jobs, settings }: WorkTimerProps) {
     if (!timer) return;
     const startedAt = new Date(timer.startedAt);
     const now = new Date();
-    const shift = {
-      id: newId(),
+    addShift({
       kind: "arbeit" as const,
       date: isoDate(startedAt),
       start: timeFromDate(startedAt),
@@ -50,8 +49,7 @@ export function WorkTimer({ timer, jobs, settings }: WorkTimerProps) {
       breakMinutes: timer.breakMinutes,
       rate: activeJob?.rate ?? settings.defaultRate,
       ...(timer.jobId ? { jobId: timer.jobId } : {}),
-    };
-    saveShift(shift);
+    });
     clearTimer();
     toast.success(t("timer.savedToast"));
   }
