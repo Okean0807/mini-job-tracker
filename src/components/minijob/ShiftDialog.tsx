@@ -19,7 +19,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/lib/i18n";
 import { formatDate, formatEuro, formatHours, shiftBreakdown } from "@/lib/minijob/calc";
 import { holidayName } from "@/lib/minijob/holidays";
-import { deleteShift, newId, saveShift, updateSettings } from "@/lib/minijob/store";
+import { addShift, removeShift, upsertShift } from "@/lib/minijob/service";
+import { newId, updateSettings } from "@/lib/minijob/store";
 import {
   type Customer,
   type Job,
@@ -219,10 +220,17 @@ export function ShiftDialog({
     if (workCode) next.workCode = workCode;
     if (workCode && workCodeNote.trim()) next.workCodeNote = workCodeNote.trim();
     next.createdAt = shift?.createdAt ?? new Date().toISOString().slice(0, 10);
-    saveShift(next);
+    if (shift) {
+      // vollständiger Datensatz -> id-erhaltendes Überschreiben (identisch zum bisherigen saveShift)
+      upsertShift(next);
+    } else {
+      const { id: _id, ...input } = next;
+      addShift(input);
+    }
     toast.success(shift ? t("shift.updated") : t("shift.saved"));
     onOpenChange(false);
   }
+
 
   const selfEmployed = job?.mode === "selbststaendig";
 
@@ -687,7 +695,7 @@ export function ShiftDialog({
               variant="ghost"
               className="text-destructive"
               onClick={() => {
-                deleteShift(shift.id);
+                removeShift(shift.id);
                 toast.success(t("shift.deleted"));
                 onOpenChange(false);
               }}
