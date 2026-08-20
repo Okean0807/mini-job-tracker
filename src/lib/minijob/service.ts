@@ -348,5 +348,5 @@ export const limitInfo = {
   yearly: yearlyLimitOf,
 };
 
-export { paydayFor };
-export type { LimitUsage, PayPeriod, Insights, GoalProgress, Resolver, ResolveOptions };
+export { paydayFor, suggestedRate };
+export type { RateSource, LimitUsage, PayPeriod, Insights, GoalProgress, Resolver, ResolveOptions };
