@@ -4,14 +4,14 @@ import { rateForDate, rateOf, earningsOf } from "./service";
 import { replaceAll } from "./store";
 import { DEFAULT_SETTINGS, type Job, type Shift } from "./types";
 
-const jobA: Job = { id: "a", name: "Job A", color: "#f00", rate: 15, mode: "flexibel" };
-const jobB: Job = { id: "b", name: "Job B", color: "#00f", rate: 20, mode: "flexibel" };
+const jobA: Job = { id: "a", name: "Job A", color: "#f00", rate: 15, mode: "flex" };
+const jobB: Job = { id: "b", name: "Job B", color: "#00f", rate: 20, mode: "flex" };
 
 beforeEach(() => {
   replaceAll({
     shifts: [],
     jobs: [jobA, jobB],
-    settings: { ...DEFAULT_SETTINGS, defaultRate: 12, activeJobId: undefined },
+    settings: { ...DEFAULT_SETTINGS, defaultRate: 12 },
   });
 });
 
