@@ -23,6 +23,7 @@ import { holidaysFor, isHoliday } from "./holidays";
 import { buildInsights, type Insights } from "./insights";
 import { monthUsage, monthlyHoursLimit, yearUsage, yearlyLimitOf, type LimitUsage } from "./limits";
 import { payPeriod, payPeriods, paydayFor, type PayPeriod } from "./payday";
+import { effectiveShiftRate, resolveRate, suggestedRate, type RateSource } from "./rate";
 import { makeResolver, type ResolveOptions, type Resolver } from "./resolve";
 import { generateAbsence, generateFixedMonth, overtimeHours, weeklyPlanHours } from "./schedule";
 import {
@@ -132,21 +133,33 @@ export function rateForDate(
   date: string,
   jobId?: string,
   data: AppData = getData(),
+  options: { shiftRate?: number | undefined } = {},
 ): {
   rate: number;
+  source: RateSource;
   job?: Job;
   holiday: boolean;
   weekday: number;
   supplements: Settings["supplements"];
 } {
-  const job = data.jobs.find((j) => j.id === (jobId ?? data.settings.activeJobId));
+  const { rate, source, job } = resolveRate(
+    { date, jobId, shiftRate: options.shiftRate },
+    data.jobs,
+    data.settings,
+  );
   return {
-    rate: job?.rate ?? data.settings.defaultRate,
+    rate,
+    source,
     ...(job ? { job } : {}),
     holiday: isHoliday(date, data.settings.bundesland),
     weekday: weekday(date),
     supplements: job?.supplements ?? data.settings.supplements,
   };
+}
+
+/** Maßgeblicher Satz einer gespeicherten Schicht (Basis der Verdienstberechnung). */
+export function rateOf(shift: Shift): number {
+  return effectiveShiftRate(shift);
 }
 
 /* ---------------- Statistik ---------------- */
@@ -335,5 +348,5 @@ export const limitInfo = {
   yearly: yearlyLimitOf,
 };
 
-export { paydayFor };
-export type { LimitUsage, PayPeriod, Insights, GoalProgress, Resolver, ResolveOptions };
+export { paydayFor, suggestedRate };
+export type { RateSource, LimitUsage, PayPeriod, Insights, GoalProgress, Resolver, ResolveOptions };

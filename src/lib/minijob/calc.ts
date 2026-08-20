@@ -1,5 +1,6 @@
 import { currentLocale } from "@/lib/i18n";
 
+import { effectiveShiftRate } from "./rate";
 import { DEFAULT_SUPPLEMENTS, type Job, type Shift, type Supplements } from "./types";
 
 export function toMinutes(time: string): number {
@@ -67,7 +68,7 @@ export function shiftBreakdown(
 ): Breakdown {
   const sup = options.job?.supplements ?? options.supplements ?? DEFAULT_SUPPLEMENTS;
   const hours = shiftHours(shift);
-  const rate = shift.rate || 0;
+  const rate = effectiveShiftRate(shift);
   const base = hours * rate;
   const labels: string[] = [];
   let bonus = 0;
