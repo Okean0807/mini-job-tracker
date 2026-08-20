@@ -23,6 +23,7 @@ import { holidaysFor, isHoliday } from "./holidays";
 import { buildInsights, type Insights } from "./insights";
 import { monthUsage, monthlyHoursLimit, yearUsage, yearlyLimitOf, type LimitUsage } from "./limits";
 import { payPeriod, payPeriods, paydayFor, type PayPeriod } from "./payday";
+import { effectiveShiftRate, resolveRate, suggestedRate, type RateSource } from "./rate";
 import { makeResolver, type ResolveOptions, type Resolver } from "./resolve";
 import { generateAbsence, generateFixedMonth, overtimeHours, weeklyPlanHours } from "./schedule";
 import {
