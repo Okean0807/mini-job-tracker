@@ -67,7 +67,7 @@ export function shiftBreakdown(
 ): Breakdown {
   const sup = options.job?.supplements ?? options.supplements ?? DEFAULT_SUPPLEMENTS;
   const hours = shiftHours(shift);
-  const rate = shift.rate || 0;
+  const rate = effectiveShiftRate(shift);
   const base = hours * rate;
   const labels: string[] = [];
   let bonus = 0;
