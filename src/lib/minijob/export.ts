@@ -56,7 +56,7 @@ function rows(shifts: Shift[], ctx: ExportContext) {
       [endLabel]: s.end,
       [breakLabel]: s.breakMinutes,
       [hoursLabel]: Number(shiftHours(s).toFixed(2)),
-      [rateLabel]: Number((s.rate || 0).toFixed(2)),
+      [rateLabel]: Number(effectiveShiftRate(s, { job: ctx.jobs.find((j) => j.id === s.jobId), defaultRate: ctx.settings?.defaultRate }).toFixed(2)),
       [bonusLabel]: Number(b.bonus.toFixed(2)),
       [earningsLabel]: Number(b.total.toFixed(2)),
       [noteLabel]: s.note ?? "",

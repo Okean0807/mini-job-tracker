@@ -158,8 +158,9 @@ export function rateForDate(
 }
 
 /** Maßgeblicher Satz einer gespeicherten Schicht (Basis der Verdienstberechnung). */
-export function rateOf(shift: Shift): number {
-  return effectiveShiftRate(shift);
+export function rateOf(shift: Shift, ctx: AppContext = context()): number {
+  const { job, defaultRate } = ctx.resolve(shift);
+  return effectiveShiftRate(shift, { job, defaultRate });
 }
 
 /* ---------------- Statistik ---------------- */

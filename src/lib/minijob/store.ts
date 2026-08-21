@@ -91,7 +91,13 @@ export function normalize(input: Partial<AppData>): AppData {
       kind: s.kind ?? "arbeit",
       breakMinutes: s.breakMinutes ?? 0,
     })),
-    jobs: Array.isArray(raw.jobs) ? raw.jobs : [],
+    // Kompatibilität: Ein gespeicherter Job-Satz 0 stammte bisher aus einem leeren
+    // Formularfeld und wurde in der Lohnauflösung schon immer als "nicht gesetzt"
+    // behandelt. Er wird daher auf undefined gehoben. Schicht-Sätze bleiben unverändert,
+    // weil dort 0 bereits als 0 EUR/h verrechnet wurde.
+    jobs: (Array.isArray(raw.jobs) ? raw.jobs : []).map((j) =>
+      j.rate === 0 ? { ...j, rate: undefined } : j,
+    ),
     customers: Array.isArray(raw.customers) ? raw.customers : [],
     projects: Array.isArray(raw.projects) ? raw.projects : [],
     payments: Array.isArray(raw.payments) ? raw.payments : [],

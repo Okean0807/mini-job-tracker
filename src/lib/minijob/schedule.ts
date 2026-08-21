@@ -36,7 +36,7 @@ export function generateFixedMonth(
       start: plan.start,
       end: plan.end,
       breakMinutes: plan.breakMinutes,
-      rate: job.rate,
+      ...(typeof job.rate === "number" ? { rate: job.rate } : {}),
     });
   }
   return created;
@@ -67,7 +67,7 @@ export function generateAbsence(
       start: plan?.start ?? "09:00",
       end: plan?.end ?? "17:00",
       breakMinutes: plan?.breakMinutes ?? 0,
-      rate: job.rate,
+      ...(typeof job.rate === "number" ? { rate: job.rate } : {}),
       note: isHoliday(date, bundesland) ? "Feiertag" : undefined,
     });
   }
@@ -96,7 +96,6 @@ export function weeklyPlanHours(job: Job): number {
         start: day.start,
         end: day.end,
         breakMinutes: day.breakMinutes,
-        rate: 0,
       })
     );
   }, 0);
