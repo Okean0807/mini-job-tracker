@@ -64,11 +64,16 @@ export function weekday(date: string): number {
 
 export function shiftBreakdown(
   shift: Shift,
-  options: { job?: Job | undefined; supplements?: Supplements | undefined; holiday?: boolean } = {},
+  options: {
+    job?: Job | undefined;
+    supplements?: Supplements | undefined;
+    holiday?: boolean;
+    defaultRate?: number | undefined;
+  } = {},
 ): Breakdown {
   const sup = options.job?.supplements ?? options.supplements ?? DEFAULT_SUPPLEMENTS;
   const hours = shiftHours(shift);
-  const rate = effectiveShiftRate(shift);
+  const rate = effectiveShiftRate(shift, { job: options.job, defaultRate: options.defaultRate });
   const base = hours * rate;
   const labels: string[] = [];
   let bonus = 0;

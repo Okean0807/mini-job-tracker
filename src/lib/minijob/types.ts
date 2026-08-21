@@ -56,7 +56,8 @@ export interface Job {
   id: string;
   name: string;
   color: string;
-  rate: number;
+  /** Stundenlohn in EUR; undefined = nicht gesetzt (Fallback auf Standardsatz), 0 = bewusst 0 EUR/h */
+  rate?: number;
   mode: WorkMode;
   employer?: string;
   contact?: string;
@@ -119,8 +120,8 @@ export interface Shift {
   /** HH:mm */
   end: string;
   breakMinutes: number;
-  /** Stundenlohn in EUR */
-  rate: number;
+  /** Stundenlohn in EUR; undefined = nicht gesetzt (Fallback Job > Standard), 0 = bewusst 0 EUR/h */
+  rate?: number;
   customerId?: string;
   projectId?: string;
   note?: string | undefined;
