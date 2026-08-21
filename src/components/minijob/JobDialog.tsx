@@ -16,6 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useT } from "@/lib/i18n";
 import { weekdayNames } from "@/lib/minijob/calc";
+import { parseRateInput } from "@/lib/minijob/rate";
 import { deleteJob, newId, nextJobColor, saveJob } from "@/lib/minijob/store";
 import {
   DEFAULT_SUPPLEMENTS,
@@ -97,6 +98,8 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
       payrollDelay,
       supplements,
     };
+    const rateValue = parseRateInput(rate);
+    if (rateValue !== undefined) next.rate = rateValue;
     const rateValue = parseRateInput(rate);
     if (rateValue !== undefined) next.rate = rateValue;
     if (mode === "fest") {

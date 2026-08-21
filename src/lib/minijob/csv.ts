@@ -84,6 +84,13 @@ function parseNumber(value: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Lohnspalte: leer = nicht gesetzt (undefined), sonst der Wert (auch 0). */
+function parseRateCell(value: string): number | null | undefined {
+  if (!value.trim()) return undefined;
+  const n = Number(value.replace(/\s|€/g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}
+
 /** CSV-Text in prüfbare Schichten umwandeln. */
 export function parseCsv(
   text: string,
@@ -122,7 +129,7 @@ export function parseCsv(
     if (!end) errors.push(t("csv.error.end"));
     const breakMinutes = parseNumber(breakCell);
     if (breakMinutes === null || breakMinutes < 0) errors.push(t("csv.error.break"));
-    const rate = parseNumber(rateCell);
+    const rate = parseRateCell(rateCell);
     if (rate === null || rate < 0) errors.push(t("csv.error.rate"));
 
     const row: CsvRow = {
@@ -148,8 +155,10 @@ export function parseCsv(
         start: start!,
         end: end!,
         breakMinutes: breakMinutes!,
-        rate: rate! || job?.rate || options.defaultRate,
       };
+      // Leere Lohnspalte = nicht gesetzt -> Fallback Job > Standard bleibt der
+      // zentralen Lohnauflösung überlassen. Eine importierte 0 bleibt 0 EUR/h.
+      if (rate !== undefined) shift.rate = rate;
       if (job) shift.jobId = job.id;
       if (noteCell.trim()) shift.note = noteCell.trim();
       row.shift = shift;
@@ -176,7 +185,7 @@ export function shiftsToCsv(shifts: Shift[], jobs: Job[]): string {
         s.start,
         s.end,
         String(s.breakMinutes ?? 0),
-        String(s.rate ?? 0).replace(".", ","),
+        typeof s.rate === "number" ? String(s.rate).replace(".", ",") : "",
         jobs.find((j) => j.id === s.jobId)?.name ?? "",
         s.note ?? "",
       ]
