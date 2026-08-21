@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/lib/i18n";
 import { formatDate, formatEuro, formatHours, shiftBreakdown } from "@/lib/minijob/calc";
 import { holidayName } from "@/lib/minijob/holidays";
+import { parseRateInput, suggestedRate } from "@/lib/minijob/rate";
 import { addShift, removeShift, upsertShift } from "@/lib/minijob/service";
 import { newId, updateSettings } from "@/lib/minijob/store";
 import {
@@ -122,7 +123,13 @@ export function ShiftDialog({
     setStart(shift?.start ?? "09:00");
     setEnd(shift?.end ?? "17:00");
     setBreakMinutes(String(shift?.breakMinutes ?? 30));
-    setRate(String(shift?.rate ?? fallbackJob?.rate ?? settings.defaultRate));
+    setRate(
+      shift
+        ? typeof shift.rate === "number"
+          ? String(shift.rate)
+          : ""
+        : String(suggestedRate({ jobId: fallbackJob?.id }, { jobs, settings })),
+    );
     setNote(shift?.note ?? "");
     setOvertime(shift?.overtime ?? false);
     setCustomerId(shift?.customerId);
@@ -166,14 +173,16 @@ export function ShiftDialog({
     start,
     end,
     breakMinutes: Number(breakMinutes) || 0,
-    rate: Number(rate.replace(",", ".")) || 0,
     overtime,
   };
+  const parsedRate = parseRateInput(rate);
+  if (parsedRate !== undefined) draft.rate = parsedRate;
   if (jobId) draft.jobId = jobId;
   const preview = shiftBreakdown(draft, {
     job,
     supplements: job?.supplements ?? settings.supplements,
     holiday: Boolean(holiday),
+    defaultRate: settings.defaultRate,
   });
 
   async function voice() {
@@ -202,8 +211,9 @@ export function ShiftDialog({
       start,
       end,
       breakMinutes: Number(breakMinutes) || 0,
-      rate: Number(rate.replace(",", ".")) || 0,
     };
+    const rateValue = parseRateInput(rate);
+    if (rateValue !== undefined) next.rate = rateValue;
     if (jobId) next.jobId = jobId;
     if (note.trim()) next.note = note.trim();
     if (overtime) next.overtime = true;
@@ -256,7 +266,7 @@ export function ShiftDialog({
                     type="button"
                     onClick={() => {
                       setJobId(j.id);
-                      setRate(String(j.rate));
+                      setRate(String(suggestedRate({ jobId: j.id }, { jobs, settings })));
                     }}
                     className={cn(
                       "flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium",

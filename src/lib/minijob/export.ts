@@ -13,16 +13,23 @@ import {
   sumHours,
 } from "./calc";
 import { isHoliday } from "./holidays";
+import { effectiveShiftRate } from "./rate";
 import type { Job, Shift } from "./types";
 
 export interface ExportContext {
   jobs: Job[];
   bundesland: string;
+  /** Standard-Stundenlohn als Fallback für Schichten ohne eigenen Satz */
+  defaultRate?: number | undefined;
 }
 
 function resolve(shift: Shift, ctx: ExportContext) {
   const job = ctx.jobs.find((j) => j.id === shift.jobId);
-  return shiftBreakdown(shift, { job, holiday: isHoliday(shift.date, ctx.bundesland) });
+  return shiftBreakdown(shift, {
+    job,
+    holiday: isHoliday(shift.date, ctx.bundesland),
+    defaultRate: ctx.defaultRate,
+  });
 }
 
 function sorted(shifts: Shift[]) {
@@ -56,7 +63,12 @@ function rows(shifts: Shift[], ctx: ExportContext) {
       [endLabel]: s.end,
       [breakLabel]: s.breakMinutes,
       [hoursLabel]: Number(shiftHours(s).toFixed(2)),
-      [rateLabel]: Number((s.rate || 0).toFixed(2)),
+            [rateLabel]: Number(
+        effectiveShiftRate(s, {
+          job: ctx.jobs.find((j) => j.id === s.jobId),
+          defaultRate: ctx.defaultRate,
+        }).toFixed(2),
+      ),
       [bonusLabel]: Number(b.bonus.toFixed(2)),
       [earningsLabel]: Number(b.total.toFixed(2)),
       [noteLabel]: s.note ?? "",

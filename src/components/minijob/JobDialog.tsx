@@ -16,6 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useT } from "@/lib/i18n";
 import { weekdayNames } from "@/lib/minijob/calc";
+import { parseRateInput } from "@/lib/minijob/rate";
 import { deleteJob, newId, nextJobColor, saveJob } from "@/lib/minijob/store";
 import {
   DEFAULT_SUPPLEMENTS,
@@ -62,7 +63,7 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
     if (!open) return;
     setName(job?.name ?? "");
     setColor(job?.color ?? nextJobColor());
-    setRate(String(job?.rate ?? defaultRate));
+    setRate(typeof job?.rate === "number" ? String(job.rate) : job ? "" : String(defaultRate));
     setMode(job?.mode ?? "flex");
     setEmployer(job?.employer ?? "");
     setContact(job?.contact ?? "");
@@ -86,7 +87,6 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
       id: job?.id ?? newId(),
       name: name.trim(),
       color,
-      rate: Number(rate.replace(",", ".")) || 0,
       mode,
       employer: employer.trim(),
       contact: contact.trim(),
@@ -98,6 +98,8 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
       payrollDelay,
       supplements,
     };
+    const rateValue = parseRateInput(rate);
+    if (rateValue !== undefined) next.rate = rateValue;
     if (mode === "fest") {
       next.week = week;
       next.weeklyTarget = Number(weeklyTarget.replace(",", ".")) || 0;
