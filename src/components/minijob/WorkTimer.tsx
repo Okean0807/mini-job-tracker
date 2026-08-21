@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n";
 import { formatClock, isoDate, timeFromDate } from "@/lib/minijob/calc";
+import { suggestedRate } from "@/lib/minijob/rate";
 import { addShift } from "@/lib/minijob/service";
 import { clearTimer, startTimer, updateTimerBreak } from "@/lib/minijob/store";
 import type { Job, RunningTimer, Settings } from "@/lib/minijob/types";
@@ -47,7 +48,7 @@ export function WorkTimer({ timer, jobs, settings }: WorkTimerProps) {
       start: timeFromDate(startedAt),
       end: timeFromDate(now),
       breakMinutes: timer.breakMinutes,
-      rate: activeJob?.rate ?? settings.defaultRate,
+      rate: suggestedRate({ jobId: activeJob?.id }, { jobs, settings }),
       ...(timer.jobId ? { jobId: timer.jobId } : {}),
     });
     clearTimer();

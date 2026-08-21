@@ -62,7 +62,7 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
     if (!open) return;
     setName(job?.name ?? "");
     setColor(job?.color ?? nextJobColor());
-    setRate(String(job?.rate ?? defaultRate));
+    setRate(typeof job?.rate === "number" ? String(job.rate) : job ? "" : String(defaultRate));
     setMode(job?.mode ?? "flex");
     setEmployer(job?.employer ?? "");
     setContact(job?.contact ?? "");
@@ -86,7 +86,6 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
       id: job?.id ?? newId(),
       name: name.trim(),
       color,
-      rate: Number(rate.replace(",", ".")) || 0,
       mode,
       employer: employer.trim(),
       contact: contact.trim(),
