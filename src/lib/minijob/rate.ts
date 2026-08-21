@@ -2,13 +2,13 @@
  * Zentrale Lohnsatz-Auflösung.
  *
  * Einziger Ort, an dem die Priorität der Stundensätze definiert ist:
- *   1. Schicht-Satz  (shift.rate, wenn gesetzt und > 0)
- *   2. Job-Satz      (job.rate)
+ *   1. Schicht-Satz  (shift.rate, wenn gesetzt)
+ *   2. Job-Satz      (job.rate, wenn gesetzt)
  *   3. Standard-Satz (settings.defaultRate)
  *
- * Achtung (bestehendes Verhalten, absichtlich unverändert):
- * Ein gespeicherter Schicht-Satz von 0 gilt in der Verdienstberechnung als
- * "0 EUR/h" und fällt NICHT auf Job- oder Standard-Satz zurück.
+ * Semantik (einheitlich in der gesamten App):
+ *   undefined = nicht gesetzt  -> Fallback auf die nächste Ebene
+ *   0         = bewusst 0 EUR/h -> KEIN Fallback
  */
 import type { AppData, Job, Settings, Shift } from "./types";
 
@@ -39,10 +39,10 @@ export function resolveRate(
   settings: Settings,
 ): RateResolution {
   const job = findJob(jobs, query.jobId ?? settings.activeJobId);
-  if (typeof query.shiftRate === "number" && query.shiftRate > 0) {
+  if (typeof query.shiftRate === "number") {
     return { rate: query.shiftRate, source: "shift", job };
   }
-  if (job && typeof job.rate === "number" && job.rate > 0) {
+  if (job && typeof job.rate === "number") {
     return { rate: job.rate, source: "job", job };
   }
   return { rate: settings.defaultRate ?? 0, source: "default", job };
@@ -53,10 +53,18 @@ export function suggestedRate(query: RateQuery, data: Pick<AppData, "jobs" | "se
   return resolveRate(query, data.jobs, data.settings).rate;
 }
 
+export interface RateContext {
+  job?: Job | undefined;
+  defaultRate?: number | undefined;
+}
+
 /**
  * Für die Verdienstberechnung maßgeblicher Satz einer gespeicherten Schicht.
- * Der Schicht-Satz ist verbindlich (auch 0) – siehe Hinweis oben.
+ * Fehlt der Schicht-Satz (undefined), greift Job- bzw. Standard-Satz.
+ * Ein gespeicherter Satz von 0 bleibt 0.
  */
-export function effectiveShiftRate(shift: Pick<Shift, "rate">): number {
-  return shift.rate || 0;
+export function effectiveShiftRate(shift: Pick<Shift, "rate">, ctx: RateContext = {}): number {
+  if (typeof shift.rate === "number") return shift.rate;
+  if (typeof ctx.job?.rate === "number") return ctx.job.rate;
+  return ctx.defaultRate ?? 0;
 }
