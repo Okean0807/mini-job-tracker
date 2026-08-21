@@ -2,6 +2,7 @@ import { CalendarDays } from "lucide-react";
 
 import { useT } from "@/lib/i18n";
 import { formatDate, formatEuro, formatHours, shiftBreakdown } from "@/lib/minijob/calc";
+import { effectiveShiftRate } from "@/lib/minijob/rate";
 import type { ResolveOptions } from "@/lib/minijob/resolve";
 import type { Job, Shift } from "@/lib/minijob/types";
 
@@ -27,8 +28,10 @@ export function ShiftList({ shifts, jobs, resolve, onSelect }: ShiftListProps) {
   return (
     <ul className="flex flex-col gap-2">
       {shifts.map((s) => {
-        const b = shiftBreakdown(s, resolve(s));
+        const options = resolve(s);
+        const b = shiftBreakdown(s, options);
         const job = jobs.find((j) => j.id === s.jobId);
+        const rate = effectiveShiftRate(s, { job, defaultRate: options.defaultRate });
         return (
           <li key={s.id}>
             <button
@@ -50,7 +53,7 @@ export function ShiftList({ shifts, jobs, resolve, onSelect }: ShiftListProps) {
                   {s.kind === "arbeit"
                     ? `${s.start}–${s.end}${s.breakMinutes ? ` ${t("list.breakMinutes", { minutes: s.breakMinutes })}` : ""}`
                     : t(`kind.${s.kind}`)}
-                  {` ${t("list.perHour", { amount: formatEuro(s.rate) })}`}
+                  {` ${t("list.perHour", { amount: formatEuro(rate) })}`}
                 </p>
                 {b.labels.length ? (
                   <p className="mt-1 text-[11px] font-medium text-primary">

@@ -90,7 +90,7 @@ function JobsPage() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold">{job.name}</p>
                   <p className="truncate text-xs text-muted-foreground">
-                    {t("mode." + job.mode)} · {formatEuro(job.rate)}
+                    {t("mode." + job.mode)} · {formatEuro(job.rate ?? settings.defaultRate)}
                     {t("job.perHour")}
                     {job.mode === "fest"
                       ? ` · ${t("job.hoursPerWeek", { hours: weeklyPlanHours(job).toFixed(1) })}`

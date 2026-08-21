@@ -130,7 +130,7 @@ export function parseCsv(
     const breakMinutes = parseNumber(breakCell);
     if (breakMinutes === null || breakMinutes < 0) errors.push(t("csv.error.break"));
     const rate = parseRateCell(rateCell);
-    if (rate === null || rate < 0) errors.push(t("csv.error.rate"));
+    if (rate === null || (rate !== undefined && rate < 0)) errors.push(t("csv.error.rate"));
 
     const row: CsvRow = {
       line: index + (hasHeader ? 2 : 1),
@@ -158,7 +158,7 @@ export function parseCsv(
       };
       // Leere Lohnspalte = nicht gesetzt -> Fallback Job > Standard bleibt der
       // zentralen Lohnauflösung überlassen. Eine importierte 0 bleibt 0 EUR/h.
-      if (rate !== undefined) shift.rate = rate;
+      if (rate !== undefined && rate !== null) shift.rate = rate;
       if (job) shift.jobId = job.id;
       if (noteCell.trim()) shift.note = noteCell.trim();
       row.shift = shift;
