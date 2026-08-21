@@ -19,7 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/lib/i18n";
 import { formatDate, formatEuro, formatHours, shiftBreakdown } from "@/lib/minijob/calc";
 import { holidayName } from "@/lib/minijob/holidays";
-import { suggestedRate } from "@/lib/minijob/rate";
+import { parseRateInput, suggestedRate } from "@/lib/minijob/rate";
 import { addShift, removeShift, upsertShift } from "@/lib/minijob/service";
 import { newId, updateSettings } from "@/lib/minijob/store";
 import {

@@ -97,6 +97,8 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
       payrollDelay,
       supplements,
     };
+    const rateValue = parseRateInput(rate);
+    if (rateValue !== undefined) next.rate = rateValue;
     if (mode === "fest") {
       next.week = week;
       next.weeklyTarget = Number(weeklyTarget.replace(",", ".")) || 0;

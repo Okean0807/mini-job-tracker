@@ -53,6 +53,17 @@ export function suggestedRate(query: RateQuery, data: Pick<AppData, "jobs" | "se
   return resolveRate(query, data.jobs, data.settings).rate;
 }
 
+/**
+ * Eingabefeld -> Lohnsatz. Leeres/unparsbares Feld ergibt undefined (nicht gesetzt),
+ * eine eingegebene 0 ergibt 0 (bewusst 0 EUR/h).
+ */
+export function parseRateInput(value: string): number | undefined {
+  const raw = value.trim().replace(",", ".");
+  if (!raw) return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 export interface RateContext {
   job?: Job | undefined;
   defaultRate?: number | undefined;
