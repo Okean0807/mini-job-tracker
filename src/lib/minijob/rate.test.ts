@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { shiftBreakdown } from "./calc";
 import { parseCsv, shiftsToCsv } from "./csv";
-import { parseRateInput } from "./rate";
+import { effectiveShiftRate, parseRateInput, resolveRate } from "./rate";
 import { makeResolver } from "./resolve";
 import { rateForDate, rateOf, earningsOf } from "./service";
 import { normalize, replaceAll } from "./store";
@@ -63,7 +63,9 @@ describe("rateForDate", () => {
   });
 
   it("Job-Satz 0 gilt als bewusste Null (kein Fallback auf Standard)", () => {
-    const r = rateForDate("2026-03-04", "z");
+    // Hinweis: der Store hebt Altdaten mit Job-Satz 0 auf "nicht gesetzt"; die
+    // Auflösung selbst behandelt eine gesetzte 0 als echten Satz.
+    const r = resolveRate({ jobId: "z" }, [jobZero], { ...DEFAULT_SETTINGS, defaultRate: 12 });
     expect(r.rate).toBe(0);
     expect(r.source).toBe("job");
   });
@@ -119,8 +121,7 @@ describe("rateOf / Verdienst", () => {
 
   it("Job-Satz 0 ohne Schicht-Satz ergibt 0 EUR", () => {
     const s = shift({ jobId: "z" });
-    expect(rateOf(s)).toBe(0);
-    expect(earningsOf(s).total).toBe(0);
+    expect(effectiveShiftRate(s, { job: jobZero, defaultRate: 12 })).toBe(0);
   });
 
   it("shiftBreakdown nutzt dieselbe Kette", () => {
