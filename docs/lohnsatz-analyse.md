@@ -75,3 +75,17 @@ den Job-Satz direkt lesen statt `suggestedRate()` zu nutzen.
 
 Punkt 2/3 ist eine Datenmodell-Migration (Alt-Daten mit 0 müssten interpretiert werden) und
 sollte erst nach ausdrücklicher Freigabe erfolgen.
+
+---
+
+## Umsetzung (erledigt)
+
+- `Shift.rate` und `Job.rate` sind optional: `undefined` = nicht gesetzt (Fallback), `0` = bewusst 0 EUR/h.
+- Hierarchie unverändert: Schicht → Job → Standard, aufgelöst ausschließlich in `rate.ts`
+  (`resolveRate`, `effectiveShiftRate`, `parseRateInput`), Einstieg über `service.rateForDate` / `rateOf`.
+- Leeres Lohnfeld in `ShiftDialog`/`JobDialog` speichert kein `rate` mehr (kein stilles 0).
+- CSV: leere Lohnspalte = nicht gesetzt, importierte 0 bleibt 0; Export schreibt bei fehlendem Satz eine leere Zelle.
+- Kompatibilität: `store.normalize` hebt nur gespeicherte **Job**-Sätze von 0 auf `undefined`
+  (entspricht exakt dem bisherigen Auflösungsverhalten). Gespeicherte **Schicht**-Sätze von 0
+  bleiben unverändert 0 EUR/h, weil sie schon bisher so verrechnet wurden.
+- `Customer.rate` / `Project.rate` unverändert und weiterhin außerhalb der Lohnhierarchie.
