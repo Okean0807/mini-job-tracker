@@ -14,19 +14,22 @@ import {
 } from "./calc";
 import { isHoliday } from "./holidays";
 import { effectiveShiftRate } from "./rate";
-import type { Job, Shift } from "./types";
+import type { Job, Shift, Supplements } from "./types";
 
 export interface ExportContext {
   jobs: Job[];
   bundesland: string;
   /** Standard-Stundenlohn als Fallback für Schichten ohne eigenen Satz */
   defaultRate?: number | undefined;
+  /** Globale Zuschlagsregeln (greifen, wenn der Job keine eigenen hat) */
+  supplements?: Supplements | undefined;
 }
 
 function resolve(shift: Shift, ctx: ExportContext) {
   const job = ctx.jobs.find((j) => j.id === shift.jobId);
   return shiftBreakdown(shift, {
     job,
+    supplements: ctx.supplements,
     holiday: isHoliday(shift.date, ctx.bundesland),
     defaultRate: ctx.defaultRate,
   });

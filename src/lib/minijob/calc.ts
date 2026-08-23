@@ -109,10 +109,14 @@ export function shiftBreakdown(
   return { hours, base, bonus, total: base + bonus, labels };
 }
 
-export function shiftEarnings(
-  shift: Shift,
-  options?: { job?: Job | undefined; supplements?: Supplements | undefined; holiday?: boolean },
-): number {
+export interface EarningsOptions {
+  job?: Job | undefined;
+  supplements?: Supplements | undefined;
+  holiday?: boolean;
+  defaultRate?: number | undefined;
+}
+
+export function shiftEarnings(shift: Shift, options?: EarningsOptions): number {
   return shiftBreakdown(shift, options ?? {}).total;
 }
 
@@ -122,18 +126,21 @@ export function sumHours(shifts: Shift[]): number {
 
 export function sumEarnings(
   shifts: Shift[],
-  resolve?: (shift: Shift) => {
-    job?: Job | undefined;
-    supplements?: Supplements | undefined;
-    holiday?: boolean;
-  },
+  resolve?: (shift: Shift) => EarningsOptions,
 ): number {
   return shifts.reduce((acc, s) => acc + shiftEarnings(s, resolve?.(s)), 0);
 }
 
-export function averageRate(shifts: Shift[]): number {
+/**
+ * Durchschnittlicher Stundenertrag (inkl. Zuschlägen) = Verdienst / Stunden.
+ * Ohne `resolve` werden weder Zuschläge noch die Satz-Fallbacks aufgelöst.
+ */
+export function averageRate(
+  shifts: Shift[],
+  resolve?: (shift: Shift) => EarningsOptions,
+): number {
   const h = sumHours(shifts);
-  return h > 0 ? sumEarnings(shifts) / h : 0;
+  return h > 0 ? sumEarnings(shifts, resolve) / h : 0;
 }
 
 const eurCache = new Map<string, Intl.NumberFormat>();

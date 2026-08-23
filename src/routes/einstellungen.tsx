@@ -776,7 +776,12 @@ function DataMigration({ shiftCount }: { shiftCount: number }) {
         <Button
           variant="outline"
           onClick={() => {
-            exportXlsx(shifts, `minijob-${stamp}`, { jobs, bundesland: settings.bundesland, defaultRate: settings.defaultRate });
+            exportXlsx(shifts, `minijob-${stamp}`, {
+              jobs,
+              bundesland: settings.bundesland,
+              defaultRate: settings.defaultRate,
+              supplements: settings.supplements,
+            });
             toast.success(t("set.migration.excelExported"));
           }}
         >

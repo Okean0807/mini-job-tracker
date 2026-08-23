@@ -183,7 +183,7 @@ export function monthStats(year: number, month: number, ctx: AppContext = contex
     shifts: list,
     hours: sumHours(list),
     earnings: sumEarnings(list, ctx.resolve),
-    avgRate: averageRate(list),
+    avgRate: averageRate(list, ctx.resolve),
     entries: list.length,
   };
 }
@@ -195,7 +195,7 @@ export function yearStats(year: number, ctx: AppContext = context()): PeriodStat
     shifts: list,
     hours: sumHours(list),
     earnings: sumEarnings(list, ctx.resolve),
-    avgRate: averageRate(list),
+    avgRate: averageRate(list, ctx.resolve),
     entries: list.length,
   };
 }
