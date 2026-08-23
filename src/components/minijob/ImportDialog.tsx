@@ -91,11 +91,12 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
     for (const name of result.newJobs) {
       const id = newId();
       created.set(name.toLowerCase(), id);
+      // Kein eigener Satz: rate bleibt "nicht gesetzt" (undefined),
+      // damit der Job dem aktuellen Standardsatz folgt.
       saveJob({
         id,
         name,
         color: nextJobColor(),
-        rate: settings.defaultRate,
         mode: "flex",
       });
     }
