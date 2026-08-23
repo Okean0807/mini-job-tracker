@@ -127,7 +127,12 @@ function StatsPage() {
     [filtered, jobs, settings, year, resolve],
   );
 
-  const ctx = { jobs, bundesland: settings.bundesland, defaultRate: settings.defaultRate };
+  const ctx = {
+    jobs,
+    bundesland: settings.bundesland,
+    defaultRate: settings.defaultRate,
+    supplements: settings.supplements,
+  };
 
   function doExport(kind: "xlsx" | "pdf", list: Shift[], title: string) {
     if (list.length === 0) {
