@@ -5,7 +5,7 @@ import { parseCsv, shiftsToCsv } from "./csv";
 import { effectiveShiftRate, parseRateInput, resolveRate } from "./rate";
 import { makeResolver } from "./resolve";
 import { rateForDate, rateOf, earningsOf } from "./service";
-import { normalize, replaceAll } from "./store";
+import { getData, normalize, replaceAll, saveJob, updateSettings } from "./store";
 import { DEFAULT_SETTINGS, type Job, type Shift } from "./types";
 
 const jobA: Job = { id: "a", name: "Job A", color: "#f00", rate: 15, mode: "flex" };
