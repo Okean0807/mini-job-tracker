@@ -34,7 +34,8 @@ describe("Durchschnittssatz in den Statistiken", () => {
 
   it("löst Standard-Satz und Zuschläge auf (Monat und Jahr)", () => {
     // Sonntag 2026-03-08, kein Schicht-/Job-Satz -> Standard 10 EUR + 50 % Sonntag
-    addShift({ ...shift({ id: "x", date: "2026-03-08" }), rate: undefined });
+    const { id: _id, ...input } = shift({ id: "x", date: "2026-03-08" });
+    addShift(input);
     const m = monthStats(2026, 2);
     expect(m.hours).toBe(8);
     expect(m.earnings).toBeCloseTo(120, 10);
