@@ -176,6 +176,59 @@ describe("CSV", () => {
   });
 });
 
+describe("Import: neu angelegte Jobs", () => {
+  const importJob = (over: Partial<Job> = {}): Job => ({
+    id: "imp",
+    name: "Café Nord",
+    color: "#123456",
+    mode: "flex",
+    ...over,
+  });
+
+  it("neu erkannter Job ohne eigenen Satz hat rate === undefined", () => {
+    saveJob(importJob());
+    expect(getData().jobs.find((j) => j.id === "imp")!.rate).toBeUndefined();
+  });
+
+  it("folgt dem aktuellen Standardsatz", () => {
+    saveJob(importJob());
+    const r = rateForDate("2026-03-04", "imp");
+    expect(r.rate).toBe(12);
+    expect(r.source).toBe("default");
+    expect(rateOf(shift({ jobId: "imp" }))).toBe(12);
+  });
+
+  it("folgt einem später geänderten Standardsatz", () => {
+    saveJob(importJob());
+    updateSettings({ defaultRate: 17 });
+    expect(rateForDate("2026-03-04", "imp").rate).toBe(17);
+    expect(rateOf(shift({ jobId: "imp" }))).toBe(17);
+  });
+
+  it("expliziter Job-Satz bleibt eigener Satz", () => {
+    saveJob(importJob({ rate: 16 }));
+    updateSettings({ defaultRate: 17 });
+    const r = rateForDate("2026-03-04", "imp");
+    expect(r.rate).toBe(16);
+    expect(r.source).toBe("job");
+  });
+
+  it("expliziter Job-Satz 0 bleibt 0 (kein Fallback)", () => {
+    const r = resolveRate({ jobId: "imp" }, [importJob({ rate: 0 })], {
+      ...DEFAULT_SETTINGS,
+      defaultRate: 12,
+    });
+    expect(r.rate).toBe(0);
+    expect(r.source).toBe("job");
+  });
+
+  it("ändert die Schicht-Semantik nicht: Schicht-Satz 0 bleibt 0, leer folgt dem Job", () => {
+    saveJob(importJob({ rate: 16 }));
+    expect(rateOf(shift({ jobId: "imp", rate: 0 }))).toBe(0);
+    expect(rateOf(shift({ jobId: "imp" }))).toBe(16);
+  });
+});
+
 describe("Kompatibilität mit Altdaten", () => {
   it("hebt gespeicherten Job-Satz 0 auf 'nicht gesetzt' (bisheriges Fallback-Verhalten)", () => {
     const data = normalize({ jobs: [{ ...jobA, rate: 0 }] });
