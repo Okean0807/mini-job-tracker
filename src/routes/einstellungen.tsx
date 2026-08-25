@@ -96,13 +96,49 @@ function SettingsPage() {
               step="0.5"
               onCommit={(v) => updateSettings({ defaultRate: v })}
             />
-            <NumberField
-              id="grenze"
-              label={t("set.defaults.monthlyLimit")}
-              value={settings.monthlyLimit}
-              step="10"
-              onCommit={(v) => updateSettings({ monthlyLimit: v })}
-            />
+            {settings.limitAuto ? (
+              <div className="rounded-xl border bg-muted/40 p-3">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  <Lock className="size-3.5" />
+                  {t("set.limits.legalSource")}
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-2 text-sm">
+                  <span className="text-muted-foreground">
+                    {t("set.defaults.monthlyLimit")}
+                  </span>
+                  <span className="font-semibold tabular-nums">
+                    {formatEuro(monthlyLimitOf(settings))}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <NumberField
+                id="grenze"
+                label={t("set.defaults.monthlyLimit")}
+                value={settings.monthlyLimit}
+                step="10"
+                onCommit={(v) => updateSettings({ monthlyLimit: v })}
+              />
+            )}
+
+            <label className="flex items-center justify-between gap-3 pt-1">
+              <span className="text-sm">
+                {t("set.limits.legalAuto")}
+                <span className="block text-xs text-muted-foreground">
+                  {t("set.limits.legalAutoHint")}
+                </span>
+              </span>
+              <Switch
+                checked={settings.limitAuto}
+                onCheckedChange={(v) =>
+                  updateSettings({
+                    limitAuto: v,
+                    ...(v ? {} : { monthlyLimit: monthlyLimitOf(settings) }),
+                  })
+                }
+              />
+            </label>
+
             {settings.hoursLimitAuto ? (
               <div className="rounded-xl border bg-muted/40 p-3">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
