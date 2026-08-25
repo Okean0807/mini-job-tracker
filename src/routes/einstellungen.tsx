@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { lovable } from "@/integrations/lovable";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDateDE, formatEuro, formatHours } from "@/lib/minijob/calc";
-import { monthlyHoursLimit } from "@/lib/minijob/limits";
+import { monthlyHoursLimit, monthlyLimitOf, yearlyLimitOf } from "@/lib/minijob/limits";
 import { backupNow, restoreNow } from "@/lib/minijob/cloud";
 import { downloadText, shiftsToCsv } from "@/lib/minijob/csv";
 import { exportXlsx } from "@/lib/minijob/export";
@@ -194,7 +194,7 @@ function SettingsPage() {
               <div className="mt-2 flex items-center justify-between gap-2 text-sm">
                 <span className="text-muted-foreground">{t("set.defaults.yearlyLimit")}</span>
                 <span className="font-semibold tabular-nums">
-                  {formatEuro(settings.monthlyLimit * 12)}
+                  {formatEuro(yearlyLimitOf(settings))}
                 </span>
               </div>
               <p className="mt-2 text-xs text-muted-foreground">{t("set.limits.formula")}</p>
