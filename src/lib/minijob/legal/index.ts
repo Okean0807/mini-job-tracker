@@ -114,3 +114,12 @@ export function legalContextFor(date: string | Date): LegalContext {
     tax: version.tax,
   };
 }
+
+/**
+ * Historisch bzw. aktuell geltende monatliche Geringfügigkeitsgrenzen (EUR).
+ * Dient nur der Migration bestehender Einstellungen (erkennt "unveränderte" Werte).
+ */
+export const KNOWN_LEGAL_MONTHLY_LIMITS: number[] = [
+  450, 520, 538, 556,
+  ...LEGAL_RULE_VERSIONS.map((v) => minijobLimitFromWage(v.minimumWage)),
+];
