@@ -59,3 +59,21 @@ bewusst nicht implementiert (`employeeIncomeTax: "not-implemented"`).
 3. Test in `legal.test.ts` für Stichtag und abgeleitete Grenze ergänzen.
 
 Die Berechnungs-Engine muss dafür nicht angefasst werden.
+
+## Anbindung an das Limit-System (Stand: 2026-08)
+
+Die Rechtsschicht ist jetzt produktiv mit `src/lib/minijob/limits.ts` verbunden:
+
+- `monthlyLimitOf(settings, year, month)` löst die Geringfügigkeitsgrenze **stichtagsbezogen**
+  aus `legal/` auf (Mindestlohn × 130 ÷ 3, aufgerundet).
+- `yearlyLimitOf(settings, year)` summiert die zwölf Monatsgrenzen, damit unterjährige
+  Rechtsänderungen korrekt abgebildet werden.
+- `monthlyHoursLimit` / `yearlyHoursLimitOf` leiten die Stundengrenze aus der Grenze des
+  jeweiligen Zeitraums ab.
+- Fehlt für ein Datum eine Regelversion (vor 2024), gilt der in den Einstellungen
+  gespeicherte Wert; `LimitUsage.limitSource` meldet dann `"manual"`.
+- Neue Einstellung `Settings.limitAuto` (Standard `true`). Bestandsdaten werden in
+  `store.normalize` nur dann auf `true` migriert, wenn die gespeicherte Monatsgrenze einem
+  bekannten gesetzlichen Wert entspricht; individuell gesetzte Grenzen bleiben manuell.
+
+Tests: `src/lib/minijob/limits.test.ts`.

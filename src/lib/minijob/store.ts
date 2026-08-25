@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import { LANGUAGES, detectLanguage } from "@/lib/i18n/core";
 
 import { normalizeDashboard } from "./dashboard";
+import { KNOWN_LEGAL_MONTHLY_LIMITS } from "./legal";
 import { applyAppearance } from "./theme";
 import {
   DEFAULT_NOTIFICATIONS,
@@ -81,6 +82,12 @@ export function normalize(input: Partial<AppData>): AppData {
   };
   if (!raw.settings?.["themeMode"] && (legacyTheme === "dark" || legacyTheme === "light")) {
     settings.themeMode = legacyTheme;
+  }
+  // Bestandsdaten ohne "limitAuto": Nur wenn die gespeicherte Monatsgrenze einem
+  // bekannten gesetzlichen Wert entspricht, gilt sie als nicht bewusst angepasst und
+  // wird künftig stichtagsbezogen aus der Rechtsschicht abgeleitet.
+  if (raw.settings && (raw.settings as Record<string, unknown>)["limitAuto"] === undefined) {
+    settings.limitAuto = KNOWN_LEGAL_MONTHLY_LIMITS.includes(settings.monthlyLimit);
   }
   if (!LANGUAGES.some((l) => l.code === settings.language)) {
     settings.language = detectLanguage();

@@ -236,6 +236,11 @@ export interface WorkCodeDef {
 export interface Settings {
   defaultRate: number;
   monthlyLimit: number;
+  /**
+   * Monatsgrenze automatisch aus der gesetzlichen Geringfügigkeitsgrenze
+   * zum jeweiligen Stichtag ableiten (Standard). false = eigener Wert.
+   */
+  limitAuto: boolean;
   yearlyLimit: number;
   /** Stundengrenze pro Monat (manuell) */
   hoursLimitMonthly: number;
@@ -289,6 +294,7 @@ export interface AppData {
 export const DEFAULT_SETTINGS: Settings = {
   defaultRate: 13.5,
   monthlyLimit: 556,
+  limitAuto: true,
   yearlyLimit: 6672,
   hoursLimitMonthly: 0,
   hoursLimitAuto: false,

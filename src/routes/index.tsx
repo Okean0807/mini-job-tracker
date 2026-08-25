@@ -27,7 +27,7 @@ import {
 import { activeWidgets, spanClass, widgetSize } from "@/lib/minijob/dashboard";
 import { goalsProgress } from "@/lib/minijob/goals";
 import { buildInsights } from "@/lib/minijob/insights";
-import { monthUsage, yearlyLimitOf, yearUsage } from "@/lib/minijob/limits";
+import { monthUsage, yearUsage } from "@/lib/minijob/limits";
 import { payPeriods } from "@/lib/minijob/payday";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { useAppData } from "@/lib/minijob/store";
@@ -139,7 +139,7 @@ function DashboardPage() {
             <StatCard
               label={t("dash.limit")}
               value={`${Math.round(limitShare)} %`}
-              hint={t("dash.ofAmount", { amount: formatEuro(settings.monthlyLimit) })}
+              hint={t("dash.ofAmount", { amount: formatEuro(monthLimit.earningsLimit) })}
               icon={Euro}
             />
           </>
@@ -215,8 +215,8 @@ function DashboardPage() {
           tone="over"
           text={
             limitShare >= 100
-              ? t("dash.limitMonthOver", { amount: formatEuro(settings.monthlyLimit) })
-              : t("dash.limitYearOver", { amount: formatEuro(yearlyLimitOf(settings)) })
+              ? t("dash.limitMonthOver", { amount: formatEuro(monthLimit.earningsLimit) })
+              : t("dash.limitYearOver", { amount: formatEuro(yearLimit.earningsLimit) })
           }
         />
       ) : limitShare >= 85 || yearShare >= 85 ? (
