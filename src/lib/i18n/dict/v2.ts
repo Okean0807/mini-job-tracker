@@ -33,6 +33,9 @@ export const v2: Bundle = {
     "job.tabPay": "Lohn",
 
     "set.defaults.hoursLimit": "Stundengrenze pro Monat",
+    "set.limits.legalAuto": "Gesetzliche Minijob-Grenze verwenden",
+    "set.limits.legalAutoHint": "Stichtagsbezogen aus dem gesetzlichen Mindestlohn",
+    "set.limits.legalSource": "Gesetzliche Grenze",
     "set.limits.auto": "Automatisch berechnet",
     "set.limits.formula": "Jahresgrenze = Monatsgrenze × 12",
     "set.limits.hoursAuto": "Stundengrenze automatisch berechnen",
@@ -74,6 +77,9 @@ export const v2: Bundle = {
     "job.tabPay": "Pay",
 
     "set.defaults.hoursLimit": "Monthly hours limit",
+    "set.limits.legalAuto": "Use statutory minijob limit",
+    "set.limits.legalAutoHint": "Derived from the statutory minimum wage per effective date",
+    "set.limits.legalSource": "Statutory limit",
     "set.limits.auto": "Automatically calculated",
     "set.limits.formula": "Yearly limit = monthly limit × 12",
     "set.limits.hoursAuto": "Calculate hours limit automatically",
@@ -115,6 +121,9 @@ export const v2: Bundle = {
     "job.tabPay": "Оплата",
 
     "set.defaults.hoursLimit": "Лимит часов в месяц",
+    "set.limits.legalAuto": "Использовать установленный законом лимит",
+    "set.limits.legalAutoHint": "Из установленной законом минимальной оплаты на дату",
+    "set.limits.legalSource": "Законный лимит",
     "set.limits.auto": "Рассчитано автоматически",
     "set.limits.formula": "Годовой лимит = месячный × 12",
     "set.limits.hoursAuto": "Считать лимит часов автоматически",
