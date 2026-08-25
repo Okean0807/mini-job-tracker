@@ -150,7 +150,7 @@ export function limitStatus(): LimitStatus {
   return {
     monthShare: month.earningsShare,
     monthHoursShare: month.hoursShare,
-    yearShare: yearlyLimitOf(settings) > 0 ? (yearEarnings / yearlyLimitOf(settings)) * 100 : 0,
+    yearShare: yearlyLimitOf(settings, now.getFullYear()) > 0 ? (yearEarnings / yearlyLimitOf(settings, now.getFullYear())) * 100 : 0,
   };
 }
 

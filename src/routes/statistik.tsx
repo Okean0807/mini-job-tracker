@@ -360,9 +360,9 @@ function StatsPage() {
             <StatCard
               label={t("stats.card.yearLimit")}
               value={`${Math.round(
-                yearlyLimitOf(settings) > 0 ? (yearEarnings / yearlyLimitOf(settings)) * 100 : 0,
+                yearlyLimitOf(settings, year) > 0 ? (yearEarnings / yearlyLimitOf(settings, year)) * 100 : 0,
               )} %`}
-              hint={t("stats.card.yearLimitHint", { amount: formatEuro(yearlyLimitOf(settings)) })}
+              hint={t("stats.card.yearLimitHint", { amount: formatEuro(yearlyLimitOf(settings, year)) })}
               icon={Euro}
             />
           </div>
