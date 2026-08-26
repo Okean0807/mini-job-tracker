@@ -22,6 +22,7 @@ import { goalsProgress, type GoalProgress } from "./goals";
 import { holidaysFor, isHoliday } from "./holidays";
 import { buildInsights, type Insights } from "./insights";
 import { monthUsage, monthlyHoursLimit, yearUsage, yearlyLimitOf, type LimitUsage } from "./limits";
+import { payrollTotals, shiftPayroll, type PayrollTotals, type ShiftPayroll } from "./payroll";
 import { payPeriod, payPeriods, paydayFor, type PayPeriod } from "./payday";
 import { effectiveShiftRate, resolveRate, suggestedRate, type RateSource } from "./rate";
 import { makeResolver, type ResolveOptions, type Resolver } from "./resolve";
@@ -169,34 +170,47 @@ export interface PeriodStats {
   year: number;
   month?: number;
   shifts: Shift[];
+  /** Tatsächlich geleistete Arbeitsstunden (ohne bezahlte Abwesenheit). */
   hours: number;
+  /** Gesamtes Arbeitsentgelt inkl. Entgeltfortzahlung. */
   earnings: number;
   avgRate: number;
   entries: number;
+  /** Aufschlüsselung Arbeit / bezahlte Abwesenheit. */
+  payroll: PayrollTotals;
+}
+
+/** Payroll-Bewertung einer Schicht (bezahlt/unbezahlt, Basis, Schätzung). */
+export function payrollOf(shift: Shift, ctx: AppContext = context()): ShiftPayroll {
+  return shiftPayroll(shift, { ...ctx.resolve(shift), history: ctx.data.shifts });
 }
 
 export function monthStats(year: number, month: number, ctx: AppContext = context()): PeriodStats {
   const list = shiftsInMonth(ctx.data.shifts, year, month);
+  const payroll = payrollTotals(list, ctx.resolve, ctx.data.shifts);
   return {
     year,
     month,
     shifts: list,
-    hours: sumHours(list),
-    earnings: sumEarnings(list, ctx.resolve),
-    avgRate: averageRate(list, ctx.resolve),
+    hours: payroll.workedHours,
+    earnings: payroll.earnings,
+    avgRate: payroll.workedHours > 0 ? payroll.workEarnings / payroll.workedHours : 0,
     entries: list.length,
+    payroll,
   };
 }
 
 export function yearStats(year: number, ctx: AppContext = context()): PeriodStats {
   const list = shiftsInYear(ctx.data.shifts, year);
+  const payroll = payrollTotals(list, ctx.resolve, ctx.data.shifts);
   return {
     year,
     shifts: list,
-    hours: sumHours(list),
-    earnings: sumEarnings(list, ctx.resolve),
-    avgRate: averageRate(list, ctx.resolve),
+    hours: payroll.workedHours,
+    earnings: payroll.earnings,
+    avgRate: payroll.workedHours > 0 ? payroll.workEarnings / payroll.workedHours : 0,
     entries: list.length,
+    payroll,
   };
 }
 
@@ -350,4 +364,5 @@ export const limitInfo = {
 };
 
 export { paydayFor, suggestedRate };
+export type { PayrollTotals, ShiftPayroll };
 export type { RateSource, LimitUsage, PayPeriod, Insights, GoalProgress, Resolver, ResolveOptions };

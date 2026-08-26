@@ -59,6 +59,8 @@ export interface Job {
   /** Stundenlohn in EUR; undefined = nicht gesetzt (Fallback auf Standardsatz), 0 = bewusst 0 EUR/h */
   rate?: number;
   mode: WorkMode;
+  /** Beschäftigungsbeginn (ISO yyyy-MM-dd) – Basis der 4-Wochen-Wartezeit (§ 3 Abs. 3 EntgFG) */
+  startDate?: string;
   employer?: string;
   contact?: string;
   phone?: string;
