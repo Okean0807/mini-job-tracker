@@ -1,5 +1,6 @@
-import { shiftsInMonth, shiftsInYear, sumEarnings, sumHours } from "./calc";
+import { shiftsInMonth, shiftsInYear } from "./calc";
 import { findRuleVersion, minijobLimitFromWage } from "./legal";
+import { payrollTotals } from "./payroll";
 import type { Resolver } from "./resolve";
 import type { Settings, Shift } from "./types";
 
@@ -16,6 +17,12 @@ export interface LimitUsage {
   share: number;
   /** Quelle der Einkommensgrenze: gesetzlich (stichtagsbezogen) oder manuell. */
   limitSource: LimitSource;
+  /** Bezahlte Ausfallstunden (Urlaub/Krank/Feiertag) – nicht in `hours` enthalten. */
+  paidAbsenceHours: number;
+  /** Entgeltfortzahlung – in `earnings` enthalten, zählt zur Geringfügigkeitsgrenze. */
+  absenceEarnings: number;
+  /** true, wenn mindestens eine Fortzahlung auf einer Schätzung beruht. */
+  estimated: boolean;
 }
 
 export type LimitSource = "legal" | "manual";
@@ -106,6 +113,11 @@ function usage(
   hours: number,
   hoursLimit: number,
   limitSource: LimitSource,
+  extra: { paidAbsenceHours: number; absenceEarnings: number; estimated: boolean } = {
+    paidAbsenceHours: 0,
+    absenceEarnings: 0,
+    estimated: false,
+  },
 ): LimitUsage {
   const earningsShare = earningsLimit > 0 ? (earnings / earningsLimit) * 100 : 0;
   const hoursShare = hoursLimit > 0 ? (hours / hoursLimit) * 100 : 0;
@@ -120,6 +132,7 @@ function usage(
     hoursLeft: Math.max(0, hoursLimit - hours),
     share: Math.max(earningsShare, hoursShare),
     limitSource,
+    ...extra,
   };
 }
 
@@ -131,12 +144,18 @@ export function monthUsage(
   month: number,
 ): LimitUsage {
   const list = shiftsInMonth(shifts, year, month);
+  const totals = payrollTotals(list, resolve, shifts);
   return usage(
-    sumEarnings(list, resolve),
+    totals.earnings,
     monthlyLimitOf(settings, year, month),
-    sumHours(list),
+    totals.workedHours,
     monthlyHoursLimit(settings, year, month),
     limitSourceOf(settings, year, month),
+    {
+      paidAbsenceHours: totals.paidAbsenceHours,
+      absenceEarnings: totals.absenceEarnings,
+      estimated: totals.estimated,
+    },
   );
 }
 
@@ -147,11 +166,17 @@ export function yearUsage(
   year: number,
 ): LimitUsage {
   const list = shiftsInYear(shifts, year);
+  const totals = payrollTotals(list, resolve, shifts);
   return usage(
-    sumEarnings(list, resolve),
+    totals.earnings,
     yearlyLimitOf(settings, year),
-    sumHours(list),
+    totals.workedHours,
     yearlyHoursLimitOf(settings, year),
     limitSourceOf(settings, year, 0),
+    {
+      paidAbsenceHours: totals.paidAbsenceHours,
+      absenceEarnings: totals.absenceEarnings,
+      estimated: totals.estimated,
+    },
   );
 }
