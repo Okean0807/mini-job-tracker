@@ -2,6 +2,7 @@ import { CalendarDays } from "lucide-react";
 
 import { useT } from "@/lib/i18n";
 import { formatDate, formatEuro, formatHours, shiftBreakdown } from "@/lib/minijob/calc";
+import { shiftPayroll } from "@/lib/minijob/payroll";
 import { effectiveShiftRate } from "@/lib/minijob/rate";
 import type { ResolveOptions } from "@/lib/minijob/resolve";
 import type { Job, Shift } from "@/lib/minijob/types";
@@ -30,6 +31,7 @@ export function ShiftList({ shifts, jobs, resolve, onSelect }: ShiftListProps) {
       {shifts.map((s) => {
         const options = resolve(s);
         const b = shiftBreakdown(s, options);
+        const pay = shiftPayroll(s, { ...options, history: shifts });
         const job = jobs.find((j) => j.id === s.jobId);
         const rate = effectiveShiftRate(s, { job, defaultRate: options.defaultRate });
         return (
@@ -60,11 +62,20 @@ export function ShiftList({ shifts, jobs, resolve, onSelect }: ShiftListProps) {
                     {t("list.supplement", { labels: b.labels.join(", ") })}
                   </p>
                 ) : null}
+                {s.kind !== "arbeit" ? (
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {`${pay.paid ? t("pay.absencePaid") : t("pay.absenceUnpaid")} · ${t(`pay.reason.${pay.reason}`)}`}
+                    {pay.paid ? ` · ${formatHours(pay.paidAbsenceHours)} ${t("pay.absenceHours")}` : ""}
+                    {pay.estimated ? ` · ${t("pay.estimate")}` : ""}
+                  </p>
+                ) : null}
                 {s.note ? <p className="mt-1 truncate text-xs text-muted-foreground">{s.note}</p> : null}
               </div>
               <div className="shrink-0 text-right">
-                <p className="font-semibold tabular-nums">{formatEuro(b.total)}</p>
-                <p className="text-xs text-muted-foreground tabular-nums">{formatHours(b.hours)}</p>
+                <p className="font-semibold tabular-nums">{formatEuro(pay.earnings)}</p>
+                <p className="text-xs text-muted-foreground tabular-nums">
+                  {formatHours(s.kind === "arbeit" ? pay.workedHours : pay.paidAbsenceHours)}
+                </p>
               </div>
             </button>
           </li>
