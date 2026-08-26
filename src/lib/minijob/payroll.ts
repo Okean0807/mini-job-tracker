@@ -15,10 +15,9 @@
  * Grundsatz dieser Schicht: bezahlte Abwesenheit erzeugt Entgelt, aber KEINE
  * geleisteten Arbeitsstunden. Doppelzählung ist damit ausgeschlossen.
  */
-import { shiftHours, sumEarnings } from "./calc";
+import { shiftBreakdown, shiftHours, sumEarnings } from "./calc";
 import { effectiveShiftRate } from "./rate";
 import type { ResolveOptions } from "./resolve";
-import { shiftBreakdown } from "./calc";
 import type { Job, Shift, ShiftKind } from "./types";
 
 /** Wartezeit bis zum Anspruch auf Entgeltfortzahlung (§ 3 Abs. 3 EntgFG). */
