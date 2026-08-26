@@ -55,6 +55,7 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
   const [supplements, setSupplements] = useState<Supplements>(DEFAULT_SUPPLEMENTS);
   const [notes, setNotes] = useState("");
   const [payday, setPayday] = useState("15");
+  const [startDate, setStartDate] = useState("");
   const [payrollDelay, setPayrollDelay] = useState(1);
 
   const weekdays = weekdayNames(locale);
@@ -75,6 +76,7 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
     setSupplements(job?.supplements ?? DEFAULT_SUPPLEMENTS);
     setNotes(job?.notes ?? "");
     setPayday(String(job?.payday ?? 15));
+    setStartDate(job?.startDate ?? "");
     setPayrollDelay(job?.payrollDelay ?? 1);
   }, [open, job, defaultRate]);
 
@@ -98,6 +100,7 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
       payrollDelay,
       supplements,
     };
+    if (startDate) next.startDate = startDate;
     const rateValue = parseRateInput(rate);
     if (rateValue !== undefined) next.rate = rateValue;
     if (mode === "fest") {
@@ -264,6 +267,16 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
           </TabsContent>
 
           <TabsContent value="lohn" className="mt-4 space-y-4">
+            <div className="grid gap-2">
+              <Label htmlFor="job-start">{t("job.startDate")}</Label>
+              <Input
+                id="job-start"
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">{t("job.startDateHint")}</p>
+            </div>
             <div className="grid gap-2">
               <Label htmlFor="job-payday">{t("job.payday")}</Label>
               <Input
