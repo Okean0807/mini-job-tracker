@@ -77,3 +77,23 @@ Die Rechtsschicht ist jetzt produktiv mit `src/lib/minijob/limits.ts` verbunden:
   bekannten gesetzlichen Wert entspricht; individuell gesetzte Grenzen bleiben manuell.
 
 Tests: `src/lib/minijob/limits.test.ts`.
+
+## Payroll-Semantik: Urlaub, Krankheit, Feiertag
+
+Implementiert in `src/lib/minijob/payroll.ts`. Grundsatz: bezahlte Abwesenheit
+erzeugt **Entgelt**, aber **keine geleisteten Arbeitsstunden** – damit ist eine
+Doppelzählung in Stunden- und Einkommensgrenzen ausgeschlossen.
+
+| Fall | Regel | Ergebnis |
+| --- | --- | --- |
+| Feiertag (§ 2 EntgFG) | nur bezahlt, wenn der Tag nach Festplan/Muster ein Arbeitstag ist | `holiday-pay` / `holiday-off-day` |
+| Krankheit (§ 3 EntgFG) | Wartezeit 4 Wochen ab `job.startDate`, danach bis 6 Wochen je Fall (Lücke ≤ 7 Tage = ein Fall) | `sick-waiting` / `sick-pay` / `sick-exceeded` |
+| Urlaub (§ 11 BUrlG) | Tagesentgelt = Durchschnitt der letzten 13 Wochen (mind. 5 Referenztage), sonst Plan-Fallback (`estimated: true`) | `vacation-pay` |
+| Entgeltausfallprinzip (§ 4 EntgFG) | fortgezahlt wird die regelmäßige Arbeitszeit ohne Zuschläge für nicht geleistete Arbeit | `basis: plan / average13 / entry` |
+
+Konsumenten: `limits.ts` (Monats-/Jahresgrenze), `service.ts` (Statistiken),
+`payday.ts` (erwartete Auszahlung = Arbeitsentgelt + Entgeltfortzahlung) und
+`insights.ts` (Monatsstunden = geleistete Arbeit, Ø-Satz aus Arbeitsentgelt).
+
+Die Entgeltfortzahlung zählt als Arbeitsentgelt i. S. d. § 14 SGB IV und damit
+zur stichtagsbezogenen Geringfügigkeitsgrenze (siehe Legal-Rules oben).
