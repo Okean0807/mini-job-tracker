@@ -14,7 +14,6 @@ const RATE = 15;
 function shift(partial: Partial<Shift> & { date: string }): Shift {
   return {
     id: partial.date + (partial.kind ?? "arbeit"),
-    date: partial.date,
     start: "09:00",
     end: "14:00",
     breakMinutes: 0,
