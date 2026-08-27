@@ -49,7 +49,10 @@ describe("Arbeitstag-Erkennung", () => {
   });
 
   it("erkennt ohne Festplan ein Muster aus der Historie", () => {
-    const history = [shift({ date: "2026-03-04" }), shift({ date: "2026-03-11" })];
+    const history = [
+      shift({ date: "2026-03-04", jobId: undefined }),
+      shift({ date: "2026-03-11", jobId: undefined }),
+    ];
     expect(isRegularWorkday("2026-03-18", undefined, history)).toBe(true);
     expect(isRegularWorkday("2026-03-17", undefined, history)).toBe(false);
   });
