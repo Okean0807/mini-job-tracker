@@ -11,7 +11,9 @@ import type { Job, Shift } from "./types";
 
 const RATE = 15;
 
-function shift(partial: Partial<Shift> & { date: string }): Shift {
+function shift(
+  partial: Partial<Omit<Shift, "jobId">> & { date: string; jobId?: string | undefined },
+): Shift {
   return {
     id: partial.date + (partial.kind ?? "arbeit"),
     start: "09:00",
