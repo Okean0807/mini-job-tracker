@@ -1,4 +1,5 @@
-import { isoDate, shiftsInMonth, sumEarnings, sumHours } from "./calc";
+import { isoDate, shiftsInMonth } from "./calc";
+import { payrollTotals } from "./payroll";
 import type { Resolver } from "./resolve";
 import type { Job, Payment, Shift } from "./types";
 
@@ -48,14 +49,17 @@ export function payPeriod(
   month: number,
 ): PayPeriod {
   const list = shiftsInMonth(shifts, year, month).filter((s) => s.jobId === job.id);
-  const expected = sumEarnings(list, resolve);
+  // Payroll-Semantik: Entgeltfortzahlung zählt zur Auszahlung, erzeugt aber
+  // keine geleisteten Arbeitsstunden (siehe payroll.ts).
+  const totals = payrollTotals(list, resolve, shifts);
+  const expected = totals.earnings;
   const payment = findPayment(payments, job.id, year, month);
   return {
     job,
     year,
     month,
     expected,
-    hours: sumHours(list),
+    hours: totals.workedHours + totals.paidAbsenceHours,
     dueDate: paydayFor(job, year, month),
     payment,
     diff: payment ? payment.actual - expected : undefined,
