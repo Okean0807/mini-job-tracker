@@ -641,12 +641,13 @@ function CloudSync({ autoBackup }: { autoBackup: boolean }) {
           ok ? t("set.account.cloud.restoreSuccess") : t("set.account.cloud.restoreEmpty"),
         );
       }
-    } catch {
-      toast.error(t("error.sync"));
+    } catch (error) {
+      toast.error(error instanceof Error && error.message ? error.message : t("error.sync"));
     } finally {
       setBusy(false);
     }
   }
+
 
   if (!session) {
     return (
