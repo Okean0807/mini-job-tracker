@@ -1,58 +1,297 @@
+import { useSyncExternalStore } from "react";
+
 import { t } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
 
 import { getData, onDataChange, replaceAll } from "./store";
 import type { AppData } from "./types";
 
+/* ---------- Sync-Metadaten (pro Gerät, lokal) ---------- */
+
+const META_KEY = "minijob-sync-meta-v1";
+
+export type SyncMeta = {
+  /** Zeitpunkt der letzten lokalen Datenänderung (ms). */
+  localChangedAt: number | null;
+  /** Zeitpunkt des letzten erfolgreichen Abgleichs mit der Cloud (ms). */
+  lastSyncedAt: number | null;
+  /** `updated_at` des zuletzt gesehenen Cloud-Standes (ms). */
+  remoteSeenAt: number | null;
+};
+
+const EMPTY_META: SyncMeta = { localChangedAt: null, lastSyncedAt: null, remoteSeenAt: null };
+
+let meta: SyncMeta = EMPTY_META;
+
+function loadMeta(): SyncMeta {
+  if (typeof window === "undefined") return EMPTY_META;
+  try {
+    const raw = window.localStorage.getItem(META_KEY);
+    if (!raw) return EMPTY_META;
+    return { ...EMPTY_META, ...(JSON.parse(raw) as Partial<SyncMeta>) };
+  } catch {
+    return EMPTY_META;
+  }
+}
+
+function saveMeta(patch: Partial<SyncMeta>) {
+  meta = { ...meta, ...patch };
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(META_KEY, JSON.stringify(meta));
+  } catch {
+    /* Speicher blockiert – Sync funktioniert dann nur ohne Verlaufswissen */
+  }
+}
+
+/* ---------- Konfliktentscheidung (rein, testbar) ---------- */
+
+export type SyncDecision = "push" | "restore" | "conflict" | "none";
+
+export type SyncDecisionInput = {
+  /** Enthält das Gerät überhaupt eigene Daten (Schichten/Jobs)? */
+  hasLocalData: boolean;
+  /** Existiert überhaupt ein Cloud-Stand? */
+  hasRemote: boolean;
+  localChangedAt: number | null;
+  lastSyncedAt: number | null;
+  remoteUpdatedAt: number | null;
+};
+
+/**
+ * Konfliktauflösung über Zeitstempel statt der alten Heuristik „leer → laden".
+ *
+ * - Kein Cloud-Stand → hochladen (sofern lokale Daten existieren).
+ * - Kein lokaler Datenbestand → Cloud laden.
+ * - Cloud unverändert seit letztem Abgleich → lokale Änderungen hochladen.
+ * - Cloud neuer als letzter Abgleich UND lokal seither geändert → Konflikt,
+ *   Entscheidung trifft der Nutzer (kein stilles Überschreiben).
+ */
+export function decideSync(input: SyncDecisionInput): SyncDecision {
+  const { hasLocalData, hasRemote, localChangedAt, lastSyncedAt, remoteUpdatedAt } = input;
+
+  if (!hasRemote) return hasLocalData ? "push" : "none";
+  if (!hasLocalData) return "restore";
+
+  const remoteAt = remoteUpdatedAt ?? 0;
+  const syncedAt = lastSyncedAt ?? 0;
+  const remoteIsNew = remoteAt > syncedAt;
+  const localIsNew = (localChangedAt ?? 0) > syncedAt;
+
+  if (remoteIsNew && localIsNew) return "conflict";
+  if (remoteIsNew) return "restore";
+  if (localIsNew) return "push";
+  return "none";
+}
+
+/* ---------- Sync-Status (für UI) ---------- */
+
+export type SyncStatus = "idle" | "syncing" | "synced" | "offline" | "error" | "conflict";
+
+export type SyncState = {
+  status: SyncStatus;
+  /** Ausstehende Änderung, die noch nicht in der Cloud liegt. */
+  pending: boolean;
+  message: string | null;
+  lastSyncedAt: number | null;
+  signedIn: boolean;
+};
+
+let state: SyncState = {
+  status: "idle",
+  pending: false,
+  message: null,
+  lastSyncedAt: null,
+  signedIn: false,
+};
+
+const listeners = new Set<() => void>();
+
+function setState(patch: Partial<SyncState>) {
+  state = { ...state, ...patch };
+  listeners.forEach((l) => l());
+}
+
+export function getSyncState(): SyncState {
+  return state;
+}
+
+export function useSyncState(): SyncState {
+  return useSyncExternalStore(
+    (l) => {
+      listeners.add(l);
+      return () => listeners.delete(l);
+    },
+    () => state,
+    () => state,
+  );
+}
+
+/* ---------- Cloud-Zugriff ---------- */
+
 let userId: string | null = null;
 let timeout: ReturnType<typeof setTimeout> | null = null;
 
-async function push(data: AppData) {
-  if (!userId) return;
-  await supabase.from("backups").upsert({
+function isOffline(): boolean {
+  return typeof navigator !== "undefined" && navigator.onLine === false;
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  return t("error.sync");
+}
+
+function payloadOf(data: AppData) {
+  return JSON.parse(JSON.stringify({ ...data, timer: null })) as AppData;
+}
+
+async function push(data: AppData): Promise<void> {
+  if (!userId) throw new Error(t("error.notSignedIn"));
+  const updatedAt = new Date();
+  const { error } = await supabase.from("backups").upsert({
     user_id: userId,
-    payload: JSON.parse(JSON.stringify({ ...data, timer: null })),
-    updated_at: new Date().toISOString(),
+    payload: payloadOf(data) as never,
+    updated_at: updatedAt.toISOString(),
+  });
+  if (error) throw error;
+  saveMeta({ lastSyncedAt: updatedAt.getTime(), remoteSeenAt: updatedAt.getTime() });
+}
+
+async function fetchRemote(): Promise<{ payload: AppData; updatedAt: number } | null> {
+  if (!userId) throw new Error(t("error.notSignedIn"));
+  const { data, error } = await supabase
+    .from("backups")
+    .select("payload, updated_at")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data?.payload) return null;
+  return {
+    payload: data.payload as unknown as AppData,
+    updatedAt: data.updated_at ? new Date(data.updated_at).getTime() : 0,
+  };
+}
+
+function applyRemote(remote: { payload: AppData; updatedAt: number }) {
+  replaceAll(remote.payload);
+  saveMeta({
+    lastSyncedAt: Date.now(),
+    remoteSeenAt: remote.updatedAt,
+    localChangedAt: null,
   });
 }
 
-/** Debounced automatisches Cloud-Backup. */
-function scheduleBackup(data: AppData) {
-  if (!userId || !data.settings.autoBackup) return;
-  if (timeout) clearTimeout(timeout);
-  timeout = setTimeout(() => {
-    void push(data);
-  }, 2500);
-}
+/* ---------- Öffentliche Aktionen ---------- */
 
 export async function backupNow(): Promise<void> {
   if (!userId) throw new Error(t("error.notSignedIn"));
-  await push(getData());
+  setState({ status: "syncing", message: null });
+  try {
+    await push(getData());
+    setState({ status: "synced", pending: false, message: null, lastSyncedAt: meta.lastSyncedAt });
+  } catch (error) {
+    failed(error);
+    throw error;
+  }
 }
 
 export async function restoreNow(): Promise<boolean> {
   if (!userId) throw new Error(t("error.notSignedIn"));
-  const { data, error } = await supabase
-    .from("backups")
-    .select("payload")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw error;
-  if (!data?.payload) return false;
-  replaceAll(data.payload as unknown as AppData);
-  return true;
+  setState({ status: "syncing", message: null });
+  try {
+    const remote = await fetchRemote();
+    if (!remote) {
+      setState({ status: "idle", message: null });
+      return false;
+    }
+    applyRemote(remote);
+    setState({ status: "synced", pending: false, message: null, lastSyncedAt: meta.lastSyncedAt });
+    return true;
+  } catch (error) {
+    failed(error);
+    throw error;
+  }
 }
 
-/** Nach Login: leeres Gerät automatisch wiederherstellen, sonst sichern. */
-async function syncAfterLogin() {
-  const local = getData();
-  const hasLocal = local.shifts.length > 0 || local.jobs.length > 0;
-  try {
-    const restored = hasLocal ? false : await restoreNow();
-    if (!restored) await push(getData());
-  } catch {
-    /* Sync-Fehler still ignorieren */
+/** Nutzerentscheidung bei einem Konflikt. */
+export async function resolveConflict(keep: "local" | "cloud"): Promise<void> {
+  if (keep === "local") await backupNow();
+  else await restoreNow();
+}
+
+function failed(error: unknown) {
+  const offline = isOffline();
+  setState({
+    status: offline ? "offline" : "error",
+    pending: true,
+    message: offline ? null : errorMessage(error),
+  });
+}
+
+/* ---------- Automatischer Abgleich ---------- */
+
+async function autoSync(): Promise<void> {
+  if (!userId) return;
+  if (isOffline()) {
+    setState({ status: "offline", pending: true });
+    return;
   }
+  setState({ status: "syncing", message: null });
+  try {
+    const local = getData();
+    const remote = await fetchRemote();
+    const decision = decideSync({
+      hasLocalData: local.shifts.length > 0 || local.jobs.length > 0,
+      hasRemote: remote !== null,
+      localChangedAt: meta.localChangedAt,
+      lastSyncedAt: meta.lastSyncedAt,
+      remoteUpdatedAt: remote?.updatedAt ?? null,
+    });
+
+    if (decision === "conflict") {
+      setState({ status: "conflict", pending: true, message: null });
+      return;
+    }
+    if (decision === "restore" && remote) applyRemote(remote);
+    if (decision === "push") await push(local);
+    setState({ status: "synced", pending: false, message: null, lastSyncedAt: meta.lastSyncedAt });
+  } catch (error) {
+    failed(error);
+  }
+}
+
+/** Debouncedes automatisches Cloud-Backup mit Offline-Queue. */
+function scheduleBackup(data: AppData) {
+  saveMeta({ localChangedAt: Date.now() });
+  if (!userId || !data.settings.autoBackup) return;
+  if (state.status === "conflict") {
+    setState({ pending: true });
+    return;
+  }
+  if (timeout) clearTimeout(timeout);
+  timeout = setTimeout(() => {
+    if (isOffline()) {
+      setState({ status: "offline", pending: true });
+      return;
+    }
+    setState({ status: "syncing", message: null });
+    push(getData())
+      .then(() =>
+        setState({
+          status: "synced",
+          pending: false,
+          message: null,
+          lastSyncedAt: meta.lastSyncedAt,
+        }),
+      )
+      .catch(failed);
+  }, 2500);
+}
+
+/** Wartende Änderung erneut senden (nach Offline-Phase oder Fehler). */
+export function retryPending(): void {
+  if (!userId || !state.pending || state.status === "conflict") return;
+  void autoSync();
 }
 
 let initialized = false;
@@ -61,17 +300,30 @@ export function initCloudSync() {
   if (initialized || typeof window === "undefined") return;
   initialized = true;
 
+  meta = loadMeta();
+  setState({ lastSyncedAt: meta.lastSyncedAt });
+
   onDataChange((data) => scheduleBackup(data));
+
+  window.addEventListener("online", () => {
+    if (state.status === "offline" || state.pending) retryPending();
+  });
+  window.addEventListener("offline", () => {
+    if (state.pending) setState({ status: "offline" });
+  });
 
   supabase.auth.getSession().then(({ data }) => {
     if (data.session) {
       userId = data.session.user.id;
-      void syncAfterLogin();
+      setState({ signedIn: true });
+      void autoSync();
     }
   });
 
   supabase.auth.onAuthStateChange((event, session) => {
     userId = session?.user.id ?? null;
-    if (event === "SIGNED_IN" && userId) void syncAfterLogin();
+    setState({ signedIn: userId !== null });
+    if (event === "SIGNED_IN" && userId) void autoSync();
+    if (event === "SIGNED_OUT") setState({ status: "idle", pending: false, message: null });
   });
 }
