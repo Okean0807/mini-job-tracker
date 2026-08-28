@@ -609,7 +609,70 @@ function LocalBackup({ shiftCount }: { shiftCount: number }) {
   );
 }
 
+function SyncStatusRow({
+  busy,
+  setBusy,
+}: {
+  busy: boolean;
+  setBusy: (value: boolean) => void;
+}) {
+  const { t } = useT();
+  const sync = useSyncState();
+
+  const label =
+    sync.status === "syncing"
+      ? t("set.account.cloud.sync.syncing")
+      : sync.status === "offline"
+        ? t("set.account.cloud.sync.offline")
+        : sync.status === "conflict"
+          ? t("set.account.cloud.sync.conflict")
+          : sync.status === "error"
+            ? (sync.message ?? t("set.account.cloud.sync.error"))
+            : sync.pending
+              ? t("set.account.cloud.sync.pending")
+              : t("set.account.cloud.sync.synced");
+
+  const tone =
+    sync.status === "error" || sync.status === "conflict"
+      ? "text-destructive"
+      : "text-muted-foreground";
+
+  async function resolve(keep: "local" | "cloud") {
+    setBusy(true);
+    try {
+      await resolveConflict(keep);
+      toast.success(t("set.account.cloud.sync.synced"));
+    } catch (error) {
+      toast.error(error instanceof Error && error.message ? error.message : t("error.sync"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
+      <p className="text-xs font-medium">{t("set.account.cloud.sync.status")}</p>
+      <p className={`mt-1 text-xs ${tone}`}>{label}</p>
+      {sync.status === "conflict" ? (
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <Button size="sm" onClick={() => resolve("local")} disabled={busy}>
+            {t("set.account.cloud.sync.keepLocal")}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => resolve("cloud")} disabled={busy}>
+            {t("set.account.cloud.sync.keepCloud")}
+          </Button>
+        </div>
+      ) : sync.status === "error" || (sync.pending && sync.status !== "syncing") ? (
+        <Button size="sm" variant="outline" className="mt-2" onClick={() => retryPending()}>
+          {t("set.account.cloud.sync.retry")}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 function CloudSync({ autoBackup }: { autoBackup: boolean }) {
+
   const { t } = useT();
   const [session, setSession] = useState<Session | null>(null);
   const [busy, setBusy] = useState(false);
