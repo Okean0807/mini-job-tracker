@@ -668,6 +668,8 @@ function CloudSync({ autoBackup }: { autoBackup: boolean }) {
       <p className="text-xs text-muted-foreground">
         {t("set.account.cloud.signedInAs", { email: session.user.email ?? "" })}
       </p>
+      <SyncStatusRow busy={busy} setBusy={setBusy} />
+
       <ToggleRow
         title={t("set.account.cloud.autoBackup")}
         description={t("set.account.cloud.autoBackupDesc")}
