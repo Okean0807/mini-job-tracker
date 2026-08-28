@@ -15,7 +15,14 @@ import { lovable } from "@/integrations/lovable";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDateDE, formatEuro, formatHours } from "@/lib/minijob/calc";
 import { monthlyHoursLimit, monthlyLimitOf, yearlyLimitOf } from "@/lib/minijob/limits";
-import { backupNow, restoreNow } from "@/lib/minijob/cloud";
+import {
+  backupNow,
+  restoreNow,
+  resolveConflict,
+  retryPending,
+  useSyncState,
+} from "@/lib/minijob/cloud";
+
 import { downloadText, shiftsToCsv } from "@/lib/minijob/csv";
 import { exportXlsx } from "@/lib/minijob/export";
 import { holidaysFor } from "@/lib/minijob/holidays";
