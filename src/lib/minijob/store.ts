@@ -256,7 +256,9 @@ export function deletePayment(id: string) {
 
 export function saveGoal(goal: Goal) {
   const exists = state.goals.some((g) => g.id === goal.id);
-  const goals = exists ? state.goals.map((g) => (g.id === goal.id ? goal : g)) : [...state.goals, goal];
+  const goals = exists
+    ? state.goals.map((g) => (g.id === goal.id ? goal : g))
+    : [...state.goals, goal];
   commit({ ...state, goals });
 }
 

@@ -1,13 +1,7 @@
 import type { Settings } from "./types";
 
 /** Premium-Funktionen (Flag-basiert, noch ohne Bezahlung). */
-export type PremiumFeature =
-  | "multiJob"
-  | "ai"
-  | "cloud"
-  | "excel"
-  | "advancedReports"
-  | "forecast";
+export type PremiumFeature = "multiJob" | "ai" | "cloud" | "excel" | "advancedReports" | "forecast";
 
 export function isPremium(settings: Pick<Settings, "premium">): boolean {
   return settings.premium === true;

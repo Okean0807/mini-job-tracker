@@ -86,7 +86,14 @@ export function presetConfig(layout: DashboardLayout): DashboardConfig {
       sizes: { stats: "small", timer: "small" },
     };
   }
-  return { ...DEFAULT_DASHBOARD, layout: "work", order: [...WIDGET_IDS], sizes: {}, hidden: [], pinned: [] };
+  return {
+    ...DEFAULT_DASHBOARD,
+    layout: "work",
+    order: [...WIDGET_IDS],
+    sizes: {},
+    hidden: [],
+    pinned: [],
+  };
 }
 
 export function normalizeDashboard(input?: Partial<DashboardConfig>): DashboardConfig {

@@ -97,11 +97,7 @@ export function exportWorkReportPdf(shifts: Shift[], ctx: WorkReportContext) {
   const jobNames = [...new Set(list.map((s) => ctx.jobs.find((j) => j.id === s.jobId)?.name))]
     .filter(Boolean)
     .join(", ");
-  doc.text(
-    [ctx.employeeName, jobNames].filter(Boolean).join(" · ") || t("app.name"),
-    14,
-    31,
-  );
+  doc.text([ctx.employeeName, jobNames].filter(Boolean).join(" · ") || t("app.name"), 14, 31);
 
   autoTable(doc, {
     startY: 36,
@@ -125,9 +121,7 @@ export function exportWorkReportPdf(shifts: Shift[], ctx: WorkReportContext) {
       taskListLabel(s.tasks) || "–",
       [s.note, s.gps ? `GPS ${formatGps(s.gps)}` : null].filter(Boolean).join(" · "),
     ]),
-    foot: [
-      [t("label.total"), "", "", "", formatHours(sumHours(list)), "", ""],
-    ],
+    foot: [[t("label.total"), "", "", "", formatHours(sumHours(list)), "", ""]],
     styles: { fontSize: 8, cellPadding: 2, valign: "top" },
     columnStyles: {
       0: { cellWidth: 20 },
@@ -179,11 +173,7 @@ export function exportWorkReportPdf(shifts: Shift[], ctx: WorkReportContext) {
         }
         doc.setFontSize(7);
         doc.setTextColor(...GREY);
-        doc.text(
-          [formatDate(photo.date), photo.place].filter(Boolean).join(" · "),
-          px,
-          py + 64,
-        );
+        doc.text([formatDate(photo.date), photo.place].filter(Boolean).join(" · "), px, py + 64);
         if (px === 14) {
           px = 110;
         } else {

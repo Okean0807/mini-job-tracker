@@ -78,7 +78,12 @@ export function runNotificationChecks() {
 
   if (n.limitAlerts) checkLimits();
 
-  if (n.startReminder && clock >= n.startTime && clock < addMinutes(n.startTime, 90) && !data.timer) {
+  if (
+    n.startReminder &&
+    clock >= n.startTime &&
+    clock < addMinutes(n.startTime, 90) &&
+    !data.timer
+  ) {
     const hasToday = data.shifts.some((s) => s.date === today);
     if (!hasToday) {
       notifyOnce("start", today, t("notify.start.title"), t("notify.start.body"));
@@ -94,7 +99,12 @@ export function runNotificationChecks() {
     const day = yesterday.getDay();
     const iso = isoDate(yesterday);
     if (day !== 0 && day !== 6 && !data.shifts.some((s) => s.date === iso)) {
-      notifyOnce("missing", iso, t("notify.missing.title"), t("notify.missing.body", { date: formatDate(iso) }));
+      notifyOnce(
+        "missing",
+        iso,
+        t("notify.missing.title"),
+        t("notify.missing.body", { date: formatDate(iso) }),
+      );
     }
   }
 
@@ -155,7 +165,10 @@ export function limitStatus(): LimitStatus {
   return {
     monthShare: month.earningsShare,
     monthHoursShare: month.hoursShare,
-    yearShare: yearlyLimitOf(settings, now.getFullYear()) > 0 ? (yearEarnings / yearlyLimitOf(settings, now.getFullYear())) * 100 : 0,
+    yearShare:
+      yearlyLimitOf(settings, now.getFullYear()) > 0
+        ? (yearEarnings / yearlyLimitOf(settings, now.getFullYear())) * 100
+        : 0,
   };
 }
 

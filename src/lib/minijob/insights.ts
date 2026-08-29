@@ -1,10 +1,4 @@
-import {
-  MONTHS_DE,
-  formatDateDE,
-  shiftHours,
-  shiftsInMonth,
-  shiftsInYear,
-} from "./calc";
+import { MONTHS_DE, formatDateDE, shiftHours, shiftsInMonth, shiftsInYear } from "./calc";
 import { payrollTotals } from "./payroll";
 import type { ResolveOptions } from "./resolve";
 import type { Shift } from "./types";

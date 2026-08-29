@@ -70,7 +70,7 @@ function rows(shifts: Shift[], ctx: ExportContext) {
       [endLabel]: s.end,
       [breakLabel]: s.breakMinutes,
       [hoursLabel]: Number(paidHours(b).toFixed(2)),
-            [rateLabel]: Number(
+      [rateLabel]: Number(
         effectiveShiftRate(s, {
           job: ctx.jobs.find((j) => j.id === s.jobId),
           defaultRate: ctx.defaultRate,

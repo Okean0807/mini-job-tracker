@@ -4,7 +4,13 @@ import { averageRate, shiftBreakdown, sumEarnings, sumHours } from "./calc";
 import { makeResolver } from "./resolve";
 import { addShift, monthStats, yearStats } from "./service";
 import { replaceAll } from "./store";
-import { DEFAULT_SETTINGS, DEFAULT_SUPPLEMENTS, type Job, type Settings, type Shift } from "./types";
+import {
+  DEFAULT_SETTINGS,
+  DEFAULT_SUPPLEMENTS,
+  type Job,
+  type Settings,
+  type Shift,
+} from "./types";
 
 const settings: Settings = {
   ...DEFAULT_SETTINGS,
@@ -53,9 +59,7 @@ describe("Durchschnittssatz in den Statistiken", () => {
 
 describe("Konsistenz Anzeige / Summen / Resolver", () => {
   it("Summe einzelner Breakdowns entspricht sumEarnings", () => {
-    const jobs: Job[] = [
-      { id: "j1", name: "Job", color: "#000", rate: 12, mode: "flex" },
-    ];
+    const jobs: Job[] = [{ id: "j1", name: "Job", color: "#000", rate: 12, mode: "flex" }];
     const resolve = makeResolver(jobs, settings);
     const list = [
       shift({ id: "a", date: "2026-03-04", jobId: "j1" }), // Mittwoch, Job-Satz 12

@@ -100,11 +100,7 @@ export function exportAnnualPdf(report: AnnualReport) {
   doc.text(title, 14, 26);
   doc.setFontSize(8);
   doc.setTextColor(...GREY);
-  doc.text(
-    t("annual.subtitle", { entries: report.entries, months: report.activeMonths }),
-    14,
-    31,
-  );
+  doc.text(t("annual.subtitle", { entries: report.entries, months: report.activeMonths }), 14, 31);
 
   let y = drawKpiGrid(doc, report, 36);
   y = drawBarChart(

@@ -123,7 +123,12 @@ export function regularHoursFor(
   const plan = job?.week?.[weekIndex(shift.date)];
   if (plan?.active) {
     return {
-      hours: shiftHours({ ...shift, start: plan.start, end: plan.end, breakMinutes: plan.breakMinutes }),
+      hours: shiftHours({
+        ...shift,
+        start: plan.start,
+        end: plan.end,
+        breakMinutes: plan.breakMinutes,
+      }),
       basis: "plan",
     };
   }

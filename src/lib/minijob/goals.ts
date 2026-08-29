@@ -26,11 +26,7 @@ function daysBetween(a: string, b: string): number {
 }
 
 /** Anteil des Verdienstes, der auf ein Ziel einzahlt. */
-export function autoSaved(
-  goal: Goal,
-  shifts: Shift[],
-  resolve: Resolver,
-): number {
+export function autoSaved(goal: Goal, shifts: Shift[], resolve: Resolver): number {
   const list = shifts.filter((s) => {
     if (goal.jobId && s.jobId !== goal.jobId) return false;
     if (goal.from && s.date < goal.from) return false;
@@ -47,8 +43,7 @@ export function goalProgress(
   jobs: Job[],
   resolve: Resolver,
 ): GoalProgress {
-  const saved =
-    goal.kind === "manual" ? (goal.manualSaved ?? 0) : autoSaved(goal, shifts, resolve);
+  const saved = goal.kind === "manual" ? (goal.manualSaved ?? 0) : autoSaved(goal, shifts, resolve);
   const target = goal.target > 0 ? goal.target : 0;
   const share = target > 0 ? (saved / target) * 100 : 0;
   const remaining = Math.max(0, target - saved);
