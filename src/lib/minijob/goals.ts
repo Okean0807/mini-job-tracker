@@ -1,4 +1,5 @@
-import { isoDate, sumEarnings } from "./calc";
+import { isoDate } from "./calc";
+import { payrollTotals } from "./payroll";
 import type { Resolver } from "./resolve";
 import type { Goal, Job, Shift } from "./types";
 
@@ -37,7 +38,7 @@ export function autoSaved(
     return true;
   });
   const share = goal.share ?? 100;
-  return (sumEarnings(list, resolve) * share) / 100;
+  return (payrollTotals(list, resolve, shifts).earnings * share) / 100;
 }
 
 export function goalProgress(

@@ -1,6 +1,7 @@
 import { t } from "@/lib/i18n";
 
-import { formatDate, formatEuro, isoDate, shiftsInYear, sumEarnings, timeFromDate } from "./calc";
+import { formatDate, formatEuro, isoDate, shiftsInYear, timeFromDate } from "./calc";
+import { payrollTotals } from "./payroll";
 import { monthUsage, yearlyLimitOf } from "./limits";
 import { payPeriods } from "./payday";
 import { makeResolver } from "./resolve";
@@ -146,7 +147,11 @@ export function limitStatus(): LimitStatus {
   const resolve = makeResolver(jobs, settings);
   const now = new Date();
   const month = monthUsage(shifts, resolve, settings, now.getFullYear(), now.getMonth());
-  const yearEarnings = sumEarnings(shiftsInYear(shifts, now.getFullYear()), resolve);
+  const yearEarnings = payrollTotals(
+    shiftsInYear(shifts, now.getFullYear()),
+    resolve,
+    shifts,
+  ).earnings;
   return {
     monthShare: month.earningsShare,
     monthHoursShare: month.hoursShare,

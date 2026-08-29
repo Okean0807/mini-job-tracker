@@ -4,14 +4,8 @@ import autoTable from "jspdf-autotable";
 
 import { t } from "@/lib/i18n";
 
-import {
-  formatDate,
-  formatEuro,
-  formatHours,
-  shiftBreakdown,
-  shiftHours,
-  sumHours,
-} from "./calc";
+import { formatDate, formatEuro, formatHours } from "./calc";
+import { shiftPayroll } from "./payroll";
 import { isHoliday } from "./holidays";
 import { effectiveShiftRate } from "./rate";
 import type { Job, Shift, Supplements } from "./types";
@@ -25,14 +19,24 @@ export interface ExportContext {
   supplements?: Supplements | undefined;
 }
 
-function resolve(shift: Shift, ctx: ExportContext) {
+function resolve(shift: Shift, ctx: ExportContext, history: Shift[] = []) {
   const job = ctx.jobs.find((j) => j.id === shift.jobId);
-  return shiftBreakdown(shift, {
+  return shiftPayroll(shift, {
     job,
     supplements: ctx.supplements,
     holiday: isHoliday(shift.date, ctx.bundesland),
     defaultRate: ctx.defaultRate,
+    history,
   });
+}
+
+/** Bezahlte Stunden einer Position (Arbeit oder Entgeltfortzahlung). */
+function paidHours(p: { workedHours: number; paidAbsenceHours: number }) {
+  return p.workedHours + p.paidAbsenceHours;
+}
+
+function totalHours(shifts: Shift[], ctx: ExportContext) {
+  return shifts.reduce((acc, s) => acc + paidHours(resolve(s, ctx, shifts)), 0);
 }
 
 function sorted(shifts: Shift[]) {
@@ -40,7 +44,7 @@ function sorted(shifts: Shift[]) {
 }
 
 function total(shifts: Shift[], ctx: ExportContext) {
-  return shifts.reduce((acc, s) => acc + resolve(s, ctx).total, 0);
+  return shifts.reduce((acc, s) => acc + resolve(s, ctx, shifts).earnings, 0);
 }
 
 function rows(shifts: Shift[], ctx: ExportContext) {
@@ -57,7 +61,7 @@ function rows(shifts: Shift[], ctx: ExportContext) {
   const noteLabel = t("label.note");
 
   return sorted(shifts).map((s) => {
-    const b = resolve(s, ctx);
+    const b = resolve(s, ctx, shifts);
     return {
       [dateLabel]: formatDate(s.date),
       [jobLabel]: ctx.jobs.find((j) => j.id === s.jobId)?.name ?? "–",
@@ -65,7 +69,7 @@ function rows(shifts: Shift[], ctx: ExportContext) {
       [startLabel]: s.start,
       [endLabel]: s.end,
       [breakLabel]: s.breakMinutes,
-      [hoursLabel]: Number(shiftHours(s).toFixed(2)),
+      [hoursLabel]: Number(paidHours(b).toFixed(2)),
             [rateLabel]: Number(
         effectiveShiftRate(s, {
           job: ctx.jobs.find((j) => j.id === s.jobId),
@@ -73,7 +77,7 @@ function rows(shifts: Shift[], ctx: ExportContext) {
         }).toFixed(2),
       ),
       [bonusLabel]: Number(b.bonus.toFixed(2)),
-      [earningsLabel]: Number(b.total.toFixed(2)),
+      [earningsLabel]: Number(b.earnings.toFixed(2)),
       [noteLabel]: s.note ?? "",
     };
   });
@@ -100,7 +104,7 @@ export function exportXlsx(shifts: Shift[], title: string, ctx: ExportContext) {
     [startLabel]: "",
     [endLabel]: "",
     [breakLabel]: "" as unknown as number,
-    [hoursLabel]: Number(sumHours(shifts).toFixed(2)),
+    [hoursLabel]: Number(totalHours(shifts, ctx).toFixed(2)),
     [rateLabel]: "" as unknown as number,
     [bonusLabel]: "" as unknown as number,
     [earningsLabel]: Number(total(shifts, ctx).toFixed(2)),
@@ -135,16 +139,16 @@ export function exportPdf(shifts: Shift[], title: string, ctx: ExportContext) {
       ],
     ],
     body: sorted(shifts).map((s) => {
-      const b = resolve(s, ctx);
+      const b = resolve(s, ctx, shifts);
       return [
         formatDate(s.date),
         ctx.jobs.find((j) => j.id === s.jobId)?.name ?? "–",
         t(`kind.${s.kind}`),
         `${s.start}–${s.end}`,
         `${s.breakMinutes} ${t("label.minutes")}`,
-        formatHours(b.hours),
+        formatHours(paidHours(b)),
         formatEuro(b.bonus),
-        formatEuro(b.total),
+        formatEuro(b.earnings),
       ];
     }),
     foot: [
@@ -154,7 +158,7 @@ export function exportPdf(shifts: Shift[], title: string, ctx: ExportContext) {
         "",
         "",
         "",
-        formatHours(sumHours(shifts)),
+        formatHours(totalHours(shifts, ctx)),
         "",
         formatEuro(total(shifts, ctx)),
       ],
