@@ -1,18 +1,16 @@
 import { yearlyLimitOf } from "./limits";
-import {
-  monthNames,
-  shiftBreakdown,
-  shiftHours,
-  shiftsInMonth,
-  shiftsInYear,
-} from "./calc";
+import { monthNames, shiftsInMonth, shiftsInYear } from "./calc";
+import { shiftPayroll } from "./payroll";
 import type { Resolver } from "./resolve";
 import type { Job, Settings, Shift } from "./types";
 
 export interface AnnualMonth {
   month: number;
   label: string;
+  /** Tatsächlich geleistete Arbeitsstunden (ohne bezahlte Abwesenheit). */
   hours: number;
+  /** Bezahlte Ausfallstunden (Urlaub / Krank / Feiertag). */
+  absenceHours: number;
   earnings: number;
   base: number;
   bonus: number;
@@ -33,7 +31,13 @@ export interface AnnualReport {
   entries: number;
   workDays: number;
   hours: number;
+  /** Bezahlte Ausfallstunden (Urlaub / Krank / Feiertag). */
+  absenceHours: number;
   earnings: number;
+  /** Entgelt aus geleisteter Arbeit. */
+  workEarnings: number;
+  /** Entgeltfortzahlung (bezahlte Abwesenheit). */
+  absenceEarnings: number;
   base: number;
   bonus: number;
   bonusShare: number;
@@ -61,36 +65,58 @@ export function buildAnnualReport(
   const labels = monthNames();
   const list = shiftsInYear(shifts, year);
 
+  // Payroll-Semantik: Abwesenheiten erzeugen Entgelt, aber keine Arbeitsstunden.
+  const pay = (s: Shift) => shiftPayroll(s, { ...resolve(s), history: shifts });
+
   const months: AnnualMonth[] = labels.map((label, month) => {
     const monthShifts = shiftsInMonth(list, year, month);
     let hours = 0;
+    let absenceHours = 0;
     let base = 0;
     let bonus = 0;
     for (const s of monthShifts) {
-      const b = shiftBreakdown(s, resolve(s));
-      hours += b.hours;
-      base += b.base;
-      bonus += b.bonus;
+      const p = pay(s);
+      hours += p.workedHours;
+      absenceHours += p.paidAbsenceHours;
+      base += p.base;
+      bonus += p.bonus;
     }
-    return { month, label, hours, earnings: base + bonus, base, bonus, entries: monthShifts.length };
+    return {
+      month,
+      label,
+      hours,
+      absenceHours,
+      earnings: base + bonus,
+      base,
+      bonus,
+      entries: monthShifts.length,
+    };
   });
 
   const hours = months.reduce((a, m) => a + m.hours, 0);
+  const absenceHours = months.reduce((a, m) => a + m.absenceHours, 0);
   const base = months.reduce((a, m) => a + m.base, 0);
   const bonus = months.reduce((a, m) => a + m.bonus, 0);
   const earnings = base + bonus;
+  let workEarnings = 0;
+  let absenceEarnings = 0;
+  for (const s of list) {
+    const p = pay(s);
+    if (p.kind === "arbeit") workEarnings += p.earnings;
+    else absenceEarnings += p.earnings;
+  }
 
   const byDay = new Map<string, { hours: number; earnings: number }>();
   const weekdayHours = [0, 0, 0, 0, 0, 0, 0];
   for (const s of list) {
-    const b = shiftBreakdown(s, resolve(s));
+    const p = pay(s);
     const day = byDay.get(s.date) ?? { hours: 0, earnings: 0 };
-    day.hours += b.hours;
-    day.earnings += b.total;
+    day.hours += p.workedHours;
+    day.earnings += p.earnings;
     byDay.set(s.date, day);
     const [y, m, d] = s.date.split("-").map(Number);
     const idx = (new Date(y!, (m ?? 1) - 1, d ?? 1).getDay() + 6) % 7;
-    weekdayHours[idx] = (weekdayHours[idx] ?? 0) + shiftHours(s);
+    weekdayHours[idx] = (weekdayHours[idx] ?? 0) + p.workedHours;
   }
 
   let bestDay: AnnualReport["bestDay"] = null;
@@ -109,9 +135,9 @@ export function buildAnnualReport(
       let jh = 0;
       let je = 0;
       for (const s of jobShifts) {
-        const b = shiftBreakdown(s, resolve(s));
-        jh += b.hours;
-        je += b.total;
+        const p = pay(s);
+        jh += p.workedHours;
+        je += p.earnings;
       }
       return {
         id: job.id,
@@ -133,11 +159,14 @@ export function buildAnnualReport(
     entries: list.length,
     workDays: byDay.size,
     hours,
+    absenceHours,
     earnings,
+    workEarnings,
+    absenceEarnings,
     base,
     bonus,
     bonusShare: earnings > 0 ? (bonus / earnings) * 100 : 0,
-    avgRate: hours > 0 ? earnings / hours : 0,
+    avgRate: hours > 0 ? workEarnings / hours : 0,
     avgMonthEarnings: activeMonths > 0 ? earnings / activeMonths : 0,
     avgDayHours: byDay.size > 0 ? hours / byDay.size : 0,
     activeMonths,

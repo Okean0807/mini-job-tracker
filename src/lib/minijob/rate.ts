@@ -33,11 +33,7 @@ export function findJob(jobs: Job[], jobId?: string): Job | undefined {
 }
 
 /** Gültiger Stundensatz nach Priorität Schicht > Job > Standard. */
-export function resolveRate(
-  query: RateQuery,
-  jobs: Job[],
-  settings: Settings,
-): RateResolution {
+export function resolveRate(query: RateQuery, jobs: Job[], settings: Settings): RateResolution {
   const job = findJob(jobs, query.jobId ?? settings.activeJobId);
   if (typeof query.shiftRate === "number") {
     return { rate: query.shiftRate, source: "shift", job };

@@ -24,8 +24,7 @@ export function listenOnce(): Promise<string> {
   return new Promise((resolve, reject) => {
     const w = window as unknown as Record<string, unknown>;
     const Ctor = (w["SpeechRecognition"] || w["webkitSpeechRecognition"]) as
-      | (new () => SpeechRecognitionLike)
-      | undefined;
+      (new () => SpeechRecognitionLike) | undefined;
     if (!Ctor) {
       reject(new Error(tl(currentLang(), "voice.error.unsupported")));
       return;
@@ -188,7 +187,19 @@ function toHour(token: string, lang: Lang): number | null {
 }
 
 // Schlüsselwörter zur Erkennung von Sprachbefehlen je Sprache.
-const KEYWORDS: Record<Lang, { start: RegExp; stop: RegExp; stats: RegExp; earnings: RegExp; clockJoin: RegExp; wordJoin: RegExp; pause: RegExp; hourWord: RegExp }> = {
+const KEYWORDS: Record<
+  Lang,
+  {
+    start: RegExp;
+    stop: RegExp;
+    stats: RegExp;
+    earnings: RegExp;
+    clockJoin: RegExp;
+    wordJoin: RegExp;
+    pause: RegExp;
+    hourWord: RegExp;
+  }
+> = {
   de: {
     start: /(arbeit|schicht).*(start|beginn)|start(e)? (die )?arbeit|einstempeln/,
     stop: /(arbeit|schicht).*(ende|beend|stopp|stop)|feierabend|ausstempeln/,
@@ -243,7 +254,9 @@ const KEYWORDS: Record<Lang, { start: RegExp; stop: RegExp; stats: RegExp; earni
 
 function times(text: string, lang: Lang): { start: string; end: string } | null {
   const kw = KEYWORDS[lang];
-  const clock = text.match(/(\d{1,2})[:.](\d{2}).*?(?:bis|to|do|kadar|до|-|–).*?(\d{1,2})[:.](\d{2})/);
+  const clock = text.match(
+    /(\d{1,2})[:.](\d{2}).*?(?:bis|to|do|kadar|до|-|–).*?(\d{1,2})[:.](\d{2})/,
+  );
   if (clock) {
     return {
       start: `${clock[1]!.padStart(2, "0")}:${clock[2]}`,

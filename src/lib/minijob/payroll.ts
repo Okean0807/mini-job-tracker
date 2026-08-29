@@ -52,6 +52,10 @@ export interface ShiftPayroll {
   paidAbsenceHours: number;
   /** Entgelt (Arbeitsentgelt i. S. d. § 14 SGB IV, zählt zur Minijob-Grenze). */
   earnings: number;
+  /** Grundentgelt ohne Zuschläge (bei Abwesenheit = gesamtes Entgelt). */
+  base: number;
+  /** Zuschläge – nur für tatsächlich geleistete Arbeit (§ 4 EntgFG). */
+  bonus: number;
   paid: boolean;
   reason: PayReason;
   basis: PayBasis;
@@ -119,7 +123,12 @@ export function regularHoursFor(
   const plan = job?.week?.[weekIndex(shift.date)];
   if (plan?.active) {
     return {
-      hours: shiftHours({ ...shift, start: plan.start, end: plan.end, breakMinutes: plan.breakMinutes }),
+      hours: shiftHours({
+        ...shift,
+        start: plan.start,
+        end: plan.end,
+        breakMinutes: plan.breakMinutes,
+      }),
       basis: "plan",
     };
   }
@@ -198,6 +207,8 @@ export function shiftPayroll(shift: Shift, options: PayrollOptions = {}): ShiftP
       workedHours: b.hours,
       paidAbsenceHours: 0,
       earnings: b.total,
+      base: b.base,
+      bonus: b.bonus,
       paid: true,
       reason: "worked",
       basis: "worked",
@@ -210,6 +221,8 @@ export function shiftPayroll(shift: Shift, options: PayrollOptions = {}): ShiftP
     workedHours: 0,
     paidAbsenceHours: 0,
     earnings: 0,
+    base: 0,
+    bonus: 0,
     paid: false,
     reason,
     basis: "none",
@@ -226,6 +239,8 @@ export function shiftPayroll(shift: Shift, options: PayrollOptions = {}): ShiftP
       workedHours: 0,
       paidAbsenceHours: hours,
       earnings: hours * rate,
+      base: hours * rate,
+      bonus: 0,
       paid: true,
       reason: "holiday-pay",
       basis,
@@ -246,6 +261,8 @@ export function shiftPayroll(shift: Shift, options: PayrollOptions = {}): ShiftP
       workedHours: 0,
       paidAbsenceHours: hours,
       earnings: hours * rate,
+      base: hours * rate,
+      bonus: 0,
       paid: true,
       reason: "sick-pay",
       basis,
@@ -262,6 +279,8 @@ export function shiftPayroll(shift: Shift, options: PayrollOptions = {}): ShiftP
       workedHours: 0,
       paidAbsenceHours: average.hours,
       earnings: average.amount,
+      base: average.amount,
+      bonus: 0,
       paid: true,
       reason: "vacation-pay",
       basis: "average13",
@@ -274,6 +293,8 @@ export function shiftPayroll(shift: Shift, options: PayrollOptions = {}): ShiftP
     workedHours: 0,
     paidAbsenceHours: hours,
     earnings: hours * rate,
+    base: hours * rate,
+    bonus: 0,
     paid: true,
     reason: "vacation-pay",
     basis,

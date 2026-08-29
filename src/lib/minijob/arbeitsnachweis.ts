@@ -42,7 +42,6 @@ function num(value: number, digits = 2): string {
   return value.toFixed(digits).replace(".", ",");
 }
 
-
 /** Kompakte Adresszeile: „Musterstraße 15, 3. OG, links“. */
 export function addressLine(shift: Shift, jobs: Job[] = []): string {
   const street = [shift.street, shift.houseNo]
@@ -121,9 +120,7 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
     startY: 32,
     margin: { left: margin, right: margin, top: 32, bottom: 14 },
     theme: "grid",
-    head: [
-      ["Datum", "Beginn", "Pause", "Ende", "Arbeitszeit (h)", "Erfasst am", "Bemerkung"],
-    ],
+    head: [["Datum", "Beginn", "Pause", "Ende", "Arbeitszeit (h)", "Erfasst am", "Bemerkung"]],
     body: list.map((s) => [
       de(s.date),
       s.start,
@@ -231,4 +228,3 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
 
   doc.save(`Arbeitsnachweis_${monthName}_${ctx.year}.pdf`);
 }
-

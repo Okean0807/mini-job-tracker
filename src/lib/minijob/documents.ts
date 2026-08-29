@@ -10,14 +10,7 @@ export const DOC_CATEGORIES = [
 
 export type DocCategory = (typeof DOC_CATEGORIES)[number];
 
-export const FOLDER_COLORS = [
-  "#0d9488",
-  "#2563eb",
-  "#16a34a",
-  "#ea580c",
-  "#dc2626",
-  "#7c3aed",
-];
+export const FOLDER_COLORS = ["#0d9488", "#2563eb", "#16a34a", "#ea580c", "#dc2626", "#7c3aed"];
 
 export interface DocumentRow {
   id: string;

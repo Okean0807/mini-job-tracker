@@ -35,7 +35,7 @@ export function nightHours(shift: Shift, from: string, to: string): number {
   if (gross <= 0) return 0;
   // Pause anteilig abziehen
   const paid = Math.max(0, gross - (shift.breakMinutes || 0));
-  return (Math.min(overlap, gross) / gross) * paid / 60;
+  return ((Math.min(overlap, gross) / gross) * paid) / 60;
 }
 
 export interface Breakdown {
@@ -124,10 +124,7 @@ export function sumHours(shifts: Shift[]): number {
   return shifts.reduce((acc, s) => acc + shiftHours(s), 0);
 }
 
-export function sumEarnings(
-  shifts: Shift[],
-  resolve?: (shift: Shift) => EarningsOptions,
-): number {
+export function sumEarnings(shifts: Shift[], resolve?: (shift: Shift) => EarningsOptions): number {
   return shifts.reduce((acc, s) => acc + shiftEarnings(s, resolve?.(s)), 0);
 }
 
@@ -135,10 +132,7 @@ export function sumEarnings(
  * Durchschnittlicher Stundenertrag (inkl. Zuschlägen) = Verdienst / Stunden.
  * Ohne `resolve` werden weder Zuschläge noch die Satz-Fallbacks aufgelöst.
  */
-export function averageRate(
-  shifts: Shift[],
-  resolve?: (shift: Shift) => EarningsOptions,
-): number {
+export function averageRate(shifts: Shift[], resolve?: (shift: Shift) => EarningsOptions): number {
   const h = sumHours(shifts);
   return h > 0 ? sumEarnings(shifts, resolve) / h : 0;
 }
@@ -251,7 +245,15 @@ export const MONTHS_SHORT_DE = [
   "Dez",
 ];
 
-export const WEEKDAYS_DE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
+export const WEEKDAYS_DE = [
+  "Montag",
+  "Dienstag",
+  "Mittwoch",
+  "Donnerstag",
+  "Freitag",
+  "Samstag",
+  "Sonntag",
+];
 
 export function isoDate(date: Date): string {
   const y = date.getFullYear();

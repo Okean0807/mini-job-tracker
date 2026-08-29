@@ -105,9 +105,8 @@ export function parseCsv(
   const newJobs = new Set<string>();
   if (lines.length === 0) return { rows, valid: [], invalid: [], newJobs: [] };
 
-  const delimiter = (lines[0]!.match(/;/g)?.length ?? 0) >= (lines[0]!.match(/,/g)?.length ?? 0)
-    ? ";"
-    : ",";
+  const delimiter =
+    (lines[0]!.match(/;/g)?.length ?? 0) >= (lines[0]!.match(/,/g)?.length ?? 0) ? ";" : ",";
 
   // Sprachunabhängige Erkennung: Kopfzeile liegt vor, wenn die erste Zelle
   // sich nicht als Datum parsen lässt (unabhängig vom verwendeten Wort/Sprache).
@@ -118,8 +117,15 @@ export function parseCsv(
   body.forEach((line, index) => {
     const cells = splitLine(line, delimiter);
     const errors: string[] = [];
-    const [dateCell = "", startCell = "", endCell = "", breakCell = "", rateCell = "", jobCell = "", noteCell = ""] =
-      cells;
+    const [
+      dateCell = "",
+      startCell = "",
+      endCell = "",
+      breakCell = "",
+      rateCell = "",
+      jobCell = "",
+      noteCell = "",
+    ] = cells;
 
     const date = parseDate(dateCell);
     if (!date) errors.push(t("csv.error.date"));

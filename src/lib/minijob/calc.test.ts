@@ -125,15 +125,18 @@ describe("shiftBreakdown", () => {
 
   it("kombiniert Feiertag + Nacht + Überstunden", () => {
     // Sonntag 2026-03-08 als Feiertag markiert, 22:00-02:00, 4h
-    const b = shiftBreakdown(makeShift({ date: "2026-03-08", start: "22:00", end: "02:00", overtime: true }), {
-      holiday: true,
-      supplements: supplements({
-        holiday: { enabled: true, mode: "prozent", value: 100 },
-        sunday: { enabled: true, mode: "prozent", value: 50 },
-        night: { enabled: true, mode: "prozent", value: 25 },
-        overtime: { enabled: true, mode: "prozent", value: 25 },
-      }),
-    });
+    const b = shiftBreakdown(
+      makeShift({ date: "2026-03-08", start: "22:00", end: "02:00", overtime: true }),
+      {
+        holiday: true,
+        supplements: supplements({
+          holiday: { enabled: true, mode: "prozent", value: 100 },
+          sunday: { enabled: true, mode: "prozent", value: 50 },
+          night: { enabled: true, mode: "prozent", value: 25 },
+          overtime: { enabled: true, mode: "prozent", value: 25 },
+        }),
+      },
+    );
     expect(b.hours).toBe(4);
     expect(b.base).toBe(40);
     // Feiertag 40 + Nacht (3h * 10 * 25%) 7.5 + Überstunden 10

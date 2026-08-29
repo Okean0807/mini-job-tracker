@@ -283,13 +283,14 @@ export function monthSchedule(
   for (let d = 1; d <= days; d++) {
     const date = isoDate(new Date(year, month, d));
     const list = shiftsOnDate(ctx.data.shifts, date);
+    const dayPayroll = payrollTotals(list, ctx.resolve, ctx.data.shifts);
     result.push({
       date,
       weekday: weekday(date),
       holiday: isHoliday(date, settings.bundesland),
       shifts: list,
-      hours: sumHours(list),
-      earnings: sumEarnings(list, ctx.resolve),
+      hours: dayPayroll.workedHours,
+      earnings: dayPayroll.earnings,
       planned: planned.has(date),
     });
   }
