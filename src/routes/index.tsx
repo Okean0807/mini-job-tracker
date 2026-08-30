@@ -21,9 +21,8 @@ import {
   monthNames,
   shiftsInMonth,
   shiftsInYear,
-  sumEarnings,
-  sumHours,
 } from "@/lib/minijob/calc";
+import { payrollTotals } from "@/lib/minijob/payroll";
 import { activeWidgets, spanClass, widgetSize } from "@/lib/minijob/dashboard";
 import { goalsProgress } from "@/lib/minijob/goals";
 import { buildInsights } from "@/lib/minijob/insights";
@@ -71,10 +70,18 @@ function DashboardPage() {
     [shifts, year, month, resolve],
   );
 
-  const hours = sumHours(monthShifts);
-  const earnings = sumEarnings(monthShifts, resolve);
-  const yearEarnings = sumEarnings(yearShifts, resolve);
-  const avg = hours > 0 ? earnings / hours : 0;
+  const monthTotals = useMemo(
+    () => payrollTotals(monthShifts, resolve, shifts),
+    [monthShifts, resolve, shifts],
+  );
+  const yearTotals = useMemo(
+    () => payrollTotals(yearShifts, resolve, shifts),
+    [yearShifts, resolve, shifts],
+  );
+  const hours = monthTotals.workedHours;
+  const earnings = monthTotals.earnings;
+  const yearEarnings = yearTotals.earnings;
+  const avg = hours > 0 ? monthTotals.workEarnings / hours : 0;
   const monthLimit = useMemo(
     () => monthUsage(shifts, resolve, settings, year, month),
     [shifts, resolve, settings, year, month],

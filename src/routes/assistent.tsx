@@ -61,31 +61,34 @@ function AssistantPage() {
     const year = new Date().getFullYear();
     const months = MONTHS_DE.map((name, idx) => {
       const list = shiftsInMonth(data.shifts, year, idx);
+      const totals = payrollTotals(list, resolve, data.shifts);
       return {
         monat: name,
-        stunden: Number(sumHours(list).toFixed(2)),
-        verdienst: Number(sumEarnings(list, resolve).toFixed(2)),
+        stunden: Number(totals.workedHours.toFixed(2)),
+        verdienst: Number(totals.earnings.toFixed(2)),
         eintraege: list.length,
       };
     }).filter((m) => m.eintraege > 0);
 
     const perJob = data.jobs.map((job) => {
       const list = data.shifts.filter((s) => s.jobId === job.id);
+      const totals = payrollTotals(list, resolve, data.shifts);
       return {
         job: job.name,
-        stunden: Number(list.reduce((a, s) => a + shiftHours(s), 0).toFixed(2)),
-        verdienst: Number(sumEarnings(list, resolve).toFixed(2)),
+        stunden: Number(totals.workedHours.toFixed(2)),
+        verdienst: Number(totals.earnings.toFixed(2)),
       };
     });
 
     const yearList = shiftsInYear(data.shifts, year);
+    const yearTotals = payrollTotals(yearList, resolve, data.shifts);
     return JSON.stringify({
       jahr: year,
       heute: new Date().toISOString().slice(0, 10),
       monatsgrenze: monthlyLimitOf(data.settings, year, new Date().getMonth()),
       jahresgrenze: yearlyLimitOf(data.settings, year),
-      jahresstunden: Number(sumHours(yearList).toFixed(2)),
-      jahresverdienst: Number(sumEarnings(yearList, resolve).toFixed(2)),
+      jahresstunden: Number(yearTotals.workedHours.toFixed(2)),
+      jahresverdienst: Number(yearTotals.earnings.toFixed(2)),
       monate: months,
       jobs: perJob,
     });
