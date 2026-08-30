@@ -8,14 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { languageLabel, useT } from "@/lib/i18n";
 import { askAssistant } from "@/lib/ai.functions";
-import {
-  MONTHS_DE,
-  shiftHours,
-  shiftsInMonth,
-  shiftsInYear,
-  sumEarnings,
-  sumHours,
-} from "@/lib/minijob/calc";
+import { MONTHS_DE, shiftsInMonth, shiftsInYear } from "@/lib/minijob/calc";
+import { payrollTotals } from "@/lib/minijob/payroll";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { monthlyLimitOf, yearlyLimitOf } from "@/lib/minijob/limits";
 import { useAppData } from "@/lib/minijob/store";
