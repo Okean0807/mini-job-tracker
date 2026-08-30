@@ -29,9 +29,8 @@ import {
   shiftHours,
   shiftsInMonth,
   shiftsInYear,
-  sumEarnings,
-  sumHours,
 } from "@/lib/minijob/calc";
+import { payrollTotals } from "@/lib/minijob/payroll";
 import { buildAnnualReport } from "@/lib/minijob/annual";
 import { exportPdf, exportXlsx } from "@/lib/minijob/export";
 import { exportArbeitsnachweisPdf } from "@/lib/minijob/arbeitsnachweis";
@@ -85,13 +84,14 @@ function StatsPage() {
     () =>
       monthsShort.map((label, idx) => {
         const list = shiftsInMonth(filtered, year, idx);
+        const totals = payrollTotals(list, resolve, shifts);
         return {
           monat: label,
-          stunden: Number(sumHours(list).toFixed(2)),
-          verdienst: Number(sumEarnings(list, resolve).toFixed(2)),
+          stunden: Number(totals.workedHours.toFixed(2)),
+          verdienst: Number(totals.earnings.toFixed(2)),
         };
       }),
-    [filtered, year, resolve, monthsShort],
+    [filtered, shifts, year, resolve, monthsShort],
   );
 
   const dailyData = useMemo(
@@ -113,10 +113,11 @@ function StatsPage() {
           shifts.filter((s) => s.jobId === job.id),
           year,
         );
+        const totals = payrollTotals(list, resolve, shifts);
         return {
           job,
-          hours: sumHours(list),
-          earnings: sumEarnings(list, resolve),
+          hours: totals.workedHours,
+          earnings: totals.earnings,
         };
       }),
     [jobs, shifts, year, resolve],
@@ -148,10 +149,12 @@ function StatsPage() {
     toast.success(t("stats.toast.exportSuccess"));
   }
 
-  const monthEarnings = sumEarnings(monthShifts, resolve);
-  const yearEarnings = sumEarnings(yearShifts, resolve);
-  const monthHours = sumHours(monthShifts);
-  const yearHours = sumHours(yearShifts);
+  const monthTotals = payrollTotals(monthShifts, resolve, shifts);
+  const yearTotals = payrollTotals(yearShifts, resolve, shifts);
+  const monthEarnings = monthTotals.earnings;
+  const yearEarnings = yearTotals.earnings;
+  const monthHours = monthTotals.workedHours;
+  const yearHours = yearTotals.workedHours;
 
   return (
     <main className="mx-auto max-w-lg px-4 pt-6">
