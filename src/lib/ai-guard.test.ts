@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   AiGuardError,
   MAX_CONTEXT_CHARS,
-  MAX_TOTAL_CHARS,
   RATE_LIMIT_PER_HOUR,
   RATE_LIMIT_PER_MINUTE,
   assertRateLimit,
