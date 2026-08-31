@@ -59,4 +59,16 @@ describe("decideSync", () => {
       decideSync({ ...base, localChangedAt: null, lastSyncedAt: null, remoteUpdatedAt: 400 }),
     ).toBe("restore");
   });
+
+  it("macht eine bewusste lokale Löschung nicht still rückgängig", () => {
+    expect(
+      decideSync({ ...base, hasLocalData: false, localChangedAt: 500, lastSyncedAt: 100, remoteUpdatedAt: 100 }),
+    ).toBe("push");
+  });
+
+  it("meldet Konflikt, wenn lokal geleert wurde und die Cloud neuer ist", () => {
+    expect(
+      decideSync({ ...base, hasLocalData: false, localChangedAt: 500, lastSyncedAt: 100, remoteUpdatedAt: 400 }),
+    ).toBe("conflict");
+  });
 });
