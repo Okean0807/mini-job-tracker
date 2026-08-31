@@ -274,18 +274,11 @@ function scheduleBackup(data: AppData) {
       setState({ status: "offline", pending: true });
       return;
     }
-    setState({ status: "syncing", message: null });
-    push(getData())
-      .then(() =>
-        setState({
-          status: "synced",
-          pending: false,
-          message: null,
-          lastSyncedAt: meta.lastSyncedAt,
-        }),
-      )
-      .catch(failed);
+    // Kein blindes Überschreiben: der Abgleich prüft zuerst den Cloud-Stand
+    // (updated_at) und meldet einen Konflikt, statt fremde Änderungen zu verlieren.
+    void autoSync();
   }, 2500);
+
 }
 
 /** Wartende Änderung erneut senden (nach Offline-Phase oder Fehler). */
