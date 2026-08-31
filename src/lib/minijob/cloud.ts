@@ -70,18 +70,23 @@ export type SyncDecisionInput = {
 export function decideSync(input: SyncDecisionInput): SyncDecision {
   const { hasLocalData, hasRemote, localChangedAt, lastSyncedAt, remoteUpdatedAt } = input;
 
-  if (!hasRemote) return hasLocalData ? "push" : "none";
-  if (!hasLocalData) return "restore";
-
   const remoteAt = remoteUpdatedAt ?? 0;
   const syncedAt = lastSyncedAt ?? 0;
   const remoteIsNew = remoteAt > syncedAt;
   const localIsNew = (localChangedAt ?? 0) > syncedAt;
 
+  if (!hasRemote) return hasLocalData || localIsNew ? "push" : "none";
+  // Leeres Gerät: Cloud laden – außer der leere Stand ist selbst eine
+  // bewusste lokale Änderung (z. B. alles gelöscht), die nicht still
+  // rückgängig gemacht werden darf.
+  if (!hasLocalData && !localIsNew) return "restore";
+  if (!hasLocalData) return remoteIsNew ? "conflict" : "push";
+
   if (remoteIsNew && localIsNew) return "conflict";
   if (remoteIsNew) return "restore";
   if (localIsNew) return "push";
   return "none";
+
 }
 
 /* ---------- Sync-Status (für UI) ---------- */
@@ -274,18 +279,11 @@ function scheduleBackup(data: AppData) {
       setState({ status: "offline", pending: true });
       return;
     }
-    setState({ status: "syncing", message: null });
-    push(getData())
-      .then(() =>
-        setState({
-          status: "synced",
-          pending: false,
-          message: null,
-          lastSyncedAt: meta.lastSyncedAt,
-        }),
-      )
-      .catch(failed);
+    // Kein blindes Überschreiben: der Abgleich prüft zuerst den Cloud-Stand
+    // (updated_at) und meldet einen Konflikt, statt fremde Änderungen zu verlieren.
+    void autoSync();
   }, 2500);
+
 }
 
 /** Wartende Änderung erneut senden (nach Offline-Phase oder Fehler). */
