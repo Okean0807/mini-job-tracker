@@ -39,10 +39,11 @@ describe("ai-guard payload validation", () => {
 
   it("rejects an oversized total payload budget", () => {
     const bad = {
-      question: "x".repeat(1900),
-      context: "y".repeat(MAX_TOTAL_CHARS - 1800),
-      language: "Deutsch",
+      question: "x".repeat(2000),
+      context: "y".repeat(MAX_CONTEXT_CHARS),
+      language: "d".repeat(50),
     };
+
     try {
       parseAskAssistantInput(bad);
       throw new Error("should have thrown");
