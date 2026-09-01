@@ -319,6 +319,15 @@ export function retryPending(): void {
   void autoSync();
 }
 
+/** Metadaten an das aktuell angemeldete Konto binden. */
+function adoptUser(id: string) {
+  const next = metaForUser(meta, id);
+  if (next === meta) return;
+  meta = next;
+  saveMeta({});
+  setState({ lastSyncedAt: meta.lastSyncedAt });
+}
+
 let initialized = false;
 
 export function initCloudSync() {
