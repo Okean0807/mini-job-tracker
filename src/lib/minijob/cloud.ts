@@ -11,6 +11,8 @@ import type { AppData } from "./types";
 const META_KEY = "minijob-sync-meta-v1";
 
 export type SyncMeta = {
+  /** Konto, zu dem diese Metadaten gehören (Gerät kann mehrfach genutzt werden). */
+  userId: string | null;
   /** Zeitpunkt der letzten lokalen Datenänderung (ms). */
   localChangedAt: number | null;
   /** Zeitpunkt des letzten erfolgreichen Abgleichs mit der Cloud (ms). */
@@ -19,7 +21,31 @@ export type SyncMeta = {
   remoteSeenAt: number | null;
 };
 
-const EMPTY_META: SyncMeta = { localChangedAt: null, lastSyncedAt: null, remoteSeenAt: null };
+const EMPTY_META: SyncMeta = {
+  userId: null,
+  localChangedAt: null,
+  lastSyncedAt: null,
+  remoteSeenAt: null,
+};
+
+/**
+ * Metadaten für das jetzt angemeldete Konto.
+ *
+ * Gehören die gespeicherten Stände zu einem anderen Konto, dürfen sie nicht
+ * weiterverwendet werden: sonst gilt fremdes `lastSyncedAt` und der Abgleich
+ * könnte den Cloud-Stand des neuen Kontos still überschreiben. Die lokale
+ * Änderungsmarke bleibt erhalten, damit vorhandene Gerätedaten nicht als
+ * "nie geändert" gelten und stillschweigend ersetzt werden.
+ */
+export function metaForUser(current: SyncMeta, userId: string | null): SyncMeta {
+  if (current.userId === userId) return current;
+  return {
+    userId,
+    localChangedAt: current.localChangedAt ?? Date.now(),
+    lastSyncedAt: null,
+    remoteSeenAt: null,
+  };
+}
 
 let meta: SyncMeta = EMPTY_META;
 
@@ -43,6 +69,7 @@ function saveMeta(patch: Partial<SyncMeta>) {
     /* Speicher blockiert – Sync funktioniert dann nur ohne Verlaufswissen */
   }
 }
+
 
 /* ---------- Konfliktentscheidung (rein, testbar) ---------- */
 
