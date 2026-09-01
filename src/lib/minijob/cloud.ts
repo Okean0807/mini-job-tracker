@@ -340,6 +340,7 @@ export function initCloudSync() {
   supabase.auth.getSession().then(({ data }) => {
     if (data.session) {
       userId = data.session.user.id;
+      adoptUser(userId);
       setState({ signedIn: true });
       void autoSync();
     }
@@ -348,7 +349,16 @@ export function initCloudSync() {
   supabase.auth.onAuthStateChange((event, session) => {
     userId = session?.user.id ?? null;
     setState({ signedIn: userId !== null });
-    if (event === "SIGNED_IN" && userId) void autoSync();
-    if (event === "SIGNED_OUT") setState({ status: "idle", pending: false, message: null });
+    if (event === "SIGNED_IN" && userId) {
+      adoptUser(userId);
+      void autoSync();
+    }
+    if (event === "SIGNED_OUT") {
+      // Geplanten Push abbrechen: er würde sonst ohne Konto laufen bzw.
+      // nach einem Kontowechsel in den falschen Cloud-Stand schreiben.
+      if (timeout) clearTimeout(timeout);
+      timeout = null;
+      setState({ status: "idle", pending: false, message: null, lastSyncedAt: null });
+    }
   });
 }
