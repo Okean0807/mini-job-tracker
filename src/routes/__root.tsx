@@ -8,14 +8,16 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { BarChart3, Bot, Briefcase, CalendarDays, FileText, Settings } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+
+import { toast } from "sonner";
 
 import { Toaster } from "@/components/ui/sonner";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { PinLock } from "@/components/minijob/PinLock";
 import { OnboardingWizard } from "@/components/minijob/OnboardingWizard";
-import { initCloudSync } from "../lib/minijob/cloud";
+import { initCloudSync, useSyncState } from "../lib/minijob/cloud";
 import { initNotifications } from "../lib/minijob/notify";
 import { getData, loadFromStorage, useAppData } from "../lib/minijob/store";
 import { useT } from "@/lib/i18n";
@@ -170,6 +172,29 @@ function BottomNav({ uiMode }: { uiMode: UiMode }) {
   );
 }
 
+/**
+ * Konflikte/Fehler beim Cloud-Abgleich sichtbar machen: sonst stoppt das
+ * automatische Backup still und der Hinweis wäre nur in den Einstellungen zu
+ * sehen.
+ */
+function SyncAlerts() {
+  const { t } = useT();
+  const { status, message } = useSyncState();
+  const previous = useRef(status);
+
+  useEffect(() => {
+    if (previous.current === status) return;
+    previous.current = status;
+    if (status === "conflict") {
+      toast.warning(t("set.account.cloud.sync.conflict"), { id: "sync-conflict" });
+    } else if (status === "error") {
+      toast.error(message ?? t("set.account.cloud.sync.error"), { id: "sync-error" });
+    }
+  }, [status, message, t]);
+
+  return null;
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
@@ -213,6 +238,7 @@ function RootComponent() {
       {ready && showWizard && !locked ? (
         <OnboardingWizard settings={settings} onDone={() => setShowWizard(false)} />
       ) : null}
+      <SyncAlerts />
       <Toaster position="top-center" />
     </QueryClientProvider>
   );
