@@ -11,6 +11,8 @@ import type { AppData } from "./types";
 const META_KEY = "minijob-sync-meta-v1";
 
 export type SyncMeta = {
+  /** Konto, zu dem diese Metadaten gehören (Gerät kann mehrfach genutzt werden). */
+  userId: string | null;
   /** Zeitpunkt der letzten lokalen Datenänderung (ms). */
   localChangedAt: number | null;
   /** Zeitpunkt des letzten erfolgreichen Abgleichs mit der Cloud (ms). */
@@ -19,7 +21,31 @@ export type SyncMeta = {
   remoteSeenAt: number | null;
 };
 
-const EMPTY_META: SyncMeta = { localChangedAt: null, lastSyncedAt: null, remoteSeenAt: null };
+const EMPTY_META: SyncMeta = {
+  userId: null,
+  localChangedAt: null,
+  lastSyncedAt: null,
+  remoteSeenAt: null,
+};
+
+/**
+ * Metadaten für das jetzt angemeldete Konto.
+ *
+ * Gehören die gespeicherten Stände zu einem anderen Konto, dürfen sie nicht
+ * weiterverwendet werden: sonst gilt fremdes `lastSyncedAt` und der Abgleich
+ * könnte den Cloud-Stand des neuen Kontos still überschreiben. Die lokale
+ * Änderungsmarke bleibt erhalten, damit vorhandene Gerätedaten nicht als
+ * "nie geändert" gelten und stillschweigend ersetzt werden.
+ */
+export function metaForUser(current: SyncMeta, userId: string | null): SyncMeta {
+  if (current.userId === userId) return current;
+  return {
+    userId,
+    localChangedAt: current.localChangedAt ?? Date.now(),
+    lastSyncedAt: null,
+    remoteSeenAt: null,
+  };
+}
 
 let meta: SyncMeta = EMPTY_META;
 
@@ -43,6 +69,7 @@ function saveMeta(patch: Partial<SyncMeta>) {
     /* Speicher blockiert – Sync funktioniert dann nur ohne Verlaufswissen */
   }
 }
+
 
 /* ---------- Konfliktentscheidung (rein, testbar) ---------- */
 
@@ -292,6 +319,15 @@ export function retryPending(): void {
   void autoSync();
 }
 
+/** Metadaten an das aktuell angemeldete Konto binden. */
+function adoptUser(id: string) {
+  const next = metaForUser(meta, id);
+  if (next === meta) return;
+  meta = next;
+  saveMeta({});
+  setState({ lastSyncedAt: meta.lastSyncedAt });
+}
+
 let initialized = false;
 
 export function initCloudSync() {
@@ -313,6 +349,7 @@ export function initCloudSync() {
   supabase.auth.getSession().then(({ data }) => {
     if (data.session) {
       userId = data.session.user.id;
+      adoptUser(userId);
       setState({ signedIn: true });
       void autoSync();
     }
@@ -321,7 +358,16 @@ export function initCloudSync() {
   supabase.auth.onAuthStateChange((event, session) => {
     userId = session?.user.id ?? null;
     setState({ signedIn: userId !== null });
-    if (event === "SIGNED_IN" && userId) void autoSync();
-    if (event === "SIGNED_OUT") setState({ status: "idle", pending: false, message: null });
+    if (event === "SIGNED_IN" && userId) {
+      adoptUser(userId);
+      void autoSync();
+    }
+    if (event === "SIGNED_OUT") {
+      // Geplanten Push abbrechen: er würde sonst ohne Konto laufen bzw.
+      // nach einem Kontowechsel in den falschen Cloud-Stand schreiben.
+      if (timeout) clearTimeout(timeout);
+      timeout = null;
+      setState({ status: "idle", pending: false, message: null, lastSyncedAt: null });
+    }
   });
 }

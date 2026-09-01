@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { decideSync, type SyncDecisionInput } from "./cloud";
+import { decideSync, metaForUser, type SyncDecisionInput } from "./cloud";
 
 const base: SyncDecisionInput = {
   hasLocalData: true,
@@ -69,6 +69,48 @@ describe("decideSync", () => {
   it("meldet Konflikt, wenn lokal geleert wurde und die Cloud neuer ist", () => {
     expect(
       decideSync({ ...base, hasLocalData: false, localChangedAt: 500, lastSyncedAt: 100, remoteUpdatedAt: 400 }),
+    ).toBe("conflict");
+  });
+});
+
+describe("metaForUser", () => {
+  it("behält Metadaten desselben Kontos unverändert", () => {
+    const m = { userId: "a", localChangedAt: 5, lastSyncedAt: 10, remoteSeenAt: 20 };
+    expect(metaForUser(m, "a")).toBe(m);
+  });
+
+  it("verwirft fremden Abgleichstand nach Kontowechsel", () => {
+    const next = metaForUser(
+      { userId: "a", localChangedAt: 5, lastSyncedAt: 999, remoteSeenAt: 999 },
+      "b",
+    );
+    expect(next.userId).toBe("b");
+    expect(next.lastSyncedAt).toBeNull();
+    expect(next.remoteSeenAt).toBeNull();
+    expect(next.localChangedAt).toBe(5);
+  });
+
+  it("markiert vorhandene Gerätedaten beim Erstlogin als lokal geändert", () => {
+    const next = metaForUser(
+      { userId: null, localChangedAt: null, lastSyncedAt: null, remoteSeenAt: null },
+      "a",
+    );
+    expect(next.localChangedAt).not.toBeNull();
+  });
+
+  it("führt nach Kontowechsel zu einem Konflikt statt stillem Überschreiben", () => {
+    const next = metaForUser(
+      { userId: "a", localChangedAt: 500, lastSyncedAt: 999, remoteSeenAt: 999 },
+      "b",
+    );
+    expect(
+      decideSync({
+        hasLocalData: true,
+        hasRemote: true,
+        localChangedAt: next.localChangedAt,
+        lastSyncedAt: next.lastSyncedAt,
+        remoteUpdatedAt: 400,
+      }),
     ).toBe("conflict");
   });
 });
