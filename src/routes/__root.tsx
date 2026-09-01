@@ -10,12 +10,14 @@ import {
 import { BarChart3, Bot, Briefcase, CalendarDays, FileText, Settings } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
+import { toast } from "sonner";
+
 import { Toaster } from "@/components/ui/sonner";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { PinLock } from "@/components/minijob/PinLock";
 import { OnboardingWizard } from "@/components/minijob/OnboardingWizard";
-import { initCloudSync } from "../lib/minijob/cloud";
+import { initCloudSync, useSyncState } from "../lib/minijob/cloud";
 import { initNotifications } from "../lib/minijob/notify";
 import { getData, loadFromStorage, useAppData } from "../lib/minijob/store";
 import { useT } from "@/lib/i18n";
