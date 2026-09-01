@@ -238,6 +238,7 @@ function RootComponent() {
       {ready && showWizard && !locked ? (
         <OnboardingWizard settings={settings} onDone={() => setShowWizard(false)} />
       ) : null}
+      <SyncAlerts />
       <Toaster position="top-center" />
     </QueryClientProvider>
   );
