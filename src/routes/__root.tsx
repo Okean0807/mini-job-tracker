@@ -172,6 +172,29 @@ function BottomNav({ uiMode }: { uiMode: UiMode }) {
   );
 }
 
+/**
+ * Konflikte/Fehler beim Cloud-Abgleich sichtbar machen: sonst stoppt das
+ * automatische Backup still und der Hinweis wäre nur in den Einstellungen zu
+ * sehen.
+ */
+function SyncAlerts() {
+  const { t } = useT();
+  const { status, message } = useSyncState();
+  const previous = useRef(status);
+
+  useEffect(() => {
+    if (previous.current === status) return;
+    previous.current = status;
+    if (status === "conflict") {
+      toast.warning(t("set.account.cloud.sync.conflict"), { id: "sync-conflict" });
+    } else if (status === "error") {
+      toast.error(message ?? t("set.account.cloud.sync.error"), { id: "sync-error" });
+    }
+  }, [status, message, t]);
+
+  return null;
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
