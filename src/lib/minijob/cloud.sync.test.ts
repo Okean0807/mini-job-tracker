@@ -1,0 +1,346 @@
+/**
+ * Integrationsnahe Regressionstests für die Cloud-Sync-Orchestrierung.
+ *
+ * `cloud.test.ts` prüft nur die reine Entscheidungslogik (`decideSync`).
+ * Hier werden die zustandsbehafteten Pfade abgedeckt, die im Browser-E2E ohne
+ * zwei echte Konten nicht reproduzierbar sind: Konflikt-Erkennung beim
+ * automatischen Abgleich, Offline-Queue mit Retry nach `online`, Abbruch des
+ * geplanten Push bei Abmeldung sowie die Konfliktauflösung durch den Nutzer.
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { AppData } from "./types";
+
+/* ---------- Mocks ---------- */
+
+type Remote = { payload: unknown; updated_at: string } | null;
+
+const cloud = {
+  remote: null as Remote,
+  upsertError: null as { message: string } | null,
+  selectError: null as { message: string } | null,
+  upserts: 0,
+};
+
+let authCallback: ((event: string, session: unknown) => void) | null = null;
+let session: { user: { id: string } } | null = null;
+
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: {
+    from: () => ({
+      upsert: async (row: { payload: unknown; updated_at: string }) => {
+        cloud.upserts += 1;
+        if (cloud.upsertError) return { error: cloud.upsertError };
+        cloud.remote = { payload: row.payload, updated_at: row.updated_at };
+        return { error: null };
+      },
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () =>
+            cloud.selectError
+              ? { data: null, error: cloud.selectError }
+              : { data: cloud.remote, error: null },
+        }),
+      }),
+    }),
+    auth: {
+      getSession: async () => ({ data: { session } }),
+      onAuthStateChange: (cb: (event: string, s: unknown) => void) => {
+        authCallback = cb;
+        return { data: { subscription: { unsubscribe() {} } } };
+      },
+    },
+  },
+}));
+
+let local: AppData;
+let changeHook: ((data: AppData) => void) | null = null;
+const replaced: AppData[] = [];
+
+vi.mock("./store", () => ({
+  getData: () => local,
+  onDataChange: (cb: (data: AppData) => void) => {
+    changeHook = cb;
+  },
+  replaceAll: (data: AppData) => {
+    replaced.push(data);
+    local = data;
+  },
+}));
+
+vi.mock("./notify", () => ({ markBackup: vi.fn() }));
+
+/* ---------- Hilfen ---------- */
+
+function makeData(shifts: number, autoBackup = true): AppData {
+  return {
+    shifts: Array.from({ length: shifts }, (_, i) => ({ id: `s${i}` })),
+    jobs: [],
+    customers: [],
+    projects: [],
+    payments: [],
+    goals: [],
+    settings: { autoBackup },
+    timer: null,
+  } as unknown as AppData;
+}
+
+function setOnline(online: boolean) {
+  Object.defineProperty(window.navigator, "onLine", {
+    value: online,
+    configurable: true,
+  });
+}
+
+async function loadModule() {
+  vi.resetModules();
+  return await import("./cloud");
+}
+
+/** Wartet, bis die Micro-/Makrotask-Kette des Sync abgearbeitet ist. */
+async function settle() {
+  for (let i = 0; i < 8; i += 1) await Promise.resolve();
+}
+
+beforeEach(() => {
+  cloud.remote = null;
+  cloud.upsertError = null;
+  cloud.selectError = null;
+  cloud.upserts = 0;
+  authCallback = null;
+  changeHook = null;
+  replaced.length = 0;
+  session = { user: { id: "user-1" } };
+  local = makeData(1);
+  setOnline(true);
+  window.localStorage.clear();
+  vi.useFakeTimers();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe("initCloudSync", () => {
+  it("sichert lokale Daten, wenn in der Cloud noch nichts liegt", async () => {
+    const { initCloudSync, getSyncState } = await loadModule();
+    initCloudSync();
+    await settle();
+
+    expect(cloud.upserts).toBe(1);
+    expect(getSyncState()).toMatchObject({ status: "synced", pending: false, signedIn: true });
+  });
+
+  it("stellt den Cloud-Stand auf einem leeren Gerät wieder her", async () => {
+    local = makeData(0);
+    cloud.remote = { payload: makeData(3), updated_at: new Date().toISOString() };
+
+    const { initCloudSync } = await loadModule();
+    initCloudSync();
+    await settle();
+
+    expect(replaced).toHaveLength(1);
+    expect(cloud.upserts).toBe(0);
+  });
+});
+
+describe("automatischer Abgleich", () => {
+  it("meldet einen Konflikt statt fremde Cloud-Änderungen zu überschreiben", async () => {
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    // Uhr weiterlaufen lassen: sonst fallen Erst-Push und lokale Änderung
+    // auf dieselbe Millisekunde und gelten als "nicht geändert".
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(mod.getSyncState().status).toBe("synced");
+
+    // Anderes Gerät schreibt einen neueren Stand in die Cloud.
+    cloud.remote = {
+      payload: makeData(9),
+      updated_at: new Date(Date.now() + 60_000).toISOString(),
+    };
+    const before = cloud.upserts;
+
+    // Lokale Änderung → geplanter Abgleich.
+    local = makeData(2);
+    changeHook?.(local);
+    await vi.advanceTimersByTimeAsync(3000);
+    await settle();
+
+    expect(mod.getSyncState()).toMatchObject({ status: "conflict", pending: true });
+    expect(cloud.upserts).toBe(before); // kein blindes Überschreiben
+    expect(replaced).toHaveLength(0); // und kein stiller Restore
+  });
+
+  it("löst den Konflikt zugunsten der lokalen Daten auf", async () => {
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    // Uhr weiterlaufen lassen: sonst fallen Erst-Push und lokale Änderung
+    // auf dieselbe Millisekunde und gelten als "nicht geändert".
+    await vi.advanceTimersByTimeAsync(1000);
+    cloud.remote = {
+      payload: makeData(9),
+      updated_at: new Date(Date.now() + 60_000).toISOString(),
+    };
+    local = makeData(2);
+    changeHook?.(local);
+    await vi.advanceTimersByTimeAsync(3000);
+    await settle();
+    expect(mod.getSyncState().status).toBe("conflict");
+
+    await mod.resolveConflict("local");
+
+    expect(mod.getSyncState()).toMatchObject({ status: "synced", pending: false });
+    expect((cloud.remote?.payload as AppData).shifts).toHaveLength(2);
+  });
+
+  it("löst den Konflikt zugunsten der Cloud auf", async () => {
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    // Uhr weiterlaufen lassen: sonst fallen Erst-Push und lokale Änderung
+    // auf dieselbe Millisekunde und gelten als "nicht geändert".
+    await vi.advanceTimersByTimeAsync(1000);
+    cloud.remote = {
+      payload: makeData(9),
+      updated_at: new Date(Date.now() + 60_000).toISOString(),
+    };
+    local = makeData(2);
+    changeHook?.(local);
+    await vi.advanceTimersByTimeAsync(3000);
+    await settle();
+
+    await mod.resolveConflict("cloud");
+
+    expect(replaced).toHaveLength(1);
+    expect(replaced[0]?.shifts).toHaveLength(9);
+    expect(mod.getSyncState()).toMatchObject({ status: "synced", pending: false });
+  });
+
+  it("startet nach gemeldetem Konflikt keinen automatischen Push mehr", async () => {
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    // Uhr weiterlaufen lassen: sonst fallen Erst-Push und lokale Änderung
+    // auf dieselbe Millisekunde und gelten als "nicht geändert".
+    await vi.advanceTimersByTimeAsync(1000);
+    cloud.remote = {
+      payload: makeData(9),
+      updated_at: new Date(Date.now() + 60_000).toISOString(),
+    };
+    changeHook?.(makeData(2));
+    await vi.advanceTimersByTimeAsync(3000);
+    await settle();
+    const before = cloud.upserts;
+
+    changeHook?.(makeData(3));
+    await vi.advanceTimersByTimeAsync(10_000);
+    await settle();
+
+    expect(cloud.upserts).toBe(before);
+    expect(mod.getSyncState().status).toBe("conflict");
+    // retryPending darf einen Konflikt ebenfalls nicht umgehen
+    mod.retryPending();
+    await settle();
+    expect(cloud.upserts).toBe(before);
+  });
+});
+
+describe("Offline-Queue", () => {
+  it("hält Änderungen offline zurück und sendet sie nach online", async () => {
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    // Uhr weiterlaufen lassen: sonst fallen Erst-Push und lokale Änderung
+    // auf dieselbe Millisekunde und gelten als "nicht geändert".
+    await vi.advanceTimersByTimeAsync(1000);
+    const afterInit = cloud.upserts;
+
+    setOnline(false);
+    local = makeData(4);
+    changeHook?.(local);
+    await vi.advanceTimersByTimeAsync(3000);
+    await settle();
+
+    expect(mod.getSyncState()).toMatchObject({ status: "offline", pending: true });
+    expect(cloud.upserts).toBe(afterInit);
+
+    setOnline(true);
+    window.dispatchEvent(new Event("online"));
+    await settle();
+
+    expect(cloud.upserts).toBe(afterInit + 1);
+    expect(mod.getSyncState()).toMatchObject({ status: "synced", pending: false });
+    expect((cloud.remote?.payload as AppData).shifts).toHaveLength(4);
+  });
+
+  it("macht einen Netzwerkfehler sichtbar und sendet ihn beim Retry erneut", async () => {
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    // Uhr weiterlaufen lassen: sonst fallen Erst-Push und lokale Änderung
+    // auf dieselbe Millisekunde und gelten als "nicht geändert".
+    await vi.advanceTimersByTimeAsync(1000);
+
+    cloud.upsertError = { message: "boom" };
+    local = makeData(5);
+    changeHook?.(local);
+    await vi.advanceTimersByTimeAsync(3000);
+    await settle();
+
+    expect(mod.getSyncState()).toMatchObject({ status: "error", pending: true });
+    expect(mod.getSyncState().message).toBeTruthy();
+
+    cloud.upsertError = null;
+    mod.retryPending();
+    await settle();
+
+    expect(mod.getSyncState()).toMatchObject({ status: "synced", pending: false });
+    expect((cloud.remote?.payload as AppData).shifts).toHaveLength(5);
+  });
+});
+
+describe("Abmeldung", () => {
+  it("bricht den geplanten Push ab und schreibt nicht ohne Konto", async () => {
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    // Uhr weiterlaufen lassen: sonst fallen Erst-Push und lokale Änderung
+    // auf dieselbe Millisekunde und gelten als "nicht geändert".
+    await vi.advanceTimersByTimeAsync(1000);
+    const afterInit = cloud.upserts;
+
+    local = makeData(7);
+    changeHook?.(local);
+    authCallback?.("SIGNED_OUT", null);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await settle();
+
+    expect(cloud.upserts).toBe(afterInit);
+    expect(mod.getSyncState()).toMatchObject({
+      status: "idle",
+      pending: false,
+      signedIn: false,
+    });
+  });
+
+  it("verwirft nach Kontowechsel den fremden Abgleichstand und meldet den Konflikt", async () => {
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    // Uhr weiterlaufen lassen: sonst fallen Erst-Push und lokale Änderung
+    // auf dieselbe Millisekunde und gelten als "nicht geändert".
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // Konto B hat einen eigenen, älteren Cloud-Stand; das Gerät hat eigene Daten.
+    authCallback?.("SIGNED_OUT", null);
+    cloud.remote = { payload: makeData(9), updated_at: new Date().toISOString() };
+    local = makeData(2);
+    authCallback?.("SIGNED_IN", { user: { id: "user-2" } });
+    await settle();
+
+    expect(mod.getSyncState().status).toBe("conflict");
+    expect(replaced).toHaveLength(0);
+  });
+});

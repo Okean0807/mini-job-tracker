@@ -38,16 +38,26 @@ const EMPTY_META: SyncMeta = {
  * könnte den Cloud-Stand des neuen Kontos still überschreiben. Die lokale
  * Änderungsmarke bleibt erhalten, damit vorhandene Gerätedaten nicht als
  * "nie geändert" gelten und stillschweigend ersetzt werden.
+ *
+ * `hasLocalData = false` bedeutet: das Gerät hat gar nichts zu verlieren
+ * (frische Installation, Erstlogin). Dann darf keine Änderungsmarke erfunden
+ * werden – sonst meldet der Abgleich einen Konflikt, statt die vorhandene
+ * Cloud-Sicherung einfach wiederherzustellen.
  */
-export function metaForUser(current: SyncMeta, userId: string | null): SyncMeta {
+export function metaForUser(
+  current: SyncMeta,
+  userId: string | null,
+  hasLocalData = true,
+): SyncMeta {
   if (current.userId === userId) return current;
   return {
     userId,
-    localChangedAt: current.localChangedAt ?? Date.now(),
+    localChangedAt: hasLocalData ? (current.localChangedAt ?? Date.now()) : current.localChangedAt,
     lastSyncedAt: null,
     remoteSeenAt: null,
   };
 }
+
 
 let meta: SyncMeta = EMPTY_META;
 
@@ -326,8 +336,11 @@ export function retryPending(): void {
 
 /** Metadaten an das aktuell angemeldete Konto binden. */
 function adoptUser(id: string) {
-  const next = metaForUser(meta, id);
+  const local = getData();
+  const hasLocalData = local.shifts.length > 0 || local.jobs.length > 0;
+  const next = metaForUser(meta, id, hasLocalData);
   if (next === meta) return;
+
   meta = next;
   saveMeta({});
   setState({ lastSyncedAt: meta.lastSyncedAt });
