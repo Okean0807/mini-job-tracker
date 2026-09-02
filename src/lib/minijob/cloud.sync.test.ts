@@ -149,6 +149,9 @@ describe("automatischer Abgleich", () => {
     const mod = await loadModule();
     mod.initCloudSync();
     await settle();
+    // Uhr weiterlaufen lassen: sonst fallen Erst-Push und lokale Änderung
+    // auf dieselbe Millisekunde und gelten als "nicht geändert".
+    await vi.advanceTimersByTimeAsync(1000);
     expect(mod.getSyncState().status).toBe("synced");
 
     // Anderes Gerät schreibt einen neueren Stand in die Cloud.
@@ -173,6 +176,9 @@ describe("automatischer Abgleich", () => {
     const mod = await loadModule();
     mod.initCloudSync();
     await settle();
+    // Uhr weiterlaufen lassen: sonst fallen Erst-Push und lokale Änderung
+    // auf dieselbe Millisekunde und gelten als "nicht geändert".
+    await vi.advanceTimersByTimeAsync(1000);
     cloud.remote = {
       payload: makeData(9),
       updated_at: new Date(Date.now() + 60_000).toISOString(),
@@ -193,6 +199,9 @@ describe("automatischer Abgleich", () => {
     const mod = await loadModule();
     mod.initCloudSync();
     await settle();
+    // Uhr weiterlaufen lassen: sonst fallen Erst-Push und lokale Änderung
+    // auf dieselbe Millisekunde und gelten als "nicht geändert".
+    await vi.advanceTimersByTimeAsync(1000);
     cloud.remote = {
       payload: makeData(9),
       updated_at: new Date(Date.now() + 60_000).toISOString(),
@@ -213,6 +222,9 @@ describe("automatischer Abgleich", () => {
     const mod = await loadModule();
     mod.initCloudSync();
     await settle();
+    // Uhr weiterlaufen lassen: sonst fallen Erst-Push und lokale Änderung
+    // auf dieselbe Millisekunde und gelten als "nicht geändert".
+    await vi.advanceTimersByTimeAsync(1000);
     cloud.remote = {
       payload: makeData(9),
       updated_at: new Date(Date.now() + 60_000).toISOString(),
@@ -240,6 +252,9 @@ describe("Offline-Queue", () => {
     const mod = await loadModule();
     mod.initCloudSync();
     await settle();
+    // Uhr weiterlaufen lassen: sonst fallen Erst-Push und lokale Änderung
+    // auf dieselbe Millisekunde und gelten als "nicht geändert".
+    await vi.advanceTimersByTimeAsync(1000);
     const afterInit = cloud.upserts;
 
     setOnline(false);
@@ -264,6 +279,9 @@ describe("Offline-Queue", () => {
     const mod = await loadModule();
     mod.initCloudSync();
     await settle();
+    // Uhr weiterlaufen lassen: sonst fallen Erst-Push und lokale Änderung
+    // auf dieselbe Millisekunde und gelten als "nicht geändert".
+    await vi.advanceTimersByTimeAsync(1000);
 
     cloud.upsertError = { message: "boom" };
     local = makeData(5);
@@ -288,6 +306,9 @@ describe("Abmeldung", () => {
     const mod = await loadModule();
     mod.initCloudSync();
     await settle();
+    // Uhr weiterlaufen lassen: sonst fallen Erst-Push und lokale Änderung
+    // auf dieselbe Millisekunde und gelten als "nicht geändert".
+    await vi.advanceTimersByTimeAsync(1000);
     const afterInit = cloud.upserts;
 
     local = makeData(7);
@@ -308,6 +329,9 @@ describe("Abmeldung", () => {
     const mod = await loadModule();
     mod.initCloudSync();
     await settle();
+    // Uhr weiterlaufen lassen: sonst fallen Erst-Push und lokale Änderung
+    // auf dieselbe Millisekunde und gelten als "nicht geändert".
+    await vi.advanceTimersByTimeAsync(1000);
 
     // Konto B hat einen eigenen, älteren Cloud-Stand; das Gerät hat eigene Daten.
     authCallback?.("SIGNED_OUT", null);
