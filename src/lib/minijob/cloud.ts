@@ -3,6 +3,8 @@ import { useSyncExternalStore } from "react";
 import { t } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
 
+import { markBackup } from "./notify";
+
 import { getData, onDataChange, replaceAll } from "./store";
 import type { AppData } from "./types";
 
@@ -187,6 +189,9 @@ async function push(data: AppData): Promise<void> {
   });
   if (error) throw error;
   saveMeta({ lastSyncedAt: updatedAt.getTime(), remoteSeenAt: updatedAt.getTime() });
+  // Auch automatische Backups als frisch markieren, sonst meldet die
+  // Backup-Erinnerung fälschlich einen veralteten Stand.
+  markBackup();
 }
 
 async function fetchRemote(): Promise<{ payload: AppData; updatedAt: number } | null> {
