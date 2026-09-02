@@ -336,8 +336,11 @@ export function retryPending(): void {
 
 /** Metadaten an das aktuell angemeldete Konto binden. */
 function adoptUser(id: string) {
-  const next = metaForUser(meta, id);
+  const local = getData();
+  const hasLocalData = local.shifts.length > 0 || local.jobs.length > 0;
+  const next = metaForUser(meta, id, hasLocalData);
   if (next === meta) return;
+
   meta = next;
   saveMeta({});
   setState({ lastSyncedAt: meta.lastSyncedAt });
