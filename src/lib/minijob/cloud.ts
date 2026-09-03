@@ -220,13 +220,18 @@ async function fetchRemote(): Promise<{ payload: AppData; updatedAt: number } | 
 }
 
 function applyRemote(remote: { payload: AppData; updatedAt: number }) {
-  replaceAll(remote.payload);
+  // Der laufende Timer wird bewusst nie in die Cloud geschrieben (`payloadOf`).
+  // Beim Wiederherstellen darf er deshalb auch nicht gelöscht werden – sonst
+  // verliert der Nutzer die bereits laufende, noch nicht gespeicherte Zeit.
+  const runningTimer = getData().timer ?? null;
+  replaceAll({ ...remote.payload, timer: runningTimer });
   saveMeta({
     lastSyncedAt: Date.now(),
     remoteSeenAt: remote.updatedAt,
     localChangedAt: null,
   });
 }
+
 
 /* ---------- Öffentliche Aktionen ---------- */
 
