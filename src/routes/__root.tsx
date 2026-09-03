@@ -213,7 +213,10 @@ function StorageAlert() {
       if (failed) toast.error(t("error.storage"), { id: "storage-error", duration: 10000 });
     };
     show(isPersistFailed());
-    return onPersistError(show);
+    const unsubscribe = onPersistError(show);
+    return () => {
+      unsubscribe();
+    };
   }, [t]);
 
   return null;
