@@ -19,7 +19,13 @@ import { PinLock } from "@/components/minijob/PinLock";
 import { OnboardingWizard } from "@/components/minijob/OnboardingWizard";
 import { initCloudSync, useSyncState } from "../lib/minijob/cloud";
 import { initNotifications } from "../lib/minijob/notify";
-import { getData, loadFromStorage, useAppData } from "../lib/minijob/store";
+import {
+  getData,
+  isPersistFailed,
+  loadFromStorage,
+  onPersistError,
+  useAppData,
+} from "../lib/minijob/store";
 import { useT } from "@/lib/i18n";
 import { applyAppearance } from "../lib/minijob/theme";
 import { visible, type Feature } from "../lib/minijob/uimode";
@@ -195,6 +201,27 @@ function SyncAlerts() {
   return null;
 }
 
+/**
+ * Lokales Speichern kann fehlschlagen (voller Speicher, Privatmodus). Ohne
+ * Hinweis hielte der Nutzer die Eingabe für gesichert.
+ */
+function StorageAlert() {
+  const { t } = useT();
+
+  useEffect(() => {
+    const show = (failed: boolean) => {
+      if (failed) toast.error(t("error.storage"), { id: "storage-error", duration: 10000 });
+    };
+    show(isPersistFailed());
+    const unsubscribe = onPersistError(show);
+    return () => {
+      unsubscribe();
+    };
+  }, [t]);
+
+  return null;
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
@@ -239,6 +266,7 @@ function RootComponent() {
         <OnboardingWizard settings={settings} onDone={() => setShowWizard(false)} />
       ) : null}
       <SyncAlerts />
+      <StorageAlert />
       <Toaster position="top-center" />
     </QueryClientProvider>
   );

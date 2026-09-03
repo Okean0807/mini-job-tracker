@@ -48,14 +48,40 @@ function emit(sync = true) {
   if (sync && changeHook) changeHook(state);
 }
 
+/**
+ * Fehlschlag beim lokalen Speichern (Quota voll, Privatmodus) darf nicht still
+ * bleiben: sonst hält der Nutzer die Eingabe für gesichert und verliert sie
+ * beim nächsten Neuladen.
+ */
+let persistFailed = false;
+const persistListeners = new Set<(failed: boolean) => void>();
+
+export function onPersistError(listener: (failed: boolean) => void) {
+  persistListeners.add(listener);
+  return () => persistListeners.delete(listener);
+}
+
+export function isPersistFailed(): boolean {
+  return persistFailed;
+}
+
+function setPersistFailed(failed: boolean) {
+  if (persistFailed === failed) return;
+  persistFailed = failed;
+  persistListeners.forEach((l) => l(failed));
+}
+
 function persist() {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    setPersistFailed(false);
   } catch {
-    /* Speicher voll oder blockiert */
+    /* Speicher voll oder blockiert – sichtbar melden statt still verwerfen */
+    setPersistFailed(true);
   }
 }
+
 
 function commit(next: AppData, sync = true) {
   state = next;
