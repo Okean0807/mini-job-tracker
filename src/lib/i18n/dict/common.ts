@@ -92,6 +92,7 @@ export const common: Bundle = {
     "error.fileRead": "Datei konnte nicht gelesen werden.",
     "error.signIn": "Anmeldung nicht möglich. Bitte erneut versuchen.",
     "error.sync": "Synchronisierung fehlgeschlagen.",
+    "error.storage": "Speichern auf dem Gerät fehlgeschlagen. Speicher ist voll oder blockiert – bitte Daten exportieren oder sichern.",
     "error.notSignedIn": "Nicht angemeldet",
   },
   en: {
@@ -184,6 +185,7 @@ export const common: Bundle = {
     "error.fileRead": "The file could not be read.",
     "error.signIn": "Sign-in failed. Please try again.",
     "error.sync": "Synchronisation failed.",
+    "error.storage": "Saving on this device failed. Storage is full or blocked – please export or back up your data.",
     "error.notSignedIn": "Not signed in",
   },
   ru: {
@@ -276,6 +278,7 @@ export const common: Bundle = {
     "error.fileRead": "Не удалось прочитать файл.",
     "error.signIn": "Не удалось войти. Попробуйте ещё раз.",
     "error.sync": "Синхронизация не удалась.",
+    "error.storage": "Не удалось сохранить данные на устройстве. Память заполнена или заблокирована — экспортируйте или сделайте резервную копию.",
     "error.notSignedIn": "Вы не вошли в аккаунт",
   },
   tr: {
@@ -368,6 +371,7 @@ export const common: Bundle = {
     "error.fileRead": "Dosya okunamadı.",
     "error.signIn": "Giriş yapılamadı. Lütfen tekrar deneyin.",
     "error.sync": "Eşitleme başarısız.",
+    "error.storage": "Cihaza kaydetme başarısız. Depolama dolu veya engelli – lütfen verilerinizi dışa aktarın veya yedekleyin.",
     "error.notSignedIn": "Giriş yapılmadı",
   },
   pl: {
@@ -460,6 +464,7 @@ export const common: Bundle = {
     "error.fileRead": "Nie udało się odczytać pliku.",
     "error.signIn": "Logowanie nie powiodło się. Spróbuj ponownie.",
     "error.sync": "Synchronizacja nie powiodła się.",
+    "error.storage": "Zapis na urządzeniu nie powiódł się. Pamięć jest pełna lub zablokowana – wyeksportuj lub utwórz kopię zapasową danych.",
     "error.notSignedIn": "Nie zalogowano",
   },
 };
