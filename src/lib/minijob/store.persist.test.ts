@@ -20,12 +20,12 @@ describe("Speicherfehler im lokalen Store", () => {
       throw new Error("QuotaExceeded");
     });
 
-    store.saveJob({ id: "j1", name: "Test", color: "#000" });
+    store.saveJob({ id: "j1", name: "Test", color: "#000", mode: "flex" });
     expect(store.isPersistFailed()).toBe(true);
     expect(seen).toEqual([true]);
 
     setItem.mockRestore();
-    store.saveJob({ id: "j2", name: "Zweit", color: "#111" });
+    store.saveJob({ id: "j2", name: "Zweit", color: "#111", mode: "flex" });
     expect(store.isPersistFailed()).toBe(false);
     expect(seen).toEqual([true, false]);
   });
@@ -35,8 +35,8 @@ describe("Speicherfehler im lokalen Store", () => {
     const seen: boolean[] = [];
     store.onPersistError((failed) => seen.push(failed));
 
-    store.saveJob({ id: "j1", name: "Test", color: "#000" });
-    store.saveJob({ id: "j2", name: "Zweit", color: "#111" });
+    store.saveJob({ id: "j1", name: "Test", color: "#000", mode: "flex" });
+    store.saveJob({ id: "j2", name: "Zweit", color: "#111", mode: "flex" });
     expect(seen).toEqual([]);
     expect(store.isPersistFailed()).toBe(false);
   });
