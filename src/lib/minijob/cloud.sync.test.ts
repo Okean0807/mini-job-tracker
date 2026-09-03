@@ -142,7 +142,24 @@ describe("initCloudSync", () => {
     expect(replaced).toHaveLength(1);
     expect(cloud.upserts).toBe(0);
   });
+
+  it("löscht beim Wiederherstellen keinen laufenden Timer", async () => {
+    // Der Timer wird nie in die Cloud geschrieben; ein Restore darf die
+    // laufende, noch nicht gespeicherte Zeit nicht verwerfen.
+    const running = { startedAt: Date.now(), breakMinutes: 0 };
+    local = { ...makeData(0), timer: running } as unknown as AppData;
+    cloud.remote = { payload: makeData(3), updated_at: new Date().toISOString() };
+
+    const { initCloudSync } = await loadModule();
+    initCloudSync();
+    await settle();
+
+    expect(replaced).toHaveLength(1);
+    expect(replaced[0]?.timer).toEqual(running);
+    expect(replaced[0]?.shifts).toHaveLength(3);
+  });
 });
+
 
 describe("automatischer Abgleich", () => {
   it("meldet einen Konflikt statt fremde Cloud-Änderungen zu überschreiben", async () => {
