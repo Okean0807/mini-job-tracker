@@ -8,3 +8,9 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+
+## Secrets / .env
+
+Do not commit `.env`. Use `.env.example` as the template. Configure real
+keys in Lovable / local env / platform secrets only. Prefer forward-fixes
+over history rewrites (Lovable sync).
