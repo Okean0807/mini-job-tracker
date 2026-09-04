@@ -361,3 +361,30 @@ describe("Abmeldung", () => {
     expect(replaced).toHaveLength(0);
   });
 });
+
+describe("beschädigter Cloud-Stand", () => {
+  it("überschreibt lokale Daten nicht mit einem kaputten Payload", async () => {
+    local = makeData(0);
+    cloud.remote = { payload: "kaputt" as unknown, updated_at: new Date().toISOString() };
+
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+
+    expect(replaced).toHaveLength(0);
+    expect(cloud.upserts).toBe(0);
+    expect(mod.getSyncState().status).toBe("error");
+  });
+
+  it("erkennt gültige und ungültige Strukturen", async () => {
+    const { isValidPayload } = await loadModule();
+    expect(isValidPayload(makeData(1))).toBe(true);
+    expect(isValidPayload({ shifts: [], jobs: [] })).toBe(true);
+    expect(isValidPayload(null)).toBe(false);
+    expect(isValidPayload([])).toBe(false);
+    expect(isValidPayload("{}")).toBe(false);
+    expect(isValidPayload({})).toBe(false);
+    expect(isValidPayload({ shifts: [], jobs: "nein" })).toBe(false);
+    expect(isValidPayload({ shifts: [], settings: [] })).toBe(false);
+  });
+});
