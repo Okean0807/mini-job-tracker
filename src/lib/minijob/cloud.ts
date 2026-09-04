@@ -204,6 +204,30 @@ async function push(data: AppData): Promise<void> {
   markBackup();
 }
 
+/**
+ * Struktureller Mindestcheck für einen Cloud-Stand.
+ *
+ * `normalize()` im Store ist tolerant: aus einem beschädigten oder fremden
+ * Payload (String, Zahl, Array, `{}`) entsteht ein *leerer* Datensatz. Würde
+ * der ohne Prüfung durch `replaceAll` laufen, löscht ein kaputter Cloud-Eintrag
+ * still alle lokalen Daten. Deshalb wird ein Restore nur mit einem plausibel
+ * geformten Payload durchgeführt.
+ */
+export function isValidPayload(value: unknown): value is AppData {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const raw = value as Record<string, unknown>;
+  const lists = ["shifts", "jobs", "customers", "projects", "payments", "goals"];
+  // Mindestens eine bekannte Liste muss vorhanden und ein Array sein; alle
+  // vorhandenen Listen müssen Arrays sein.
+  if (!lists.some((key) => Array.isArray(raw[key]))) return false;
+  if (lists.some((key) => raw[key] !== undefined && !Array.isArray(raw[key]))) return false;
+  if (raw["settings"] !== undefined) {
+    const s = raw["settings"];
+    if (typeof s !== "object" || s === null || Array.isArray(s)) return false;
+  }
+  return true;
+}
+
 async function fetchRemote(): Promise<{ payload: AppData; updatedAt: number } | null> {
   if (!userId) throw new Error(t("error.notSignedIn"));
   const { data, error } = await supabase
@@ -213,11 +237,13 @@ async function fetchRemote(): Promise<{ payload: AppData; updatedAt: number } | 
     .maybeSingle();
   if (error) throw error;
   if (!data?.payload) return null;
+  if (!isValidPayload(data.payload)) throw new Error(t("error.syncPayload"));
   return {
     payload: data.payload as unknown as AppData,
     updatedAt: data.updated_at ? new Date(data.updated_at).getTime() : 0,
   };
 }
+
 
 function applyRemote(remote: { payload: AppData; updatedAt: number }) {
   // Der laufende Timer wird bewusst nie in die Cloud geschrieben (`payloadOf`).
