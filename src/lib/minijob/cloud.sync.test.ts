@@ -20,6 +20,8 @@ const cloud = {
   upsertError: null as { message: string } | null,
   selectError: null as { message: string } | null,
   upserts: 0,
+  /** Blockiert den Cloud-Lesezugriff, um Parallelität zu testen. */
+  gate: null as Promise<void> | null,
 };
 
 let authCallback: ((event: string, session: unknown) => void) | null = null;
@@ -36,10 +38,11 @@ vi.mock("@/integrations/supabase/client", () => ({
       },
       select: () => ({
         eq: () => ({
-          maybeSingle: async () =>
+          maybeSingle: async () => (
+            cloud.gate ? await cloud.gate : undefined,
             cloud.selectError
               ? { data: null, error: cloud.selectError }
-              : { data: cloud.remote, error: null },
+              : { data: cloud.remote, error: null }),
         }),
       }),
     }),
@@ -107,6 +110,7 @@ beforeEach(() => {
   cloud.upsertError = null;
   cloud.selectError = null;
   cloud.upserts = 0;
+  cloud.gate = null;
   authCallback = null;
   changeHook = null;
   replaced.length = 0;
@@ -386,5 +390,38 @@ describe("beschädigter Cloud-Stand", () => {
     expect(isValidPayload({})).toBe(false);
     expect(isValidPayload({ shifts: [], jobs: "nein" })).toBe(false);
     expect(isValidPayload({ shifts: [], settings: [] })).toBe(false);
+  });
+});
+
+describe("paralleler Abgleich", () => {
+  it("behält Änderungen, die während eines laufenden Abgleichs entstehen", async () => {
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // Cloud-Lesezugriff anhalten, damit der Abgleich "läuft".
+    let release: () => void = () => {};
+    cloud.gate = new Promise<void>((r) => {
+      release = r;
+    });
+
+    local = makeData(2);
+    changeHook?.(local);
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(mod.getSyncState().status).toBe("syncing");
+
+    // Weitere Änderung während des laufenden Abgleichs.
+    await vi.advanceTimersByTimeAsync(10);
+    local = makeData(3);
+    changeHook?.(local);
+
+    cloud.gate = null;
+    release();
+    await vi.advanceTimersByTimeAsync(10);
+    await settle();
+
+    // Die spätere Änderung darf nicht als gesichert gelten.
+    expect(mod.getSyncState().pending).toBe(true);
   });
 });
