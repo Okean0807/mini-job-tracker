@@ -308,12 +308,28 @@ function failed(error: unknown) {
 
 /* ---------- Automatischer Abgleich ---------- */
 
+/**
+ * Nur ein Abgleich gleichzeitig: „online"-Event, Retry und der debouncete
+ * Push können sonst parallel laufen, denselben Cloud-Stand doppelt schreiben
+ * und mit ihren Metadaten überkreuz landen.
+ */
+let syncing = false;
+
 async function autoSync(): Promise<void> {
   if (!userId) return;
   if (isOffline()) {
     setState({ status: "offline", pending: true });
     return;
   }
+  if (syncing) {
+    // Läuft bereits – der laufende Durchgang erkennt die neue Änderung selbst.
+    setState({ pending: true });
+    return;
+  }
+  syncing = true;
+  // Änderungsmarke zu Beginn: Änderungen *während* des Abgleichs dürfen nicht
+  // als "gesichert" gelten, sonst landen sie nie in der Cloud.
+  const changedAtStart = meta.localChangedAt;
   setState({ status: "syncing", message: null });
   try {
     const local = getData();
@@ -332,11 +348,21 @@ async function autoSync(): Promise<void> {
     }
     if (decision === "restore" && remote) applyRemote(remote);
     if (decision === "push") await push(local);
-    setState({ status: "synced", pending: false, message: null, lastSyncedAt: meta.lastSyncedAt });
+    const changedDuringSync =
+      decision !== "restore" && meta.localChangedAt !== null && meta.localChangedAt !== changedAtStart;
+    setState({
+      status: "synced",
+      pending: changedDuringSync,
+      message: null,
+      lastSyncedAt: meta.lastSyncedAt,
+    });
   } catch (error) {
     failed(error);
+  } finally {
+    syncing = false;
   }
 }
+
 
 /** Debouncedes automatisches Cloud-Backup mit Offline-Queue. */
 function scheduleBackup(data: AppData) {
