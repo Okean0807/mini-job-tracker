@@ -55,6 +55,7 @@ Private repos typically need GitHub Advanced Security (or org policy) for secret
 - We do **not** claim key rotation completed.
 - We do **not** claim secret scanning is on.
 - We do **not** claim history is purged of secrets.
+- We do **not** claim `xlsx` / SheetJS was upgraded or that Dependabot highs are remediated.
 
 ## Residual risk
 
@@ -67,3 +68,30 @@ Private repos typically need GitHub Advanced Security (or org policy) for secret
 1. Re-verify tip still has no secrets.
 2. Re-run independent QA security audit → expect tip hygiene **PASS**, overall security still **NEEDS_REVIEW** until scanning and/or rotation confirmed.
 3. Proceed P1 cloud smoke with real credentials (mark **BLOCKED** if physical login required).
+
+## Dependabot — xlsx / SheetJS (high)
+
+| Alert | Issue | Severity | Vulnerable range | `first_patched_version` (API) |
+|-------|-------|----------|------------------|-------------------------------|
+| #1 | Prototype Pollution in sheetJS | high | `< 0.19.3` | `null` |
+| #2 | SheetJS ReDoS | high | `< 0.20.2` | `null` |
+
+| Fact | Value |
+|------|-------|
+| Direct dependency | `xlsx@^0.18.5` (resolved **0.18.5**) |
+| Call sites | `ImportDialog`, `export.ts`, `annual-export.ts`, Statistik |
+| Autonomous upgrade | **NOT DONE** — needs verified package source + regression before any bump |
+| Blind version bump | **NO** (intentionally deferred) |
+
+Do **not** treat Dependabot’s suggested range alone as a safe upgrade path: API reports `first_patched_version: null` for both highs.
+
+## Overall verdict
+
+| Area | Result |
+|------|--------|
+| Tip secret hygiene | **PASS** |
+| History (leaked `.env` blob) | **NEEDS_REVIEW** |
+| Secret scanning | **BLOCKED** (`422` — not available for this repository) |
+| Key rotation | **BLOCKED** — human (Juri) in Supabase / Lovable UI |
+| xlsx / SheetJS Dependabot highs | **NEEDS_REVIEW** |
+| **Overall security** | **NEEDS_REVIEW** |
