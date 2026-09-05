@@ -80,10 +80,17 @@ Private repos typically need GitHub Advanced Security (or org policy) for secret
 |------|-------|
 | Direct dependency | `xlsx@^0.18.5` (resolved **0.18.5**) |
 | Call sites | `ImportDialog`, `export.ts`, `annual-export.ts`, Statistik |
+| Import path (untrusted input) | `ImportDialog.tsx`: dynamic `import("xlsx")` + `XLSX.read(..., { type: "array" })` on user-uploaded `.xlsx` / `.xls` |
+| Alert #1 scope | **NOT export-only** — Prototype Pollution is in scope for untrusted spreadsheet **upload**/parse, not merely export writers |
 | Autonomous upgrade | **NOT DONE** — needs verified package source + regression before any bump |
 | Blind version bump | **NO** (intentionally deferred) |
+| Remediation status | **NEEDS_REVIEW** — no blind bump; CDN/vendor path needs **Juri GO** (parked) |
 
 Do **not** treat Dependabot’s suggested range alone as a safe upgrade path: API reports `first_patched_version: null` for both highs.
+
+Do **not** assume risk is limited to export helpers: import parses attacker-controlled workbook bytes in the browser via SheetJS.
+
+Tip SHA in the table above is a snapshot at earlier write time and **may lag** current `main` (this doc lives on tip once merged).
 
 ## Overall verdict
 
