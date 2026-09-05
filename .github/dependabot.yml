@@ -23,6 +23,10 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
+      # prevent dual router-core / matchedRoutes crash; pins stay until intentional upgrade.
+      - dependency-name: "@tanstack/react-router"
+      - dependency-name: "@tanstack/router-plugin"
+      - dependency-name: "@tanstack/react-start"
 
   - package-ecosystem: "github-actions"
     directory: "/"
