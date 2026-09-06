@@ -231,15 +231,21 @@ function RootComponent() {
   const [showWizard, setShowWizard] = useState(false);
 
   useEffect(() => {
-    loadFromStorage();
-    const loaded = getData().settings;
-    applyAppearance(loaded);
-    initCloudSync();
-    initNotifications();
-    registerServiceWorker();
-    setUnlocked(!(loaded.pinEnabled && loaded.pin));
-    setShowWizard(!loaded.onboarded);
-    setReady(true);
+    try {
+      loadFromStorage();
+      const loaded = getData().settings;
+      applyAppearance(loaded);
+      initCloudSync();
+      initNotifications();
+      registerServiceWorker();
+      setUnlocked(!(loaded.pinEnabled && loaded.pin));
+      setShowWizard(!loaded.onboarded);
+    } catch (error) {
+      console.error("[root] bootstrap failed", error);
+    } finally {
+      // Always unblock the Outlet — a cloud/supabase failure must not blank the app.
+      setReady(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -260,7 +266,8 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <div className="min-h-screen pb-20">{ready ? <Outlet /> : null}</div>
 
-      <BottomNav uiMode={settings.uiMode} />
+      {/* Hide nav under wizard/PIN overlays (z-40 under z-60) and while bootstrapping */}
+      {ready && !showWizard && !locked ? <BottomNav uiMode={settings.uiMode} /> : null}
       {locked ? <PinLock settings={settings} onUnlock={() => setUnlocked(true)} /> : null}
       {ready && showWizard && !locked ? (
         <OnboardingWizard settings={settings} onDone={() => setShowWizard(false)} />

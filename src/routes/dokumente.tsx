@@ -77,9 +77,22 @@ function DocumentsPage() {
   const [folderDialog, setFolderDialog] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, next) => setSession(next));
-    return () => sub.subscription.unsubscribe();
+    try {
+      void supabase.auth
+        .getSession()
+        .then(({ data }) => setSession(data.session))
+        .catch((error) => {
+          console.error("[dokumente] getSession failed", error);
+          setSession(null);
+        });
+      const { data: sub } = supabase.auth.onAuthStateChange((_e, next) => setSession(next));
+      return () => sub.subscription.unsubscribe();
+    } catch (error) {
+      // Missing Supabase env → treat as signed out (show doc.signedOut UI).
+      console.error("[dokumente] Supabase auth unavailable", error);
+      setSession(null);
+      return undefined;
+    }
   }, []);
 
   const refresh = useCallback(async () => {
