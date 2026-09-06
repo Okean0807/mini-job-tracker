@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import { LANGUAGES, detectLanguage } from "@/lib/i18n/core";
 
 import { normalizeDashboard } from "./dashboard";
+import { withConsistentPinSettings } from "./pin";
 import { KNOWN_LEGAL_MONTHLY_LIMITS } from "./legal";
 import { applyAppearance } from "./theme";
 import {
@@ -93,7 +94,7 @@ function commit(next: AppData, sync = true) {
 export function normalize(input: Partial<AppData>): AppData {
   const raw = input as Partial<AppData> & { settings?: Record<string, unknown> };
   const legacyTheme = raw.settings?.["theme"];
-  const settings: Settings = {
+  let settings: Settings = {
     ...DEFAULT_SETTINGS,
     ...(raw.settings as Partial<Settings> | undefined),
     supplements: {
@@ -118,6 +119,8 @@ export function normalize(input: Partial<AppData>): AppData {
   if (!LANGUAGES.some((l) => l.code === settings.language)) {
     settings.language = detectLanguage();
   }
+  // pinEnabled ohne gültige PIN wäre nur UI-Kosmetik (Root sperrt nicht).
+  settings = withConsistentPinSettings(settings);
   return {
     shifts: (Array.isArray(raw.shifts) ? raw.shifts : []).map((s) => ({
       ...s,
@@ -295,7 +298,7 @@ export function deleteGoal(id: string) {
 /* ---------- Einstellungen ---------- */
 
 export function updateSettings(patch: Partial<Settings>) {
-  const settings = { ...state.settings, ...patch };
+  const settings = withConsistentPinSettings({ ...state.settings, ...patch });
   commit({ ...state, settings });
   applyAppearance(settings);
 }
