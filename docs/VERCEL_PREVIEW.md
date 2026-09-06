@@ -43,3 +43,18 @@ Recommended for SSR / server helpers:
 ## Out of scope here
 
 Connect, deploy, custom domain, Lovable disconnect, key rotation, MegaEmu.
+
+## Commit author (Hobby / Vercel Collaboration)
+
+Vercel Hobby projects only build commits whose **Git author email** maps to the
+GitHub account that owns the Vercel project (`Okean0807`).
+
+Use for bot/agent commits (env, not `git config --global`):
+
+- `GIT_AUTHOR_NAME=Okean0807`
+- `GIT_AUTHOR_EMAIL=jurivollmer@gmail.com`
+- same for `GIT_COMMITTER_*`
+
+Do **not** use `stabschef+…@users.noreply.github.com` — those commits stay
+unattributed on GitHub and Vercel blocks the deployment.
+
