@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { csvHeaders, csvTemplate, parseCsv, shiftsToCsv } from "./csv";
+import {
+  csvHeaders,
+  csvTemplate,
+  neutralizeCsvFormula,
+  parseCsv,
+  shiftsToCsv,
+  stripCsvFormulaGuard,
+} from "./csv";
 import type { Job, Shift } from "./types";
 
 const jobNord: Job = {
@@ -237,5 +244,66 @@ describe("shiftsToCsv – Export und Roundtrip", () => {
     });
     expect(r.valid[1]!.shift!.rate).toBeUndefined();
     expect(r.valid[1]!.shift!.note).toBeUndefined();
+  });
+});
+
+describe("CSV formula injection", () => {
+  it("neutralizeCsvFormula prefixes spreadsheet metacharacters", () => {
+    expect(neutralizeCsvFormula("=1+1")).toBe("'=1+1");
+    expect(neutralizeCsvFormula("+cmd")).toBe("'+cmd");
+    expect(neutralizeCsvFormula("-1+1")).toBe("'-1+1");
+    expect(neutralizeCsvFormula("@SUM(A1)")).toBe("'@SUM(A1)");
+    expect(neutralizeCsvFormula("\tTAB")).toBe("'\tTAB");
+    expect(neutralizeCsvFormula("safe note")).toBe("safe note");
+    expect(neutralizeCsvFormula("Café Nord")).toBe("Café Nord");
+  });
+
+  it("stripCsvFormulaGuard reverses only the protective quote", () => {
+    expect(stripCsvFormulaGuard("'=1+1")).toBe("=1+1");
+    expect(stripCsvFormulaGuard("'=ok")).toBe("=ok");
+    expect(stripCsvFormulaGuard("safe")).toBe("safe");
+    expect(stripCsvFormulaGuard("'safe")).toBe("'safe");
+  });
+
+  it("shiftsToCsv neutralizes formula-like job names and notes", () => {
+    const evilJob: Job = { ...jobNord, id: "j2", name: "=HYPERLINK(\"http://x\")" };
+    const s: Shift = {
+      id: "s1",
+      kind: "arbeit",
+      date: "2026-03-04",
+      start: "09:00",
+      end: "17:00",
+      breakMinutes: 0,
+      jobId: "j2",
+      note: "+payload",
+    };
+    const csv = shiftsToCsv([s], [evilJob]);
+    const line = csv.split("\n")[1]!;
+    expect(line).toContain("'=HYPERLINK(");
+    expect(line).toContain("'+payload");
+    // Structured numeric/date fields must stay untouched (no leading quote on date).
+    expect(line.startsWith("2026-03-04;")).toBe(true);
+  });
+
+  it("roundtrips formula-like note/job through export → parseCsv", () => {
+    const evilJob: Job = { ...jobNord, id: "j2", name: "=1+1" };
+    const s: Shift = {
+      id: "s1",
+      kind: "arbeit",
+      date: "2026-03-04",
+      start: "09:00",
+      end: "12:00",
+      breakMinutes: 0,
+      jobId: "j2",
+      note: "@SUM(A1)",
+    };
+    const exported = shiftsToCsv([s], [evilJob]);
+    expect(exported).toContain("'=1+1");
+    expect(exported).toContain("'@SUM(A1)");
+    const r = parseCsv(exported, { jobs: [evilJob], defaultRate: 12 });
+    expect(r.invalid).toHaveLength(0);
+    expect(r.valid).toHaveLength(1);
+    expect(r.valid[0]!.jobName).toBe("=1+1");
+    expect(r.valid[0]!.shift!.note).toBe("@SUM(A1)");
   });
 });

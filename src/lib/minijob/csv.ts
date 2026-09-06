@@ -40,6 +40,23 @@ export interface CsvParseResult {
   newJobs: string[];
 }
 
+
+/**
+ * Spreadsheet apps (Excel, LibreOffice) treat cells starting with = + - @ or
+ * tab/CR as formulas. User-controlled job names / notes must not trigger that
+ * when a MiniJob CSV is opened. Prefix a single quote (Excel text marker).
+ */
+export function neutralizeCsvFormula(value: string): string {
+  if (/^[=+\-@\t\r]/.test(value)) return `'${value}`;
+  return value;
+}
+
+/** Undo neutralizeCsvFormula after re-import so round-trips keep the original text. */
+export function stripCsvFormulaGuard(value: string): string {
+  if (/^'[=+\-@\t\r]/.test(value)) return value.slice(1);
+  return value;
+}
+
 function splitLine(line: string, delimiter: string): string[] {
   const out: string[] = [];
   let cur = "";
@@ -144,7 +161,7 @@ export function parseCsv(
       errors,
     };
 
-    const jobName = jobCell.trim();
+    const jobName = stripCsvFormulaGuard(jobCell.trim());
     if (jobName) {
       row.jobName = jobName;
       if (!options.jobs.some((j) => j.name.toLowerCase() === jobName.toLowerCase())) {
@@ -166,7 +183,8 @@ export function parseCsv(
       // zentralen Lohnauflösung überlassen. Eine importierte 0 bleibt 0 EUR/h.
       if (rate !== undefined && rate !== null) shift.rate = rate;
       if (job) shift.jobId = job.id;
-      if (noteCell.trim()) shift.note = noteCell.trim();
+      const note = stripCsvFormulaGuard(noteCell.trim());
+      if (note) shift.note = note;
       row.shift = shift;
     }
 
@@ -192,8 +210,9 @@ export function shiftsToCsv(shifts: Shift[], jobs: Job[]): string {
         s.end,
         String(s.breakMinutes ?? 0),
         typeof s.rate === "number" ? String(s.rate).replace(".", ",") : "",
-        jobs.find((j) => j.id === s.jobId)?.name ?? "",
-        s.note ?? "",
+        // Job name + note are free text → neutralize CSV/formula injection.
+        neutralizeCsvFormula(jobs.find((j) => j.id === s.jobId)?.name ?? ""),
+        neutralizeCsvFormula(s.note ?? ""),
       ]
         .map(esc)
         .join(";"),
