@@ -86,7 +86,7 @@ export async function deleteFolder(id: string): Promise<void> {
 }
 
 function safeName(name: string): string {
-  return name.replace(/[^\w.\-]+/g, "_").slice(-80);
+  return name.replace(/[^\w.-]+/g, "_").slice(-80);
 }
 
 export async function uploadDocument(
