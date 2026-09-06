@@ -388,8 +388,10 @@ describe("beschädigter Cloud-Stand", () => {
     expect(isValidPayload([])).toBe(false);
     expect(isValidPayload("{}")).toBe(false);
     expect(isValidPayload({})).toBe(false);
+    expect(isValidPayload({ goals: [] })).toBe(false);
+    expect(isValidPayload({ shifts: [] })).toBe(false);
     expect(isValidPayload({ shifts: [], jobs: "nein" })).toBe(false);
-    expect(isValidPayload({ shifts: [], settings: [] })).toBe(false);
+    expect(isValidPayload({ shifts: [], jobs: [], settings: [] })).toBe(false);
   });
 });
 
