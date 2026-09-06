@@ -29,7 +29,12 @@ export default defineConfig({
         devOptions: { enabled: false },
         manifest: false,
         workbox: {
-          globPatterns: ["**/*.{js,css,woff2,png,svg,ico}"],
+          // TanStack Start + Nitro serve hashed assets from .output/public
+          // (Vercel static), while vite-plugin-pwa globs Vite outDir (dist).
+          // Those patterns never match there (only sw/workbox land in dist),
+          // which only produces build warnings. Keep precache empty and rely
+          // on runtimeCaching below until a Nitro-aware PWA outDir integration.
+          globPatterns: [],
           navigateFallbackDenylist: [/^\/~oauth/, /^\/api\//],
           runtimeCaching: [
             {
