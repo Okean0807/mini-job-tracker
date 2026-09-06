@@ -701,9 +701,22 @@ function CloudSync({ autoBackup }: { autoBackup: boolean }) {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
-    return () => sub.subscription.unsubscribe();
+    try {
+      void supabase.auth
+        .getSession()
+        .then(({ data }) => setSession(data.session))
+        .catch((error) => {
+          console.error("[einstellungen] getSession failed", error);
+          setSession(null);
+        });
+      const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
+      return () => sub.subscription.unsubscribe();
+    } catch (error) {
+      // Missing Supabase env → treat as signed out (show sign-in UI).
+      console.error("[einstellungen] Supabase auth unavailable", error);
+      setSession(null);
+      return undefined;
+    }
   }, []);
 
   async function oauth(provider: "google" | "apple") {
