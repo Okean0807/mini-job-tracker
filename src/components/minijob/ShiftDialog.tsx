@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/lib/i18n";
-import { formatDate, formatEuro, formatHours, shiftBreakdown } from "@/lib/minijob/calc";
+import { formatDate, formatEuro, formatHours, isoDate, shiftBreakdown } from "@/lib/minijob/calc";
 import { holidayName } from "@/lib/minijob/holidays";
 import { parseRateInput, suggestedRate } from "@/lib/minijob/rate";
 import { addShift, removeShift, upsertShift } from "@/lib/minijob/service";
@@ -229,7 +229,7 @@ export function ShiftDialog({
     if (doorSide.trim()) next.doorSide = doorSide.trim();
     if (workCode) next.workCode = workCode;
     if (workCode && workCodeNote.trim()) next.workCodeNote = workCodeNote.trim();
-    next.createdAt = shift?.createdAt ?? new Date().toISOString().slice(0, 10);
+    next.createdAt = shift?.createdAt ?? isoDate(new Date());
     if (shift) {
       // vollständiger Datensatz -> id-erhaltendes Überschreiben (identisch zum bisherigen saveShift)
       upsertShift(next);

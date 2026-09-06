@@ -7,6 +7,7 @@ import {
   shiftPayroll,
   vacationDailyPay,
 } from "./payroll";
+import { isoDate } from "./calc";
 import type { Job, Shift } from "./types";
 
 const RATE = 15;
@@ -96,7 +97,7 @@ describe("Krankheit (§ 3 EntgFG)", () => {
   it("endet nach sechs Wochen desselben Krankheitsfalls", () => {
     const history: Shift[] = [];
     for (let d = 0; d < SICK_MAX_DAYS + 1; d++) {
-      const date = new Date(2026, 2, 2 + d).toISOString().slice(0, 10);
+      const date = isoDate(new Date(2026, 2, 2 + d));
       history.push(shift({ date, kind: "krank" }));
     }
     const last = history[history.length - 1]!;
