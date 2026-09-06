@@ -23,6 +23,7 @@ export const settingsDict: Bundle = {
     "set.security.pin": "PIN-Schutz",
     "set.security.pinDesc": "App beim Start mit PIN sperren",
     "set.security.pinLabel": "PIN (4–8 Ziffern)",
+    "set.security.pinRequired": "Bitte zuerst eine PIN mit 4–8 Ziffern festlegen",
     "set.security.biometric": "Biometrisch entsperren",
     "set.security.biometricDesc": "Fingerabdruck oder Gesichtserkennung nutzen",
 
@@ -160,6 +161,7 @@ export const settingsDict: Bundle = {
     "set.security.pin": "PIN protection",
     "set.security.pinDesc": "Lock the app with a PIN on start",
     "set.security.pinLabel": "PIN (4–8 digits)",
+    "set.security.pinRequired": "Please set a PIN with 4–8 digits first",
     "set.security.biometric": "Unlock biometrically",
     "set.security.biometricDesc": "Use fingerprint or face recognition",
 
@@ -297,6 +299,7 @@ export const settingsDict: Bundle = {
     "set.security.pin": "Защита PIN-кодом",
     "set.security.pinDesc": "Блокировать приложение PIN-кодом при запуске",
     "set.security.pinLabel": "PIN (4–8 цифр)",
+    "set.security.pinRequired": "Сначала задайте PIN из 4–8 цифр",
     "set.security.biometric": "Биометрическая разблокировка",
     "set.security.biometricDesc": "Использовать отпечаток пальца или распознавание лица",
 
@@ -434,6 +437,7 @@ export const settingsDict: Bundle = {
     "set.security.pin": "PIN koruması",
     "set.security.pinDesc": "Uygulamayı başlangıçta PIN ile kilitle",
     "set.security.pinLabel": "PIN (4–8 hane)",
+    "set.security.pinRequired": "Lütfen önce 4–8 haneli bir PIN belirleyin",
     "set.security.biometric": "Biyometrik kilit açma",
     "set.security.biometricDesc": "Parmak izi veya yüz tanıma kullan",
 
@@ -571,6 +575,7 @@ export const settingsDict: Bundle = {
     "set.security.pin": "Ochrona kodem PIN",
     "set.security.pinDesc": "Blokuj aplikację kodem PIN przy uruchomieniu",
     "set.security.pinLabel": "PIN (4–8 cyfr)",
+    "set.security.pinRequired": "Najpierw ustaw PIN składający się z 4–8 cyfr",
     "set.security.biometric": "Odblokowanie biometryczne",
     "set.security.biometricDesc": "Użyj odcisku palca lub rozpoznawania twarzy",
 

@@ -28,6 +28,7 @@ import { exportXlsx } from "@/lib/minijob/export";
 import { holidaysFor } from "@/lib/minijob/holidays";
 import { markBackup, notificationPermission, requestNotificationPermission } from "@/lib/minijob/notify";
 import { registerBiometricCredentialId } from "@/lib/minijob/biometric";
+import { isValidPin } from "@/lib/minijob/pin";
 import { disableBiometric, getData, replaceAll, updateSettings, updateSupplements, useAppData } from "@/lib/minijob/store";
 import { LANGUAGES, useT } from "@/lib/i18n";
 import type { Lang } from "@/lib/i18n";
@@ -65,6 +66,7 @@ export const Route = createFileRoute("/einstellungen")({
 function SettingsPage() {
   const { settings, shifts } = useAppData();
   const { t } = useT();
+  const [pinSetupOpen, setPinSetupOpen] = useState(false);
 
   return (
     <main className="mx-auto max-w-lg px-4 pt-6">
@@ -271,9 +273,21 @@ function SettingsPage() {
               title={t("set.security.pin")}
               description={t("set.security.pinDesc")}
               checked={settings.pinEnabled}
-              onChange={(checked) => updateSettings({ pinEnabled: checked })}
+              onChange={(checked) => {
+                if (!checked) {
+                  setPinSetupOpen(false);
+                  updateSettings({ pinEnabled: false });
+                  return;
+                }
+                if (!isValidPin(settings.pin)) {
+                  toast.error(t("set.security.pinRequired"));
+                  setPinSetupOpen(true);
+                  return;
+                }
+                updateSettings({ pinEnabled: true });
+              }}
             />
-            {settings.pinEnabled ? (
+            {settings.pinEnabled || pinSetupOpen ? (
               <div className="grid gap-2">
                 <Label htmlFor="pin">{t("set.security.pinLabel")}</Label>
                 <Input
@@ -281,8 +295,22 @@ function SettingsPage() {
                   type="password"
                   inputMode="numeric"
                   maxLength={8}
+                  autoFocus={pinSetupOpen && !settings.pinEnabled}
                   defaultValue={settings.pin ?? ""}
-                  onBlur={(e) => updateSettings({ pin: e.target.value })}
+                  onBlur={(e) => {
+                    const pin = e.target.value;
+                    if (!isValidPin(pin)) {
+                      toast.error(t("set.security.pinRequired"));
+                      if (settings.pinEnabled) updateSettings({ pinEnabled: false });
+                      return;
+                    }
+                    updateSettings(
+                      pinSetupOpen || settings.pinEnabled
+                        ? { pin, pinEnabled: true }
+                        : { pin },
+                    );
+                    setPinSetupOpen(false);
+                  }}
                 />
               </div>
             ) : null}
