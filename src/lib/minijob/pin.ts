@@ -5,7 +5,7 @@ export const PIN_MAX_LENGTH = 8;
 const PIN_PATTERN = new RegExp(`^\\d{${PIN_MIN_LENGTH},${PIN_MAX_LENGTH}}$`);
 
 /** True only for a digit PIN of the expected length (4–8). */
-export function isValidPin(pin: string | undefined | null): boolean {
+export function isValidPin(pin: string | undefined | null): pin is string {
   return typeof pin === "string" && PIN_PATTERN.test(pin);
 }
 

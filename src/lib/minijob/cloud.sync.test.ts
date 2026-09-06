@@ -425,3 +425,64 @@ describe("paralleler Abgleich", () => {
     expect(mod.getSyncState().pending).toBe(true);
   });
 });
+
+describe("device-local auth secrets", () => {
+  it("strips PIN and WebAuthn id from cloud upsert payload", async () => {
+    local = makeData(1);
+    (local.settings as { pinEnabled?: boolean; pin?: string; biometric?: boolean; biometricCredentialId?: string }).pinEnabled = true;
+    (local.settings as { pin?: string }).pin = "4242";
+    (local.settings as { biometric?: boolean }).biometric = true;
+    (local.settings as { biometricCredentialId?: string }).biometricCredentialId = "cred-local";
+
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    await mod.backupNow();
+
+    const uploaded = cloud.remote?.payload as {
+      settings?: { pin?: string; pinEnabled?: boolean; biometric?: boolean; biometricCredentialId?: string };
+      timer?: unknown;
+    };
+    expect(uploaded?.timer ?? null).toBeNull();
+    expect(uploaded?.settings?.pin).toBeUndefined();
+    expect(uploaded?.settings?.biometricCredentialId).toBeUndefined();
+    expect(uploaded?.settings?.pinEnabled).toBe(false);
+    expect(uploaded?.settings?.biometric).toBe(false);
+    // Local store unchanged
+    expect((local.settings as { pin?: string }).pin).toBe("4242");
+  });
+
+  it("preserves local PIN across restore and ignores remote credential", async () => {
+    local = makeData(1);
+    (local.settings as { pinEnabled?: boolean; pin?: string }).pinEnabled = true;
+    (local.settings as { pin?: string }).pin = "4242";
+    (local.settings as { biometric?: boolean; biometricCredentialId?: string }).biometric = true;
+    (local.settings as { biometricCredentialId?: string }).biometricCredentialId = "cred-local";
+
+    cloud.remote = {
+      payload: {
+        ...makeData(5),
+        settings: {
+          autoBackup: true,
+          pinEnabled: true,
+          pin: "9999",
+          biometric: true,
+          biometricCredentialId: "cred-remote",
+        },
+      },
+      updated_at: new Date().toISOString(),
+    };
+
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    const ok = await mod.restoreNow();
+    expect(ok).toBe(true);
+    expect(replaced.length).toBeGreaterThan(0);
+    const applied = replaced[replaced.length - 1]!;
+    expect((applied.settings as { pin?: string }).pin).toBe("4242");
+    expect((applied.settings as { biometricCredentialId?: string }).biometricCredentialId).toBe(
+      "cred-local",
+    );
+  });
+});
