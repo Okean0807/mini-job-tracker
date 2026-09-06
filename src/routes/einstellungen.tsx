@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { lovable } from "@/integrations/lovable";
 import { supabase } from "@/integrations/supabase/client";
-import { formatDateDE, formatEuro, formatHours } from "@/lib/minijob/calc";
+import { formatDateDE, formatEuro, formatHours, isoDate } from "@/lib/minijob/calc";
 import { monthlyHoursLimit, monthlyLimitOf, yearlyLimitOf } from "@/lib/minijob/limits";
 import {
   backupNow,
@@ -570,7 +570,7 @@ function LocalBackup({ shiftCount }: { shiftCount: number }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `minijob-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `minijob-backup-${isoDate(new Date())}.json`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success(t("set.localBackup.created"));
@@ -867,7 +867,7 @@ function DataMigration({ shiftCount }: { shiftCount: number }) {
   const { t } = useT();
   const { shifts, jobs, settings } = useAppData();
   const [importOpen, setImportOpen] = useState(false);
-  const stamp = new Date().toISOString().slice(0, 10);
+  const stamp = isoDate(new Date());
 
   return (
     <Section title={t("set.migration.title")}>
