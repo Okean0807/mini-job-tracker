@@ -11,6 +11,11 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 import { VitePWA } from "vite-plugin-pwa";
 
+// Nitro vercel preset emits hashed client assets to .vercel/output/static (not Vite's dist).
+// vite-plugin-pwa defaults globDirectory/swDest to vite.build.outDir (dist), so we remap outDir
+// to the Nitro static root so generateSW precaches real production assets and ships /sw.js there.
+const NITRO_VERCEL_STATIC = ".vercel/output/static";
+
 export default defineConfig({
   nitro: {
     preset: "vercel",
@@ -26,15 +31,19 @@ export default defineConfig({
         registerType: "autoUpdate",
         injectRegister: null,
         filename: "sw.js",
+        outDir: NITRO_VERCEL_STATIC,
+        // Public icons/manifest are copied by Nitro after client closeBundle; include them via
+        // publicDir hashing so they still land in the precache manifest.
+        includeAssets: ["favicon.png", "icons/**/*.png", "manifest.webmanifest"],
         devOptions: { enabled: false },
         manifest: false,
         workbox: {
-          // TanStack Start + Nitro serve hashed assets from .output/public
-          // (Vercel static), while vite-plugin-pwa globs Vite outDir (dist).
-          // Those patterns never match there (only sw/workbox land in dist),
-          // which only produces build warnings. Keep precache empty and rely
-          // on runtimeCaching below until a Nitro-aware PWA outDir integration.
-          globPatterns: [],
+          // Only hashed Vite client emit under assets/ — public icons/manifest come from
+          // includeAssets (avoids duplicate entries when generateSW also runs after Nitro
+          // copyPublicAssets).
+          globPatterns: ["assets/**/*.{js,css,woff,woff2,svg,png,webp}"],
+          // SSR app: do not bind navigations to a missing SPA index.html.
+          navigateFallback: null,
           navigateFallbackDenylist: [/^\/~oauth/, /^\/api\//],
           runtimeCaching: [
             {

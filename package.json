@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "assert:pwa-precache": "node scripts/assert-pwa-precache.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
