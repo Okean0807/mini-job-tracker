@@ -262,6 +262,8 @@ export interface Settings {
   pinEnabled: boolean;
   pin?: string;
   biometric: boolean;
+  /** base64url WebAuthn credential id for platform unlock; absent = not enrolled */
+  biometricCredentialId?: string;
   autoBackup: boolean;
   language: Lang;
   /** Premium freigeschaltet (mehrere Jobs, KI, Cloud, Excel) */

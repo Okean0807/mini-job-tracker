@@ -119,6 +119,8 @@ export const settingsDict: Bundle = {
     "pin.wrong": "Falsche PIN",
     "pin.unlock": "Entsperren",
     "pin.biometric": "Biometrisch entsperren",
+    "pin.biometricFailed": "Biometrie fehlgeschlagen – bitte PIN nutzen",
+    "pin.biometricReady": "Biometrie eingerichtet",
 
     "notify.start.title": "Arbeitszeit starten",
     "notify.start.body": "Denk daran, deine Arbeitszeit zu starten.",
@@ -254,6 +256,8 @@ export const settingsDict: Bundle = {
     "pin.wrong": "Wrong PIN",
     "pin.unlock": "Unlock",
     "pin.biometric": "Unlock biometrically",
+    "pin.biometricFailed": "Biometrics failed – please use PIN",
+    "pin.biometricReady": "Biometrics set up",
 
     "notify.start.title": "Start work time",
     "notify.start.body": "Remember to start your time tracking.",
@@ -389,6 +393,8 @@ export const settingsDict: Bundle = {
     "pin.wrong": "Неверный PIN",
     "pin.unlock": "Разблокировать",
     "pin.biometric": "Биометрическая разблокировка",
+    "pin.biometricFailed": "Биометрия не удалась – используйте PIN",
+    "pin.biometricReady": "Биометрия настроена",
 
     "notify.start.title": "Начать рабочее время",
     "notify.start.body": "Не забудьте начать учёт рабочего времени.",
@@ -524,6 +530,8 @@ export const settingsDict: Bundle = {
     "pin.wrong": "Yanlış PIN",
     "pin.unlock": "Kilidi aç",
     "pin.biometric": "Biyometrik kilit açma",
+    "pin.biometricFailed": "Biyometri başarısız – lütfen PIN kullanın",
+    "pin.biometricReady": "Biyometri kuruldu",
 
     "notify.start.title": "Çalışma süresini başlat",
     "notify.start.body": "Çalışma sürenizi başlatmayı unutmayın.",
@@ -659,6 +667,8 @@ export const settingsDict: Bundle = {
     "pin.wrong": "Nieprawidłowy PIN",
     "pin.unlock": "Odblokuj",
     "pin.biometric": "Odblokowanie biometryczne",
+    "pin.biometricFailed": "Biometria nie powiodła się – użyj PIN",
+    "pin.biometricReady": "Biometria skonfigurowana",
 
     "notify.start.title": "Rozpocznij czas pracy",
     "notify.start.body": "Pamiętaj, aby rozpocząć rejestrację czasu pracy.",

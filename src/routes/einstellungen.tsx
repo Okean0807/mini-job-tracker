@@ -27,7 +27,8 @@ import { downloadText, shiftsToCsv } from "@/lib/minijob/csv";
 import { exportXlsx } from "@/lib/minijob/export";
 import { holidaysFor } from "@/lib/minijob/holidays";
 import { markBackup, notificationPermission, requestNotificationPermission } from "@/lib/minijob/notify";
-import { getData, replaceAll, updateSettings, updateSupplements, useAppData } from "@/lib/minijob/store";
+import { registerBiometricCredentialId } from "@/lib/minijob/biometric";
+import { disableBiometric, getData, replaceAll, updateSettings, updateSupplements, useAppData } from "@/lib/minijob/store";
 import { LANGUAGES, useT } from "@/lib/i18n";
 import type { Lang } from "@/lib/i18n";
 import { ACCENTS, THEME_MODES } from "@/lib/minijob/theme";
@@ -288,8 +289,23 @@ function SettingsPage() {
             <ToggleRow
               title={t("set.security.biometric")}
               description={t("set.security.biometricDesc")}
-              checked={settings.biometric}
-              onChange={(checked) => updateSettings({ biometric: checked })}
+              checked={settings.biometric && Boolean(settings.biometricCredentialId)}
+              onChange={async (checked) => {
+                if (!checked) {
+                  disableBiometric();
+                  return;
+                }
+                const outcome = await registerBiometricCredentialId(
+                  settings.pin ?? "minijob-local",
+                );
+                if (!outcome.ok) {
+                  toast.error(t("pin.biometricFailed"));
+                  disableBiometric();
+                  return;
+                }
+                updateSettings({ biometric: true, biometricCredentialId: outcome.credentialId });
+                toast.success(t("pin.biometricReady"));
+              }}
             />
           </Section>
 

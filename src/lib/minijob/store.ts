@@ -300,6 +300,14 @@ export function updateSettings(patch: Partial<Settings>) {
   applyAppearance(settings);
 }
 
+/** Biometrie abschalten und Credential-Id entfernen (exactOptionalPropertyTypes-sicher). */
+export function disableBiometric() {
+  const { biometricCredentialId: _drop, ...rest } = state.settings;
+  const settings: Settings = { ...rest, biometric: false };
+  commit({ ...state, settings });
+  applyAppearance(settings);
+}
+
 export function updateSupplements(patch: Partial<Settings["supplements"]>) {
   updateSettings({ supplements: { ...state.settings.supplements, ...patch } });
 }
