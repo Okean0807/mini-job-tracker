@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 import { markBackup } from "./notify";
 
+import { mergeDeviceAuthFromLocal, stripDeviceAuthForCloud } from "./device-auth";
 import { isValidPayload } from "./payload";
 import { getData, onDataChange, replaceAll } from "./store";
 import type { AppData } from "./types";
@@ -189,7 +190,8 @@ function errorMessage(error: unknown): string {
 }
 
 function payloadOf(data: AppData) {
-  return JSON.parse(JSON.stringify({ ...data, timer: null })) as AppData;
+  // Never upload plaintext PIN or platform-bound WebAuthn ids.
+  return stripDeviceAuthForCloud(data);
 }
 
 async function push(data: AppData): Promise<void> {
@@ -228,8 +230,11 @@ function applyRemote(remote: { payload: AppData; updatedAt: number }) {
   // Der laufende Timer wird bewusst nie in die Cloud geschrieben (`payloadOf`).
   // Beim Wiederherstellen darf er deshalb auch nicht gelöscht werden – sonst
   // verliert der Nutzer die bereits laufende, noch nicht gespeicherte Zeit.
-  const runningTimer = getData().timer ?? null;
-  replaceAll({ ...remote.payload, timer: runningTimer });
+  // PIN / WebAuthn bleiben gerätelokal (`mergeDeviceAuthFromLocal`).
+  const local = getData();
+  const runningTimer = local.timer ?? null;
+  const merged = mergeDeviceAuthFromLocal(remote.payload, local);
+  replaceAll({ ...merged, timer: runningTimer });
   saveMeta({
     lastSyncedAt: Date.now(),
     remoteSeenAt: remote.updatedAt,
