@@ -28,6 +28,7 @@ import { exportXlsx } from "@/lib/minijob/export";
 import { holidaysFor } from "@/lib/minijob/holidays";
 import { markBackup, notificationPermission, requestNotificationPermission } from "@/lib/minijob/notify";
 import { registerBiometricCredentialId } from "@/lib/minijob/biometric";
+import { isValidPayload } from "@/lib/minijob/payload";
 import { isValidPin } from "@/lib/minijob/pin";
 import { disableBiometric, getData, replaceAll, updateSettings, updateSupplements, useAppData } from "@/lib/minijob/store";
 import { LANGUAGES, useT } from "@/lib/i18n";
@@ -37,7 +38,6 @@ import { UI_MODES } from "@/lib/minijob/uimode";
 import {
   BUNDESLAENDER,
   COUNTRIES,
-  type AppData,
   type NotificationSettings,
   type TextSize,
   type TouchSize,
@@ -624,7 +624,12 @@ function LocalBackup({ shiftCount }: { shiftCount: number }) {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        replaceAll(JSON.parse(String(reader.result)) as AppData);
+        const data: unknown = JSON.parse(String(reader.result));
+        if (!isValidPayload(data)) {
+          toast.error(t("set.localBackup.invalid"));
+          return;
+        }
+        replaceAll(data);
         toast.success(t("set.localBackup.restored"));
       } catch {
         toast.error(t("error.fileRead"));

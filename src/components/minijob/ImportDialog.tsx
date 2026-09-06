@@ -24,7 +24,8 @@ import {
   saveShifts,
   getData,
 } from "@/lib/minijob/store";
-import type { AppData, Job, Settings } from "@/lib/minijob/types";
+import { isValidPayload } from "@/lib/minijob/payload";
+import type { Job, Settings } from "@/lib/minijob/types";
 import { useT } from "@/lib/i18n";
 
 interface Props {
@@ -52,7 +53,11 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
 
     if (lower.endsWith(".json")) {
       try {
-        const data = JSON.parse(await file.text()) as Partial<AppData>;
+        const data: unknown = JSON.parse(await file.text());
+        if (!isValidPayload(data)) {
+          toast.error(t("imp.jsonInvalid"));
+          return;
+        }
         replaceAll(data);
         toast.success(t("imp.jsonSuccess"));
         onOpenChange(false);
