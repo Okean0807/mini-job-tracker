@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { languageLabel, useT } from "@/lib/i18n";
 import { askAssistant } from "@/lib/ai.functions";
-import { MONTHS_DE, shiftsInMonth, shiftsInYear } from "@/lib/minijob/calc";
+import { MONTHS_DE, isoDate, shiftsInMonth, shiftsInYear } from "@/lib/minijob/calc";
 import { payrollTotals } from "@/lib/minijob/payroll";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { monthlyLimitOf, yearlyLimitOf } from "@/lib/minijob/limits";
@@ -78,7 +78,7 @@ function AssistantPage() {
     const yearTotals = payrollTotals(yearList, resolve, data.shifts);
     return JSON.stringify({
       jahr: year,
-      heute: new Date().toISOString().slice(0, 10),
+      heute: isoDate(new Date()),
       monatsgrenze: monthlyLimitOf(data.settings, year, new Date().getMonth()),
       jahresgrenze: yearlyLimitOf(data.settings, year),
       jahresstunden: Number(yearTotals.workedHours.toFixed(2)),

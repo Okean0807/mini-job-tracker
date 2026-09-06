@@ -175,7 +175,7 @@ export function limitStatus(): LimitStatus {
 /** Minijob-Schwellen 75 / 90 / 100 Prozent – einmal pro Monat je Stufe. */
 export function checkLimits() {
   const { monthShare, monthHoursShare } = limitStatus();
-  const stamp = new Date().toISOString().slice(0, 7);
+  const stamp = isoDate(new Date()).slice(0, 7);
   if (monthHoursShare >= 90) {
     notifyOnce(
       "limit-hours",
