@@ -421,28 +421,39 @@ export function initCloudSync() {
     if (state.pending) setState({ status: "offline" });
   });
 
-  supabase.auth.getSession().then(({ data }) => {
-    if (data.session) {
-      userId = data.session.user.id;
-      adoptUser(userId);
-      setState({ signedIn: true });
-      void autoSync();
-    }
-  });
+  // Missing VITE_SUPABASE_* makes the lazy client throw on first property
+  // access. Must not escape: callers (root ready-gate) would never set ready.
+  try {
+    void supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (data.session) {
+          userId = data.session.user.id;
+          adoptUser(userId);
+          setState({ signedIn: true });
+          void autoSync();
+        }
+      })
+      .catch((error) => {
+        console.error("[cloud] getSession failed; cloud sync disabled", error);
+      });
 
-  supabase.auth.onAuthStateChange((event, session) => {
-    userId = session?.user.id ?? null;
-    setState({ signedIn: userId !== null });
-    if (event === "SIGNED_IN" && userId) {
-      adoptUser(userId);
-      void autoSync();
-    }
-    if (event === "SIGNED_OUT") {
-      // Geplanten Push abbrechen: er würde sonst ohne Konto laufen bzw.
-      // nach einem Kontowechsel in den falschen Cloud-Stand schreiben.
-      if (timeout) clearTimeout(timeout);
-      timeout = null;
-      setState({ status: "idle", pending: false, message: null, lastSyncedAt: null });
-    }
-  });
+    supabase.auth.onAuthStateChange((event, session) => {
+      userId = session?.user.id ?? null;
+      setState({ signedIn: userId !== null });
+      if (event === "SIGNED_IN" && userId) {
+        adoptUser(userId);
+        void autoSync();
+      }
+      if (event === "SIGNED_OUT") {
+        // Geplanten Push abbrechen: er würde sonst ohne Konto laufen bzw.
+        // nach einem Kontowechsel in den falschen Cloud-Stand schreiben.
+        if (timeout) clearTimeout(timeout);
+        timeout = null;
+        setState({ status: "idle", pending: false, message: null, lastSyncedAt: null });
+      }
+    });
+  } catch (error) {
+    console.error("[cloud] Supabase auth unavailable; cloud sync disabled", error);
+  }
 }
