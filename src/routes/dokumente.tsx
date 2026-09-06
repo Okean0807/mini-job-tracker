@@ -22,6 +22,7 @@ import { formatDate } from "@/lib/minijob/calc";
 import {
   DOC_CATEGORIES,
   deleteDocument,
+  documentCreatedDay,
   documentUrl,
   formatSize,
   listDocuments,
@@ -346,6 +347,7 @@ function DocumentsPage() {
               visible.map((doc) => {
                 const job = jobs.find((j) => j.id === doc.job_id);
                 const folder = folders.find((f) => f.id === doc.folder_id);
+                const createdDay = documentCreatedDay(doc.created_at);
                 return (
                   <div key={doc.id} className="rounded-2xl border bg-card p-3">
                     <div className="flex items-center gap-3">
@@ -357,8 +359,8 @@ function DocumentsPage() {
                       >
                         <p className="truncate text-sm font-semibold">{doc.name}</p>
                         <p className="truncate text-xs text-muted-foreground">
-                          {t(`doc.cat.${doc.category}`)} · {formatSize(doc.size)} ·{" "}
-                          {formatDate(doc.created_at.slice(0, 10))}
+                          {t(`doc.cat.${doc.category}`)} · {formatSize(doc.size)}
+                          {createdDay ? ` · ${formatDate(createdDay)}` : ""}
                           {job ? ` · ${job.name}` : ""}
                         </p>
                       </button>

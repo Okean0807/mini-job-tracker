@@ -23,7 +23,7 @@ export interface DocumentRow {
   size: number;
   mime_type: string | null;
   note: string | null;
-  created_at: string;
+  created_at: string | null;
 }
 
 export interface FolderRow {
@@ -34,6 +34,12 @@ export interface FolderRow {
 
 const BUCKET = "documents";
 const SELECT = "id,name,path,category,job_id,folder_id,tags,size,mime_type,note,created_at";
+
+/** YYYY-MM-DD prefix for list display; empty when created_at is null/short. */
+export function documentCreatedDay(createdAt: string | null | undefined): string {
+  if (typeof createdAt !== "string" || createdAt.length < 10) return "";
+  return createdAt.slice(0, 10);
+}
 
 export function parseTags(input: string): string[] {
   return Array.from(
