@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import { LANGUAGES, detectLanguage } from "@/lib/i18n/core";
 
 import { normalizeDashboard } from "./dashboard";
+import { isPlainRecord } from "./payload";
 import { withConsistentPinSettings } from "./pin";
 import { KNOWN_LEGAL_MONTHLY_LIMITS } from "./legal";
 import { applyAppearance } from "./theme";
@@ -121,25 +122,35 @@ export function normalize(input: Partial<AppData>): AppData {
   }
   // pinEnabled ohne gültige PIN wäre nur UI-Kosmetik (Root sperrt nicht).
   settings = withConsistentPinSettings(settings);
+  // Drop null/primitive/"array" holes so property access (s.kind, j.rate) never
+  // throws — a throw in loadFromStorage would wipe local data via its catch.
+  const shiftRows = (Array.isArray(raw.shifts) ? raw.shifts : []).filter(isPlainRecord);
+  const jobRows = (Array.isArray(raw.jobs) ? raw.jobs : []).filter(isPlainRecord);
+  const customerRows = (Array.isArray(raw.customers) ? raw.customers : []).filter(isPlainRecord);
+  const projectRows = (Array.isArray(raw.projects) ? raw.projects : []).filter(isPlainRecord);
+  const paymentRows = (Array.isArray(raw.payments) ? raw.payments : []).filter(isPlainRecord);
+  const goalRows = (Array.isArray(raw.goals) ? raw.goals : []).filter(isPlainRecord);
+
   return {
-    shifts: (Array.isArray(raw.shifts) ? raw.shifts : []).map((s) => ({
-      ...s,
-      kind: s.kind ?? "arbeit",
-      breakMinutes: s.breakMinutes ?? 0,
+    shifts: shiftRows.map((s) => ({
+      ...(s as unknown as Shift),
+      kind: (s as { kind?: Shift["kind"] }).kind ?? "arbeit",
+      breakMinutes: (s as { breakMinutes?: number }).breakMinutes ?? 0,
     })),
     // Kompatibilität: Ein gespeicherter Job-Satz 0 stammte bisher aus einem leeren
     // Formularfeld und wurde in der Lohnauflösung schon immer als "nicht gesetzt"
     // behandelt. Er wird daher auf undefined gehoben. Schicht-Sätze bleiben unverändert,
     // weil dort 0 bereits als 0 EUR/h verrechnet wurde.
-    jobs: (Array.isArray(raw.jobs) ? raw.jobs : []).map((j) => {
-      if (j.rate !== 0) return j;
-      const { rate: _legacyZero, ...rest } = j;
+    jobs: jobRows.map((j) => {
+      const job = j as unknown as Job;
+      if (job.rate !== 0) return job;
+      const { rate: _legacyZero, ...rest } = job;
       return rest as Job;
     }),
-    customers: Array.isArray(raw.customers) ? raw.customers : [],
-    projects: Array.isArray(raw.projects) ? raw.projects : [],
-    payments: Array.isArray(raw.payments) ? raw.payments : [],
-    goals: Array.isArray(raw.goals) ? raw.goals : [],
+    customers: customerRows as unknown as Customer[],
+    projects: projectRows as unknown as Project[],
+    payments: paymentRows as unknown as Payment[],
+    goals: goalRows as unknown as Goal[],
     settings,
     timer: raw.timer ?? null,
   };
