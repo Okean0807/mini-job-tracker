@@ -4,10 +4,22 @@ import { supabase } from './client'
 
 // Must be registered as a global `functionMiddleware` in `src/start.ts`; otherwise
 // the browser never attaches the bearer token to serverFn RPCs.
+//
+// Missing VITE_SUPABASE_* makes the lazy supabase Proxy throw on first property
+// access. Soft-fail so serverFn client calls still proceed (without Authorization);
+// server middleware (requireSupabaseAuth) rejects unauthenticated requests as usual.
 export const attachSupabaseAuth = createMiddleware({ type: 'function' }).client(
   async ({ next }) => {
-    const { data } = await supabase.auth.getSession()
-    const token = data.session?.access_token
+    let token: string | undefined
+    try {
+      const { data } = await supabase.auth.getSession()
+      token = data.session?.access_token
+    } catch (error) {
+      console.error(
+        '[auth-attacher] Supabase auth unavailable; continuing without bearer',
+        error,
+      )
+    }
     return next({
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
