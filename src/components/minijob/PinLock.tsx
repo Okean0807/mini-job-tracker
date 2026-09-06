@@ -3,8 +3,12 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { Settings } from "@/lib/minijob/types";
 import { useT } from "@/lib/i18n";
+import {
+  attemptBiometricUnlock,
+  shouldUnlockFromBiometric,
+} from "@/lib/minijob/biometric";
+import type { Settings } from "@/lib/minijob/types";
 
 interface PinLockProps {
   settings: Settings;
@@ -15,35 +19,34 @@ export function PinLock({ settings, onUnlock }: PinLockProps) {
   const { t } = useT();
   const [value, setValue] = useState("");
   const [error, setError] = useState(false);
+  const [errorKey, setErrorKey] = useState<"pin.wrong" | "pin.biometricFailed">("pin.wrong");
+  const [busy, setBusy] = useState(false);
+
+  const biometricReady = Boolean(settings.biometric && settings.biometricCredentialId);
 
   function submit() {
     if (value === settings.pin) onUnlock();
     else {
+      setErrorKey("pin.wrong");
       setError(true);
       setValue("");
     }
   }
 
   async function biometric() {
+    if (busy) return;
+    setBusy(true);
+    setError(false);
     try {
-      const available =
-        typeof window !== "undefined" &&
-        "PublicKeyCredential" in window &&
-        (await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable());
-      if (!available) {
-        setError(true);
+      const result = await attemptBiometricUnlock(settings.biometricCredentialId);
+      if (shouldUnlockFromBiometric(result)) {
+        onUnlock();
         return;
       }
-      await navigator.credentials.get({
-        publicKey: {
-          challenge: crypto.getRandomValues(new Uint8Array(32)),
-          userVerification: "required",
-          timeout: 30000,
-        },
-      });
-      onUnlock();
-    } catch {
-      onUnlock();
+      setErrorKey("pin.biometricFailed");
+      setError(true);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -66,12 +69,12 @@ export function PinLock({ settings, onUnlock }: PinLockProps) {
           className="mt-4 text-center text-lg tracking-[0.4em]"
           aria-label={t("pin.enterPin")}
         />
-        {error ? <p className="mt-2 text-xs text-destructive">{t("pin.wrong")}</p> : null}
+        {error ? <p className="mt-2 text-xs text-destructive">{t(errorKey)}</p> : null}
         <Button className="mt-4 w-full" onClick={submit}>
           {t("pin.unlock")}
         </Button>
-        {settings.biometric ? (
-          <Button variant="outline" className="mt-2 w-full" onClick={biometric}>
+        {biometricReady ? (
+          <Button variant="outline" className="mt-2 w-full" onClick={biometric} disabled={busy}>
             <Fingerprint className="size-4" /> {t("pin.biometric")}
           </Button>
         ) : null}
