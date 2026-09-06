@@ -42,6 +42,12 @@ export function generateFixedMonth(
   return created;
 }
 
+/** Parse YYYY-MM-DD as a local calendar date (not UTC midnight). */
+function localDate(iso: string): Date {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  return new Date(y!, (m ?? 1) - 1, d ?? 1);
+}
+
 /** Erzeugt Abwesenheitseinträge (Urlaub / Krank) für einen Zeitraum. */
 export function generateAbsence(
   job: Job,
@@ -51,8 +57,8 @@ export function generateAbsence(
   bundesland: string,
 ): Shift[] {
   const result: Shift[] = [];
-  const start = new Date(from);
-  const end = new Date(to);
+  const start = localDate(from);
+  const end = localDate(to);
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const date = isoDate(d);
     const weekdayIndex = (d.getDay() + 6) % 7;
