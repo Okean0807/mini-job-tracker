@@ -11,6 +11,20 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 import { VitePWA } from "vite-plugin-pwa";
 
+// Bridge SUPABASE_* → VITE_* at config load when VITE_* is empty/missing.
+// Vite only statically replaces import.meta.env.VITE_* into client chunks;
+// Vercel often has SUPABASE_* for SSR while VITE_* was unset → empty bake.
+(() => {
+  const url = process.env["VITE_SUPABASE_URL"]?.trim();
+  if (!url && process.env["SUPABASE_URL"]?.trim()) {
+    process.env["VITE_SUPABASE_URL"] = process.env["SUPABASE_URL"].trim();
+  }
+  const key = process.env["VITE_SUPABASE_PUBLISHABLE_KEY"]?.trim();
+  if (!key && process.env["SUPABASE_PUBLISHABLE_KEY"]?.trim()) {
+    process.env["VITE_SUPABASE_PUBLISHABLE_KEY"] = process.env["SUPABASE_PUBLISHABLE_KEY"].trim();
+  }
+})();
+
 // Nitro vercel preset emits hashed client assets to .vercel/output/static (not Vite's dist).
 // vite-plugin-pwa defaults globDirectory/swDest to vite.build.outDir (dist), so we remap outDir
 // to the Nitro static root so generateSW precaches real production assets and ships /sw.js there.
