@@ -58,3 +58,19 @@ Use for bot/agent commits (env, not `git config --global`):
 Do **not** use `stabschef+…@users.noreply.github.com` — those commits stay
 unattributed on GitHub and Vercel blocks the deployment.
 
+
+## Build-time bake checklist (client JS)
+
+Vite replaces `import.meta.env.VITE_*` at **build** time. If those values are
+empty when `vite build` runs, Production client JS ships with blank Supabase
+URL/key (length 0) even if Vercel later shows the vars in the dashboard.
+
+1. Confirm **non-empty** `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`
+   for Production + Preview (or non-empty `SUPABASE_*` — `vite.config.ts`
+   bridges them into `VITE_*` at config load).
+2. **Redeploy** after fixing env (a cached build will not re-bake).
+3. Safe verify in browser: open a client chunk and check URL string **length**
+   and `https://` prefix only — never paste publishable keys into tickets/chat.
+4. Local/CI without `VERCEL=1`: `assert:vite-supabase-env` skips; on Vercel
+   (`VERCEL=1`) the assert fails the build if both VITE_ and SUPABASE_ sources
+   are missing/empty.
