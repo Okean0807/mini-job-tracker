@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { lovable } from "@/integrations/lovable";
+import { signInWithOAuthProvider } from "@/lib/minijob/oauth-sign-in";
 import { LANGUAGES } from "@/lib/i18n/core";
 import { useT } from "@/lib/i18n";
 import { newId, nextJobColor, saveJob, updateSettings } from "@/lib/minijob/store";
@@ -82,7 +82,8 @@ export function OnboardingWizard({ settings, onDone }: Props) {
   async function oauth(provider: "google" | "apple") {
     updateSettings({ country, bundesland, defaultRate: numericRate, supplements });
     try {
-      await lovable.auth.signInWithOAuth(provider, { redirect_uri: window.location.origin });
+      const { error } = await signInWithOAuthProvider(provider, window.location.origin);
+      if (error) toast.error(t("error.signIn"));
     } catch {
       toast.error(t("error.signIn"));
     }
