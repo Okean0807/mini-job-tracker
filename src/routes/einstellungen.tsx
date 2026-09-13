@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { lovable } from "@/integrations/lovable";
+import { signInWithOAuthProvider } from "@/lib/minijob/oauth-sign-in";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDateDE, formatEuro, formatHours, isoDate } from "@/lib/minijob/calc";
 import { monthlyHoursLimit, monthlyLimitOf, yearlyLimitOf } from "@/lib/minijob/limits";
@@ -754,7 +754,8 @@ function CloudSync({ autoBackup }: { autoBackup: boolean }) {
 
   async function oauth(provider: "google" | "apple") {
     try {
-      await lovable.auth.signInWithOAuth(provider, { redirect_uri: window.location.origin });
+      const { error } = await signInWithOAuthProvider(provider, window.location.origin);
+      if (error) toast.error(t("error.signIn"));
     } catch {
       toast.error(t("error.signIn"));
     }
