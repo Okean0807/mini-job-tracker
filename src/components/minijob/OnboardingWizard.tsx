@@ -82,7 +82,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
   async function oauth(provider: "google" | "apple") {
     updateSettings({ country, bundesland, defaultRate: numericRate, supplements });
     try {
-      const { error } = await signInWithOAuthProvider(provider, window.location.origin);
+      const { error } = await signInWithOAuthProvider(provider);
       if (error) toast.error(t("error.signIn"));
     } catch {
       toast.error(t("error.signIn"));
