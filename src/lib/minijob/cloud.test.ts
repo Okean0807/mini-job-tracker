@@ -60,6 +60,20 @@ describe("decideSync", () => {
     ).toBe("restore");
   });
 
+  it("meldet keinen Konflikt bei Einstellungs-Marken vor dem ersten Abgleich (Einrichtungsassistent)", () => {
+    // Sprache/OAuth speichern setzt localChangedAt, ohne dass Schichten/Jobs existieren.
+    expect(
+      decideSync({
+        ...base,
+        hasLocalData: false,
+        localChangedAt: 500,
+        lastSyncedAt: null,
+        remoteUpdatedAt: 400,
+      }),
+    ).toBe("restore");
+  });
+
+
   it("macht eine bewusste lokale Löschung nicht still rückgängig", () => {
     expect(
       decideSync({ ...base, hasLocalData: false, localChangedAt: 500, lastSyncedAt: 100, remoteUpdatedAt: 100 }),
