@@ -179,6 +179,7 @@ function DashboardPage() {
         shifts={shifts}
         jobs={jobs}
         bundesland={settings.bundesland}
+        resolve={resolve}
         onChangeMonth={(y, m) => {
           setYear(y);
           setMonth(m);
