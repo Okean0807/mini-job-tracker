@@ -159,20 +159,25 @@ function BottomNav({ uiMode }: { uiMode: UiMode }) {
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 backdrop-blur">
       <ul className="mx-auto flex max-w-lg">
-        {items.map(({ to, labelKey, icon: Icon }) => (
-          <li key={to} className="flex-1">
-            <Link
-              to={to}
-              activeOptions={{ exact: to === "/" }}
-              activeProps={{ className: "text-primary" }}
-              inactiveProps={{ className: "text-muted-foreground" }}
-              className="flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium"
-            >
-              <Icon className="size-5" />
-              {t(labelKey)}
-            </Link>
-          </li>
-        ))}
+        {items.map(({ to, labelKey, icon: Icon }) => {
+          const label = t(labelKey);
+          return (
+            <li key={to} className="min-w-0 flex-1">
+              <Link
+                to={to}
+                title={label}
+                aria-label={label}
+                activeOptions={{ exact: to === "/" }}
+                activeProps={{ className: "text-primary" }}
+                inactiveProps={{ className: "text-muted-foreground" }}
+                className="flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 py-2 text-[11px] font-medium leading-tight"
+              >
+                <Icon className="size-5 shrink-0" aria-hidden />
+                <span className="w-full truncate text-center">{label}</span>
+              </Link>
+            </li>
+          );
+        })}
       </ul>
     </nav>
   );
@@ -264,7 +269,7 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="min-h-screen pb-20">{ready ? <Outlet /> : null}</div>
+      <div className="app-shell min-h-screen pb-20">{ready ? <Outlet /> : null}</div>
 
       {/* Hide nav under wizard/PIN overlays (z-40 under z-60) and while bootstrapping */}
       {ready && !showWizard && !locked ? <BottomNav uiMode={settings.uiMode} /> : null}

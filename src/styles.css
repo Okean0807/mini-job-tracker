@@ -256,6 +256,35 @@
 [data-touch="glove"] [role="button"] {
   padding-inline: 1.25rem;
 }
+
+/*
+ * Bottom nav has 6 items on a narrow mobile width. Glove/large touch rules
+ * inflate every a[href] (font-size + min-height + padding), which makes
+ * labels like Übersicht/Einstellungen overflow, overlap, or clip when
+ * Schriftgröße=Sehr groß (root font-size 125%). Keep tall touch targets
+ * but compact, truncatable labels that stay inside each column.
+ */
+[data-touch="large"] nav a[href],
 [data-touch="glove"] nav a[href] {
-  padding-block: 0.9rem;
+  font-size: 0.625rem;
+  line-height: 1.15;
+  min-width: 0;
+  padding-inline: 0.125rem;
+  overflow: hidden;
+}
+[data-touch="large"] nav a[href] {
+  min-height: 2.75rem;
+  padding-block: 0.5rem;
+}
+[data-touch="glove"] nav a[href] {
+  min-height: 3.25rem;
+  padding-block: 0.7rem;
+}
+
+/* Extra shell padding so content clears the taller glove/large bottom nav */
+[data-touch="large"] .app-shell {
+  padding-bottom: 5.5rem;
+}
+[data-touch="glove"] .app-shell {
+  padding-bottom: 6.25rem;
 }
