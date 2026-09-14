@@ -106,6 +106,8 @@ export type SyncDecisionInput = {
  *
  * - Kein Cloud-Stand → hochladen (sofern lokale Daten existieren).
  * - Kein lokaler Datenbestand → Cloud laden.
+ * - Leeres Gerät ohne bisherigen Abgleich → Cloud laden (Einstellungs-Marken
+ *   aus dem Einrichtungsassistenten zählen nicht als eigene Version).
  * - Cloud unverändert seit letztem Abgleich → lokale Änderungen hochladen.
  * - Cloud neuer als letzter Abgleich UND lokal seither geändert → Konflikt,
  *   Entscheidung trifft der Nutzer (kein stilles Überschreiben).
@@ -123,6 +125,11 @@ export function decideSync(input: SyncDecisionInput): SyncDecision {
   // bewusste lokale Änderung (z. B. alles gelöscht), die nicht still
   // rückgängig gemacht werden darf.
   if (!hasLocalData && !localIsNew) return "restore";
+  // Noch nie mit diesem Konto abgeglichen und lokal keine Schichten/Jobs:
+  // reine Einstellungs-Marken (Einrichtungsassistent, Sprache, OAuth-Vorab-
+  // Speichern) sind keine eigenständige Version. Sonst meldet der Start des
+  // Assistenten fälschlich einen Konflikt gegen die Cloud-Sicherung.
+  if (!hasLocalData && lastSyncedAt == null) return "restore";
   if (!hasLocalData) return remoteIsNew ? "conflict" : "push";
 
   if (remoteIsNew && localIsNew) return "conflict";

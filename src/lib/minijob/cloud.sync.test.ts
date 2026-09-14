@@ -147,6 +147,52 @@ describe("initCloudSync", () => {
     expect(cloud.upserts).toBe(0);
   });
 
+  it("stellt trotz Einstellungs-Marke vor dem ersten Abgleich wieder her (kein Falsch-Konflikt)", async () => {
+    // Einrichtungsassistent / Sprache / OAuth setzt localChangedAt, obwohl noch
+    // keine Schichten oder Jobs existieren. Ohne lastSyncedAt darf das nicht als
+    // unabhängige lokale Version gegen die Cloud gelten.
+    local = makeData(0);
+    cloud.remote = { payload: makeData(3), updated_at: new Date().toISOString() };
+    window.localStorage.setItem(
+      "minijob-sync-meta-v1",
+      JSON.stringify({
+        userId: "user-1",
+        localChangedAt: Date.now(),
+        lastSyncedAt: null,
+        remoteSeenAt: null,
+      }),
+    );
+
+    const { initCloudSync, getSyncState } = await loadModule();
+    initCloudSync();
+    await settle();
+
+    expect(getSyncState().status).not.toBe("conflict");
+    expect(replaced).toHaveLength(1);
+    expect(cloud.upserts).toBe(0);
+  });
+
+  it("meldet keinen Konflikt, wenn der Assistent Einstellungen speichert und danach Sync läuft", async () => {
+    session = null;
+    local = makeData(0);
+    cloud.remote = { payload: makeData(4), updated_at: new Date().toISOString() };
+
+    const { initCloudSync, getSyncState } = await loadModule();
+    initCloudSync();
+    await settle();
+
+    // Nutzer ändert nur Settings (wie Sprache im Wizard), noch nicht angemeldet.
+    changeHook?.(local);
+    await vi.advanceTimersByTimeAsync(100);
+
+    session = { user: { id: "user-1" } };
+    authCallback?.("SIGNED_IN", session);
+    await settle();
+
+    expect(getSyncState().status).not.toBe("conflict");
+    expect(replaced).toHaveLength(1);
+  });
+
   it("löscht beim Wiederherstellen keinen laufenden Timer", async () => {
     // Der Timer wird nie in die Cloud geschrieben; ein Restore darf die
     // laufende, noch nicht gespeicherte Zeit nicht verwerfen.
