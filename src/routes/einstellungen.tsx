@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { bindAuthSession } from "@/lib/minijob/auth-session";
 import { signInWithOAuthProvider } from "@/lib/minijob/oauth-sign-in";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDateDE, formatEuro, formatHours, isoDate } from "@/lib/minijob/calc";
@@ -735,15 +736,7 @@ function CloudSync({ autoBackup }: { autoBackup: boolean }) {
 
   useEffect(() => {
     try {
-      void supabase.auth
-        .getSession()
-        .then(({ data }) => setSession(data.session))
-        .catch((error) => {
-          console.error("[einstellungen] getSession failed", error);
-          setSession(null);
-        });
-      const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
-      return () => sub.subscription.unsubscribe();
+      return bindAuthSession(supabase, setSession);
     } catch (error) {
       // Missing Supabase env → treat as signed out (show sign-in UI).
       console.error("[einstellungen] Supabase auth unavailable", error);
@@ -754,7 +747,7 @@ function CloudSync({ autoBackup }: { autoBackup: boolean }) {
 
   async function oauth(provider: "google" | "apple") {
     try {
-      const { error } = await signInWithOAuthProvider(provider, window.location.origin);
+      const { error } = await signInWithOAuthProvider(provider);
       if (error) toast.error(t("error.signIn"));
     } catch {
       toast.error(t("error.signIn"));

@@ -1,7 +1,7 @@
 /**
  * Regression: CloudSync auth useEffect must soft-fail when the lazy supabase
  * Proxy throws (missing VITE_SUPABASE_*), matching dokumente.tsx / initCloudSync.
- * Without try/catch + .catch, visiting Einstellungen crashes the settings tab.
+ * Without try/catch, visiting Einstellungen crashes the settings tab.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -23,7 +23,7 @@ function cloudSyncAuthEffect(): string {
 }
 
 describe("CloudSync auth soft-fail (einstellungen.tsx)", () => {
-  it("wraps supabase.auth access in try/catch", () => {
+  it("wraps auth bind in try/catch", () => {
     const effect = cloudSyncAuthEffect();
     expect(effect).toMatch(/try\s*\{/);
     expect(effect).toMatch(/catch\s*\(/);
@@ -31,16 +31,8 @@ describe("CloudSync auth soft-fail (einstellungen.tsx)", () => {
     expect(effect).toMatch(/setSession\(null\)/);
   });
 
-  it("catches rejected getSession promises", () => {
+  it("binds via bindAuthSession (subscribe + getSession)", () => {
     const effect = cloudSyncAuthEffect();
-    expect(effect).toMatch(/\.getSession\(\)/);
-    expect(effect).toMatch(/\.catch\s*\(/);
-    expect(effect).toMatch(/\[einstellungen\] getSession failed/);
-  });
-
-  it("still subscribes to onAuthStateChange inside the try", () => {
-    const effect = cloudSyncAuthEffect();
-    expect(effect).toMatch(/onAuthStateChange/);
-    expect(effect).toMatch(/unsubscribe/);
+    expect(effect).toMatch(/bindAuthSession\(supabase,\s*setSession\)/);
   });
 });
