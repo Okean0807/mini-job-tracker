@@ -2,8 +2,10 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n";
-import { isoDate, monthNames, shiftHours, weekdayNames } from "@/lib/minijob/calc";
+import { isoDate, monthNames, weekdayNames } from "@/lib/minijob/calc";
 import { holidayName } from "@/lib/minijob/holidays";
+import { shiftPayroll } from "@/lib/minijob/payroll";
+import type { ResolveOptions } from "@/lib/minijob/resolve";
 import type { Job, Shift } from "@/lib/minijob/types";
 import { cn } from "@/lib/utils";
 
@@ -13,8 +15,22 @@ interface MonthCalendarProps {
   shifts: Shift[];
   jobs: Job[];
   bundesland: string;
+  /** Same resolver as ShiftList / dashboard – needed for payroll-aligned day hours. */
+  resolve: (shift: Shift) => ResolveOptions;
   onChangeMonth: (year: number, month: number) => void;
   onSelectDay: (date: string) => void;
+}
+
+/** Hours shown for a day: worked or paid-absence hours (matches ShiftList), never raw clock duration for unpaid absences. */
+function dayDisplayHours(
+  dayShifts: Shift[],
+  allShifts: Shift[],
+  resolve: (shift: Shift) => ResolveOptions,
+): number {
+  return dayShifts.reduce((acc, s) => {
+    const pay = shiftPayroll(s, { ...resolve(s), history: allShifts });
+    return acc + (s.kind === "arbeit" ? pay.workedHours : pay.paidAbsenceHours);
+  }, 0);
 }
 
 export function MonthCalendar({
@@ -23,6 +39,7 @@ export function MonthCalendar({
   shifts,
   jobs,
   bundesland,
+  resolve,
   onChangeMonth,
   onSelectDay,
 }: MonthCalendarProps) {
@@ -78,12 +95,12 @@ export function MonthCalendar({
           if (day === null) return <div key={`e-${idx}`} />;
           const iso = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
           const dayShifts = byDate.get(iso) ?? [];
-          const hours = dayShifts.reduce((acc, s) => acc + shiftHours(s), 0);
+          const hours = dayDisplayHours(dayShifts, shifts, resolve);
           const feiertag = holidayName(iso, bundesland);
           const colors = dayShifts
             .map((s) => jobs.find((j) => j.id === s.jobId)?.color)
             .filter((c): c is string => Boolean(c));
-          const first = colors[0];
+          const firstColor = colors[0];
 
           return (
             <button
@@ -91,10 +108,10 @@ export function MonthCalendar({
               type="button"
               title={feiertag}
               onClick={() => onSelectDay(iso)}
-              style={first ? { backgroundColor: first, color: "#fff" } : undefined}
+              style={firstColor ? { backgroundColor: firstColor, color: "#fff" } : undefined}
               className={cn(
                 "relative flex aspect-square flex-col items-center justify-center rounded-xl border border-transparent text-sm transition-colors",
-                dayShifts.length && !first && "bg-gradient-primary font-semibold text-primary-foreground",
+                dayShifts.length && !firstColor && "bg-gradient-primary font-semibold text-primary-foreground",
                 dayShifts.length && "font-semibold",
                 !dayShifts.length && "hover:bg-muted",
                 !dayShifts.length && feiertag && "bg-destructive/10 text-destructive",
