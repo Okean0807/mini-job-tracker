@@ -14,4 +14,10 @@ describe("createBrowserAuthOptions", () => {
     expect(opts.autoRefreshToken).toBe(true);
     expect(opts.storage).toBeTruthy();
   });
+
+  it("enables appendPkceFlowIdToRedirects to avoid overlapping-flow verifier mismatch", async () => {
+    const { createBrowserAuthOptions } = await import("./browser-auth-options");
+    const opts = createBrowserAuthOptions();
+    expect(opts.experimental?.appendPkceFlowIdToRedirects).toBe(true);
+  });
 });
