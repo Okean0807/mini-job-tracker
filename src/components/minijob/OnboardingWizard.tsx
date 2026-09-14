@@ -7,6 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { signInWithOAuthProvider } from "@/lib/minijob/oauth-sign-in";
+import {
+  checkpointOnboardingBeforeOAuth,
+  clearOnboardingDraft,
+  loadOnboardingDraft,
+} from "@/lib/minijob/onboarding-draft";
 import { LANGUAGES } from "@/lib/i18n/core";
 import { useT } from "@/lib/i18n";
 import { newId, nextJobColor, saveJob, updateSettings } from "@/lib/minijob/store";
@@ -44,8 +49,10 @@ export function OnboardingWizard({ settings, onDone }: Props) {
     selbststaendig: "mode.selbststaendig",
   };
 
-  const [step, setStep] = useState(0);
-  const [mode, setMode] = useState<WorkMode>("flex");
+  // Resume after OAuth full-page return (draft in localStorage; settings from store).
+  const [draft] = useState(() => loadOnboardingDraft(STEPS.length));
+  const [step, setStep] = useState(draft?.step ?? 0);
+  const [mode, setMode] = useState<WorkMode>(draft?.mode ?? "flex");
   const [country, setCountry] = useState(settings.country);
   const [bundesland, setBundesland] = useState(settings.bundesland);
   const [rate, setRate] = useState(String(settings.defaultRate));
@@ -56,6 +63,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
   const numericRate = Number(rate.replace(",", ".")) || 0;
 
   function finish() {
+    clearOnboardingDraft();
     updateSettings({
       country,
       bundesland,
@@ -80,7 +88,13 @@ export function OnboardingWizard({ settings, onDone }: Props) {
   }
 
   async function oauth(provider: "google" | "apple") {
-    updateSettings({ country, bundesland, defaultRate: numericRate, supplements });
+    // Persist region/rate/supplements + step/mode before browser leaves for Google/Apple.
+    checkpointOnboardingBeforeOAuth({
+      step,
+      mode,
+      persistSettings: () =>
+        updateSettings({ country, bundesland, defaultRate: numericRate, supplements }),
+    });
     try {
       const { error } = await signInWithOAuthProvider(provider);
       if (error) toast.error(t("error.signIn"));
@@ -273,6 +287,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
               variant="ghost"
               className="text-muted-foreground"
               onClick={() => {
+                clearOnboardingDraft();
                 updateSettings({ onboarded: true });
                 onDone();
               }}
