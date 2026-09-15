@@ -51,6 +51,7 @@ export const settingsDict: Bundle = {
     "set.migration.csv": "CSV export",
     "set.migration.excel": "Excel export",
     "set.migration.import": "Daten importieren",
+    "set.migration.importUnavailable": "Import XLSX in v1 nicht verfügbar",
     "set.migration.csvExported": "CSV exportiert",
     "set.migration.excelExported": "Excel exportiert",
 
@@ -191,6 +192,7 @@ export const settingsDict: Bundle = {
     "set.migration.csv": "CSV export",
     "set.migration.excel": "Excel export",
     "set.migration.import": "Import data",
+    "set.migration.importUnavailable": "XLSX import not available in v1",
     "set.migration.csvExported": "CSV exported",
     "set.migration.excelExported": "Excel exported",
 
@@ -331,6 +333,7 @@ export const settingsDict: Bundle = {
     "set.migration.csv": "Экспорт CSV",
     "set.migration.excel": "Экспорт Excel",
     "set.migration.import": "Импортировать данные",
+    "set.migration.importUnavailable": "Импорт XLSX в v1 недоступен",
     "set.migration.csvExported": "CSV экспортирован",
     "set.migration.excelExported": "Excel экспортирован",
 
@@ -471,6 +474,7 @@ export const settingsDict: Bundle = {
     "set.migration.csv": "CSV dışa aktar",
     "set.migration.excel": "Excel dışa aktar",
     "set.migration.import": "Veri içe aktar",
+    "set.migration.importUnavailable": "XLSX içe aktarma v1'de yok",
     "set.migration.csvExported": "CSV dışa aktarıldı",
     "set.migration.excelExported": "Excel dışa aktarıldı",
 
@@ -611,6 +615,7 @@ export const settingsDict: Bundle = {
     "set.migration.csv": "Eksport CSV",
     "set.migration.excel": "Eksport Excel",
     "set.migration.import": "Importuj dane",
+    "set.migration.importUnavailable": "Import XLSX niedostępny w v1",
     "set.migration.csvExported": "Wyeksportowano CSV",
     "set.migration.excelExported": "Wyeksportowano Excel",
 

@@ -193,9 +193,7 @@ describe("initCloudSync", () => {
     expect(replaced).toHaveLength(1);
   });
 
-  it("FIRST_SYNC: Jobs ohne Schichten + Cloud → restore (kein Falsch-Konflikt)", async () => {
-    // Onboarding legt Job + Settings an (localChangedAt gesetzt), lastSyncedAt=null.
-    // Jobs allein zählen nicht als lokale Arbeitsversion.
+  it("FIRST_SYNC: Jobs ohne Schichten + Cloud → conflict (jobs-only survival bis resolve)", async () => {
     local = {
       ...makeData(0),
       jobs: [{ id: "j1", name: "Demo", color: "#0d9488", mode: "flex" }],
@@ -215,10 +213,11 @@ describe("initCloudSync", () => {
     initCloudSync();
     await settle();
 
-    expect(getSyncState().status).not.toBe("conflict");
-    expect(replaced).toHaveLength(1);
-    expect(replaced[0]?.shifts).toHaveLength(5);
+    expect(getSyncState().status).toBe("conflict");
+    expect(replaced).toHaveLength(0);
     expect(cloud.upserts).toBe(0);
+    // Local jobs survive until the user resolves keep local vs cloud.
+    expect(local.jobs).toHaveLength(1);
   });
 
   it("nie synced + lokale Schichten + Cloud → Konflikt (datensicher)", async () => {
@@ -521,6 +520,33 @@ describe("paralleler Abgleich", () => {
 
     // Die spätere Änderung darf nicht als gesichert gelten.
     expect(mod.getSyncState().pending).toBe(true);
+  });
+});
+
+
+describe("Sync-Timeout (SYNC-LIVE-P1)", () => {
+  it("hängt der Cloud-Fetch → status error/offline, nicht syncing", async () => {
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(mod.getSyncState().status).toBe("synced");
+
+    // Hang forever on next fetch
+    cloud.gate = new Promise<void>(() => {});
+
+    local = makeData(2);
+    changeHook?.(local);
+    await vi.advanceTimersByTimeAsync(2500);
+    await settle();
+    expect(mod.getSyncState().status).toBe("syncing");
+
+    // Advance past SYNC_TIMEOUT_MS
+    await vi.advanceTimersByTimeAsync(mod.SYNC_TIMEOUT_MS + 100);
+    await settle();
+
+    expect(mod.getSyncState().status).not.toBe("syncing");
+    expect(["error", "offline"]).toContain(mod.getSyncState().status);
   });
 });
 

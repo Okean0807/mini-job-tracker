@@ -173,7 +173,9 @@ function BottomNav({ uiMode }: { uiMode: UiMode }) {
                 className="flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 py-2 text-[11px] font-medium leading-tight"
               >
                 <Icon className="size-5 shrink-0" aria-hidden />
-                <span className="w-full truncate text-center">{label}</span>
+                <span className="nav-label w-full max-h-8 overflow-hidden text-center whitespace-normal break-words [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]">
+                  {label}
+                </span>
               </Link>
             </li>
           );
@@ -269,7 +271,7 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="app-shell min-h-screen pb-20">{ready ? <Outlet /> : null}</div>
+      <div className="app-shell min-h-screen pb-28">{ready ? <Outlet /> : null}</div>
 
       {/* Hide nav under wizard/PIN overlays (z-40 under z-60) and while bootstrapping */}
       {ready && !showWizard && !locked ? <BottomNav uiMode={settings.uiMode} /> : null}

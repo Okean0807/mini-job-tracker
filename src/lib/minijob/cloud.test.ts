@@ -78,12 +78,35 @@ describe("decideSync", () => {
     ).toBe("restore");
   });
 
-  it("FIRST_SYNC: Jobs allein ohne Schichten → restore, kein Falsch-Konflikt", () => {
-    // Onboarding legt oft einen Job an und setzt localChangedAt; lastSyncedAt=null.
+  it("FIRST_SYNC: Jobs allein ohne Schichten + remote → conflict (jobs-only survival)", () => {
     expect(
       decideSync({
         ...base,
         hasLocalWorkData: false,
+        hasLocalJobs: true,
+        localChangedAt: 900,
+        lastSyncedAt: null,
+        remoteUpdatedAt: 800,
+      }),
+    ).toBe("conflict");
+    expect(
+      classifySyncSituation({
+        ...base,
+        hasLocalWorkData: false,
+        hasLocalJobs: true,
+        localChangedAt: 900,
+        lastSyncedAt: null,
+        remoteUpdatedAt: 800,
+      }),
+    ).toBe("CONFLICT");
+  });
+
+  it("FIRST_SYNC: keine Jobs und keine Schichten → restore", () => {
+    expect(
+      decideSync({
+        ...base,
+        hasLocalWorkData: false,
+        hasLocalJobs: false,
         localChangedAt: 900,
         lastSyncedAt: null,
         remoteUpdatedAt: 800,
@@ -93,6 +116,7 @@ describe("decideSync", () => {
       classifySyncSituation({
         ...base,
         hasLocalWorkData: false,
+        hasLocalJobs: false,
         localChangedAt: 900,
         lastSyncedAt: null,
         remoteUpdatedAt: 800,

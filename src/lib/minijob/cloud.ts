@@ -4,17 +4,19 @@
  * ## SYNC_SEMANTICS
  *
  * Decisions use a shared `lastSyncedAt` baseline when both sides have changed
- * after a successful sync. Before the first sync, only **shifts** count as
- * local work data — jobs/settings alone do not create a competing version.
+ * after a successful sync. Before the first sync, **shifts** are local work data.
+ * Jobs without shifts on first sync are a competing version → conflict (user chooses).
+ * Settings-only (no jobs, no shifts) still restores from cloud.
  *
  * | Situation | Result |
  * |---|---|
- * | FIRST_SYNC / NEW_DEVICE / EMPTY_DEVICE (no shifts) + cloud exists | **restore** (not conflict) |
+ * | FIRST_SYNC / NEW_DEVICE / EMPTY_DEVICE (no shifts, no jobs) + cloud | **restore** |
+ * | Never synced + has jobs (no shifts) + remote | **conflict** (jobs-only survival) |
  * | DEVICE_CHANGED only (cloud unchanged since baseline) | **push** |
  * | CLOUD_CHANGED only (device unchanged since baseline) | **restore** |
  * | BOTH_CHANGED after shared lastSyncedAt baseline | **conflict** |
  * | Never synced + has shifts + remote exists | **conflict** (data-safe; user chooses) |
- * | Jobs-only / settings-only without shifts before first sync | ≠ local work version → restore |
+ * | Settings-only without jobs/shifts before first sync | → restore |
  *
  * Labels from `classifySyncSituation`: NO_CHANGE | PUSH | RESTORE | CONFLICT | FIRST_SYNC_RESTORE
  */
@@ -35,6 +37,9 @@ export { isValidPayload };
 /* ---------- Sync-Metadaten (pro Gerät, lokal) ---------- */
 
 const META_KEY = "minijob-sync-meta-v1";
+
+/** Max wait for a single cloud fetch/push before surfacing error/offline (not stuck syncing). */
+export const SYNC_TIMEOUT_MS = 45_000;
 
 export type SyncMeta = {
   /** Konto, zu dem diese Metadaten gehören (Gerät kann mehrfach genutzt werden). */
@@ -122,9 +127,14 @@ export type SyncSituation =
 export type SyncDecisionInput = {
   /**
    * Local *work* data = shifts only.
-   * Jobs/settings alone before first sync are not a competing work version.
+   * Settings alone before first sync are not a competing work version.
    */
   hasLocalWorkData: boolean;
+  /**
+   * Local jobs exist (even without shifts). On first sync with remote,
+   * jobs-only devices conflict so the user can keep local vs cloud.
+   */
+  hasLocalJobs?: boolean;
   /** Existiert überhaupt ein Cloud-Stand? */
   hasRemote: boolean;
   localChangedAt: number | null;
@@ -136,14 +146,16 @@ export type SyncDecisionInput = {
  * Konfliktauflösung über Zeitstempel statt der alten Heuristik „leer → laden".
  *
  * - Kein Cloud-Stand → hochladen (sofern lokale Arbeit/Änderungen existieren).
- * - FIRST_SYNC / NEW_DEVICE / EMPTY_DEVICE (keine Schichten) + Cloud → restore
- *   (Jobs/Einstellungen allein zählen nicht als lokale Arbeitsversion).
+ * - FIRST_SYNC / NEW_DEVICE / EMPTY_DEVICE (keine Schichten, keine Jobs) + Cloud → restore
+ *   (Einstellungen allein zählen nicht als lokale Arbeitsversion).
+ * - Nie synchronisiert, Jobs ohne Schichten + Cloud → conflict (jobs-only survival).
  * - Nie synchronisiert, aber lokale Schichten + Cloud → conflict (datensicher).
  * - Cloud unverändert seit letztem Abgleich → lokale Änderungen hochladen.
  * - Cloud neuer als letzter Abgleich UND lokal seither geändert → Konflikt.
  */
 export function decideSync(input: SyncDecisionInput): SyncDecision {
   const { hasLocalWorkData, hasRemote, localChangedAt, lastSyncedAt, remoteUpdatedAt } = input;
+  const hasLocalJobs = Boolean(input.hasLocalJobs);
 
   const remoteAt = remoteUpdatedAt ?? 0;
   const syncedAt = lastSyncedAt ?? 0;
@@ -152,9 +164,12 @@ export function decideSync(input: SyncDecisionInput): SyncDecision {
 
   if (!hasRemote) return hasLocalWorkData || localIsNew ? "push" : "none";
 
-  // FIRST_SYNC / NEW_DEVICE / EMPTY_DEVICE: never synced, no shifts, cloud exists
-  // → restore. Covers settings-only and jobs-only onboarding marks.
-  if (lastSyncedAt == null && !hasLocalWorkData && hasRemote) return "restore";
+  // FIRST_SYNC: never synced, no shifts, cloud exists.
+  // Jobs-only → conflict (user chooses keep local vs cloud). Settings-only → restore.
+  if (lastSyncedAt == null && !hasLocalWorkData && hasRemote) {
+    if (hasLocalJobs) return "conflict";
+    return "restore";
+  }
 
   // Leeres Gerät nach bekanntem Baseline: Cloud laden – außer der leere Stand
   // ist selbst eine bewusste lokale Änderung (z. B. alles gelöscht).
@@ -253,6 +268,26 @@ function payloadOf(data: AppData) {
   return stripDeviceAuthForCloud(data);
 }
 
+/**
+ * Race a cloud I/O promise against SYNC_TIMEOUT_MS so a hung network never
+ * leaves UI status stuck on "syncing".
+ */
+async function withSyncTimeout<T>(promise: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new DOMException("Sync timed out", "TimeoutError"));
+        }, SYNC_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 async function push(data: AppData): Promise<void> {
   if (!userId) throw new Error(t("error.notSignedIn"));
   const updatedAt = new Date();
@@ -308,7 +343,7 @@ export async function backupNow(): Promise<void> {
   if (!userId) throw new Error(t("error.notSignedIn"));
   setState({ status: "syncing", message: null });
   try {
-    await push(getData());
+    await withSyncTimeout(push(getData()));
     setState({ status: "synced", pending: false, message: null, lastSyncedAt: meta.lastSyncedAt });
   } catch (error) {
     failed(error);
@@ -320,7 +355,7 @@ export async function restoreNow(): Promise<boolean> {
   if (!userId) throw new Error(t("error.notSignedIn"));
   setState({ status: "syncing", message: null });
   try {
-    const remote = await fetchRemote();
+    const remote = await withSyncTimeout(fetchRemote());
     if (!remote) {
       setState({ status: "idle", message: null });
       return false;
@@ -376,9 +411,10 @@ async function autoSync(): Promise<void> {
   setState({ status: "syncing", message: null });
   try {
     const local = getData();
-    const remote = await fetchRemote();
+    const remote = await withSyncTimeout(fetchRemote());
     const decision = decideSync({
       hasLocalWorkData: local.shifts.length > 0,
+      hasLocalJobs: local.jobs.length > 0,
       hasRemote: remote !== null,
       localChangedAt: meta.localChangedAt,
       lastSyncedAt: meta.lastSyncedAt,
@@ -390,7 +426,7 @@ async function autoSync(): Promise<void> {
       return;
     }
     if (decision === "restore" && remote) applyRemote(remote);
-    if (decision === "push") await push(local);
+    if (decision === "push") await withSyncTimeout(push(local));
     const changedDuringSync =
       decision !== "restore" && meta.localChangedAt !== null && meta.localChangedAt !== changedAtStart;
     setState({

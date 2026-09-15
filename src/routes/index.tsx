@@ -254,7 +254,7 @@ function DashboardPage() {
       <Button
         size="lg"
         onClick={() => openNew(isoDate(new Date()))}
-        className="fixed bottom-20 right-4 z-40 h-14 rounded-full px-5 shadow-float"
+        className="dash-fab fixed bottom-20 right-4 z-40 h-14 rounded-full px-5 shadow-float"
       >
         <Plus className="size-5" /> {t("dash.newEntry")}
       </Button>

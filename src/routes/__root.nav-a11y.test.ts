@@ -3,6 +3,7 @@
  * Schriftgröße=Sehr groß + Buttongröße=Handschuh-Modus must keep all 6 bottom-nav
  * labels inside their columns (no overflow/overlap/clip off-screen) while
  * preserving usable touch targets. Normal/Standard sizes stay compact.
+ * FAB must not cover main content (padding-bottom on main / raised .dash-fab).
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -15,6 +16,7 @@ import { TEXT_SCALE } from "@/lib/minijob/theme";
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 const rootSrc = readFileSync(join(rootDir, "routes/__root.tsx"), "utf8");
 const stylesSrc = readFileSync(join(rootDir, "styles.css"), "utf8");
+const indexSrc = readFileSync(join(rootDir, "routes/index.tsx"), "utf8");
 
 /** Longest German bottom-nav labels (standard UI shows all 6). */
 const NAV_LABELS = ["Übersicht", "Statistik", "Jobs", "Dokumente", "KI", "Einstellungen"];
@@ -25,19 +27,21 @@ function approxTextWidthPx(text: string, fontSizePx: number): number {
 }
 
 describe("bottom nav a11y layout (Sehr groß + Handschuh)", () => {
-  it("BottomNav flex children allow truncation (min-w-0 + truncate)", () => {
+  it("BottomNav flex children allow two-line wrap (min-w-0 + line-clamp)", () => {
     const fnStart = rootSrc.indexOf("function BottomNav");
     expect(fnStart).toBeGreaterThanOrEqual(0);
     const fn = rootSrc.slice(fnStart, rootSrc.indexOf("\n}\n", fnStart) + 3);
     expect(fn).toMatch(/min-w-0 flex-1/);
-    expect(fn).toMatch(/truncate text-center/);
+    expect(fn).toMatch(/nav-label/);
+    expect(fn).toMatch(/-webkit-line-clamp:2|line-clamp/);
+    expect(fn).toMatch(/whitespace-normal/);
     expect(fn).toMatch(/min-h-11 min-w-0/);
     expect(fn).toMatch(/size-5 shrink-0/);
     expect(fn).toMatch(/aria-label=\{label\}/);
   });
 
   it("app shell class enables glove/large bottom padding overrides", () => {
-    expect(rootSrc).toMatch(/className="app-shell min-h-screen pb-20"/);
+    expect(rootSrc).toMatch(/className="app-shell min-h-screen pb-28"/);
     expect(stylesSrc).toMatch(/\[data-touch="glove"\] \.app-shell/);
     expect(stylesSrc).toMatch(/\[data-touch="large"\] \.app-shell/);
   });
@@ -51,6 +55,16 @@ describe("bottom nav a11y layout (Sehr groß + Handschuh)", () => {
     expect(gloveNav).toMatch(/overflow:\s*hidden/);
     expect(gloveNav).toMatch(/min-width:\s*0/);
     expect(gloveNav).toMatch(/min-height:\s*3\.25rem/);
+    // Two-line wrap under xl without enlarging nav font
+    expect(stylesSrc).toMatch(/\.nav-label/);
+    expect(stylesSrc).toMatch(/-webkit-line-clamp:\s*2/);
+  });
+
+  it("prevents FAB overlap via main padding-bottom and dash-fab raise", () => {
+    expect(indexSrc).toMatch(/dash-fab/);
+    expect(stylesSrc).toMatch(/\.app-shell main\s*\{[^}]*padding-bottom/s);
+    expect(stylesSrc).toMatch(/\[data-touch="glove"\] \.dash-fab/);
+    expect(stylesSrc).toMatch(/\[data-touch="large"\] \.dash-fab/);
   });
 
   it("labels fit a 360px mobile column under xl root + compact nav font", () => {
@@ -63,12 +77,11 @@ describe("bottom nav a11y layout (Sehr groß + Handschuh)", () => {
 
     for (const label of NAV_LABELS) {
       const natural = approxTextWidthPx(label, navFontPx);
-      // Truncation keeps painted text ≤ column; assert natural overflow is handled
-      // by markup (truncate) when natural width exceeds the column.
+      // Two-line clamp keeps painted text ≤ column height; wrap when natural exceeds column.
       if (natural > columnWidth) {
-        expect(rootSrc).toMatch(/truncate/);
+        expect(rootSrc).toMatch(/line-clamp|nav-label/);
       }
-      // With truncate, usable hit area is the full column (≥ 44px-ish touch).
+      // Usable hit area is the full column (≥ 44px-ish touch).
       expect(columnWidth).toBeGreaterThanOrEqual(44);
     }
 
