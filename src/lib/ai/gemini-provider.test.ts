@@ -6,6 +6,7 @@ import {
   extractSourcesFromGrounding,
   GeminiProvider,
   GROUNDING_UNAVAILABLE_NOTE,
+  mapHttpError,
   resolveGeminiConfig,
   withGroundingUnavailableNote,
 } from "./gemini-provider";
@@ -28,6 +29,57 @@ describe("resolveGeminiConfig", () => {
   it("treats blank key as missing", () => {
     const cfg = resolveGeminiConfig({ GEMINI_API_KEY: "  " } as Record<string, string | undefined>);
     expect(cfg.apiKey).toBeUndefined();
+  });
+
+  it("strips surrounding double quotes from key (Vercel paste)", () => {
+    const cfg = resolveGeminiConfig({
+      GEMINI_API_KEY: '  "sk-test-quoted"  ',
+    } as Record<string, string | undefined>);
+    expect(cfg.apiKey).toBe("sk-test-quoted");
+  });
+
+  it("strips surrounding single quotes from key", () => {
+    const cfg = resolveGeminiConfig({
+      GEMINI_API_KEY: "  'sk-test-single'  ",
+    } as Record<string, string | undefined>);
+    expect(cfg.apiKey).toBe("sk-test-single");
+  });
+});
+
+describe("mapHttpError", () => {
+  it("maps 401 → clear unauthorized message", () => {
+    const err = mapHttpError(401, JSON.stringify({ error: { message: "API key not valid" } }));
+    expect(err).toBeInstanceOf(AiGuardError);
+    expect(err.code).toBe("unavailable");
+    expect(err.message).toBe("API-Schlüssel ungültig oder nicht autorisiert.");
+    expect(err.message).not.toMatch(/API key not valid/i);
+  });
+
+  it("maps 404 → model/endpoint message", () => {
+    const err = mapHttpError(404, "model not found");
+    expect(err.code).toBe("unavailable");
+    expect(err.message).toBe("Model oder Endpoint nicht gefunden. Prüfe GEMINI_MODEL.");
+  });
+
+  it("generic fallback includes HTTP status number", () => {
+    const err = mapHttpError(502, "bad gateway");
+    expect(err.code).toBe("unavailable");
+    expect(err.message).toBe("Die KI konnte nicht antworten. (HTTP 502)");
+  });
+
+  it("maps 400 API_KEY / invalid argument without leaking body", () => {
+    const err = mapHttpError(
+      400,
+      JSON.stringify({ error: { status: "INVALID_ARGUMENT", message: "API_KEY_INVALID secret-xyz" } }),
+    );
+    expect(err.message).toBe("Ungültige KI-Anfrage (Schlüssel oder Argumente).");
+    expect(err.message).not.toContain("secret-xyz");
+    expect(err.message).not.toContain("API_KEY_INVALID");
+  });
+
+  it("keeps 429 as rate_limited", () => {
+    const err = mapHttpError(429, "quota");
+    expect(err.code).toBe("rate_limited");
   });
 });
 
@@ -159,9 +211,15 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
     const body = JSON.parse(String(init.body)) as {
       tools?: unknown[];
       systemInstruction?: unknown;
+      contents?: Array<{ role?: string; parts?: unknown }>;
     };
     expect(body.tools).toEqual([{ google_search: {} }]);
     expect(body.systemInstruction).toBeTruthy();
+    // Single-turn contents omit role to match Google curl docs
+    expect(body.contents?.[0]).toEqual({
+      parts: [{ text: expect.stringContaining("Frage:") }],
+    });
+    expect(body.contents?.[0]).not.toHaveProperty("role");
     // Never leak key in returned payload
     expect(JSON.stringify(result)).not.toContain("test-key-not-real");
   });
@@ -223,6 +281,50 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
       expect((e as AiGuardError).code).toBe("unavailable");
       expect((e as Error).message).toMatch(/Free Tier|Kontingent/i);
     }
+  });
+
+  it("maps HTTP 401 → unauthorized message via ask", async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValue(new Response("unauthorized", { status: 401 }));
+
+    await expect(new GeminiProvider().ask({ question: "x", context: "{}" })).rejects.toMatchObject({
+      code: "unavailable",
+      message: "API-Schlüssel ungültig oder nicht autorisiert.",
+    });
+  });
+
+  it("maps HTTP 404 → model message via ask", async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValue(new Response("not found", { status: 404 }));
+
+    await expect(new GeminiProvider().ask({ question: "x", context: "{}" })).rejects.toMatchObject({
+      code: "unavailable",
+      message: "Model oder Endpoint nicht gefunden. Prüfe GEMINI_MODEL.",
+    });
+  });
+
+  it("maps other HTTP errors with status in message", async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValue(new Response("oops", { status: 503 }));
+
+    await expect(new GeminiProvider().ask({ question: "x", context: "{}" })).rejects.toMatchObject({
+      code: "unavailable",
+      message: "Die KI konnte nicht antworten. (HTTP 503)",
+    });
+  });
+
+  it("rethrows duck-typed AiGuardError by name (bundle-safe)", async () => {
+    const provider = new GeminiProvider();
+    const duck = Object.assign(new Error("API-Schlüssel ungültig oder nicht autorisiert."), {
+      name: "AiGuardError",
+      code: "unavailable",
+    });
+    vi.spyOn(
+      provider as unknown as { generate: (...args: unknown[]) => Promise<unknown> },
+      "generate",
+    ).mockRejectedValue(duck);
+
+    await expect(provider.ask({ question: "x", context: "{}" })).rejects.toBe(duck);
   });
 
   it("timeout via AbortSignal maps to unavailable", async () => {

@@ -14,13 +14,29 @@ export const GROUNDING_UNAVAILABLE_NOTE =
   "Hinweis: Eine aktuelle Web-Prüfung ist vorübergehend nicht verfügbar. " +
   "Behandle Angaben zu gesetzlichen Grenzen und aktuellem Recht als allgemeine Orientierung, nicht als verbindliche Auskunft.";
 
+/** Strip surrounding quotes often introduced by Vercel/env paste mistakes. */
+function normalizeEnvSecret(raw: string): string {
+  let value = raw.trim();
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1).trim();
+  }
+  return value;
+}
+
 /** Single config helper — never log or return the API key. */
 export function resolveGeminiConfig(env: Record<string, string | undefined> = process.env): {
   apiKey: string | undefined;
   model: string;
 } {
   const rawKey = env["GEMINI_API_KEY"];
-  const apiKey = typeof rawKey === "string" && rawKey.trim() ? rawKey.trim() : undefined;
+  let apiKey: string | undefined;
+  if (typeof rawKey === "string") {
+    const normalized = normalizeEnvSecret(rawKey);
+    apiKey = normalized ? normalized : undefined;
+  }
   const rawModel = env["GEMINI_MODEL"];
   const model =
     typeof rawModel === "string" && rawModel.trim() ? rawModel.trim() : DEFAULT_MODEL;
@@ -89,7 +105,23 @@ function isGroundingOrToolFailure(status: number, bodyText: string): boolean {
   );
 }
 
-function mapHttpError(status: number, bodyText: string): AiGuardError {
+function isAiGuardErrorLike(error: unknown): error is AiGuardError {
+  return (
+    error instanceof AiGuardError ||
+    (typeof error === "object" &&
+      error !== null &&
+      (error as { name?: string }).name === "AiGuardError")
+  );
+}
+
+/** Map Gemini HTTP failures to safe user-facing AiGuardError — never include API key or raw body. */
+export function mapHttpError(status: number, bodyText: string): AiGuardError {
+  if (status === 401) {
+    return new AiGuardError(
+      "unavailable",
+      "API-Schlüssel ungültig oder nicht autorisiert.",
+    );
+  }
   if (status === 429) {
     return new AiGuardError(
       "rate_limited",
@@ -109,13 +141,27 @@ function mapHttpError(status: number, bodyText: string): AiGuardError {
       "KI-Zugriff verweigert (API-Schlüssel oder Kontingent). Bitte Konfiguration prüfen.",
     );
   }
-  if (status === 400 && /quota|RESOURCE_EXHAUSTED/i.test(bodyText)) {
+  if (status === 404) {
     return new AiGuardError(
       "unavailable",
-      "KI-Kontingent (Free Tier) aufgebraucht. Bitte später erneut versuchen.",
+      "Model oder Endpoint nicht gefunden. Prüfe GEMINI_MODEL.",
     );
   }
-  return new AiGuardError("unavailable", "Die KI konnte nicht antworten.");
+  if (status === 400) {
+    if (/quota|RESOURCE_EXHAUSTED/i.test(bodyText)) {
+      return new AiGuardError(
+        "unavailable",
+        "KI-Kontingent (Free Tier) aufgebraucht. Bitte später erneut versuchen.",
+      );
+    }
+    if (/API_KEY|API key|invalid.?argument|INVALID_ARGUMENT/i.test(bodyText)) {
+      return new AiGuardError(
+        "unavailable",
+        "Ungültige KI-Anfrage (Schlüssel oder Argumente).",
+      );
+    }
+  }
+  return new AiGuardError("unavailable", `Die KI konnte nicht antworten. (HTTP ${status})`);
 }
 
 /** Append clear note when web verification / grounding is unavailable. */
@@ -144,7 +190,7 @@ export class GeminiProvider implements AIProvider {
     try {
       return await this.generate(apiKey, model, language, userText, signal, true);
     } catch (error) {
-      if (error instanceof AiGuardError) throw error;
+      if (isAiGuardErrorLike(error)) throw error;
       if (isAbortOrTimeoutError(error)) {
         throw new AiGuardError("unavailable", ASK_GATEWAY_TIMEOUT_MESSAGE);
       }
@@ -165,9 +211,9 @@ export class GeminiProvider implements AIProvider {
       systemInstruction: {
         parts: [{ text: buildSystemInstruction(language) }],
       },
+      // Match Google curl examples: single-turn contents omit role.
       contents: [
         {
-          role: "user",
           parts: [{ text: userText }],
         },
       ],
