@@ -14,55 +14,70 @@ import {
 } from "./gemini-provider";
 
 describe("normalizeGeminiModelId", () => {
-  it("defaults empty/undefined to gemini-2.5-flash", () => {
-    expect(normalizeGeminiModelId(undefined)).toBe("gemini-2.5-flash");
-    expect(normalizeGeminiModelId("")).toBe("gemini-2.5-flash");
-    expect(normalizeGeminiModelId("   ")).toBe("gemini-2.5-flash");
-    expect(normalizeGeminiModelId('""')).toBe("gemini-2.5-flash");
+  it("defaults empty/undefined to gemini-3.6-flash", () => {
+    expect(normalizeGeminiModelId(undefined)).toBe("gemini-3.6-flash");
+    expect(normalizeGeminiModelId("")).toBe("gemini-3.6-flash");
+    expect(normalizeGeminiModelId("   ")).toBe("gemini-3.6-flash");
+    expect(normalizeGeminiModelId('""')).toBe("gemini-3.6-flash");
   });
 
   it("trims and strips surrounding quotes", () => {
     expect(normalizeGeminiModelId('  "gemini-2.5-pro"  ')).toBe("gemini-2.5-pro");
-    expect(normalizeGeminiModelId("  'gemini-2.5-flash'  ")).toBe("gemini-2.5-flash");
+    expect(normalizeGeminiModelId("  'gemini-3.6-flash'  ")).toBe("gemini-3.6-flash");
   });
 
   it("strips a single models/ prefix", () => {
-    expect(normalizeGeminiModelId("models/gemini-2.5-flash")).toBe("gemini-2.5-flash");
+    expect(normalizeGeminiModelId("models/gemini-3.6-flash")).toBe("gemini-3.6-flash");
     expect(normalizeGeminiModelId('  "models/gemini-2.5-pro"  ')).toBe("gemini-2.5-pro");
-    expect(normalizeGeminiModelId("models/")).toBe("gemini-2.5-flash");
+    expect(normalizeGeminiModelId("models/")).toBe("gemini-3.6-flash");
+  });
+
+  it("remaps deprecated gemini-2.5-flash ids for new API users", () => {
+    expect(normalizeGeminiModelId("gemini-2.5-flash")).toBe("gemini-3.6-flash");
+    expect(normalizeGeminiModelId("gemini-2.5-flash-lite")).toBe("gemini-3.5-flash-lite");
+    expect(normalizeGeminiModelId("models/gemini-2.5-flash")).toBe("gemini-3.6-flash");
+    expect(normalizeGeminiModelId('  "models/gemini-2.5-flash-lite"  ')).toBe(
+      "gemini-3.5-flash-lite",
+    );
   });
 });
 
 describe("buildGenerateContentUrl", () => {
   it("builds exact generateContent URL without double models/", () => {
-    expect(buildGenerateContentUrl("gemini-2.5-flash")).toBe(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+    expect(buildGenerateContentUrl("gemini-3.6-flash")).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
     );
   });
 
   it("sanitizes models/ prefix and quotes so URL has no double models/", () => {
-    expect(buildGenerateContentUrl("models/gemini-2.5-flash")).toBe(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+    expect(buildGenerateContentUrl("models/gemini-3.6-flash")).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
     );
     expect(buildGenerateContentUrl('"models/gemini-2.5-pro"')).toBe(
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent",
     );
   });
 
+  it("remaps deprecated model id in URL", () => {
+    expect(buildGenerateContentUrl("gemini-2.5-flash")).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
+    );
+  });
+
   it("leaves dots unencoded and has a single :generateContent suffix", () => {
-    const url = buildGenerateContentUrl("gemini-2.5-flash");
-    expect(url).toContain("gemini-2.5-flash");
-    expect(url).not.toContain("gemini-2%2E5-flash");
+    const url = buildGenerateContentUrl("gemini-3.6-flash");
+    expect(url).toContain("gemini-3.6-flash");
+    expect(url).not.toContain("gemini-3%2E6-flash");
     expect(url.match(/:generateContent/g)?.length).toBe(1);
     expect(url.match(/\/models\//g)?.length).toBe(1);
   });
 });
 
 describe("resolveGeminiConfig", () => {
-  it("defaults model to gemini-2.5-flash", () => {
+  it("defaults model to gemini-3.6-flash", () => {
     const cfg = resolveGeminiConfig({ GEMINI_API_KEY: "k" } as Record<string, string | undefined>);
     expect(cfg.apiKey).toBe("k");
-    expect(cfg.model).toBe("gemini-2.5-flash");
+    expect(cfg.model).toBe("gemini-3.6-flash");
   });
 
   it("reads GEMINI_MODEL when set", () => {
@@ -73,13 +88,13 @@ describe("resolveGeminiConfig", () => {
     expect(cfg.model).toBe("gemini-2.5-pro");
   });
 
-  it("sanitizes quoted and models/-prefixed GEMINI_MODEL", () => {
+  it("sanitizes quoted and models/-prefixed GEMINI_MODEL and remaps deprecated", () => {
     expect(
       resolveGeminiConfig({
         GEMINI_API_KEY: "k",
         GEMINI_MODEL: '  "models/gemini-2.5-flash"  ',
       } as Record<string, string | undefined>).model,
-    ).toBe("gemini-2.5-flash");
+    ).toBe("gemini-3.6-flash");
   });
 
   it("treats blank key as missing", () => {
@@ -262,7 +277,7 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
     );
     expect(init.headers).toMatchObject({ "x-goog-api-key": "test-key-not-real" });
     const body = JSON.parse(String(init.body)) as {
@@ -278,6 +293,25 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
     });
     // Never leak key in returned payload
     expect(JSON.stringify(result)).not.toContain("test-key-not-real");
+  });
+
+  it("Production GEMINI_MODEL=gemini-2.5-flash remaps request URL to gemini-3.6-flash", async () => {
+    process.env["GEMINI_MODEL"] = "gemini-2.5-flash";
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          candidates: [{ content: { parts: [{ text: "OK" }] } }],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await new GeminiProvider().ask({ question: "x", context: "{}" });
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent",
+    );
   });
 
   it("malformed grounding in API response → answer without invented sources", async () => {

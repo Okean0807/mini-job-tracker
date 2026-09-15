@@ -8,7 +8,7 @@ import type { AIProvider } from "@/lib/ai/provider";
 import type { AskRequest, AskResponse, AskSource } from "@/lib/ai/types";
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
-const DEFAULT_MODEL = "gemini-2.5-flash";
+const DEFAULT_MODEL = "gemini-3.6-flash";
 
 export const GROUNDING_UNAVAILABLE_NOTE =
   "Hinweis: Eine aktuelle Web-Prüfung ist vorübergehend nicht verfügbar. " +
@@ -26,9 +26,15 @@ function normalizeEnvSecret(raw: string): string {
   return value;
 }
 
+/** Deprecated Gemini model ids that 404 for new API users → current replacements. */
+const DEPRECATED_GEMINI_MODEL_REMAP: Record<string, string> = {
+  "gemini-2.5-flash": "gemini-3.6-flash",
+  "gemini-2.5-flash-lite": "gemini-3.5-flash-lite",
+};
+
 /**
  * Normalize GEMINI_MODEL: trim, strip surrounding quotes, strip a single
- * leading `models/` prefix. Empty after sanitize → DEFAULT_MODEL.
+ * leading `models/` prefix, remap deprecated ids. Empty after sanitize → DEFAULT_MODEL.
  */
 export function normalizeGeminiModelId(raw: string | undefined): string {
   if (typeof raw !== "string") return DEFAULT_MODEL;
@@ -36,7 +42,8 @@ export function normalizeGeminiModelId(raw: string | undefined): string {
   if (value.startsWith("models/")) {
     value = value.slice("models/".length).trim();
   }
-  return value ? value : DEFAULT_MODEL;
+  if (!value) return DEFAULT_MODEL;
+  return DEPRECATED_GEMINI_MODEL_REMAP[value] ?? value;
 }
 
 /** Build generateContent URL — never double `models/` or append `:generateContent` twice. */
