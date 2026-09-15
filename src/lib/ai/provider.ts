@@ -1,11 +1,13 @@
-import type { AskRequest, AskResponse } from "@/lib/ai/types";
-import { GeminiProvider } from "@/lib/ai/gemini-provider";
+import { OrchestratingAIProvider } from "@/lib/ai/orchestrator";
+import type { AIProvider } from "@/lib/ai/types";
 
-export interface AIProvider {
-  ask(req: AskRequest, opts?: { signal?: AbortSignal }): Promise<AskResponse>;
-}
+export type { AIProvider } from "@/lib/ai/types";
 
-/** Default KI provider — Gemini 2.5 Flash with Google Search grounding. */
+/**
+ * Default KI provider:
+ * - Tavily Free = primary WebSearchProvider (current-info questions)
+ * - Gemini 3.6 Flash = reasoning only (no Google Search grounding)
+ */
 export function createDefaultProvider(): AIProvider {
-  return new GeminiProvider();
+  return new OrchestratingAIProvider();
 }

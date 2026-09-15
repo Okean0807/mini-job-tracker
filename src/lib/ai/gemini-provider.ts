@@ -4,8 +4,7 @@ import {
   isAbortOrTimeoutError,
 } from "@/lib/ai-ask";
 import { AiGuardError } from "@/lib/ai-guard";
-import type { AIProvider } from "@/lib/ai/provider";
-import type { AskRequest, AskResponse, AskSource } from "@/lib/ai/types";
+import type { AIProvider, AskRequest, AskResponse, AskSource } from "@/lib/ai/types";
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = "gemini-3.6-flash";
@@ -72,8 +71,10 @@ function buildSystemInstruction(language: string): string {
     `Du bist ein informationaler Arbeitsberater in der App MiniJob Tracker (Themen: Minijob, Arbeitszeit, Lohn, Urlaub, Krankheit, Feiertage, Arbeitsrecht, Mindestlohn, Verdienstgrenzen). ` +
     `Antworte immer auf ${language}, klar und konkret. ` +
     "Du bist KEIN Anwalt und gibst keine Rechtsberatung. Unterscheide ausdrücklich zwischen allgemeiner Information und rechtlicher Beratung. " +
-    "Erfinde niemals Gesetze, Paragraphen, Grenzwerte oder Urteile. Für sich ändernde Limits und aktuelles Recht nutze die Web-Suche (Google Search Grounding) und bevorzugt deutsche Quellen (z. B. minijob-zentrale.de, bmas.de, gesetze-im-internet.de). " +
-    "Kennzeichne Unsicherheit offen. Unterscheide bundesweite Regeln von betrieblichen/tariflichen Regelungen. " +
+    "Erfinde niemals Gesetze, Paragraphen, Grenzwerte, Urteile oder URLs. " +
+    "Wenn dir Suchergebnisse bereitgestellt werden, stütze aktuelle Grenzwerte und Rechtsangaben bevorzugt darauf und nenne nur URLs aus diesen Ergebnissen. " +
+    "Wenn keine Suchergebnisse vorliegen, kennzeichne Unsicherheit offen und erfinde keine Quellen. " +
+    "Unterscheide bundesweite Regeln von betrieblichen/tariflichen Regelungen. " +
     "Du erhältst die Arbeitszeit-Daten des Nutzers als JSON-Zusammenfassung: nutze sie für persönliche Berechnungen, nenne Zahlen mit Einheit (Stunden bzw. Euro) und weise auf Trends, Muster oder die Minijob-Grenze hin. " +
     "Für Prognosen nutze Durchschnitte der vorhandenen Monate und kennzeichne sie als Schätzung. Wenn Daten fehlen, sage das offen."
   );
@@ -93,7 +94,7 @@ type GeminiGenerateResponse = {
   error?: { message?: string; status?: string; code?: number };
 };
 
-/** Extract sources from groundingMetadata — never invent citations. */
+/** Extract sources from groundingMetadata — never invent citations. Kept for tests/compat; production sources come from Tavily. */
 export function extractSourcesFromGrounding(metadata: unknown): AskSource[] {
   if (!metadata || typeof metadata !== "object") return [];
   const chunks = (metadata as { groundingChunks?: unknown }).groundingChunks;
@@ -189,6 +190,7 @@ export function withGroundingUnavailableNote(response: AskResponse): AskResponse
   return { answer };
 }
 
+/** Gemini reasoning provider — generateContent only, no tools or Google Search grounding. */
 export class GeminiProvider implements AIProvider {
   async ask(req: AskRequest, opts?: { signal?: AbortSignal }): Promise<AskResponse> {
     const { apiKey, model } = resolveGeminiConfig();
@@ -201,7 +203,7 @@ export class GeminiProvider implements AIProvider {
     const signal = opts?.signal ?? AbortSignal.timeout(ASK_GATEWAY_TIMEOUT_MS);
 
     try {
-      return await this.generate(apiKey, model, language, userText, signal, true);
+      return await this.generate(apiKey, model, language, userText, signal);
     } catch (error) {
       if (isAiGuardErrorLike(error)) throw error;
       if (isAbortOrTimeoutError(error)) {
@@ -217,7 +219,6 @@ export class GeminiProvider implements AIProvider {
     language: string,
     userText: string,
     signal: AbortSignal,
-    withGrounding: boolean,
   ): Promise<AskResponse> {
     const url = buildGenerateContentUrl(model);
     const body: Record<string, unknown> = {
@@ -231,9 +232,6 @@ export class GeminiProvider implements AIProvider {
         },
       ],
     };
-    if (withGrounding) {
-      body["tools"] = [{ google_search: {} }];
-    }
 
     let response: Response;
     try {
@@ -254,11 +252,6 @@ export class GeminiProvider implements AIProvider {
     const bodyText = await response.text();
 
     if (!response.ok) {
-      // Always retry once without tools before mapping the HTTP error.
-      if (withGrounding) {
-        const fallback = await this.generate(apiKey, model, language, userText, signal, false);
-        return withGroundingUnavailableNote(fallback);
-      }
       throw mapHttpError(response.status, bodyText);
     }
 
@@ -276,11 +269,7 @@ export class GeminiProvider implements AIProvider {
         .join("")
         .trim() || "Keine Antwort erhalten.";
 
-    const sources = extractSourcesFromGrounding(candidate?.groundingMetadata);
-
-    if (sources.length > 0) {
-      return { answer, sources };
-    }
+    // Production path does not use Gemini grounding; ignore any residual metadata.
     return { answer };
   }
 }

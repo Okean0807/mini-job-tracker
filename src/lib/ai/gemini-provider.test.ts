@@ -237,7 +237,7 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("maps grounding metadata → sources via generateContent", async () => {
+  it("plain generateContent only — no google_search tools", async () => {
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
     fetchMock.mockResolvedValue(
       new Response(
@@ -245,16 +245,6 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
           candidates: [
             {
               content: { parts: [{ text: "Die Minijob-Grenze liegt aktuell bei …" }] },
-              groundingMetadata: {
-                groundingChunks: [
-                  {
-                    web: {
-                      uri: "https://www.minijob-zentrale.de/",
-                      title: "Minijob-Zentrale",
-                    },
-                  },
-                ],
-              },
             },
           ],
         }),
@@ -270,9 +260,7 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
     });
 
     expect(result.answer).toContain("Minijob-Grenze");
-    expect(result.sources).toEqual([
-      { url: "https://www.minijob-zentrale.de/", title: "Minijob-Zentrale" },
-    ]);
+    expect(result.sources).toBeUndefined();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -282,16 +270,17 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
     expect(init.headers).toMatchObject({ "x-goog-api-key": "test-key-not-real" });
     const body = JSON.parse(String(init.body)) as {
       tools?: unknown[];
-      systemInstruction?: unknown;
+      systemInstruction?: { parts?: Array<{ text?: string }> };
       contents?: Array<{ role?: string; parts?: unknown }>;
     };
-    expect(body.tools).toEqual([{ google_search: {} }]);
-    expect(body.systemInstruction).toBeTruthy();
+    expect(body.tools).toBeUndefined();
+    expect(JSON.stringify(body)).not.toMatch(/google_search/);
+    expect(body.systemInstruction?.parts?.[0]?.text).toMatch(/Suchergebnisse/);
+    expect(body.systemInstruction?.parts?.[0]?.text).not.toMatch(/Google Search Grounding/i);
     expect(body.contents?.[0]).toEqual({
       role: "user",
       parts: [{ text: expect.stringContaining("Frage:") }],
     });
-    // Never leak key in returned payload
     expect(JSON.stringify(result)).not.toContain("test-key-not-real");
   });
 
@@ -314,7 +303,7 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
     );
   });
 
-  it("malformed grounding in API response → answer without invented sources", async () => {
+  it("ignores residual grounding metadata — no invented sources from Gemini", async () => {
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
     fetchMock.mockResolvedValue(
       new Response(
@@ -322,7 +311,11 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
           candidates: [
             {
               content: { parts: [{ text: "Du hast 12 Stunden gearbeitet." }] },
-              groundingMetadata: { groundingChunks: [{ broken: true }] },
+              groundingMetadata: {
+                groundingChunks: [
+                  { web: { uri: "https://example.com", title: "Should be ignored" } },
+                ],
+              },
             },
           ],
         }),
@@ -338,11 +331,9 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
     expect(result.sources).toBeUndefined();
   });
 
-  it("maps HTTP 429 → rate_limited AiGuardError", async () => {
+  it("maps HTTP 429 → rate_limited AiGuardError (single request, no grounding retry)", async () => {
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
-    fetchMock.mockImplementation(
-      async () => new Response("quota", { status: 429 }),
-    );
+    fetchMock.mockImplementation(async () => new Response("quota", { status: 429 }));
 
     try {
       await new GeminiProvider().ask({ question: "x", context: "{}" });
@@ -352,6 +343,7 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
       expect(e).toMatchObject({ code: "rate_limited" });
       expect((e as Error).message).toMatch(/Kontingent|Anfragen/i);
     }
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("maps HTTP 403 quota → clear free-tier/quota message", async () => {
@@ -371,6 +363,7 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
       expect((e as AiGuardError).code).toBe("unavailable");
       expect((e as Error).message).toMatch(/Free Tier|Kontingent/i);
     }
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("maps HTTP 401 → unauthorized message via ask", async () => {
@@ -381,10 +374,10 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
       code: "unavailable",
       message: "API-Schlüssel ungültig oder nicht autorisiert.",
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("maps HTTP 404 → model message via ask (after plain retry also fails)", async () => {
+  it("maps HTTP 404 → model message via ask", async () => {
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
     fetchMock.mockImplementation(async () => new Response("not found", { status: 404 }));
 
@@ -392,7 +385,7 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
       code: "unavailable",
       message: "Model oder Endpoint nicht gefunden. Prüfe GEMINI_MODEL.",
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("maps other HTTP errors with status in message", async () => {
@@ -403,7 +396,7 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
       code: "unavailable",
       message: "Die KI konnte nicht antworten. (HTTP 503)",
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("rethrows duck-typed AiGuardError by name (bundle-safe)", async () => {
@@ -449,68 +442,5 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
       code: "unavailable",
       message: expect.stringMatching(/rechtzeitig/i),
     });
-  });
-
-  it("grounding tool failure → still answers with unavailable note", async () => {
-    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
-    fetchMock
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ error: { message: "google_search not available" } }), {
-          status: 400,
-        }),
-      )
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            candidates: [{ content: { parts: [{ text: "Allgemeine Orientierung." }] } }],
-          }),
-          { status: 200 },
-        ),
-      );
-
-    const result = await new GeminiProvider().ask({ question: "Grenze?", context: "{}" });
-    expect(result.answer).toContain("Allgemeine Orientierung.");
-    expect(result.answer).toContain("Web-Prüfung ist vorübergehend nicht verfügbar");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const plainBody = JSON.parse(String((fetchMock.mock.calls[1] as [string, RequestInit])[1].body));
-    expect(plainBody.tools).toBeUndefined();
-  });
-
-  it("404 with grounding then 200 plain → note appended (no body keyword required)", async () => {
-    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
-    fetchMock
-      .mockResolvedValueOnce(new Response("model not found", { status: 404 }))
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            candidates: [{ content: { parts: [{ text: "Fallback ohne Web-Suche." }] } }],
-          }),
-          { status: 200 },
-        ),
-      );
-
-    const result = await new GeminiProvider().ask({ question: "Grenze?", context: "{}" });
-    expect(result.answer).toContain("Fallback ohne Web-Suche.");
-    expect(result.answer).toContain("Web-Prüfung ist vorübergehend nicht verfügbar");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const [groundingInit, plainInit] = [
-      fetchMock.mock.calls[0] as [string, RequestInit],
-      fetchMock.mock.calls[1] as [string, RequestInit],
-    ];
-    expect(JSON.parse(String(groundingInit[1].body)).tools).toEqual([{ google_search: {} }]);
-    expect(JSON.parse(String(plainInit[1].body)).tools).toBeUndefined();
-  });
-
-  it("both grounding and plain fail → error from plain status", async () => {
-    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
-    fetchMock
-      .mockResolvedValueOnce(new Response("grounding boom", { status: 503 }))
-      .mockResolvedValueOnce(new Response("plain not found", { status: 404 }));
-
-    await expect(new GeminiProvider().ask({ question: "x", context: "{}" })).rejects.toMatchObject({
-      code: "unavailable",
-      message: "Model oder Endpoint nicht gefunden. Prüfe GEMINI_MODEL.",
-    });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
