@@ -149,7 +149,7 @@ describe("initCloudSync", () => {
 
   it("stellt trotz Einstellungs-Marke vor dem ersten Abgleich wieder her (kein Falsch-Konflikt)", async () => {
     // Einrichtungsassistent / Sprache / OAuth setzt localChangedAt, obwohl noch
-    // keine Schichten oder Jobs existieren. Ohne lastSyncedAt darf das nicht als
+    // keine Schichten existieren. Ohne lastSyncedAt darf das nicht als
     // unabhängige lokale Version gegen die Cloud gelten.
     local = makeData(0);
     cloud.remote = { payload: makeData(3), updated_at: new Date().toISOString() };
@@ -191,6 +191,56 @@ describe("initCloudSync", () => {
 
     expect(getSyncState().status).not.toBe("conflict");
     expect(replaced).toHaveLength(1);
+  });
+
+  it("FIRST_SYNC: Jobs ohne Schichten + Cloud → restore (kein Falsch-Konflikt)", async () => {
+    // Onboarding legt Job + Settings an (localChangedAt gesetzt), lastSyncedAt=null.
+    // Jobs allein zählen nicht als lokale Arbeitsversion.
+    local = {
+      ...makeData(0),
+      jobs: [{ id: "j1", name: "Demo", color: "#0d9488", mode: "flex" }],
+    } as unknown as AppData;
+    cloud.remote = { payload: makeData(5), updated_at: new Date().toISOString() };
+    window.localStorage.setItem(
+      "minijob-sync-meta-v1",
+      JSON.stringify({
+        userId: "user-1",
+        localChangedAt: Date.now(),
+        lastSyncedAt: null,
+        remoteSeenAt: null,
+      }),
+    );
+
+    const { initCloudSync, getSyncState } = await loadModule();
+    initCloudSync();
+    await settle();
+
+    expect(getSyncState().status).not.toBe("conflict");
+    expect(replaced).toHaveLength(1);
+    expect(replaced[0]?.shifts).toHaveLength(5);
+    expect(cloud.upserts).toBe(0);
+  });
+
+  it("nie synced + lokale Schichten + Cloud → Konflikt (datensicher)", async () => {
+    local = makeData(2);
+    cloud.remote = { payload: makeData(9), updated_at: new Date().toISOString() };
+    window.localStorage.setItem(
+      "minijob-sync-meta-v1",
+      JSON.stringify({
+        userId: "user-1",
+        localChangedAt: Date.now(),
+        lastSyncedAt: null,
+        remoteSeenAt: null,
+      }),
+    );
+
+    const { initCloudSync, getSyncState } = await loadModule();
+    initCloudSync();
+    await settle();
+
+    expect(getSyncState().status).toBe("conflict");
+    expect(replaced).toHaveLength(0);
+    expect(cloud.upserts).toBe(0);
   });
 
   it("löscht beim Wiederherstellen keinen laufenden Timer", async () => {

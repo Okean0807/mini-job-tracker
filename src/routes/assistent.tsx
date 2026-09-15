@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { Mic, Send, Sparkles } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -14,11 +14,8 @@ import { ASK_CLIENT_TIMEOUT_MS, runAssistantAsk } from "@/lib/ai-ask";
 import { aiClientErrorMessage } from "@/lib/ai-client-error";
 import { askAssistant } from "@/lib/ai.functions";
 import { languageLabel, useT } from "@/lib/i18n";
-import { MONTHS_DE, isoDate, shiftsInMonth, shiftsInYear } from "@/lib/minijob/calc";
-import { monthlyLimitOf, yearlyLimitOf } from "@/lib/minijob/limits";
-import { payrollTotals } from "@/lib/minijob/payroll";
-import { makeResolver } from "@/lib/minijob/resolve";
-import { useAppData } from "@/lib/minijob/store";
+import { buildAssistantContext } from "@/lib/minijob/ai-context";
+import { getData } from "@/lib/minijob/store";
 import { listenOnce, voiceSupported } from "@/lib/minijob/voice";
 
 export const Route = createFileRoute("/assistent")({
@@ -48,7 +45,6 @@ type ChatMessage = {
 
 function AssistantPage() {
   const { t, lang } = useT();
-  const data = useAppData();
   const { status: authStatus } = useAuthSession();
   const call = useServerFn(askAssistant);
   const [question, setQuestion] = useState("");
@@ -63,44 +59,6 @@ function AssistantPage() {
     t("ai.suggestion.patterns"),
   ];
 
-  const context = useMemo(() => {
-    const resolve = makeResolver(data.jobs, data.settings);
-    const year = new Date().getFullYear();
-    const months = MONTHS_DE.map((name, idx) => {
-      const list = shiftsInMonth(data.shifts, year, idx);
-      const totals = payrollTotals(list, resolve, data.shifts);
-      return {
-        monat: name,
-        stunden: Number(totals.workedHours.toFixed(2)),
-        verdienst: Number(totals.earnings.toFixed(2)),
-        eintraege: list.length,
-      };
-    }).filter((m) => m.eintraege > 0);
-
-    const perJob = data.jobs.map((job) => {
-      const list = data.shifts.filter((s) => s.jobId === job.id);
-      const totals = payrollTotals(list, resolve, data.shifts);
-      return {
-        job: job.name,
-        stunden: Number(totals.workedHours.toFixed(2)),
-        verdienst: Number(totals.earnings.toFixed(2)),
-      };
-    });
-
-    const yearList = shiftsInYear(data.shifts, year);
-    const yearTotals = payrollTotals(yearList, resolve, data.shifts);
-    return JSON.stringify({
-      jahr: year,
-      heute: isoDate(new Date()),
-      monatsgrenze: monthlyLimitOf(data.settings, year, new Date().getMonth()),
-      jahresgrenze: yearlyLimitOf(data.settings, year),
-      jahresstunden: Number(yearTotals.workedHours.toFixed(2)),
-      jahresverdienst: Number(yearTotals.earnings.toFixed(2)),
-      monate: months,
-      jobs: perJob,
-    });
-  }, [data]);
-
   async function ask(text: string) {
     const q = text.trim();
     if (!q || busy) return;
@@ -108,6 +66,9 @@ function AssistantPage() {
       toast.error(t("ai.signedOut"));
       return;
     }
+    // Fresh snapshot at click time — avoids stale useMemo closures and makes
+    // currentMonth / hourlyRate / limits explicit for Gemini.
+    const context = buildAssistantContext(getData());
     setMessages((m) => [...m, { role: "user", text: q }]);
     setQuestion("");
     // runAssistantAsk always clears busy (timeout/rejection) — never leave «denkt nach».
