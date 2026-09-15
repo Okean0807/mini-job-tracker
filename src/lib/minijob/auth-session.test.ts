@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  authSessionStatus,
   bindAuthSession,
   oauthRedirectTo,
   sessionAfterAuthEvent,
@@ -85,5 +86,17 @@ describe("bindAuthSession", () => {
     const seen: Array<Session | null> = [];
     bindAuthSession({ auth: { getSession, onAuthStateChange } } as never, (x) => seen.push(x));
     await vi.waitFor(() => expect(seen).toContain(s));
+  });
+});
+
+describe("authSessionStatus", () => {
+  it("is loading while pending regardless of session", () => {
+    expect(authSessionStatus("pending", null)).toBe("loading");
+    expect(authSessionStatus("pending", fakeSession("a@b.c"))).toBe("loading");
+  });
+
+  it("is signed_in / signed_out only after ready", () => {
+    expect(authSessionStatus("ready", fakeSession("a@b.c"))).toBe("signed_in");
+    expect(authSessionStatus("ready", null)).toBe("signed_out");
   });
 });

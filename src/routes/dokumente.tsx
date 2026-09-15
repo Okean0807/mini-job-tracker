@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import type { Session } from "@supabase/supabase-js";
 import { FileText, FolderPlus, Pencil, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { useAuthSession } from "@/hooks/use-auth-session";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 
 import { DocumentDialog } from "@/components/minijob/DocumentDialog";
@@ -16,7 +18,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
 import { useT } from "@/lib/i18n";
 import { formatDate } from "@/lib/minijob/calc";
 import {
@@ -60,7 +61,7 @@ const MAX_SIZE = 20 * 1024 * 1024;
 function DocumentsPage() {
   const { t } = useT();
   const { jobs } = useAppData();
-  const [session, setSession] = useState<Session | null>(null);
+  const { status: authStatus, session } = useAuthSession();
   const [docs, setDocs] = useState<DocumentRow[]>([]);
   const [folders, setFolders] = useState<FolderRow[]>([]);
   const [file, setFile] = useState<File | null>(null);
@@ -77,25 +78,6 @@ function DocumentsPage() {
   const [editDoc, setEditDoc] = useState<DocumentRow | null>(null);
   const [folderDialog, setFolderDialog] = useState(false);
 
-  useEffect(() => {
-    try {
-      void supabase.auth
-        .getSession()
-        .then(({ data }) => setSession(data.session))
-        .catch((error) => {
-          console.error("[dokumente] getSession failed", error);
-          setSession(null);
-        });
-      const { data: sub } = supabase.auth.onAuthStateChange((_e, next) => setSession(next));
-      return () => sub.subscription.unsubscribe();
-    } catch (error) {
-      // Missing Supabase env → treat as signed out (show doc.signedOut UI).
-      console.error("[dokumente] Supabase auth unavailable", error);
-      setSession(null);
-      return undefined;
-    }
-  }, []);
-
   const refresh = useCallback(async () => {
     try {
       const [d, f] = await Promise.all([listDocuments(), listFolders()]);
@@ -107,12 +89,12 @@ function DocumentsPage() {
   }, []);
 
   useEffect(() => {
-    if (session) void refresh();
-    else {
+    if (authStatus === "signed_in" && session) void refresh();
+    else if (authStatus === "signed_out") {
       setDocs([]);
       setFolders([]);
     }
-  }, [session, refresh]);
+  }, [authStatus, session, refresh]);
 
   const allTags = useMemo(
     () => Array.from(new Set(docs.flatMap((d) => d.tags ?? []))).sort(),
@@ -188,7 +170,16 @@ function DocumentsPage() {
       <h1 className="text-2xl font-extrabold tracking-tight">{t("doc.pageTitle")}</h1>
       <p className="mt-1 text-sm text-muted-foreground">{t("doc.subtitle")}</p>
 
-      {!session ? (
+      {authStatus === "loading" ? (
+        <div
+          className="mt-6 rounded-2xl border border-dashed p-8"
+          aria-busy="true"
+          aria-label="loading"
+        >
+          <Skeleton className="mx-auto h-4 w-56" />
+          <Skeleton className="mx-auto mt-3 h-4 w-40" />
+        </div>
+      ) : authStatus === "signed_out" ? (
         <div className="mt-6 rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
           {t("doc.signedOut")}
         </div>

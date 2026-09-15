@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import type { Session } from "@supabase/supabase-js";
 import { CloudDownload, CloudUpload, FileUp, Lock, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -11,7 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { bindAuthSession } from "@/lib/minijob/auth-session";
+import { useAuthSession } from "@/hooks/use-auth-session";
+import { Skeleton } from "@/components/ui/skeleton";
 import { signInWithOAuthProvider } from "@/lib/minijob/oauth-sign-in";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDateDE, formatEuro, formatHours, isoDate } from "@/lib/minijob/calc";
@@ -731,19 +731,8 @@ function SyncStatusRow({
 function CloudSync({ autoBackup }: { autoBackup: boolean }) {
 
   const { t } = useT();
-  const [session, setSession] = useState<Session | null>(null);
+  const { status: authStatus, session } = useAuthSession();
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    try {
-      return bindAuthSession(supabase, setSession);
-    } catch (error) {
-      // Missing Supabase env → treat as signed out (show sign-in UI).
-      console.error("[einstellungen] Supabase auth unavailable", error);
-      setSession(null);
-      return undefined;
-    }
-  }, []);
 
   async function oauth(provider: "google" | "apple") {
     try {
@@ -775,7 +764,18 @@ function CloudSync({ autoBackup }: { autoBackup: boolean }) {
   }
 
 
-  if (!session) {
+  if (authStatus === "loading") {
+    return (
+      <Section title={t("set.account.signIn.title")}>
+        <div aria-busy="true" aria-label="loading" className="space-y-2">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </div>
+      </Section>
+    );
+  }
+
+  if (authStatus === "signed_out" || !session) {
     return (
       <Section title={t("set.account.signIn.title")}>
         <p className="text-xs text-muted-foreground">{t("set.account.signIn.desc")}</p>
