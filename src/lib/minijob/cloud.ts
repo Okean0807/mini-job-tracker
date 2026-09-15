@@ -3,10 +3,10 @@
  *
  * ## SYNC_SEMANTICS
  *
- * Decisions use a shared `lastSyncedAt` baseline when both sides have changed
- * after a successful sync. Before the first sync, **shifts** are local work data.
- * Jobs without shifts on first sync are a competing version → conflict (user chooses).
- * Settings-only (no jobs, no shifts) still restores from cloud.
+ * Decisions use a shared `lastSyncedAt` baseline. **Work** changes (shifts/jobs
+ * fingerprint) are tracked separately from any store write (`localChangedAt`,
+ * including settings). Conflict ONLY when local WORK and cloud both changed
+ * after the baseline — settings-only must not create a false work conflict.
  *
  * | Situation | Result |
  * |---|---|
@@ -14,8 +14,10 @@
  * | Never synced + has jobs (no shifts) + remote | **conflict** (jobs-only survival; not during onboarding / wizard-pending-first-sync) |
  * | Onboarding incomplete or wizardPendingFirstSync + jobs + remote | **restore** (wizard jobs are not competing) |
  * | DEVICE_CHANGED only (cloud unchanged since baseline) | **push** |
- * | CLOUD_CHANGED only (device unchanged since baseline) | **restore** |
- * | BOTH_CHANGED after shared lastSyncedAt baseline | **conflict** |
+ * | CLOUD_CHANGED only (local work unchanged since baseline) | **restore** |
+ * | BOTH work+cloud changed after shared lastSyncedAt | **conflict** |
+ * | Settings-only local change + cloud unchanged | **push** (not conflict) |
+ * | Settings-only local change + cloud new, work unchanged | **restore** |
  * | Never synced + has shifts + remote exists | **conflict** (data-safe; user chooses) |
  * | Settings-only without jobs/shifts before first sync | → restore |
  *
@@ -45,8 +47,15 @@ export const SYNC_TIMEOUT_MS = 15_000;
 export type SyncMeta = {
   /** Konto, zu dem diese Metadaten gehören (Gerät kann mehrfach genutzt werden). */
   userId: string | null;
-  /** Zeitpunkt der letzten lokalen Datenänderung (ms). */
+  /** Zeitpunkt der letzten lokalen Datenänderung (ms) — any store write incl. settings. */
   localChangedAt: number | null;
+  /**
+   * Zeitpunkt der letzten lokalen *Arbeits*-Änderung (Schichten/Jobs-Fingerprint).
+   * Settings-only writes bump `localChangedAt` but not this mark.
+   */
+  localWorkChangedAt?: number | null;
+  /** Last observed fingerprint of shifts+jobs (local-only). */
+  localWorkFingerprint?: string | null;
   /** Zeitpunkt des letzten erfolgreichen Abgleichs mit der Cloud (ms). */
   lastSyncedAt: number | null;
   /** `updated_at` des zuletzt gesehenen Cloud-Standes (ms). */
@@ -62,6 +71,8 @@ export type SyncMeta = {
 const EMPTY_META: SyncMeta = {
   userId: null,
   localChangedAt: null,
+  localWorkChangedAt: null,
+  localWorkFingerprint: null,
   lastSyncedAt: null,
   remoteSeenAt: null,
   wizardPendingFirstSync: false,
@@ -70,11 +81,12 @@ const EMPTY_META: SyncMeta = {
 /**
  * Metadaten für das jetzt angemeldete Konto.
  *
- * Gehören die gespeicherten Stände zu einem anderen Konto, dürfen sie nicht
- * weiterverwendet werden: sonst gilt fremdes `lastSyncedAt` und der Abgleich
- * könnte den Cloud-Stand des neuen Kontos still überschreiben. Die lokale
- * Änderungsmarke bleibt erhalten, damit vorhandene Gerätedaten nicht als
- * "nie geändert" gelten und stillschweigend ersetzt werden.
+ * Gehören die gespeicherten Stände zu einem *anderen* Konto (a→b), dürfen sie
+ * nicht weiterverwendet werden: sonst gilt fremdes `lastSyncedAt` und der
+ * Abgleich könnte den Cloud-Stand des neuen Kontos still überschreiben.
+ *
+ * Erste Bindung `userId: null → id` behält `lastSyncedAt` / `remoteSeenAt`
+ * (kein Fake-Erstsync): sonst entstehen Dauer-Konflikte nach Settings-Änderungen.
  *
  * `hasLocalWorkData = false` bedeutet: das Gerät hat keine Schichten zu verlieren
  * (frische Installation, Erstlogin, Jobs/Einstellungen allein). Dann darf keine
@@ -87,9 +99,32 @@ export function metaForUser(
   hasLocalWorkData = true,
 ): SyncMeta {
   if (current.userId === userId) return current;
+
+  const localChangedAt = hasLocalWorkData
+    ? (current.localChangedAt ?? Date.now())
+    : current.localChangedAt;
+
+  // First bind (null → userId): keep sync baseline; do NOT promote settings-only
+  // localChangedAt into localWorkChangedAt (that caused false conflicts).
+  if (current.userId == null && userId != null) {
+    return {
+      ...current,
+      userId,
+      localChangedAt,
+      localWorkChangedAt: current.localWorkChangedAt ?? null,
+      wizardPendingFirstSync: Boolean(current.wizardPendingFirstSync),
+    };
+  }
+
+  // Real account switch (a→b) or leaving an account: drop foreign baseline.
+  // Invent a work mark when shifts exist so we conflict instead of silent overwrite.
   return {
     userId,
-    localChangedAt: hasLocalWorkData ? (current.localChangedAt ?? Date.now()) : current.localChangedAt,
+    localChangedAt,
+    localWorkChangedAt: hasLocalWorkData
+      ? (current.localWorkChangedAt ?? Date.now())
+      : (current.localWorkChangedAt ?? null),
+    localWorkFingerprint: current.localWorkFingerprint ?? null,
     lastSyncedAt: null,
     remoteSeenAt: null,
     // Keep wizard flag across account bind so finish→sign-in race still restores.
@@ -163,6 +198,8 @@ export type SyncDecisionInput = {
   /** Existiert überhaupt ein Cloud-Stand? */
   hasRemote: boolean;
   localChangedAt: number | null;
+  /** When shifts/jobs fingerprint last changed (settings-only must not set this). */
+  localWorkChangedAt?: number | null;
   lastSyncedAt: number | null;
   remoteUpdatedAt: number | null;
 };
@@ -177,7 +214,8 @@ export type SyncDecisionInput = {
  *   außer ignoreLocalJobsOnFirstSync (Onboarding / Wizard pending).
  * - Nie synchronisiert, aber lokale Schichten + Cloud → conflict (datensicher).
  * - Cloud unverändert seit letztem Abgleich → lokale Änderungen hochladen.
- * - Cloud neuer als letzter Abgleich UND lokal seither geändert → Konflikt.
+ * - Cloud neuer UND lokale *Arbeit* seither geändert → Konflikt.
+ * - Cloud neuer, lokal nur Settings (kein Work-Bump) → restore.
  */
 export function decideSync(input: SyncDecisionInput): SyncDecision {
   const { hasLocalWorkData, hasRemote, localChangedAt, lastSyncedAt, remoteUpdatedAt } = input;
@@ -187,6 +225,7 @@ export function decideSync(input: SyncDecisionInput): SyncDecision {
   const syncedAt = lastSyncedAt ?? 0;
   const remoteIsNew = remoteAt > syncedAt;
   const localIsNew = (localChangedAt ?? 0) > syncedAt;
+  const localWorkIsNew = (input.localWorkChangedAt ?? 0) > syncedAt;
 
   if (!hasRemote) return hasLocalWorkData || localIsNew ? "push" : "none";
 
@@ -203,11 +242,48 @@ export function decideSync(input: SyncDecisionInput): SyncDecision {
   if (!hasLocalWorkData && !localIsNew) return "restore";
   if (!hasLocalWorkData) return remoteIsNew ? "conflict" : "push";
 
-  // Has shifts: never-synced + remote → both sides "new" → conflict (data-safe).
-  if (remoteIsNew && localIsNew) return "conflict";
+  // Has shifts, never-synced + remote: conflict when local claims a change mark
+  // (legacy localChangedAt or work). No marks → restore (empty change history).
+  if (lastSyncedAt == null && hasRemote) {
+    if (localWorkIsNew || localIsNew) return "conflict";
+    return "restore";
+  }
+
+  // Work conflict only when BOTH cloud and local *work* changed after baseline.
+  // Settings-only (localIsNew, !localWorkIsNew) + remoteIsNew → restore.
+  if (remoteIsNew && localWorkIsNew) return "conflict";
   if (remoteIsNew) return "restore";
   if (localIsNew) return "push";
   return "none";
+}
+
+/** Diagnostics for tests/DEV — decision plus computed flags (no secrets). */
+export function explainSyncDecision(input: SyncDecisionInput): {
+  decision: SyncDecision;
+  remoteIsNew: boolean;
+  localIsNew: boolean;
+  localWorkIsNew: boolean;
+  syncedAt: number;
+  remoteAt: number;
+  hasLocalWorkData: boolean;
+  hasRemote: boolean;
+  hasLocalJobs: boolean;
+  ignoreLocalJobsOnFirstSync: boolean;
+} {
+  const remoteAt = input.remoteUpdatedAt ?? 0;
+  const syncedAt = input.lastSyncedAt ?? 0;
+  return {
+    decision: decideSync(input),
+    remoteIsNew: remoteAt > syncedAt,
+    localIsNew: (input.localChangedAt ?? 0) > syncedAt,
+    localWorkIsNew: (input.localWorkChangedAt ?? 0) > syncedAt,
+    syncedAt,
+    remoteAt,
+    hasLocalWorkData: input.hasLocalWorkData,
+    hasRemote: input.hasRemote,
+    hasLocalJobs: Boolean(input.hasLocalJobs),
+    ignoreLocalJobsOnFirstSync: Boolean(input.ignoreLocalJobsOnFirstSync),
+  };
 }
 
 /** Maps decideSync input to situation labels for tests and documentation. */
@@ -323,7 +399,20 @@ async function withSyncTimeout<T>(promise: Promise<T>): Promise<T> {
   }
 }
 
-async function push(data: AppData): Promise<void> {
+/** Stable fingerprint of local work (shifts + jobs). Settings are excluded. */
+export function workFingerprint(data: Pick<AppData, "shifts" | "jobs">): string {
+  return JSON.stringify({ shifts: data.shifts, jobs: data.jobs });
+}
+
+/**
+ * Push local payload. Clears change marks after success.
+ * When `preserveIfNewerThan` is set (autoSync), marks that were bumped *during*
+ * the sync (≠ watermark) are kept so pending retry still runs.
+ */
+async function push(
+  data: AppData,
+  preserveIfNewerThan?: { local: number | null; work: number | null },
+): Promise<void> {
   if (!userId) throw new Error(t("error.notSignedIn"));
   const updatedAt = new Date();
   const { error } = await supabase.from("backups").upsert({
@@ -332,9 +421,24 @@ async function push(data: AppData): Promise<void> {
     updated_at: updatedAt.toISOString(),
   });
   if (error) throw error;
+  const ts = updatedAt.getTime();
+  let nextLocal: number | null = null;
+  let nextWork: number | null = null;
+  if (preserveIfNewerThan) {
+    if (meta.localChangedAt !== null && meta.localChangedAt !== preserveIfNewerThan.local) {
+      nextLocal = meta.localChangedAt;
+    }
+    const workNow = meta.localWorkChangedAt ?? null;
+    if (workNow !== null && workNow !== preserveIfNewerThan.work) {
+      nextWork = workNow;
+    }
+  }
   saveMeta({
-    lastSyncedAt: updatedAt.getTime(),
-    remoteSeenAt: updatedAt.getTime(),
+    lastSyncedAt: ts,
+    remoteSeenAt: ts,
+    localChangedAt: nextLocal,
+    localWorkChangedAt: nextWork,
+    localWorkFingerprint: workFingerprint(data),
     wizardPendingFirstSync: false,
   });
   // Auch automatische Backups als frisch markieren, sonst meldet die
@@ -379,6 +483,8 @@ function applyRemote(remote: { payload: AppData; updatedAt: number }) {
     lastSyncedAt: Date.now(),
     remoteSeenAt: remote.updatedAt,
     localChangedAt: null,
+    localWorkChangedAt: null,
+    localWorkFingerprint: workFingerprint(merged),
     wizardPendingFirstSync: false,
   });
 }
@@ -523,6 +629,7 @@ async function autoSync(): Promise<void> {
   // Änderungsmarke zu Beginn: Änderungen *während* des Abgleichs dürfen nicht
   // als "gesichert" gelten, sonst landen sie nie in der Cloud.
   const changedAtStart = meta.localChangedAt;
+  const workChangedAtStart = meta.localWorkChangedAt ?? null;
   setState({ status: "syncing", message: null });
   armSyncWatchdog(epoch);
   try {
@@ -534,15 +641,20 @@ async function autoSync(): Promise<void> {
       if (epoch !== syncEpoch) return;
       const ignoreLocalJobsOnFirstSync =
         !local.settings.onboarded || Boolean(meta.wizardPendingFirstSync);
-      const decision = decideSync({
+      const decisionInput = {
         hasLocalWorkData: local.shifts.length > 0,
         hasLocalJobs: local.jobs.length > 0,
         ignoreLocalJobsOnFirstSync,
         hasRemote: remote !== null,
         localChangedAt: meta.localChangedAt,
+        localWorkChangedAt: meta.localWorkChangedAt ?? null,
         lastSyncedAt: meta.lastSyncedAt,
         remoteUpdatedAt: remote?.updatedAt ?? null,
-      });
+      };
+      const decision = decideSync(decisionInput);
+      if (decision === "conflict" && import.meta.env.DEV) {
+        console.debug("[cloud] sync conflict", explainSyncDecision(decisionInput));
+      }
 
       if (decision === "conflict") {
         setState({ status: "conflict", pending: true, message: null });
@@ -550,10 +662,18 @@ async function autoSync(): Promise<void> {
       }
       if (decision === "restore" && remote) applyRemote(remote);
       if (epoch !== syncEpoch) return;
-      if (decision === "push") await push(local);
+      if (decision === "push") {
+        await push(local, {
+          local: changedAtStart,
+          work: workChangedAtStart,
+        });
+      }
       if (epoch !== syncEpoch) return;
       const changedDuringSync =
-        decision !== "restore" && meta.localChangedAt !== null && meta.localChangedAt !== changedAtStart;
+        decision !== "restore" &&
+        ((meta.localChangedAt !== null && meta.localChangedAt !== changedAtStart) ||
+          ((meta.localWorkChangedAt ?? null) !== null &&
+            (meta.localWorkChangedAt ?? null) !== workChangedAtStart));
       setState({
         status: "synced",
         pending: changedDuringSync,
@@ -587,7 +707,19 @@ async function autoSync(): Promise<void> {
 function scheduleBackup(data: AppData) {
   // Remote restore must not look like a local edit (would re-enter autoSync).
   if (applyingRemote) return;
-  saveMeta({ localChangedAt: Date.now() });
+  const now = Date.now();
+  const fp = workFingerprint(data);
+  const prevFp = meta.localWorkFingerprint ?? null;
+  const patch: Partial<SyncMeta> = {
+    localChangedAt: now,
+    localWorkFingerprint: fp,
+  };
+  // Only bump work mark when shifts/jobs fingerprint actually changes.
+  // Null prevFp is seeded without bump (initCloudSync / post-sync seed).
+  if (prevFp !== null && prevFp !== fp) {
+    patch.localWorkChangedAt = now;
+  }
+  saveMeta(patch);
   if (!userId || !data.settings.autoBackup) return;
   if (state.status === "conflict") {
     setState({ pending: true });
@@ -637,6 +769,12 @@ export function initCloudSync() {
   initialized = true;
 
   meta = loadMeta();
+  // Seed work fingerprint once so settings-only writes after upgrade do not
+  // look like first-ever work changes.
+  if (meta.localWorkFingerprint == null) {
+    meta = { ...meta, localWorkFingerprint: workFingerprint(getData()) };
+    saveMeta({});
+  }
   setState({ lastSyncedAt: meta.lastSyncedAt });
 
   onDataChange((data) => scheduleBackup(data));

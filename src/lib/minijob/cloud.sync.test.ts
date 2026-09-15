@@ -369,6 +369,47 @@ describe("automatischer Abgleich", () => {
     expect(replaced).toHaveLength(0); // und kein stiller Restore
   });
 
+  it("Settings-only lokal + Cloud neuer → restore (kein Falsch-Konflikt)", async () => {
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(mod.getSyncState().status).toBe("synced");
+
+    cloud.remote = {
+      payload: makeData(9),
+      updated_at: new Date(Date.now() + 60_000).toISOString(),
+    };
+
+    // Same shifts fingerprint; only settings stamp via changeHook
+    local = { ...makeData(1), settings: { autoBackup: true, onboarded: true, language: "en" } } as unknown as AppData;
+    changeHook?.(local);
+    await vi.advanceTimersByTimeAsync(3000);
+    await settle();
+
+    expect(mod.getSyncState().status).not.toBe("conflict");
+    expect(replaced.length).toBeGreaterThanOrEqual(1);
+    expect(replaced[replaced.length - 1]?.shifts).toHaveLength(9);
+  });
+
+  it("Settings-only lokal + Cloud unverändert → push", async () => {
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(mod.getSyncState().status).toBe("synced");
+    const before = cloud.upserts;
+
+    local = { ...makeData(1), settings: { autoBackup: true, onboarded: true, language: "de" } } as unknown as AppData;
+    changeHook?.(local);
+    await vi.advanceTimersByTimeAsync(3000);
+    await settle();
+
+    expect(mod.getSyncState().status).toBe("synced");
+    expect(cloud.upserts).toBe(before + 1);
+    expect(replaced).toHaveLength(0);
+  });
+
   it("löst den Konflikt zugunsten der lokalen Daten auf", async () => {
     const mod = await loadModule();
     mod.initCloudSync();
