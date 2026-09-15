@@ -3,13 +3,60 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AiGuardError } from "@/lib/ai-guard";
 
 import {
+  buildGenerateContentUrl,
   extractSourcesFromGrounding,
   GeminiProvider,
   GROUNDING_UNAVAILABLE_NOTE,
   mapHttpError,
+  normalizeGeminiModelId,
   resolveGeminiConfig,
   withGroundingUnavailableNote,
 } from "./gemini-provider";
+
+describe("normalizeGeminiModelId", () => {
+  it("defaults empty/undefined to gemini-2.5-flash", () => {
+    expect(normalizeGeminiModelId(undefined)).toBe("gemini-2.5-flash");
+    expect(normalizeGeminiModelId("")).toBe("gemini-2.5-flash");
+    expect(normalizeGeminiModelId("   ")).toBe("gemini-2.5-flash");
+    expect(normalizeGeminiModelId('""')).toBe("gemini-2.5-flash");
+  });
+
+  it("trims and strips surrounding quotes", () => {
+    expect(normalizeGeminiModelId('  "gemini-2.5-pro"  ')).toBe("gemini-2.5-pro");
+    expect(normalizeGeminiModelId("  'gemini-2.5-flash'  ")).toBe("gemini-2.5-flash");
+  });
+
+  it("strips a single models/ prefix", () => {
+    expect(normalizeGeminiModelId("models/gemini-2.5-flash")).toBe("gemini-2.5-flash");
+    expect(normalizeGeminiModelId('  "models/gemini-2.5-pro"  ')).toBe("gemini-2.5-pro");
+    expect(normalizeGeminiModelId("models/")).toBe("gemini-2.5-flash");
+  });
+});
+
+describe("buildGenerateContentUrl", () => {
+  it("builds exact generateContent URL without double models/", () => {
+    expect(buildGenerateContentUrl("gemini-2.5-flash")).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+    );
+  });
+
+  it("sanitizes models/ prefix and quotes so URL has no double models/", () => {
+    expect(buildGenerateContentUrl("models/gemini-2.5-flash")).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+    );
+    expect(buildGenerateContentUrl('"models/gemini-2.5-pro"')).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent",
+    );
+  });
+
+  it("leaves dots unencoded and has a single :generateContent suffix", () => {
+    const url = buildGenerateContentUrl("gemini-2.5-flash");
+    expect(url).toContain("gemini-2.5-flash");
+    expect(url).not.toContain("gemini-2%2E5-flash");
+    expect(url.match(/:generateContent/g)?.length).toBe(1);
+    expect(url.match(/\/models\//g)?.length).toBe(1);
+  });
+});
 
 describe("resolveGeminiConfig", () => {
   it("defaults model to gemini-2.5-flash", () => {
@@ -24,6 +71,15 @@ describe("resolveGeminiConfig", () => {
       GEMINI_MODEL: " gemini-2.5-pro ",
     } as Record<string, string | undefined>);
     expect(cfg.model).toBe("gemini-2.5-pro");
+  });
+
+  it("sanitizes quoted and models/-prefixed GEMINI_MODEL", () => {
+    expect(
+      resolveGeminiConfig({
+        GEMINI_API_KEY: "k",
+        GEMINI_MODEL: '  "models/gemini-2.5-flash"  ',
+      } as Record<string, string | undefined>).model,
+    ).toBe("gemini-2.5-flash");
   });
 
   it("treats blank key as missing", () => {
@@ -205,8 +261,9 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toContain("generativelanguage.googleapis.com");
-    expect(url).toContain("gemini-2.5-flash:generateContent");
+    expect(url).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+    );
     expect(init.headers).toMatchObject({ "x-goog-api-key": "test-key-not-real" });
     const body = JSON.parse(String(init.body)) as {
       tools?: unknown[];
@@ -215,11 +272,10 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
     };
     expect(body.tools).toEqual([{ google_search: {} }]);
     expect(body.systemInstruction).toBeTruthy();
-    // Single-turn contents omit role to match Google curl docs
     expect(body.contents?.[0]).toEqual({
+      role: "user",
       parts: [{ text: expect.stringContaining("Frage:") }],
     });
-    expect(body.contents?.[0]).not.toHaveProperty("role");
     // Never leak key in returned payload
     expect(JSON.stringify(result)).not.toContain("test-key-not-real");
   });
@@ -285,32 +341,35 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
 
   it("maps HTTP 401 → unauthorized message via ask", async () => {
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
-    fetchMock.mockResolvedValue(new Response("unauthorized", { status: 401 }));
+    fetchMock.mockImplementation(async () => new Response("unauthorized", { status: 401 }));
 
     await expect(new GeminiProvider().ask({ question: "x", context: "{}" })).rejects.toMatchObject({
       code: "unavailable",
       message: "API-Schlüssel ungültig oder nicht autorisiert.",
     });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("maps HTTP 404 → model message via ask", async () => {
+  it("maps HTTP 404 → model message via ask (after plain retry also fails)", async () => {
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
-    fetchMock.mockResolvedValue(new Response("not found", { status: 404 }));
+    fetchMock.mockImplementation(async () => new Response("not found", { status: 404 }));
 
     await expect(new GeminiProvider().ask({ question: "x", context: "{}" })).rejects.toMatchObject({
       code: "unavailable",
       message: "Model oder Endpoint nicht gefunden. Prüfe GEMINI_MODEL.",
     });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("maps other HTTP errors with status in message", async () => {
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
-    fetchMock.mockResolvedValue(new Response("oops", { status: 503 }));
+    fetchMock.mockImplementation(async () => new Response("oops", { status: 503 }));
 
     await expect(new GeminiProvider().ask({ question: "x", context: "{}" })).rejects.toMatchObject({
       code: "unavailable",
       message: "Die KI konnte nicht antworten. (HTTP 503)",
     });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("rethrows duck-typed AiGuardError by name (bundle-safe)", async () => {
@@ -378,6 +437,46 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
     const result = await new GeminiProvider().ask({ question: "Grenze?", context: "{}" });
     expect(result.answer).toContain("Allgemeine Orientierung.");
     expect(result.answer).toContain("Web-Prüfung ist vorübergehend nicht verfügbar");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const plainBody = JSON.parse(String((fetchMock.mock.calls[1] as [string, RequestInit])[1].body));
+    expect(plainBody.tools).toBeUndefined();
+  });
+
+  it("404 with grounding then 200 plain → note appended (no body keyword required)", async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock
+      .mockResolvedValueOnce(new Response("model not found", { status: 404 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            candidates: [{ content: { parts: [{ text: "Fallback ohne Web-Suche." }] } }],
+          }),
+          { status: 200 },
+        ),
+      );
+
+    const result = await new GeminiProvider().ask({ question: "Grenze?", context: "{}" });
+    expect(result.answer).toContain("Fallback ohne Web-Suche.");
+    expect(result.answer).toContain("Web-Prüfung ist vorübergehend nicht verfügbar");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [groundingInit, plainInit] = [
+      fetchMock.mock.calls[0] as [string, RequestInit],
+      fetchMock.mock.calls[1] as [string, RequestInit],
+    ];
+    expect(JSON.parse(String(groundingInit[1].body)).tools).toEqual([{ google_search: {} }]);
+    expect(JSON.parse(String(plainInit[1].body)).tools).toBeUndefined();
+  });
+
+  it("both grounding and plain fail → error from plain status", async () => {
+    const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+    fetchMock
+      .mockResolvedValueOnce(new Response("grounding boom", { status: 503 }))
+      .mockResolvedValueOnce(new Response("plain not found", { status: 404 }));
+
+    await expect(new GeminiProvider().ask({ question: "x", context: "{}" })).rejects.toMatchObject({
+      code: "unavailable",
+      message: "Model oder Endpoint nicht gefunden. Prüfe GEMINI_MODEL.",
+    });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
