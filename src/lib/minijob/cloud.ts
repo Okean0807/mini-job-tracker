@@ -39,7 +39,7 @@ export { isValidPayload };
 const META_KEY = "minijob-sync-meta-v1";
 
 /** Max wait for a single cloud fetch/push before surfacing error/offline (not stuck syncing). */
-export const SYNC_TIMEOUT_MS = 45_000;
+export const SYNC_TIMEOUT_MS = 15_000;
 
 export type SyncMeta = {
   /** Konto, zu dem diese Metadaten gehören (Gerät kann mehrfach genutzt werden). */
@@ -258,7 +258,15 @@ function isOffline(): boolean {
   return typeof navigator !== "undefined" && navigator.onLine === false;
 }
 
+function isSyncTimeoutError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const name = "name" in error ? String((error as { name?: unknown }).name ?? "") : "";
+  const message = "message" in error ? String((error as { message?: unknown }).message ?? "") : "";
+  return name === "TimeoutError" || /sync timed out/i.test(message);
+}
+
 function errorMessage(error: unknown): string {
+  if (isSyncTimeoutError(error)) return t("error.syncTimeout");
   if (error instanceof Error && error.message) return error.message;
   return t("error.sync");
 }
@@ -320,6 +328,8 @@ async function fetchRemote(): Promise<{ payload: AppData; updatedAt: number } | 
 }
 
 
+let applyingRemote = false;
+
 function applyRemote(remote: { payload: AppData; updatedAt: number }) {
   // Der laufende Timer wird bewusst nie in die Cloud geschrieben (`payloadOf`).
   // Beim Wiederherstellen darf er deshalb auch nicht gelöscht werden – sonst
@@ -328,7 +338,12 @@ function applyRemote(remote: { payload: AppData; updatedAt: number }) {
   const local = getData();
   const runningTimer = local.timer ?? null;
   const merged = mergeDeviceAuthFromLocal(remote.payload, local);
-  replaceAll({ ...merged, timer: runningTimer });
+  applyingRemote = true;
+  try {
+    replaceAll({ ...merged, timer: runningTimer });
+  } finally {
+    applyingRemote = false;
+  }
   saveMeta({
     lastSyncedAt: Date.now(),
     remoteSeenAt: remote.updatedAt,
@@ -440,14 +455,32 @@ async function autoSync(): Promise<void> {
   } finally {
     syncing = false;
   }
+  // Local edits during sync left pending=true without a timer — push after debounce.
+  if (state.pending && state.status === "synced" && userId && !applyingRemote) {
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => {
+      if (isOffline()) {
+        setState({ status: "offline", pending: true });
+        return;
+      }
+      void autoSync();
+    }, 2500);
+  }
 }
 
 
 /** Debouncedes automatisches Cloud-Backup mit Offline-Queue. */
 function scheduleBackup(data: AppData) {
+  // Remote restore must not look like a local edit (would re-enter autoSync).
+  if (applyingRemote) return;
   saveMeta({ localChangedAt: Date.now() });
   if (!userId || !data.settings.autoBackup) return;
   if (state.status === "conflict") {
+    setState({ pending: true });
+    return;
+  }
+  // Mid-sync local edits: stamp change + pending, but do not stack another timer.
+  if (state.status === "syncing") {
     setState({ pending: true });
     return;
   }
@@ -503,6 +536,19 @@ export function initCloudSync() {
 
   // Missing VITE_SUPABASE_* makes the lazy client throw on first property
   // access. Must not escape: callers (root ready-gate) would never set ready.
+  /** Coalesce getSession + SIGNED_IN so init does not stack two autoSyncs. */
+  let initSyncQueued = false;
+  function requestInitSync() {
+    if (syncing || initSyncQueued) {
+      if (syncing) setState({ pending: true });
+      return;
+    }
+    initSyncQueued = true;
+    void autoSync().finally(() => {
+      initSyncQueued = false;
+    });
+  }
+
   try {
     void supabase.auth
       .getSession()
@@ -511,7 +557,7 @@ export function initCloudSync() {
           userId = data.session.user.id;
           adoptUser(userId);
           setState({ signedIn: true });
-          void autoSync();
+          requestInitSync();
         }
       })
       .catch((error) => {
@@ -523,13 +569,14 @@ export function initCloudSync() {
       setState({ signedIn: userId !== null });
       if (event === "SIGNED_IN" && userId) {
         adoptUser(userId);
-        void autoSync();
+        requestInitSync();
       }
       if (event === "SIGNED_OUT") {
         // Geplanten Push abbrechen: er würde sonst ohne Konto laufen bzw.
         // nach einem Kontowechsel in den falschen Cloud-Stand schreiben.
         if (timeout) clearTimeout(timeout);
         timeout = null;
+        initSyncQueued = false;
         setState({ status: "idle", pending: false, message: null, lastSyncedAt: null });
       }
     });

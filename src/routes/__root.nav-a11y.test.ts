@@ -2,8 +2,8 @@
  * ACCEPTANCE BUG #4 — Accessibility layout regression.
  * Schriftgröße=Sehr groß + Buttongröße=Handschuh-Modus must keep all 6 bottom-nav
  * labels inside their columns (no overflow/overlap/clip off-screen) while
- * preserving usable touch targets. Normal/Standard sizes stay compact.
- * FAB must not cover main content (padding-bottom on main / raised .dash-fab).
+ * preserving usable touch targets (ellipsis, no mid-word breaks). Normal/Standard sizes stay compact.
+ * FAB must not cover main content (padding-bottom on main / raised .dash-fab / spacer).
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -27,14 +27,13 @@ function approxTextWidthPx(text: string, fontSizePx: number): number {
 }
 
 describe("bottom nav a11y layout (Sehr groß + Handschuh)", () => {
-  it("BottomNav flex children allow two-line wrap (min-w-0 + line-clamp)", () => {
+  it("BottomNav flex children use single-line ellipsis labels (min-w-0)", () => {
     const fnStart = rootSrc.indexOf("function BottomNav");
     expect(fnStart).toBeGreaterThanOrEqual(0);
     const fn = rootSrc.slice(fnStart, rootSrc.indexOf("\n}\n", fnStart) + 3);
     expect(fn).toMatch(/min-w-0 flex-1/);
     expect(fn).toMatch(/nav-label/);
-    expect(fn).toMatch(/-webkit-line-clamp:2|line-clamp/);
-    expect(fn).toMatch(/whitespace-normal/);
+    expect(fn).toMatch(/whitespace-nowrap|text-ellipsis/);
     expect(fn).toMatch(/min-h-11 min-w-0/);
     expect(fn).toMatch(/size-5 shrink-0/);
     expect(fn).toMatch(/aria-label=\{label\}/);
@@ -55,16 +54,21 @@ describe("bottom nav a11y layout (Sehr groß + Handschuh)", () => {
     expect(gloveNav).toMatch(/overflow:\s*hidden/);
     expect(gloveNav).toMatch(/min-width:\s*0/);
     expect(gloveNav).toMatch(/min-height:\s*3\.25rem/);
-    // Two-line wrap under xl without enlarging nav font
+    // Single-line ellipsis — no mid-word hyphenation like "Übersich-t"
     expect(stylesSrc).toMatch(/\.nav-label/);
-    expect(stylesSrc).toMatch(/-webkit-line-clamp:\s*2/);
+    expect(stylesSrc).toMatch(/text-overflow:\s*ellipsis/);
+    expect(stylesSrc).toMatch(/white-space:\s*nowrap/);
+    expect(stylesSrc).toMatch(/word-break:\s*normal/);
   });
 
   it("prevents FAB overlap via main padding-bottom and dash-fab raise", () => {
     expect(indexSrc).toMatch(/dash-fab/);
+    expect(indexSrc).toMatch(/dash-fab-spacer/);
     expect(stylesSrc).toMatch(/\.app-shell main\s*\{[^}]*padding-bottom/s);
-    expect(stylesSrc).toMatch(/\[data-touch="glove"\] \.dash-fab/);
-    expect(stylesSrc).toMatch(/\[data-touch="large"\] \.dash-fab/);
+    expect(stylesSrc).toMatch(/\[data-touch="glove"\] \.app-shell main[\s\S]*?padding-bottom:\s*10rem/);
+    expect(stylesSrc).toMatch(/\[data-touch="large"\] \.app-shell main[\s\S]*?padding-bottom:\s*8\.5rem/);
+    expect(stylesSrc).toMatch(/\[data-touch="glove"\] \.dash-fab[\s\S]*?bottom:\s*8rem/);
+    expect(stylesSrc).toMatch(/\[data-touch="large"\] \.dash-fab[\s\S]*?bottom:\s*7rem/);
   });
 
   it("labels fit a 360px mobile column under xl root + compact nav font", () => {
@@ -77,9 +81,10 @@ describe("bottom nav a11y layout (Sehr groß + Handschuh)", () => {
 
     for (const label of NAV_LABELS) {
       const natural = approxTextWidthPx(label, navFontPx);
-      // Two-line clamp keeps painted text ≤ column height; wrap when natural exceeds column.
+      // Ellipsis truncates when natural width exceeds column; full label stays in aria-label/title.
       if (natural > columnWidth) {
-        expect(rootSrc).toMatch(/line-clamp|nav-label/);
+        expect(stylesSrc).toMatch(/text-overflow:\s*ellipsis/);
+        expect(rootSrc).toMatch(/aria-label=\{label\}/);
       }
       // Usable hit area is the full column (≥ 44px-ish touch).
       expect(columnWidth).toBeGreaterThanOrEqual(44);

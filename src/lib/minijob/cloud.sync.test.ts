@@ -68,6 +68,8 @@ vi.mock("./store", () => ({
   replaceAll: (data: AppData) => {
     replaced.push(data);
     local = data;
+    // Simulate store listeners observing restore writes (tests applyingRemote guard).
+    changeHook?.(data);
   },
 }));
 
@@ -525,6 +527,11 @@ describe("paralleler Abgleich", () => {
 
 
 describe("Sync-Timeout (SYNC-LIVE-P1)", () => {
+  it("exportiert SYNC_TIMEOUT_MS = 15s für UX", async () => {
+    const mod = await loadModule();
+    expect(mod.SYNC_TIMEOUT_MS).toBe(15_000);
+  });
+
   it("hängt der Cloud-Fetch → status error/offline, nicht syncing", async () => {
     const mod = await loadModule();
     mod.initCloudSync();
@@ -541,12 +548,36 @@ describe("Sync-Timeout (SYNC-LIVE-P1)", () => {
     await settle();
     expect(mod.getSyncState().status).toBe("syncing");
 
-    // Advance past SYNC_TIMEOUT_MS
+    // Advance past SYNC_TIMEOUT_MS (15s) — must leave syncing
     await vi.advanceTimersByTimeAsync(mod.SYNC_TIMEOUT_MS + 100);
     await settle();
 
     expect(mod.getSyncState().status).not.toBe("syncing");
     expect(["error", "offline"]).toContain(mod.getSyncState().status);
+    if (mod.getSyncState().status === "error") {
+      expect(mod.getSyncState().message).toMatch(/zu lange gedauert|too long|try again/i);
+    }
+  });
+
+  it("applyRemote löst keinen Backup-Loop über onDataChange aus", async () => {
+    local = makeData(0);
+    cloud.remote = { payload: makeData(3), updated_at: new Date().toISOString() };
+
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(replaced.length).toBeGreaterThanOrEqual(1);
+    const upsertsAfterRestore = cloud.upserts;
+
+    // Debounce window after restore must not schedule another sync from applyRemote.
+    await vi.advanceTimersByTimeAsync(3000);
+    await settle();
+
+    expect(cloud.upserts).toBe(upsertsAfterRestore);
+    expect(mod.getSyncState().status).not.toBe("syncing");
+    expect(mod.getSyncState().pending).toBe(false);
   });
 });
 
