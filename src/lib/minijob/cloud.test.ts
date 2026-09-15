@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   classifySyncSituation,
   decideSync,
+  explainSyncDecision,
   metaForUser,
   type SyncDecisionInput,
 } from "./cloud";
@@ -42,7 +43,13 @@ describe("decideSync", () => {
 
   it("meldet einen Konflikt, wenn beide Seiten seit dem Abgleich geändert wurden", () => {
     expect(
-      decideSync({ ...base, localChangedAt: 250, lastSyncedAt: 100, remoteUpdatedAt: 300 }),
+      decideSync({
+        ...base,
+        localChangedAt: 250,
+        localWorkChangedAt: 250,
+        lastSyncedAt: 100,
+        remoteUpdatedAt: 300,
+      }),
     ).toBe("conflict");
   });
 
@@ -216,6 +223,7 @@ describe("classifySyncSituation", () => {
       classifySyncSituation({
         ...base,
         localChangedAt: 250,
+        localWorkChangedAt: 250,
         lastSyncedAt: 100,
         remoteUpdatedAt: 300,
       }),
@@ -271,5 +279,252 @@ describe("metaForUser", () => {
       false,
     );
     expect(next.localChangedAt).toBeNull();
+  });
+
+  it("H2: null→userId bind behält lastSyncedAt (kein Fake-Erstsync)", () => {
+    const next = metaForUser(
+      {
+        userId: null,
+        localChangedAt: 200,
+        localWorkChangedAt: 50,
+        lastSyncedAt: 999,
+        remoteSeenAt: 999,
+      },
+      "a",
+      true,
+    );
+    expect(next.userId).toBe("a");
+    expect(next.lastSyncedAt).toBe(999);
+    expect(next.remoteSeenAt).toBe(999);
+  });
+
+  it("H2: null→userId mit Schichten behält Baseline 999", () => {
+    const next = metaForUser(
+      {
+        userId: null,
+        localChangedAt: 100,
+        lastSyncedAt: 999,
+        remoteSeenAt: 900,
+      },
+      "user-1",
+      true,
+    );
+    expect(next.lastSyncedAt).toBe(999);
+    expect(next.remoteSeenAt).toBe(900);
+  });
+});
+
+describe("decideSync A–I (false conflict / work vs settings)", () => {
+  // A new empty → restore/none
+  it("A: new empty device + remote → restore; empty+empty → none", () => {
+    expect(
+      decideSync({
+        ...base,
+        hasLocalWorkData: false,
+        hasLocalJobs: false,
+        localChangedAt: null,
+        lastSyncedAt: null,
+        remoteUpdatedAt: 100,
+      }),
+    ).toBe("restore");
+    expect(
+      decideSync({
+        ...base,
+        hasLocalWorkData: false,
+        hasRemote: false,
+        localChangedAt: null,
+        lastSyncedAt: null,
+        remoteUpdatedAt: null,
+      }),
+    ).toBe("none");
+  });
+
+  // B onboarding ignore jobs → restore
+  it("B: onboarding ignoreLocalJobsOnFirstSync → restore", () => {
+    expect(
+      decideSync({
+        ...base,
+        hasLocalWorkData: false,
+        hasLocalJobs: true,
+        ignoreLocalJobsOnFirstSync: true,
+        localChangedAt: 900,
+        lastSyncedAt: null,
+        remoteUpdatedAt: 800,
+      }),
+    ).toBe("restore");
+  });
+
+  // C unchanged → none
+  it("C: unchanged since baseline → none", () => {
+    expect(
+      decideSync({
+        ...base,
+        localChangedAt: 100,
+        localWorkChangedAt: 100,
+        lastSyncedAt: 100,
+        remoteUpdatedAt: 100,
+      }),
+    ).toBe("none");
+  });
+
+  // D settings-only local change + cloud unchanged → push NOT conflict
+  it("D: settings-only local + cloud unchanged → push", () => {
+    expect(
+      decideSync({
+        ...base,
+        localChangedAt: 200,
+        localWorkChangedAt: 50,
+        lastSyncedAt: 100,
+        remoteUpdatedAt: 100,
+      }),
+    ).toBe("push");
+  });
+
+  // E local work + cloud both new → conflict
+  it("E: local work + cloud both new after baseline → conflict", () => {
+    expect(
+      decideSync({
+        ...base,
+        localChangedAt: 200,
+        localWorkChangedAt: 200,
+        lastSyncedAt: 100,
+        remoteUpdatedAt: 150,
+      }),
+    ).toBe("conflict");
+  });
+
+  // F local work unchanged + cloud new → restore
+  it("F: local work unchanged + cloud new → restore", () => {
+    expect(
+      decideSync({
+        ...base,
+        localChangedAt: 200,
+        localWorkChangedAt: 50,
+        lastSyncedAt: 100,
+        remoteUpdatedAt: 150,
+      }),
+    ).toBe("restore");
+    expect(
+      decideSync({
+        ...base,
+        localChangedAt: 200,
+        localWorkChangedAt: null,
+        lastSyncedAt: 100,
+        remoteUpdatedAt: 150,
+      }),
+    ).toBe("restore");
+  });
+
+  // G local work/settings changed + cloud unchanged → push
+  it("G: local work/settings changed + cloud unchanged → push", () => {
+    expect(
+      decideSync({
+        ...base,
+        localChangedAt: 200,
+        localWorkChangedAt: 200,
+        lastSyncedAt: 100,
+        remoteUpdatedAt: 100,
+      }),
+    ).toBe("push");
+  });
+
+  // H reload/meta preserve — covered above; assert decide after bind
+  it("H: after null→userId bind keeping lastSyncedAt, settings stamp is not conflict", () => {
+    const next = metaForUser(
+      {
+        userId: null,
+        localChangedAt: 200,
+        localWorkChangedAt: 50,
+        lastSyncedAt: 999,
+        remoteSeenAt: 999,
+      },
+      "a",
+      true,
+    );
+    expect(next.lastSyncedAt).toBe(999);
+    // Settings changed after baseline, work did not, cloud unchanged → push
+    expect(
+      decideSync({
+        hasLocalWorkData: true,
+        hasRemote: true,
+        localChangedAt: 1200,
+        localWorkChangedAt: next.localWorkChangedAt ?? 50,
+        lastSyncedAt: next.lastSyncedAt,
+        remoteUpdatedAt: 999,
+      }),
+    ).toBe("push");
+    // Same with cloud slightly newer than baseline but work unchanged → restore, not conflict
+    expect(
+      decideSync({
+        hasLocalWorkData: true,
+        hasRemote: true,
+        localChangedAt: 1200,
+        localWorkChangedAt: 50,
+        lastSyncedAt: next.lastSyncedAt,
+        remoteUpdatedAt: 1100,
+      }),
+    ).toBe("restore");
+  });
+
+  // I leftover jobs after onboarded still conflict on first sync
+  it("I: leftover jobs after onboarded still conflict on first sync", () => {
+    expect(
+      decideSync({
+        ...base,
+        hasLocalWorkData: false,
+        hasLocalJobs: true,
+        ignoreLocalJobsOnFirstSync: false,
+        localChangedAt: 900,
+        lastSyncedAt: null,
+        remoteUpdatedAt: 800,
+      }),
+    ).toBe("conflict");
+  });
+
+  it("regression: settings stamp must not conflict; work stamp must", () => {
+    // has shifts, lastSyncedAt=100, localChangedAt=200 (settings), localWorkChangedAt=50|null, remote=150
+    expect(
+      decideSync({
+        ...base,
+        localChangedAt: 200,
+        localWorkChangedAt: 50,
+        lastSyncedAt: 100,
+        remoteUpdatedAt: 150,
+      }),
+    ).not.toBe("conflict");
+    expect(
+      decideSync({
+        ...base,
+        localChangedAt: 200,
+        localWorkChangedAt: null,
+        lastSyncedAt: 100,
+        remoteUpdatedAt: 150,
+      }),
+    ).not.toBe("conflict");
+    expect(
+      decideSync({
+        ...base,
+        localChangedAt: 200,
+        localWorkChangedAt: 200,
+        lastSyncedAt: 100,
+        remoteUpdatedAt: 150,
+      }),
+    ).toBe("conflict");
+  });
+
+  it("explainSyncDecision returns decision + flags (no secrets)", () => {
+    const explained = explainSyncDecision({
+      ...base,
+      localChangedAt: 200,
+      localWorkChangedAt: 50,
+      lastSyncedAt: 100,
+      remoteUpdatedAt: 150,
+    });
+    expect(explained.decision).toBe("restore");
+    expect(explained.remoteIsNew).toBe(true);
+    expect(explained.localIsNew).toBe(true);
+    expect(explained.localWorkIsNew).toBe(false);
+    expect(explained).not.toHaveProperty("payload");
+    expect(JSON.stringify(explained)).not.toMatch(/password|token|secret|pin/i);
   });
 });
