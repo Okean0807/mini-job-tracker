@@ -8,7 +8,7 @@ import type { AIProvider } from "@/lib/ai/provider";
 import type { AskRequest, AskResponse, AskSource } from "@/lib/ai/types";
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
-const DEFAULT_MODEL = "gemini-2.5-flash";
+const DEFAULT_MODEL = "gemini-3.6-flash";
 
 export const GROUNDING_UNAVAILABLE_NOTE =
   "Hinweis: Eine aktuelle Web-Prüfung ist vorübergehend nicht verfügbar. " +
@@ -26,6 +26,32 @@ function normalizeEnvSecret(raw: string): string {
   return value;
 }
 
+/** Deprecated Gemini model ids that 404 for new API users → current replacements. */
+const DEPRECATED_GEMINI_MODEL_REMAP: Record<string, string> = {
+  "gemini-2.5-flash": "gemini-3.6-flash",
+  "gemini-2.5-flash-lite": "gemini-3.5-flash-lite",
+};
+
+/**
+ * Normalize GEMINI_MODEL: trim, strip surrounding quotes, strip a single
+ * leading `models/` prefix, remap deprecated ids. Empty after sanitize → DEFAULT_MODEL.
+ */
+export function normalizeGeminiModelId(raw: string | undefined): string {
+  if (typeof raw !== "string") return DEFAULT_MODEL;
+  let value = normalizeEnvSecret(raw);
+  if (value.startsWith("models/")) {
+    value = value.slice("models/".length).trim();
+  }
+  if (!value) return DEFAULT_MODEL;
+  return DEPRECATED_GEMINI_MODEL_REMAP[value] ?? value;
+}
+
+/** Build generateContent URL — never double `models/` or append `:generateContent` twice. */
+export function buildGenerateContentUrl(model: string): string {
+  const id = normalizeGeminiModelId(model);
+  return `${GEMINI_API_BASE}/${encodeURIComponent(id)}:generateContent`;
+}
+
 /** Single config helper — never log or return the API key. */
 export function resolveGeminiConfig(env: Record<string, string | undefined> = process.env): {
   apiKey: string | undefined;
@@ -37,9 +63,7 @@ export function resolveGeminiConfig(env: Record<string, string | undefined> = pr
     const normalized = normalizeEnvSecret(rawKey);
     apiKey = normalized ? normalized : undefined;
   }
-  const rawModel = env["GEMINI_MODEL"];
-  const model =
-    typeof rawModel === "string" && rawModel.trim() ? rawModel.trim() : DEFAULT_MODEL;
+  const model = normalizeGeminiModelId(env["GEMINI_MODEL"]);
   return { apiKey, model };
 }
 
@@ -92,17 +116,6 @@ export function extractSourcesFromGrounding(metadata: unknown): AskSource[] {
     }
   }
   return sources;
-}
-
-function isGroundingOrToolFailure(status: number, bodyText: string): boolean {
-  if (status !== 400 && status !== 404) return false;
-  const lower = bodyText.toLowerCase();
-  return (
-    lower.includes("google_search") ||
-    lower.includes("grounding") ||
-    lower.includes("search tool") ||
-    lower.includes('"tools"')
-  );
 }
 
 function isAiGuardErrorLike(error: unknown): error is AiGuardError {
@@ -206,14 +219,14 @@ export class GeminiProvider implements AIProvider {
     signal: AbortSignal,
     withGrounding: boolean,
   ): Promise<AskResponse> {
-    const url = `${GEMINI_API_BASE}/${encodeURIComponent(model)}:generateContent`;
+    const url = buildGenerateContentUrl(model);
     const body: Record<string, unknown> = {
       systemInstruction: {
         parts: [{ text: buildSystemInstruction(language) }],
       },
-      // Match Google curl examples: single-turn contents omit role.
       contents: [
         {
+          role: "user",
           parts: [{ text: userText }],
         },
       ],
@@ -241,7 +254,8 @@ export class GeminiProvider implements AIProvider {
     const bodyText = await response.text();
 
     if (!response.ok) {
-      if (withGrounding && isGroundingOrToolFailure(response.status, bodyText)) {
+      // Always retry once without tools before mapping the HTTP error.
+      if (withGrounding) {
         const fallback = await this.generate(apiKey, model, language, userText, signal, false);
         return withGroundingUnavailableNote(fallback);
       }
