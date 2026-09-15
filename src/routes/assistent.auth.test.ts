@@ -97,11 +97,26 @@ describe("Gemini AI detachment — no Lovable AI runtime in KI path", () => {
     expect(fnSrc).not.toMatch(/LOVABLE_API_KEY/);
   });
 
-  it("gemini-provider.ts has no Lovable gateway / LOVABLE_API_KEY", () => {
+  it("gemini-provider.ts has no Lovable gateway / LOVABLE_API_KEY / google_search", () => {
     expect(geminiSrc).not.toMatch(/ai\.gateway\.lovable\.dev/);
     expect(geminiSrc).not.toMatch(/LOVABLE_API_KEY/);
-    expect(geminiSrc).toMatch(/google_search/);
+    expect(geminiSrc).not.toMatch(/google_search/);
     expect(geminiSrc).toMatch(/generativelanguage\.googleapis\.com/);
+  });
+
+  it("provider uses OrchestratingAIProvider with Tavily Free web search", () => {
+    const providerSrc = readFileSync(join(here, "../lib/ai/provider.ts"), "utf8");
+    const orchSrc = readFileSync(join(here, "../lib/ai/orchestrator.ts"), "utf8");
+    const tavilySrc = readFileSync(join(here, "../lib/ai/web-search/tavily-provider.ts"), "utf8");
+    expect(providerSrc).toMatch(/OrchestratingAIProvider/);
+    expect(orchSrc).toMatch(/TavilyWebSearchProvider/);
+    expect(orchSrc).toMatch(/needsCurrentInfo/);
+    expect(tavilySrc).toMatch(/api\.tavily\.com\/search/);
+    expect(tavilySrc).toMatch(/TAVILY_API_KEY/);
+    expect(tavilySrc).not.toMatch(/VITE_TAVILY/);
+    expect(tavilySrc).not.toMatch(/auto_parameters\s*:\s*true/);
+    expect(tavilySrc).toMatch(/Web-Suche-Kontingent \(Free Tier\) aufgebraucht/);
+    expect(tavilySrc).not.toMatch(/upgrade your plan|credit card|pay-as-you-go limit/i);
   });
 });
 

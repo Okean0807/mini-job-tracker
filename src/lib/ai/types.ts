@@ -15,3 +15,7 @@ export type AskResponse = {
   answer: string;
   sources?: AskSource[];
 };
+
+export interface AIProvider {
+  ask(req: AskRequest, opts?: { signal?: AbortSignal }): Promise<AskResponse>;
+}
