@@ -323,6 +323,68 @@ describe("initCloudSync", () => {
     expect(cloud.upserts).toBe(0);
   });
 
+  it("null baseline + identical local/remote work → synced (re-establish, no conflict UI)", async () => {
+    // Production stuck clients: lastSyncedAt wiped but work identical to cloud.
+    // Must re-establish baseline without Keep/conflict dialog or replaceAll.
+    const work = makeData(3);
+    const remoteAt = Date.now() - 60_000;
+    local = work;
+    cloud.remote = {
+      payload: makeData(3),
+      updated_at: new Date(remoteAt).toISOString(),
+    };
+    window.localStorage.setItem(
+      "minijob-sync-meta-v1",
+      JSON.stringify({
+        userId: "user-1",
+        localChangedAt: Date.now(),
+        localWorkChangedAt: Date.now(),
+        lastSyncedAt: null,
+        remoteSeenAt: null,
+      }),
+    );
+
+    const { initCloudSync, getSyncState } = await loadModule();
+    initCloudSync();
+    await settle();
+
+    expect(getSyncState().status).toBe("synced");
+    expect(getSyncState().status).not.toBe("conflict");
+    expect(replaced).toHaveLength(0);
+    expect(cloud.upserts).toBe(0);
+    const meta = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1")!);
+    expect(meta.lastSyncedAt).toBe(remoteAt);
+    expect(meta.remoteSeenAt).toBe(remoteAt);
+    expect(meta.localChangedAt).toBeNull();
+    expect(meta.localWorkChangedAt).toBeNull();
+    expect(typeof meta.localWorkFingerprint).toBe("string");
+  });
+
+  it("null baseline + different shifts → still conflict", async () => {
+    local = makeData(2);
+    cloud.remote = { payload: makeData(9), updated_at: new Date().toISOString() };
+    window.localStorage.setItem(
+      "minijob-sync-meta-v1",
+      JSON.stringify({
+        userId: "user-1",
+        localChangedAt: Date.now(),
+        localWorkChangedAt: Date.now(),
+        lastSyncedAt: null,
+        remoteSeenAt: null,
+      }),
+    );
+
+    const { initCloudSync, getSyncState } = await loadModule();
+    initCloudSync();
+    await settle();
+
+    expect(getSyncState().status).toBe("conflict");
+    expect(replaced).toHaveLength(0);
+    expect(cloud.upserts).toBe(0);
+    const meta = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1")!);
+    expect(meta.lastSyncedAt).toBeNull();
+  });
+
   it("löscht beim Wiederherstellen keinen laufenden Timer", async () => {
     // Der Timer wird nie in die Cloud geschrieben; ein Restore darf die
     // laufende, noch nicht gespeicherte Zeit nicht verwerfen.

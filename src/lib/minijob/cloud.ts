@@ -18,7 +18,8 @@
  * | BOTH work+cloud changed after shared lastSyncedAt | **conflict** |
  * | Settings-only local change + cloud unchanged | **push** (not conflict) |
  * | Settings-only local change + cloud new, work unchanged | **restore** |
- * | Never synced + has shifts + remote exists | **conflict** (data-safe; user chooses) |
+ * | Never synced + has shifts/jobs + remote, work fingerprint equal | **synced** (re-establish baseline; no UI) |
+ * | Never synced + has shifts/jobs + remote, work fingerprint differs | **conflict** (data-safe; user chooses) |
  * | Settings-only without jobs/shifts before first sync | → restore |
  *
  * Labels from `classifySyncSituation`: NO_CHANGE | PUSH | RESTORE | CONFLICT | FIRST_SYNC_RESTORE
@@ -639,11 +640,41 @@ async function autoSync(): Promise<void> {
       const remote = await fetchRemote();
       // After forceFail / watchdog / timeout abandon, late fetch must not mutate.
       if (epoch !== syncEpoch) return;
+      const hasLocalWorkData = local.shifts.length > 0;
+      const hasLocalJobs = local.jobs.length > 0;
+      // Hotfix: lost baseline (lastSyncedAt=null) with identical work on both
+      // sides used to stick CONFLICT (syncedAt=0 → both "new"). Re-establish
+      // baseline quietly when fingerprints match; real divergence still conflicts.
+      if (
+        meta.lastSyncedAt == null &&
+        remote !== null &&
+        (hasLocalWorkData || hasLocalJobs)
+      ) {
+        const localFp = workFingerprint(local);
+        const remoteFp = workFingerprint(remote.payload);
+        if (localFp === remoteFp) {
+          saveMeta({
+            lastSyncedAt: remote.updatedAt,
+            remoteSeenAt: remote.updatedAt,
+            localChangedAt: null,
+            localWorkChangedAt: null,
+            localWorkFingerprint: localFp,
+            wizardPendingFirstSync: false,
+          });
+          setState({
+            status: "synced",
+            pending: false,
+            message: null,
+            lastSyncedAt: meta.lastSyncedAt,
+          });
+          return;
+        }
+      }
       const ignoreLocalJobsOnFirstSync =
         !local.settings.onboarded || Boolean(meta.wizardPendingFirstSync);
       const decisionInput = {
-        hasLocalWorkData: local.shifts.length > 0,
-        hasLocalJobs: local.jobs.length > 0,
+        hasLocalWorkData,
+        hasLocalJobs,
         ignoreLocalJobsOnFirstSync,
         hasRemote: remote !== null,
         localChangedAt: meta.localChangedAt,
