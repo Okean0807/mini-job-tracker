@@ -27,6 +27,7 @@ import { activeWidgets, spanClass, widgetSize } from "@/lib/minijob/dashboard";
 import { goalsProgress } from "@/lib/minijob/goals";
 import { buildInsights } from "@/lib/minijob/insights";
 import { monthUsage, yearUsage } from "@/lib/minijob/limits";
+import { jobsApplyMinijobLimit } from "@/lib/minijob/work-mode";
 import { payPeriods } from "@/lib/minijob/payday";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { useAppData } from "@/lib/minijob/store";
@@ -100,6 +101,7 @@ function DashboardPage() {
   );
   const limitShare = monthLimit.share;
   const yearShare = yearLimit.share;
+  const appliesMinijobLimit = jobsApplyMinijobLimit(jobs);
   const monthLabel = monthNames()[month] ?? "";
   const ui = settings.uiMode;
 
@@ -145,8 +147,12 @@ function DashboardPage() {
             />
             <StatCard
               label={t("dash.limit")}
-              value={`${Math.round(limitShare)} %`}
-              hint={t("dash.ofAmount", { amount: formatEuro(monthLimit.earningsLimit) })}
+              value={appliesMinijobLimit ? `${Math.round(limitShare)} %` : "—"}
+              hint={
+                appliesMinijobLimit
+                  ? t("dash.ofAmount", { amount: formatEuro(monthLimit.earningsLimit) })
+                  : t("limit.notApplicable")
+              }
               icon={Euro}
             />
           </>
@@ -159,6 +165,7 @@ function DashboardPage() {
         scopeLabel={`${t("limit.month")} · ${monthLabel}`}
         rate={settings.defaultRate}
         auto={settings.hoursLimitAuto || settings.hoursLimitMonthly <= 0}
+        notApplicable={!appliesMinijobLimit}
       />
     ),
     limitYear: (
@@ -167,6 +174,7 @@ function DashboardPage() {
         scopeLabel={`${t("limit.year")} · ${year}`}
         rate={settings.defaultRate}
         auto={settings.hoursLimitAuto || settings.hoursLimitMonthly <= 0}
+        notApplicable={!appliesMinijobLimit}
       />
     ),
     payday: <PaydayCard periods={periods} />,
@@ -218,7 +226,7 @@ function DashboardPage() {
         </Button>
       </header>
 
-      {limitShare >= 100 || yearShare >= 100 ? (
+      {appliesMinijobLimit && (limitShare >= 100 || yearShare >= 100) ? (
         <LimitBanner
           tone="over"
           text={
@@ -227,7 +235,7 @@ function DashboardPage() {
               : t("dash.limitYearOver", { amount: formatEuro(yearLimit.earningsLimit) })
           }
         />
-      ) : limitShare >= 85 || yearShare >= 85 ? (
+      ) : appliesMinijobLimit && (limitShare >= 85 || yearShare >= 85) ? (
         <LimitBanner
           tone="near"
           text={t("dash.limitNear", { percent: Math.round(Math.max(limitShare, yearShare)) })}

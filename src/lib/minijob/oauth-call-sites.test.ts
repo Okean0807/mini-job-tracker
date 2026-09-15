@@ -18,6 +18,8 @@ describe("OAuth call sites (Vercel-safe)", () => {
       expect(src).toMatch(/signInWithOAuthProvider/);
       expect(src).not.toMatch(/lovable\.auth\.signInWithOAuth/);
       expect(src).not.toMatch(/~oauth\/initiate/);
+      expect(src).not.toMatch(/oauth\("apple"\)/);
+      expect(src).not.toMatch(/signInWithOAuthProvider\("apple"/);
     });
   }
 });

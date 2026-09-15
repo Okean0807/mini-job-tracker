@@ -30,6 +30,9 @@ export const dashboard: Bundle = {
     "cal.prevMonth": "Vorheriger Monat",
     "cal.nextMonth": "Nächster Monat",
     "cal.legend": "Legende Eintragsarten",
+    "cal.planned": "Geplant",
+    "cal.actual": "Erfasst",
+    "cal.plannedHint": "Soll laut Wochenplan (noch nicht erfasst)",
 
     "list.empty": "Noch keine Einträge in diesem Zeitraum. Tippe auf einen Tag im Kalender.",
     "list.breakMinutes": "· {minutes} Min. Pause",
@@ -73,6 +76,9 @@ export const dashboard: Bundle = {
     "cal.prevMonth": "Previous month",
     "cal.nextMonth": "Next month",
     "cal.legend": "Entry type legend",
+    "cal.planned": "Planned",
+    "cal.actual": "Recorded",
+    "cal.plannedHint": "Planned per week schedule (not yet recorded)",
 
     "list.empty": "No entries in this period yet. Tap a day in the calendar.",
     "list.breakMinutes": "· {minutes} min break",
@@ -116,6 +122,9 @@ export const dashboard: Bundle = {
     "cal.prevMonth": "Предыдущий месяц",
     "cal.nextMonth": "Следующий месяц",
     "cal.legend": "Легенда типов записей",
+    "cal.planned": "План",
+    "cal.actual": "Факт",
+    "cal.plannedHint": "По плану недели (ещё не записано)",
 
     "list.empty": "В этом периоде пока нет записей. Нажмите на день в календаре.",
     "list.breakMinutes": "· перерыв {minutes} мин.",
@@ -159,6 +168,9 @@ export const dashboard: Bundle = {
     "cal.prevMonth": "Önceki ay",
     "cal.nextMonth": "Sonraki ay",
     "cal.legend": "Kayıt türü göstergesi",
+    "cal.planned": "Planlanan",
+    "cal.actual": "Kaydedilen",
+    "cal.plannedHint": "Haftalık plana göre (henüz kaydedilmedi)",
 
     "list.empty": "Bu dönemde henüz kayıt yok. Takvimde bir güne dokun.",
     "list.breakMinutes": "· {minutes} dk. mola",
@@ -202,6 +214,9 @@ export const dashboard: Bundle = {
     "cal.prevMonth": "Poprzedni miesiąc",
     "cal.nextMonth": "Następny miesiąc",
     "cal.legend": "Legenda typów wpisów",
+    "cal.planned": "Plan",
+    "cal.actual": "Zapisane",
+    "cal.plannedHint": "Według planu tygodnia (jeszcze nie zapisane)",
 
     "list.empty": "Brak jeszcze wpisów w tym okresie. Dotknij dnia w kalendarzu.",
     "list.breakMinutes": "· przerwa {minutes} min",

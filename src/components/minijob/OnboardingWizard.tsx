@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { markWizardPendingFirstSync } from "@/lib/minijob/cloud";
 import { signInWithOAuthProvider } from "@/lib/minijob/oauth-sign-in";
 import {
   checkpointOnboardingBeforeOAuth,
@@ -17,12 +18,15 @@ import {
 } from "@/lib/minijob/onboarding-draft";
 import { LANGUAGES } from "@/lib/i18n/core";
 import { useT } from "@/lib/i18n";
+import { weeklyPlanHours } from "@/lib/minijob/schedule";
 import { newId, nextJobColor, saveJob, updateSettings } from "@/lib/minijob/store";
 import {
   BUNDESLAENDER,
   COUNTRIES,
   DEFAULT_SUPPLEMENTS,
+  EMPTY_WEEK,
   WORK_MODE_LABEL,
+  type Job,
   type Settings,
   type Supplement,
   type Supplements,
@@ -77,7 +81,9 @@ export function OnboardingWizard({ settings, onDone }: Props) {
     });
     const name = jobName.trim();
     if (name) {
-      saveJob({
+      // Avoid false FIRST_SYNC jobs conflict if sync races finish before lastSyncedAt.
+      markWizardPendingFirstSync();
+      const job: Job = {
         id: newId(),
         name,
         color: nextJobColor(),
@@ -85,14 +91,19 @@ export function OnboardingWizard({ settings, onDone }: Props) {
         mode,
         ...(employer.trim() ? { employer: employer.trim() } : {}),
         supplements,
-      });
+      };
+      if (mode === "fest") {
+        job.week = EMPTY_WEEK.map((d) => ({ ...d }));
+        job.weeklyTarget = weeklyPlanHours(job) || 20;
+      }
+      saveJob(job);
     }
     toast.success(t("wiz.toast.done"));
     onDone();
   }
 
-  async function oauth(provider: "google" | "apple") {
-    // Persist region/rate/supplements + step/mode before browser leaves for Google/Apple.
+  async function oauth() {
+    // Persist region/rate/supplements + step/mode before browser leaves for Google.
     checkpointOnboardingBeforeOAuth({
       step,
       mode,
@@ -100,7 +111,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
         updateSettings({ country, bundesland, defaultRate: numericRate, supplements }),
     });
     try {
-      const { error } = await signInWithOAuthProvider(provider);
+      const { error } = await signInWithOAuthProvider("google");
       if (error) toast.error(t("error.signIn"));
     } catch {
       toast.error(t("error.signIn"));
@@ -145,6 +156,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
                 <Choice
                   key={m}
                   label={t(WORK_MODE_KEY[m])}
+                  hint={t(`wiz.workMode.explain.${m}`)}
                   active={mode === m}
                   onClick={() => setMode(m)}
                 />
@@ -255,7 +267,6 @@ export function OnboardingWizard({ settings, onDone }: Props) {
               {authStatus === "loading" ? (
                 <div aria-busy="true" aria-label="loading" className="space-y-2 py-2">
                   <Skeleton className="h-10 w-full" />
-                  <Skeleton className="h-10 w-full" />
                 </div>
               ) : authStatus === "signed_in" ? (
                 <p className="text-sm text-muted-foreground">
@@ -265,11 +276,8 @@ export function OnboardingWizard({ settings, onDone }: Props) {
                 </p>
               ) : (
                 <>
-                  <Button className="w-full" onClick={() => oauth("google")}>
+                  <Button className="w-full" onClick={() => oauth()}>
                     {t("wiz.cloud.google")}
-                  </Button>
-                  <Button variant="outline" className="w-full" onClick={() => oauth("apple")}>
-                    {t("wiz.cloud.apple")}
                   </Button>
                   <p className="text-xs text-muted-foreground">{t("wiz.cloud.skipHint")}</p>
                 </>
@@ -351,10 +359,12 @@ function Card({
 
 function Choice({
   label,
+  hint,
   active,
   onClick,
 }: {
   label: string;
+  hint?: string;
   active: boolean;
   onClick: () => void;
 }) {
@@ -367,7 +377,8 @@ function Choice({
         active ? "border-primary bg-primary/10" : "bg-background",
       )}
     >
-      {label}
+      <span className="block">{label}</span>
+      {hint ? <span className="mt-1 block text-xs font-normal text-muted-foreground">{hint}</span> : null}
     </button>
   );
 }

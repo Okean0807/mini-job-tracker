@@ -40,4 +40,10 @@ describe("OnboardingWizard Cloud step auth", () => {
     expect(signedInBlock).toMatch(/signedInAs/);
     expect(signedInBlock).not.toMatch(/oauth\("google"\)/);
   });
+
+  it("exposes Google only (no Apple Sign-In button)", () => {
+    expect(src).toMatch(/wiz\.cloud\.google/);
+    expect(src).not.toMatch(/oauth\("apple"\)/);
+    expect(src).not.toMatch(/wiz\.cloud\.apple/);
+  });
 });

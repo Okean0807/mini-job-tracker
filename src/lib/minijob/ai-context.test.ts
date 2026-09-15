@@ -49,9 +49,13 @@ describe("buildAssistantContext", () => {
     const parsed = JSON.parse(buildAssistantContext(data, now));
 
     expect(parsed.settings.hourlyRate).toBe(17.1);
+    expect(parsed.settings.workMode).toBe("flex");
+    expect(parsed.settings.minijobLimitApplies).toBe(true);
     expect(parsed.settings.legalMonthlyLimit).toBeGreaterThan(0);
     expect(parsed.settings.automaticMonthlyHours).toBeGreaterThan(0);
     expect(parsed.settings.annualLimit).toBeGreaterThan(0);
+    expect(parsed.jobs[0].mode).toBe("flex");
+    expect(parsed.jobs[0].minijobLimitApplies).toBe(true);
     expect(parsed.currentDate).toBe("2026-09-15");
     expect(parsed.currentMonth).toMatchObject({
       year: 2026,
@@ -126,5 +130,20 @@ describe("buildAssistantContext", () => {
     expect(parsed.currentMonth.hours).toBe(3);
     expect(parsed.months).toHaveLength(2);
     expect(parsed.months.find((m: { month: number }) => m.month === 0)?.hours).toBe(7.5);
+  });
+
+  it("self-employed must not imply employee Minijob Grenze", () => {
+    const now = new Date(2026, 8, 15);
+    const data = makeData({
+      jobs: [{ id: "j1", name: "Freelance", color: "#0d9488", mode: "selbststaendig", rate: 40 }],
+      shifts: [makeShift({ date: "2026-09-01", start: "09:00", end: "17:00", breakMinutes: 0 })],
+    });
+    const parsed = JSON.parse(buildAssistantContext(data, now));
+    expect(parsed.settings.workMode).toBe("selbststaendig");
+    expect(parsed.settings.minijobLimitApplies).toBe(false);
+    expect(parsed.settings.legalMonthlyLimit).toBeNull();
+    expect(parsed.settings.automaticMonthlyHours).toBeNull();
+    expect(parsed.settings.annualLimit).toBeNull();
+    expect(parsed.jobs[0].minijobLimitApplies).toBe(false);
   });
 });

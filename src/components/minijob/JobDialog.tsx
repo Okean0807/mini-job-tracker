@@ -16,6 +16,8 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useT } from "@/lib/i18n";
 import { weekdayNames } from "@/lib/minijob/calc";
+import { legalMonthlyLimit } from "@/lib/minijob/limits";
+import { weeklyPlanHours } from "@/lib/minijob/schedule";
 import { parseRateInput } from "@/lib/minijob/rate";
 import { deleteJob, newId, nextJobColor, saveJob } from "@/lib/minijob/store";
 import {
@@ -106,6 +108,21 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
     if (mode === "fest") {
       next.week = week;
       next.weeklyTarget = Number(weeklyTarget.replace(",", ".")) || 0;
+    } else if (week.some((d) => d.active) || job?.week) {
+      // Keep week data inactive when switching away from fest (never delete).
+      next.week = week;
+      if (job?.weeklyTarget != null) next.weeklyTarget = job.weeklyTarget;
+    }
+    if (mode === "fest" && next.week) {
+      const plannedWeekly = weeklyPlanHours(next);
+      const rate = typeof next.rate === "number" ? next.rate : defaultRate;
+      const now = new Date();
+      const monthLimit = legalMonthlyLimit(now.getFullYear(), now.getMonth()) ?? 603;
+      // ~4.33 weeks/month advisory — payroll still uses recorded shifts only.
+      const plannedMonthly = plannedWeekly * (52 / 12) * (rate || 0);
+      if (rate > 0 && plannedMonthly > monthLimit) {
+        toast.message(t("job.planExceedsLimit"));
+      }
     }
     saveJob(next);
     toast.success(job ? t("job.updated") : t("job.created"));
@@ -167,7 +184,17 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
                   <button
                     key={m}
                     type="button"
-                    onClick={() => setMode(m)}
+                    onClick={() => {
+                      if (m === mode) return;
+                      // Never delete shifts/jobs; fest week stays in state (inactive when not fest).
+                      if (mode === "fest" && m !== "fest") {
+                        toast.message(t("job.modeSwitchKeepData"));
+                      }
+                      if (m === "fest" && (!week.length || week.every((d) => !d.active))) {
+                        setWeek(EMPTY_WEEK.map((d) => ({ ...d })));
+                      }
+                      setMode(m);
+                    }}
                     className={cn(
                       "rounded-xl border px-3 py-2 text-left text-sm",
                       mode === m ? "border-primary bg-primary/10 font-semibold" : "bg-card",

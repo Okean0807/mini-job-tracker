@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n";
 import { isoDate, monthNames, weekdayNames } from "@/lib/minijob/calc";
 import { holidayName } from "@/lib/minijob/holidays";
+import { generateFixedMonth } from "@/lib/minijob/schedule";
 import { shiftPayroll } from "@/lib/minijob/payroll";
 import type { ResolveOptions } from "@/lib/minijob/resolve";
 import type { Job, Shift, ShiftKind } from "@/lib/minijob/types";
@@ -93,6 +94,10 @@ export function CalendarKindLegend() {
           </li>
         );
       })}
+      <li className="inline-flex items-center gap-1" data-kind="planned">
+        <span className="size-2 rounded-full border border-dashed border-muted-foreground" aria-hidden />
+        <span>{t("cal.planned")}</span>
+      </li>
     </ul>
   );
 }
@@ -119,6 +124,15 @@ export function MonthCalendar({
     const list = byDate.get(s.date) ?? [];
     list.push(s);
     byDate.set(s.date, list);
+  }
+
+  // PLAN vs ACTUAL: fest week days without a recorded shift (advisory only — not payroll).
+  const plannedDates = new Set<string>();
+  for (const job of jobs) {
+    if (job.archived || job.mode !== "fest" || !job.week) continue;
+    for (const s of generateFixedMonth(job, year, month, shifts, bundesland)) {
+      plannedDates.add(s.date);
+    }
   }
 
   const cells: (number | null)[] = [
@@ -184,7 +198,8 @@ export function MonthCalendar({
                 !firstColor && kindMeta && kindMeta.cell,
                 dayShifts.length && !firstColor && !kindMeta && "bg-gradient-primary font-semibold text-primary-foreground",
                 dayShifts.length && "font-semibold",
-                !dayShifts.length && "border-transparent hover:bg-muted",
+                !dayShifts.length && !plannedDates.has(iso) && "border-transparent hover:bg-muted",
+                !dayShifts.length && plannedDates.has(iso) && "border-dashed border-muted-foreground/40 bg-muted/40 text-muted-foreground",
                 !dayShifts.length && feiertag && "border-violet-500/40 bg-violet-500/10 text-violet-800 dark:text-violet-200",
                 iso === today && !dayShifts.length && "border-primary text-primary",
               )}
@@ -196,6 +211,10 @@ export function MonthCalendar({
               {hours > 0 ? (
                 <span className="text-[10px] opacity-90 tabular-nums">
                   {hours.toFixed(1).replace(".", ",")} h
+                </span>
+              ) : plannedDates.has(iso) ? (
+                <span className="text-[9px] font-medium text-muted-foreground" title={t("cal.plannedHint")}>
+                  {t("cal.planned")}
                 </span>
               ) : null}
               {colors.length > 1 && kind === "arbeit" ? (

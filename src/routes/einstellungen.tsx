@@ -692,7 +692,9 @@ function SyncStatusRow({
       : sync.status === "offline"
         ? t("set.account.cloud.sync.offline")
         : sync.status === "conflict"
-          ? t("set.account.cloud.sync.conflict")
+          ? sync.lastSyncedAt == null
+            ? t("set.account.cloud.sync.conflictFirstSync")
+            : t("set.account.cloud.sync.conflict")
           : sync.status === "error"
             ? (sync.message ?? t("set.account.cloud.sync.error"))
             : sync.status === "idle"
@@ -748,9 +750,9 @@ function CloudSync({ autoBackup }: { autoBackup: boolean }) {
   const { status: authStatus, session } = useAuthSession();
   const [busy, setBusy] = useState(false);
 
-  async function oauth(provider: "google" | "apple") {
+  async function oauthGoogle() {
     try {
-      const { error } = await signInWithOAuthProvider(provider);
+      const { error } = await signInWithOAuthProvider("google");
       if (error) toast.error(t("error.signIn"));
     } catch {
       toast.error(t("error.signIn"));
@@ -783,7 +785,6 @@ function CloudSync({ autoBackup }: { autoBackup: boolean }) {
       <Section title={t("set.account.signIn.title")}>
         <div aria-busy="true" aria-label="loading" className="space-y-2">
           <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
         </div>
       </Section>
     );
@@ -793,11 +794,8 @@ function CloudSync({ autoBackup }: { autoBackup: boolean }) {
     return (
       <Section title={t("set.account.signIn.title")}>
         <p className="text-xs text-muted-foreground">{t("set.account.signIn.desc")}</p>
-        <Button className="w-full" onClick={() => oauth("google")}>
+        <Button className="w-full" onClick={() => oauthGoogle()}>
           {t("set.account.signIn.google")}
-        </Button>
-        <Button variant="outline" className="w-full" onClick={() => oauth("apple")}>
-          {t("set.account.signIn.apple")}
         </Button>
       </Section>
     );
