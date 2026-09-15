@@ -274,15 +274,15 @@
 }
 [data-touch="large"] nav a[href] .nav-label,
 [data-touch="glove"] nav a[href] .nav-label {
-  /* Two-line wrap under xl root — do not enlarge font (keeps 0.625rem). */
-  white-space: normal;
+  /* Single-line ellipsis — avoid mid-word breaks like "Übersich-t". */
+  white-space: nowrap;
   overflow: hidden;
-  max-height: 1.6rem;
-  line-height: 1.1;
-  -webkit-line-clamp: 2;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  word-break: break-word;
+  text-overflow: ellipsis;
+  max-height: none;
+  line-height: 1.15;
+  display: block;
+  word-break: normal;
+  overflow-wrap: normal;
 }
 [data-touch="large"] nav a[href] {
   min-height: 2.75rem;
@@ -306,17 +306,16 @@
   padding-bottom: 5.5rem;
 }
 [data-touch="large"] .app-shell main {
-  padding-bottom: 6.25rem;
+  padding-bottom: 8.5rem;
 }
 [data-touch="glove"] .app-shell main {
-  padding-bottom: 7rem;
+  padding-bottom: 10rem;
 }
 
-/* Raise FAB slightly when glove/large nav is taller */
-[data-touch="large"] .dash-fab,
-[data-touch="glove"] .dash-fab {
-  bottom: 5.75rem;
+/* Raise FAB further when glove/large nav is taller (overrides Tailwind bottom-20) */
+[data-touch="large"] .dash-fab {
+  bottom: 7rem;
 }
 [data-touch="glove"] .dash-fab {
-  bottom: 6.5rem;
+  bottom: 8rem;
 }

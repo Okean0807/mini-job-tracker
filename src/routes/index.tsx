@@ -259,6 +259,9 @@ function DashboardPage() {
         <Plus className="size-5" /> {t("dash.newEntry")}
       </Button>
 
+      {/* Scroll clearance so last cards sit above FAB + tall glove/large nav */}
+      <div className="dash-fab-spacer h-24" aria-hidden />
+
       <DashboardCustomizer
         open={customizeOpen}
         onOpenChange={setCustomizeOpen}

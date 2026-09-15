@@ -173,7 +173,7 @@ function BottomNav({ uiMode }: { uiMode: UiMode }) {
                 className="flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 py-2 text-[11px] font-medium leading-tight"
               >
                 <Icon className="size-5 shrink-0" aria-hidden />
-                <span className="nav-label w-full max-h-8 overflow-hidden text-center whitespace-normal break-words [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]">
+                <span className="nav-label w-full overflow-hidden text-center text-ellipsis whitespace-nowrap break-normal">
                   {label}
                 </span>
               </Link>
