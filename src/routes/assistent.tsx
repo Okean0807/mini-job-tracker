@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { languageLabel, useT } from "@/lib/i18n";
+import { ASK_CLIENT_TIMEOUT_MS, runAssistantAsk } from "@/lib/ai-ask";
 import { aiClientErrorMessage } from "@/lib/ai-client-error";
 import { askAssistant } from "@/lib/ai.functions";
 import { MONTHS_DE, isoDate, shiftsInMonth, shiftsInYear } from "@/lib/minijob/calc";
@@ -101,18 +102,23 @@ function AssistantPage() {
     }
     setMessages((m) => [...m, { role: "user", text: q }]);
     setQuestion("");
-    setBusy(true);
-    try {
-      const result = await call({ data: { question: q, context, language: languageLabel(lang) } });
-      setMessages((m) => [...m, { role: "ai", text: result.answer }]);
-    } catch (error) {
-      // Surface unavailable/unauthorized clearly in toast AND chat (not silent hang).
-      const message = aiClientErrorMessage(error, t("ai.error.generic"));
-      toast.error(message);
-      setMessages((m) => [...m, { role: "ai", text: message }]);
-    } finally {
-      setBusy(false);
-    }
+    // runAssistantAsk always clears busy (timeout/rejection) — never leave «denkt nach».
+    await runAssistantAsk(
+      () => call({ data: { question: q, context, language: languageLabel(lang) } }),
+      {
+        setBusy,
+        onAnswer: (answer) => setMessages((m) => [...m, { role: "ai", text: answer }]),
+        onError: (message) => {
+          toast.error(message);
+          setMessages((m) => [...m, { role: "ai", text: message }]);
+        },
+      },
+      {
+        timeoutMs: ASK_CLIENT_TIMEOUT_MS,
+        mapError: (error) => aiClientErrorMessage(error, t("ai.error.generic")),
+        timeoutMessage: t("ai.error.timeout"),
+      },
+    );
   }
 
   async function speak() {
