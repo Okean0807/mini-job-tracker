@@ -1,3 +1,23 @@
+/**
+ * Cloud sync for MiniJob Companion.
+ *
+ * ## SYNC_SEMANTICS
+ *
+ * Decisions use a shared `lastSyncedAt` baseline when both sides have changed
+ * after a successful sync. Before the first sync, only **shifts** count as
+ * local work data — jobs/settings alone do not create a competing version.
+ *
+ * | Situation | Result |
+ * |---|---|
+ * | FIRST_SYNC / NEW_DEVICE / EMPTY_DEVICE (no shifts) + cloud exists | **restore** (not conflict) |
+ * | DEVICE_CHANGED only (cloud unchanged since baseline) | **push** |
+ * | CLOUD_CHANGED only (device unchanged since baseline) | **restore** |
+ * | BOTH_CHANGED after shared lastSyncedAt baseline | **conflict** |
+ * | Never synced + has shifts + remote exists | **conflict** (data-safe; user chooses) |
+ * | Jobs-only / settings-only without shifts before first sync | ≠ local work version → restore |
+ *
+ * Labels from `classifySyncSituation`: NO_CHANGE | PUSH | RESTORE | CONFLICT | FIRST_SYNC_RESTORE
+ */
 import { useSyncExternalStore } from "react";
 
 import { t } from "@/lib/i18n";
@@ -43,20 +63,20 @@ const EMPTY_META: SyncMeta = {
  * Änderungsmarke bleibt erhalten, damit vorhandene Gerätedaten nicht als
  * "nie geändert" gelten und stillschweigend ersetzt werden.
  *
- * `hasLocalData = false` bedeutet: das Gerät hat gar nichts zu verlieren
- * (frische Installation, Erstlogin). Dann darf keine Änderungsmarke erfunden
- * werden – sonst meldet der Abgleich einen Konflikt, statt die vorhandene
- * Cloud-Sicherung einfach wiederherzustellen.
+ * `hasLocalWorkData = false` bedeutet: das Gerät hat keine Schichten zu verlieren
+ * (frische Installation, Erstlogin, Jobs/Einstellungen allein). Dann darf keine
+ * Änderungsmarke erfunden werden – sonst meldet der Abgleich einen Konflikt,
+ * statt die vorhandene Cloud-Sicherung einfach wiederherzustellen.
  */
 export function metaForUser(
   current: SyncMeta,
   userId: string | null,
-  hasLocalData = true,
+  hasLocalWorkData = true,
 ): SyncMeta {
   if (current.userId === userId) return current;
   return {
     userId,
-    localChangedAt: hasLocalData ? (current.localChangedAt ?? Date.now()) : current.localChangedAt,
+    localChangedAt: hasLocalWorkData ? (current.localChangedAt ?? Date.now()) : current.localChangedAt,
     lastSyncedAt: null,
     remoteSeenAt: null,
   };
@@ -91,9 +111,20 @@ function saveMeta(patch: Partial<SyncMeta>) {
 
 export type SyncDecision = "push" | "restore" | "conflict" | "none";
 
+/** Human-readable situation labels for tests/docs (see SYNC_SEMANTICS above). */
+export type SyncSituation =
+  | "NO_CHANGE"
+  | "PUSH"
+  | "RESTORE"
+  | "CONFLICT"
+  | "FIRST_SYNC_RESTORE";
+
 export type SyncDecisionInput = {
-  /** Enthält das Gerät überhaupt eigene Daten (Schichten/Jobs)? */
-  hasLocalData: boolean;
+  /**
+   * Local *work* data = shifts only.
+   * Jobs/settings alone before first sync are not a competing work version.
+   */
+  hasLocalWorkData: boolean;
   /** Existiert überhaupt ein Cloud-Stand? */
   hasRemote: boolean;
   localChangedAt: number | null;
@@ -104,39 +135,60 @@ export type SyncDecisionInput = {
 /**
  * Konfliktauflösung über Zeitstempel statt der alten Heuristik „leer → laden".
  *
- * - Kein Cloud-Stand → hochladen (sofern lokale Daten existieren).
- * - Kein lokaler Datenbestand → Cloud laden.
- * - Leeres Gerät ohne bisherigen Abgleich → Cloud laden (Einstellungs-Marken
- *   aus dem Einrichtungsassistenten zählen nicht als eigene Version).
+ * - Kein Cloud-Stand → hochladen (sofern lokale Arbeit/Änderungen existieren).
+ * - FIRST_SYNC / NEW_DEVICE / EMPTY_DEVICE (keine Schichten) + Cloud → restore
+ *   (Jobs/Einstellungen allein zählen nicht als lokale Arbeitsversion).
+ * - Nie synchronisiert, aber lokale Schichten + Cloud → conflict (datensicher).
  * - Cloud unverändert seit letztem Abgleich → lokale Änderungen hochladen.
- * - Cloud neuer als letzter Abgleich UND lokal seither geändert → Konflikt,
- *   Entscheidung trifft der Nutzer (kein stilles Überschreiben).
+ * - Cloud neuer als letzter Abgleich UND lokal seither geändert → Konflikt.
  */
 export function decideSync(input: SyncDecisionInput): SyncDecision {
-  const { hasLocalData, hasRemote, localChangedAt, lastSyncedAt, remoteUpdatedAt } = input;
+  const { hasLocalWorkData, hasRemote, localChangedAt, lastSyncedAt, remoteUpdatedAt } = input;
 
   const remoteAt = remoteUpdatedAt ?? 0;
   const syncedAt = lastSyncedAt ?? 0;
   const remoteIsNew = remoteAt > syncedAt;
   const localIsNew = (localChangedAt ?? 0) > syncedAt;
 
-  if (!hasRemote) return hasLocalData || localIsNew ? "push" : "none";
-  // Leeres Gerät: Cloud laden – außer der leere Stand ist selbst eine
-  // bewusste lokale Änderung (z. B. alles gelöscht), die nicht still
-  // rückgängig gemacht werden darf.
-  if (!hasLocalData && !localIsNew) return "restore";
-  // Noch nie mit diesem Konto abgeglichen und lokal keine Schichten/Jobs:
-  // reine Einstellungs-Marken (Einrichtungsassistent, Sprache, OAuth-Vorab-
-  // Speichern) sind keine eigenständige Version. Sonst meldet der Start des
-  // Assistenten fälschlich einen Konflikt gegen die Cloud-Sicherung.
-  if (!hasLocalData && lastSyncedAt == null) return "restore";
-  if (!hasLocalData) return remoteIsNew ? "conflict" : "push";
+  if (!hasRemote) return hasLocalWorkData || localIsNew ? "push" : "none";
 
+  // FIRST_SYNC / NEW_DEVICE / EMPTY_DEVICE: never synced, no shifts, cloud exists
+  // → restore. Covers settings-only and jobs-only onboarding marks.
+  if (lastSyncedAt == null && !hasLocalWorkData && hasRemote) return "restore";
+
+  // Leeres Gerät nach bekanntem Baseline: Cloud laden – außer der leere Stand
+  // ist selbst eine bewusste lokale Änderung (z. B. alles gelöscht).
+  if (!hasLocalWorkData && !localIsNew) return "restore";
+  if (!hasLocalWorkData) return remoteIsNew ? "conflict" : "push";
+
+  // Has shifts: never-synced + remote → both sides "new" → conflict (data-safe).
   if (remoteIsNew && localIsNew) return "conflict";
   if (remoteIsNew) return "restore";
   if (localIsNew) return "push";
   return "none";
+}
 
+/** Maps decideSync input to situation labels for tests and documentation. */
+export function classifySyncSituation(input: SyncDecisionInput): SyncSituation {
+  const decision = decideSync(input);
+  if (
+    decision === "restore" &&
+    input.lastSyncedAt == null &&
+    !input.hasLocalWorkData &&
+    input.hasRemote
+  ) {
+    return "FIRST_SYNC_RESTORE";
+  }
+  switch (decision) {
+    case "none":
+      return "NO_CHANGE";
+    case "push":
+      return "PUSH";
+    case "restore":
+      return "RESTORE";
+    case "conflict":
+      return "CONFLICT";
+  }
 }
 
 /* ---------- Sync-Status (für UI) ---------- */
@@ -326,7 +378,7 @@ async function autoSync(): Promise<void> {
     const local = getData();
     const remote = await fetchRemote();
     const decision = decideSync({
-      hasLocalData: local.shifts.length > 0 || local.jobs.length > 0,
+      hasLocalWorkData: local.shifts.length > 0,
       hasRemote: remote !== null,
       localChangedAt: meta.localChangedAt,
       lastSyncedAt: meta.lastSyncedAt,
@@ -385,8 +437,9 @@ export function retryPending(): void {
 /** Metadaten an das aktuell angemeldete Konto binden. */
 function adoptUser(id: string) {
   const local = getData();
-  const hasLocalData = local.shifts.length > 0 || local.jobs.length > 0;
-  const next = metaForUser(meta, id, hasLocalData);
+  // Jobs alone are not local work — only shifts invent a change mark on account bind.
+  const hasLocalWorkData = local.shifts.length > 0;
+  const next = metaForUser(meta, id, hasLocalWorkData);
   if (next === meta) return;
 
   meta = next;

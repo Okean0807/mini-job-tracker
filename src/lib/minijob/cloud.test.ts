@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { decideSync, metaForUser, type SyncDecisionInput } from "./cloud";
+import {
+  classifySyncSituation,
+  decideSync,
+  metaForUser,
+  type SyncDecisionInput,
+} from "./cloud";
 
 const base: SyncDecisionInput = {
-  hasLocalData: true,
+  hasLocalWorkData: true,
   hasRemote: true,
   localChangedAt: null,
   lastSyncedAt: null,
@@ -12,7 +17,7 @@ const base: SyncDecisionInput = {
 
 describe("decideSync", () => {
   it("lädt nichts hoch, wenn Gerät und Cloud leer sind", () => {
-    expect(decideSync({ ...base, hasLocalData: false, hasRemote: false })).toBe("none");
+    expect(decideSync({ ...base, hasLocalWorkData: false, hasRemote: false })).toBe("none");
   });
 
   it("sichert lokale Daten, wenn keine Cloud-Sicherung existiert", () => {
@@ -20,7 +25,7 @@ describe("decideSync", () => {
   });
 
   it("stellt auf einem leeren Gerät die Cloud wieder her", () => {
-    expect(decideSync({ ...base, hasLocalData: false, remoteUpdatedAt: 100 })).toBe("restore");
+    expect(decideSync({ ...base, hasLocalWorkData: false, remoteUpdatedAt: 100 })).toBe("restore");
   });
 
   it("lädt hoch, wenn nur lokal geändert wurde", () => {
@@ -47,8 +52,8 @@ describe("decideSync", () => {
     ).toBe("none");
   });
 
-  it("überschreibt lokale Daten nicht bei unbekanntem Abgleichstand", () => {
-    // Erstlogin auf einem Gerät mit eigenen Daten und vorhandener Cloud-Sicherung
+  it("überschreibt lokale Schichten nicht bei unbekanntem Abgleichstand (nie synced + shifts + remote)", () => {
+    // Erstlogin auf einem Gerät mit eigenen Schichten und vorhandener Cloud-Sicherung
     expect(
       decideSync({ ...base, localChangedAt: 500, lastSyncedAt: null, remoteUpdatedAt: 400 }),
     ).toBe("conflict");
@@ -61,11 +66,11 @@ describe("decideSync", () => {
   });
 
   it("meldet keinen Konflikt bei Einstellungs-Marken vor dem ersten Abgleich (Einrichtungsassistent)", () => {
-    // Sprache/OAuth speichern setzt localChangedAt, ohne dass Schichten/Jobs existieren.
+    // Sprache/OAuth speichern setzt localChangedAt, ohne dass Schichten existieren.
     expect(
       decideSync({
         ...base,
-        hasLocalData: false,
+        hasLocalWorkData: false,
         localChangedAt: 500,
         lastSyncedAt: null,
         remoteUpdatedAt: 400,
@@ -73,17 +78,99 @@ describe("decideSync", () => {
     ).toBe("restore");
   });
 
+  it("FIRST_SYNC: Jobs allein ohne Schichten → restore, kein Falsch-Konflikt", () => {
+    // Onboarding legt oft einen Job an und setzt localChangedAt; lastSyncedAt=null.
+    expect(
+      decideSync({
+        ...base,
+        hasLocalWorkData: false,
+        localChangedAt: 900,
+        lastSyncedAt: null,
+        remoteUpdatedAt: 800,
+      }),
+    ).toBe("restore");
+    expect(
+      classifySyncSituation({
+        ...base,
+        hasLocalWorkData: false,
+        localChangedAt: 900,
+        lastSyncedAt: null,
+        remoteUpdatedAt: 800,
+      }),
+    ).toBe("FIRST_SYNC_RESTORE");
+  });
+
+  it("NEW_DEVICE / EMPTY_DEVICE ohne Schichten + Cloud → FIRST_SYNC_RESTORE", () => {
+    expect(
+      classifySyncSituation({
+        ...base,
+        hasLocalWorkData: false,
+        localChangedAt: null,
+        lastSyncedAt: null,
+        remoteUpdatedAt: 100,
+      }),
+    ).toBe("FIRST_SYNC_RESTORE");
+  });
 
   it("macht eine bewusste lokale Löschung nicht still rückgängig", () => {
     expect(
-      decideSync({ ...base, hasLocalData: false, localChangedAt: 500, lastSyncedAt: 100, remoteUpdatedAt: 100 }),
+      decideSync({
+        ...base,
+        hasLocalWorkData: false,
+        localChangedAt: 500,
+        lastSyncedAt: 100,
+        remoteUpdatedAt: 100,
+      }),
     ).toBe("push");
   });
 
   it("meldet Konflikt, wenn lokal geleert wurde und die Cloud neuer ist", () => {
     expect(
-      decideSync({ ...base, hasLocalData: false, localChangedAt: 500, lastSyncedAt: 100, remoteUpdatedAt: 400 }),
+      decideSync({
+        ...base,
+        hasLocalWorkData: false,
+        localChangedAt: 500,
+        lastSyncedAt: 100,
+        remoteUpdatedAt: 400,
+      }),
     ).toBe("conflict");
+  });
+});
+
+describe("classifySyncSituation", () => {
+  it("mappt Entscheidungen auf Labels", () => {
+    expect(
+      classifySyncSituation({
+        ...base,
+        localChangedAt: 100,
+        lastSyncedAt: 100,
+        remoteUpdatedAt: 100,
+      }),
+    ).toBe("NO_CHANGE");
+    expect(
+      classifySyncSituation({
+        ...base,
+        localChangedAt: 200,
+        lastSyncedAt: 100,
+        remoteUpdatedAt: 100,
+      }),
+    ).toBe("PUSH");
+    expect(
+      classifySyncSituation({
+        ...base,
+        localChangedAt: 50,
+        lastSyncedAt: 100,
+        remoteUpdatedAt: 300,
+      }),
+    ).toBe("RESTORE");
+    expect(
+      classifySyncSituation({
+        ...base,
+        localChangedAt: 250,
+        lastSyncedAt: 100,
+        remoteUpdatedAt: 300,
+      }),
+    ).toBe("CONFLICT");
   });
 });
 
@@ -119,12 +206,21 @@ describe("metaForUser", () => {
     );
     expect(
       decideSync({
-        hasLocalData: true,
+        hasLocalWorkData: true,
         hasRemote: true,
         localChangedAt: next.localChangedAt,
         lastSyncedAt: next.lastSyncedAt,
         remoteUpdatedAt: 400,
       }),
     ).toBe("conflict");
+  });
+
+  it("erfindet keine Änderungsmarke ohne lokale Schichten", () => {
+    const next = metaForUser(
+      { userId: null, localChangedAt: null, lastSyncedAt: null, remoteSeenAt: null },
+      "a",
+      false,
+    );
+    expect(next.localChangedAt).toBeNull();
   });
 });
