@@ -1,4 +1,4 @@
-import type { WebSearchProvider } from "@/lib/ai/web-search/provider";
+import type { WebSearchOptions, WebSearchProvider } from "@/lib/ai/web-search/provider";
 import type {
   WebSearchFailure,
   WebSearchOutcome,
@@ -14,6 +14,11 @@ export const TAVILY_PREFERRED_DOMAINS = [
   "gesetze-im-internet.de",
   "bundesregierung.de",
   "destatis.de",
+  "deutsche-rentenversicherung.de",
+  "bundesfinanzministerium.de",
+  "mindestlohnkommission.de",
+  "gkv-spitzenverband.de",
+  "arbeitsagentur.de",
 ] as const;
 
 export const WEB_SEARCH_QUOTA_EXHAUSTED_MESSAGE =
@@ -40,7 +45,7 @@ function normalizeEnvSecret(raw: string): string {
   return value;
 }
 
-/** Resolve TAVILY_API_KEY (server-only). Never log the key. */
+/** Resolve TAVILY_API_KEY (server-only). Never log the key. Never expose via Vite client env. */
 export function resolveTavilyApiKey(
   env: Record<string, string | undefined> = process.env,
 ): string | undefined {
@@ -100,6 +105,7 @@ export function mapTavilyResults(raw: unknown): WebSearchResultItem[] {
 
 type SearchBodyOptions = {
   withDomainBoost: boolean;
+  includeDomains: readonly string[];
 };
 
 function buildSearchBody(query: string, opts: SearchBodyOptions): Record<string, unknown> {
@@ -112,15 +118,15 @@ function buildSearchBody(query: string, opts: SearchBodyOptions): Record<string,
     country: "germany",
     language: "de",
   };
-  if (opts.withDomainBoost) {
-    body["include_domains"] = [...TAVILY_PREFERRED_DOMAINS];
+  if (opts.withDomainBoost && opts.includeDomains.length > 0) {
+    body["include_domains"] = [...opts.includeDomains];
     body["include_domains_mode"] = "boost";
   }
   return body;
 }
 
 export class TavilyWebSearchProvider implements WebSearchProvider {
-  async search(query: string, opts?: { signal?: AbortSignal }): Promise<WebSearchOutcome> {
+  async search(query: string, opts?: WebSearchOptions): Promise<WebSearchOutcome> {
     const apiKey = resolveTavilyApiKey();
     if (!apiKey) {
       return failure("missing_key", WEB_SEARCH_KEY_INVALID_MESSAGE);
@@ -131,11 +137,24 @@ export class TavilyWebSearchProvider implements WebSearchProvider {
       return failure("unavailable", WEB_SEARCH_UNAVAILABLE_MESSAGE);
     }
 
+    const includeDomains =
+      opts?.includeDomains && opts.includeDomains.length > 0
+        ? opts.includeDomains
+        : [...TAVILY_PREFERRED_DOMAINS];
+
     // Prefer boost of DE official domains; on 400 (unsupported/invalid) retry without filter.
-    const first = await this.postSearch(apiKey, buildSearchBody(q, { withDomainBoost: true }), opts?.signal);
+    const first = await this.postSearch(
+      apiKey,
+      buildSearchBody(q, { withDomainBoost: true, includeDomains }),
+      opts?.signal,
+    );
     if (first.kind === "http" && first.status === 400) {
       return this.finalize(
-        await this.postSearch(apiKey, buildSearchBody(q, { withDomainBoost: false }), opts?.signal),
+        await this.postSearch(
+          apiKey,
+          buildSearchBody(q, { withDomainBoost: false, includeDomains }),
+          opts?.signal,
+        ),
       );
     }
     return this.finalize(first);
