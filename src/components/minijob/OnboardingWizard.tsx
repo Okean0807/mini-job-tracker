@@ -1,5 +1,8 @@
 import { ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { useState } from "react";
+
+import { useAuthSession } from "@/hooks/use-auth-session";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -50,6 +53,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
   };
 
   // Resume after OAuth full-page return (draft in localStorage; settings from store).
+  const { status: authStatus, session } = useAuthSession();
   const [draft] = useState(() => loadOnboardingDraft(STEPS.length));
   const [step, setStep] = useState(draft?.step ?? 0);
   const [mode, setMode] = useState<WorkMode>(draft?.mode ?? "flex");
@@ -248,13 +252,28 @@ export function OnboardingWizard({ settings, onDone }: Props) {
 
           {step === 5 ? (
             <Card title={t("wiz.cloud.title")} hint={t("wiz.cloud.hint")}>
-              <Button className="w-full" onClick={() => oauth("google")}>
-                {t("wiz.cloud.google")}
-              </Button>
-              <Button variant="outline" className="w-full" onClick={() => oauth("apple")}>
-                {t("wiz.cloud.apple")}
-              </Button>
-              <p className="text-xs text-muted-foreground">{t("wiz.cloud.skipHint")}</p>
+              {authStatus === "loading" ? (
+                <div aria-busy="true" aria-label="loading" className="space-y-2 py-2">
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              ) : authStatus === "signed_in" ? (
+                <p className="text-sm text-muted-foreground">
+                  {t("set.account.cloud.signedInAs", {
+                    email: session?.user.email ?? "",
+                  })}
+                </p>
+              ) : (
+                <>
+                  <Button className="w-full" onClick={() => oauth("google")}>
+                    {t("wiz.cloud.google")}
+                  </Button>
+                  <Button variant="outline" className="w-full" onClick={() => oauth("apple")}>
+                    {t("wiz.cloud.apple")}
+                  </Button>
+                  <p className="text-xs text-muted-foreground">{t("wiz.cloud.skipHint")}</p>
+                </>
+              )}
             </Card>
           ) : null}
 

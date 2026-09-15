@@ -45,3 +45,15 @@ export function oauthRedirectTo(origin: string = typeof window !== "undefined" ?
   const base = origin.replace(/\/$/, "");
   return `${base}/einstellungen`;
 }
+
+/** UI auth phase: pending until first bindAuthSession callback. */
+export type AuthSessionStatus = "loading" | "signed_out" | "signed_in";
+
+/** Derive status from hydration phase + session (null before ready ≠ signed_out). */
+export function authSessionStatus(
+  phase: "pending" | "ready",
+  session: Session | null,
+): AuthSessionStatus {
+  if (phase === "pending") return "loading";
+  return session ? "signed_in" : "signed_out";
+}
