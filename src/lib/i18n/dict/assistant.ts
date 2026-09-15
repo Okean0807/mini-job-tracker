@@ -19,6 +19,7 @@ export const assistant: Bundle = {
     "ai.voiceInput": "Spracheingabe",
     "ai.thinking": "Der Assistent denkt nach …",
     "ai.error.generic": "Die KI konnte nicht antworten.",
+    "ai.error.timeout": "Die KI antwortet nicht rechtzeitig – bitte erneut versuchen.",
     "ai.error.voice": "Spracheingabe nicht möglich.",
   },
   en: {
@@ -38,6 +39,7 @@ export const assistant: Bundle = {
     "ai.voiceInput": "Voice input",
     "ai.thinking": "The assistant is thinking …",
     "ai.error.generic": "The AI could not answer.",
+    "ai.error.timeout": "The AI did not respond in time – please try again.",
     "ai.error.voice": "Voice input is not possible.",
   },
   ru: {
@@ -57,6 +59,7 @@ export const assistant: Bundle = {
     "ai.voiceInput": "Голосовой ввод",
     "ai.thinking": "Ассистент думает …",
     "ai.error.generic": "ИИ не смог ответить.",
+    "ai.error.timeout": "ИИ не ответил вовремя — попробуйте ещё раз.",
     "ai.error.voice": "Голосовой ввод недоступен.",
   },
   tr: {
@@ -76,6 +79,7 @@ export const assistant: Bundle = {
     "ai.voiceInput": "Sesli giriş",
     "ai.thinking": "Asistan düşünüyor …",
     "ai.error.generic": "YZ yanıt veremedi.",
+    "ai.error.timeout": "YZ zamanında yanıt vermedi – lütfen tekrar deneyin.",
     "ai.error.voice": "Sesli giriş yapılamıyor.",
   },
   pl: {
@@ -95,6 +99,7 @@ export const assistant: Bundle = {
     "ai.voiceInput": "Wprowadzanie głosowe",
     "ai.thinking": "Asystent się zastanawia …",
     "ai.error.generic": "AI nie mogło odpowiedzieć.",
+    "ai.error.timeout": "AI nie odpowiedziało na czas – spróbuj ponownie.",
     "ai.error.voice": "Wprowadzanie głosowe niemożliwe.",
   },
 };

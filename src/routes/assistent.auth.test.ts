@@ -59,6 +59,12 @@ describe("KI error surfacing (assistent.tsx) — acceptance K", () => {
     expect(src).toMatch(/toast\.error\(message\)/);
     expect(src).toMatch(/setMessages\(\(m\) => \[\.\.\.m, \{ role: "ai", text: message \}\]\)/);
   });
+
+  it("uses runAssistantAsk + client timeout so pending cannot stick on hang", () => {
+    expect(src).toMatch(/runAssistantAsk/);
+    expect(src).toMatch(/ASK_CLIENT_TIMEOUT_MS/);
+    expect(src).toMatch(/ai\.error\.timeout/);
+  });
 });
 
 describe("askAssistant server auth + missing key (ai.functions.ts)", () => {
@@ -69,5 +75,11 @@ describe("askAssistant server auth + missing key (ai.functions.ts)", () => {
   it("throws clear unavailable when LOVABLE_API_KEY missing", () => {
     expect(fnSrc).toMatch(/process\.env\["LOVABLE_API_KEY"\]/);
     expect(fnSrc).toMatch(/KI ist derzeit nicht verfügbar/);
+  });
+
+  it("aborts hung gateway fetch with AbortSignal.timeout (hang root cause)", () => {
+    expect(fnSrc).toMatch(/AbortSignal\.timeout\(ASK_GATEWAY_TIMEOUT_MS\)/);
+    expect(fnSrc).toMatch(/isAbortOrTimeoutError/);
+    expect(fnSrc).toMatch(/ASK_GATEWAY_TIMEOUT_MESSAGE/);
   });
 });
