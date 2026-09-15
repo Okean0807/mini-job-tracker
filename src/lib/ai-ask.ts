@@ -1,10 +1,12 @@
 /**
- * Ask-turn helpers: prevent silent "thinking forever" when the gateway or
+ * Ask-turn helpers: prevent silent "thinking forever" when the AI provider or
  * serverFn transport never settles. Server uses AbortSignal.timeout on fetch;
  * client races the serverFn with a slightly longer timeout as defense-in-depth.
  */
 
-/** Lovable gateway fetch must abort — unbounded fetch was the production hang. */
+import type { AskSource } from "@/lib/ai/types";
+
+/** Provider fetch must abort — unbounded fetch was the production hang. */
 export const ASK_GATEWAY_TIMEOUT_MS = 30_000;
 
 /** Client backup: slightly above gateway so server errors win when possible. */
@@ -27,9 +29,14 @@ export function withAskTimeout<T>(
   });
 }
 
+export type AssistantAskResult = {
+  answer: string;
+  sources?: AskSource[];
+};
+
 export type AssistantAskHandlers = {
   setBusy: (busy: boolean) => void;
-  onAnswer: (answer: string) => void;
+  onAnswer: (result: AssistantAskResult) => void;
   onError: (message: string) => void;
 };
 
@@ -38,7 +45,7 @@ export type AssistantAskHandlers = {
  * (toast + chat bubble are the caller's responsibility).
  */
 export async function runAssistantAsk(
-  invoke: () => Promise<{ answer: string }>,
+  invoke: () => Promise<AssistantAskResult>,
   handlers: AssistantAskHandlers,
   options: {
     timeoutMs: number;
@@ -53,7 +60,7 @@ export async function runAssistantAsk(
       options.timeoutMs,
       () => new Error(options.timeoutMessage),
     );
-    handlers.onAnswer(result.answer);
+    handlers.onAnswer(result);
   } catch (error) {
     handlers.onError(options.mapError(error));
   } finally {
