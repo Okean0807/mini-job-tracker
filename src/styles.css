@@ -272,6 +272,18 @@
   padding-inline: 0.125rem;
   overflow: hidden;
 }
+[data-touch="large"] nav a[href] .nav-label,
+[data-touch="glove"] nav a[href] .nav-label {
+  /* Two-line wrap under xl root — do not enlarge font (keeps 0.625rem). */
+  white-space: normal;
+  overflow: hidden;
+  max-height: 1.6rem;
+  line-height: 1.1;
+  -webkit-line-clamp: 2;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
 [data-touch="large"] nav a[href] {
   min-height: 2.75rem;
   padding-block: 0.5rem;
@@ -281,10 +293,30 @@
   padding-block: 0.7rem;
 }
 
-/* Extra shell padding so content clears the taller glove/large bottom nav */
+/* Extra shell padding so content + FAB clear the taller glove/large bottom nav */
 [data-touch="large"] .app-shell {
-  padding-bottom: 5.5rem;
+  padding-bottom: 7rem;
 }
 [data-touch="glove"] .app-shell {
+  padding-bottom: 7.75rem;
+}
+
+/* Dashboard FAB sits above bottom nav; keep main content from sitting under it */
+.app-shell main {
+  padding-bottom: 5.5rem;
+}
+[data-touch="large"] .app-shell main {
   padding-bottom: 6.25rem;
+}
+[data-touch="glove"] .app-shell main {
+  padding-bottom: 7rem;
+}
+
+/* Raise FAB slightly when glove/large nav is taller */
+[data-touch="large"] .dash-fab,
+[data-touch="glove"] .dash-fab {
+  bottom: 5.75rem;
+}
+[data-touch="glove"] .dash-fab {
+  bottom: 6.5rem;
 }

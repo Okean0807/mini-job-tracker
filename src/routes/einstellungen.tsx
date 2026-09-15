@@ -1,9 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { CloudDownload, CloudUpload, FileUp, Lock, LogOut } from "lucide-react";
+import { CloudDownload, CloudUpload, Lock, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { ImportDialog } from "@/components/minijob/ImportDialog";
 import { SupplementRow } from "@/components/minijob/JobDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -685,9 +684,13 @@ function SyncStatusRow({
           ? t("set.account.cloud.sync.conflict")
           : sync.status === "error"
             ? (sync.message ?? t("set.account.cloud.sync.error"))
-            : sync.pending
-              ? t("set.account.cloud.sync.pending")
-              : t("set.account.cloud.sync.synced");
+            : sync.status === "idle"
+              ? sync.pending
+                ? t("set.account.cloud.sync.pending")
+                : t("set.account.cloud.sync.synced")
+              : sync.pending
+                ? t("set.account.cloud.sync.pending")
+                : t("set.account.cloud.sync.synced");
 
   const tone =
     sync.status === "error" || sync.status === "conflict"
@@ -922,7 +925,6 @@ function Notifications({ value }: { value: NotificationSettings }) {
 function DataMigration({ shiftCount }: { shiftCount: number }) {
   const { t } = useT();
   const { shifts, jobs, settings } = useAppData();
-  const [importOpen, setImportOpen] = useState(false);
   const stamp = isoDate(new Date());
 
   return (
@@ -953,10 +955,7 @@ function DataMigration({ shiftCount }: { shiftCount: number }) {
           {t("set.migration.excel")}
         </Button>
       </div>
-      <Button className="w-full" onClick={() => setImportOpen(true)}>
-        <FileUp className="size-4" /> {t("set.migration.import")}
-      </Button>
-      <ImportDialog open={importOpen} onOpenChange={setImportOpen} jobs={jobs} settings={settings} />
+      <p className="text-xs text-muted-foreground">{t("set.migration.importUnavailable")}</p>
     </Section>
   );
 }

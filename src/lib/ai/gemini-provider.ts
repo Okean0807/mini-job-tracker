@@ -131,12 +131,12 @@ function isAiGuardErrorLike(error: unknown): error is AiGuardError {
   );
 }
 
-/** Map Gemini HTTP failures to safe user-facing AiGuardError — never include API key or raw body. */
+/** Map Gemini HTTP failures to safe user-facing AiGuardError — never include API key, env names, or raw body. */
 export function mapHttpError(status: number, bodyText: string): AiGuardError {
   if (status === 401) {
     return new AiGuardError(
       "unavailable",
-      "API-Schlüssel ungültig oder nicht autorisiert.",
+      "Anmeldung bei der KI fehlgeschlagen. Bitte später erneut versuchen.",
     );
   }
   if (status === 429) {
@@ -150,35 +150,38 @@ export function mapHttpError(status: number, bodyText: string): AiGuardError {
     if (lower.includes("quota") || lower.includes("billing") || lower.includes("free")) {
       return new AiGuardError(
         "unavailable",
-        "KI-Kontingent (Free Tier) aufgebraucht oder API-Zugriff gesperrt. Bitte später erneut versuchen.",
+        "KI-Kontingent aufgebraucht oder Zugriff gesperrt. Bitte später erneut versuchen.",
       );
     }
     return new AiGuardError(
       "unavailable",
-      "KI-Zugriff verweigert (API-Schlüssel oder Kontingent). Bitte Konfiguration prüfen.",
+      "KI-Zugriff derzeit nicht möglich. Bitte später erneut versuchen.",
     );
   }
   if (status === 404) {
     return new AiGuardError(
       "unavailable",
-      "Model oder Endpoint nicht gefunden. Prüfe GEMINI_MODEL.",
+      "KI-Dienst vorübergehend nicht erreichbar. Bitte später erneut versuchen.",
     );
   }
   if (status === 400) {
     if (/quota|RESOURCE_EXHAUSTED/i.test(bodyText)) {
       return new AiGuardError(
         "unavailable",
-        "KI-Kontingent (Free Tier) aufgebraucht. Bitte später erneut versuchen.",
+        "KI-Kontingent aufgebraucht. Bitte später erneut versuchen.",
       );
     }
     if (/API_KEY|API key|invalid.?argument|INVALID_ARGUMENT/i.test(bodyText)) {
       return new AiGuardError(
         "unavailable",
-        "Ungültige KI-Anfrage (Schlüssel oder Argumente).",
+        "Anmeldung bei der KI fehlgeschlagen. Bitte später erneut versuchen.",
       );
     }
   }
-  return new AiGuardError("unavailable", `Die KI konnte nicht antworten. (HTTP ${status})`);
+  return new AiGuardError(
+    "unavailable",
+    "Die KI konnte nicht antworten. Bitte später erneut versuchen.",
+  );
 }
 
 /** Append clear note when web verification / grounding is unavailable. */

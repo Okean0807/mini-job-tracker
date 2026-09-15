@@ -122,20 +122,23 @@ describe("mapHttpError", () => {
     const err = mapHttpError(401, JSON.stringify({ error: { message: "API key not valid" } }));
     expect(err).toBeInstanceOf(AiGuardError);
     expect(err.code).toBe("unavailable");
-    expect(err.message).toBe("API-Schlüssel ungültig oder nicht autorisiert.");
+    expect(err.message).toBe("Anmeldung bei der KI fehlgeschlagen. Bitte später erneut versuchen.");
     expect(err.message).not.toMatch(/API key not valid/i);
+    expect(err.message).not.toMatch(/GEMINI_/i);
   });
 
   it("maps 404 → model/endpoint message", () => {
     const err = mapHttpError(404, "model not found");
     expect(err.code).toBe("unavailable");
-    expect(err.message).toBe("Model oder Endpoint nicht gefunden. Prüfe GEMINI_MODEL.");
+    expect(err.message).toBe("KI-Dienst vorübergehend nicht erreichbar. Bitte später erneut versuchen.");
+    expect(err.message).not.toMatch(/GEMINI_/i);
   });
 
-  it("generic fallback includes HTTP status number", () => {
+  it("generic fallback is safe DE without HTTP status leak", () => {
     const err = mapHttpError(502, "bad gateway");
     expect(err.code).toBe("unavailable");
-    expect(err.message).toBe("Die KI konnte nicht antworten. (HTTP 502)");
+    expect(err.message).toBe("Die KI konnte nicht antworten. Bitte später erneut versuchen.");
+    expect(err.message).not.toMatch(/HTTP\s*502/i);
   });
 
   it("maps 400 API_KEY / invalid argument without leaking body", () => {
@@ -143,9 +146,10 @@ describe("mapHttpError", () => {
       400,
       JSON.stringify({ error: { status: "INVALID_ARGUMENT", message: "API_KEY_INVALID secret-xyz" } }),
     );
-    expect(err.message).toBe("Ungültige KI-Anfrage (Schlüssel oder Argumente).");
+    expect(err.message).toBe("Anmeldung bei der KI fehlgeschlagen. Bitte später erneut versuchen.");
     expect(err.message).not.toContain("secret-xyz");
     expect(err.message).not.toContain("API_KEY_INVALID");
+    expect(err.message).not.toMatch(/GEMINI_/i);
   });
 
   it("keeps 429 as rate_limited", () => {
@@ -361,7 +365,8 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
     } catch (e) {
       expect(e).toBeInstanceOf(AiGuardError);
       expect((e as AiGuardError).code).toBe("unavailable");
-      expect((e as Error).message).toMatch(/Free Tier|Kontingent/i);
+      expect((e as Error).message).toMatch(/Kontingent/i);
+      expect((e as Error).message).not.toMatch(/GEMINI_/i);
     }
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -372,7 +377,7 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
 
     await expect(new GeminiProvider().ask({ question: "x", context: "{}" })).rejects.toMatchObject({
       code: "unavailable",
-      message: "API-Schlüssel ungültig oder nicht autorisiert.",
+      message: "Anmeldung bei der KI fehlgeschlagen. Bitte später erneut versuchen.",
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -383,18 +388,18 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
 
     await expect(new GeminiProvider().ask({ question: "x", context: "{}" })).rejects.toMatchObject({
       code: "unavailable",
-      message: "Model oder Endpoint nicht gefunden. Prüfe GEMINI_MODEL.",
+      message: "KI-Dienst vorübergehend nicht erreichbar. Bitte später erneut versuchen.",
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("maps other HTTP errors with status in message", async () => {
+  it("maps other HTTP errors to safe DE message without status leak", async () => {
     const fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
     fetchMock.mockImplementation(async () => new Response("oops", { status: 503 }));
 
     await expect(new GeminiProvider().ask({ question: "x", context: "{}" })).rejects.toMatchObject({
       code: "unavailable",
-      message: "Die KI konnte nicht antworten. (HTTP 503)",
+      message: "Die KI konnte nicht antworten. Bitte später erneut versuchen.",
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

@@ -119,7 +119,11 @@ export function ShiftDialog({
     if (!open) return;
     const fallbackJob = jobs.find((j) => j.id === settings.activeJobId) ?? jobs[0];
     setJobId(shift?.jobId ?? fallbackJob?.id);
-    setKind(shift?.kind ?? "arbeit");
+    // Existing entries keep their kind (incl. Feiertag). New entries on a
+    // public holiday default to feiertag so the type matches the calendar day.
+    const holidayDefault =
+      !shift && holidayName(date, settings.bundesland) ? "feiertag" : "arbeit";
+    setKind(shift?.kind ?? holidayDefault);
     setStart(shift?.start ?? "09:00");
     setEnd(shift?.end ?? "17:00");
     setBreakMinutes(String(shift?.breakMinutes ?? 30));
@@ -161,7 +165,7 @@ export function ShiftDialog({
             shift.gps),
       ),
     );
-  }, [open, shift, jobs, settings.activeJobId, settings.defaultRate]);
+  }, [open, shift, jobs, settings.activeJobId, settings.defaultRate, settings.bundesland, date]);
 
 
   const job = jobs.find((j) => j.id === jobId);
