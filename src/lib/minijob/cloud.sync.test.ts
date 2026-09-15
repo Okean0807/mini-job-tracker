@@ -601,7 +601,110 @@ describe("Sync-Timeout (SYNC-LIVE-P1)", () => {
     expect(mod.getSyncState().status).not.toBe("syncing");
   });
 
-  it("applyRemote löst keinen Backup-Loop über onDataChange aus", async () => {
+  it("nach forceFail darf late fetch weder restore noch synced setzen", async () => {
+    local = makeData(0);
+    cloud.remote = { payload: makeData(5), updated_at: new Date().toISOString() };
+
+    let release!: () => void;
+    cloud.gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    expect(mod.getSyncState().status).toBe("syncing");
+    expect(replaced).toHaveLength(0);
+
+    mod.forceFailStuckSync();
+    expect(["error", "offline"]).toContain(mod.getSyncState().status);
+    const statusAfterFail = mod.getSyncState().status;
+    const replacedAfterFail = replaced.length;
+    const upsertsAfterFail = cloud.upserts;
+
+    // Late hung fetch resolves with restore-worthy remote — must stay abandoned.
+    release();
+    await settle();
+    await vi.advanceTimersByTimeAsync(50);
+    await settle();
+
+    expect(replaced).toHaveLength(replacedAfterFail);
+    expect(cloud.upserts).toBe(upsertsAfterFail);
+    expect(mod.getSyncState().status).toBe(statusAfterFail);
+    expect(mod.getSyncState().status).not.toBe("synced");
+    expect(mod.getSyncState().status).not.toBe("syncing");
+  });
+
+  it("nach Watchdog-Timeout darf late fetch weder restore noch synced setzen", async () => {
+    local = makeData(0);
+    cloud.remote = { payload: makeData(5), updated_at: new Date().toISOString() };
+
+    let release!: () => void;
+    cloud.gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    expect(mod.getSyncState().status).toBe("syncing");
+    expect(replaced).toHaveLength(0);
+
+    await vi.advanceTimersByTimeAsync(mod.SYNC_TIMEOUT_MS + 50);
+    await settle();
+    expect(mod.getSyncState().status).not.toBe("syncing");
+    expect(["error", "offline"]).toContain(mod.getSyncState().status);
+    const statusAfterTimeout = mod.getSyncState().status;
+    const replacedAfterTimeout = replaced.length;
+    const upsertsAfterTimeout = cloud.upserts;
+
+    release();
+    await settle();
+    await vi.advanceTimersByTimeAsync(50);
+    await settle();
+
+    expect(replaced).toHaveLength(replacedAfterTimeout);
+    expect(cloud.upserts).toBe(upsertsAfterTimeout);
+    expect(mod.getSyncState().status).toBe(statusAfterTimeout);
+    expect(mod.getSyncState().status).not.toBe("synced");
+  });
+
+  it("nach forceFail darf late push weder upserten noch synced setzen", async () => {
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(mod.getSyncState().status).toBe("synced");
+
+    let release!: () => void;
+    cloud.gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    local = makeData(2);
+    changeHook?.(local);
+    await vi.advanceTimersByTimeAsync(2500);
+    await settle();
+    expect(mod.getSyncState().status).toBe("syncing");
+
+    mod.forceFailStuckSync();
+    expect(["error", "offline"]).toContain(mod.getSyncState().status);
+    const upsertsAfterFail = cloud.upserts;
+    const statusAfterFail = mod.getSyncState().status;
+
+    // Remote present so decide could push; late ungated work must not mutate.
+    cloud.remote = { payload: makeData(1), updated_at: new Date(Date.now() - 60_000).toISOString() };
+    release();
+    await settle();
+    await vi.advanceTimersByTimeAsync(50);
+    await settle();
+
+    expect(cloud.upserts).toBe(upsertsAfterFail);
+    expect(mod.getSyncState().status).toBe(statusAfterFail);
+    expect(mod.getSyncState().status).not.toBe("synced");
+  });
+
+    it("applyRemote löst keinen Backup-Loop über onDataChange aus", async () => {
     local = makeData(0);
     cloud.remote = { payload: makeData(3), updated_at: new Date().toISOString() };
 

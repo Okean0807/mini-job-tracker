@@ -367,7 +367,7 @@ export async function backupNow(): Promise<void> {
     if (epoch !== syncEpoch) return;
     setState({ status: "synced", pending: false, message: null, lastSyncedAt: meta.lastSyncedAt });
   } catch (error) {
-    if (epoch === syncEpoch) failed(error);
+    abandonSyncEpoch(epoch, error);
     throw error;
   } finally {
     if (epoch === syncEpoch) {
@@ -395,7 +395,7 @@ export async function restoreNow(): Promise<boolean> {
     setState({ status: "synced", pending: false, message: null, lastSyncedAt: meta.lastSyncedAt });
     return true;
   } catch (error) {
-    if (epoch === syncEpoch) failed(error);
+    abandonSyncEpoch(epoch, error);
     throw error;
   } finally {
     if (epoch === syncEpoch) {
@@ -440,6 +440,18 @@ function clearSyncWatchdog() {
 }
 
 /**
+ * Invalidate this sync run so late Promise.race losers cannot mutate or overwrite UI.
+ * Bumps syncEpoch (same as forceFailStuckSync) and surfaces error/offline.
+ */
+function abandonSyncEpoch(epoch: number, error: unknown): void {
+  if (epoch !== syncEpoch) return;
+  clearSyncWatchdog();
+  syncing = false;
+  syncEpoch += 1;
+  failed(error);
+}
+
+/**
  * Hard wall-clock failsafe: if status is still "syncing" after SYNC_TIMEOUT_MS for
  * this epoch, force error/offline. Independent of Promise.race (which alone left
  * prod UI stuck past 15s when I/O hung or sync restarted).
@@ -450,8 +462,7 @@ function armSyncWatchdog(epoch: number) {
     syncWatchdog = null;
     if (epoch !== syncEpoch) return;
     if (getSyncState().status !== "syncing") return;
-    syncing = false;
-    failed(new DOMException("Sync timed out", "TimeoutError"));
+    abandonSyncEpoch(epoch, new DOMException("Sync timed out", "TimeoutError"));
   }, SYNC_TIMEOUT_MS);
 }
 
@@ -487,6 +498,8 @@ async function autoSync(): Promise<void> {
     await withSyncTimeout((async () => {
       const local = getData();
       const remote = await fetchRemote();
+      // After forceFail / watchdog / timeout abandon, late fetch must not mutate.
+      if (epoch !== syncEpoch) return;
       const decision = decideSync({
         hasLocalWorkData: local.shifts.length > 0,
         hasLocalJobs: local.jobs.length > 0,
@@ -501,6 +514,7 @@ async function autoSync(): Promise<void> {
         return;
       }
       if (decision === "restore" && remote) applyRemote(remote);
+      if (epoch !== syncEpoch) return;
       if (decision === "push") await push(local);
       if (epoch !== syncEpoch) return;
       const changedDuringSync =
@@ -513,7 +527,7 @@ async function autoSync(): Promise<void> {
       });
     })());
   } catch (error) {
-    if (epoch === syncEpoch) failed(error);
+    abandonSyncEpoch(epoch, error);
   } finally {
     if (epoch === syncEpoch) {
       clearSyncWatchdog();
