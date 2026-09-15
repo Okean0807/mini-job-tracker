@@ -21,6 +21,7 @@ export const assistant: Bundle = {
     "ai.error.generic": "Die KI konnte nicht antworten.",
     "ai.error.timeout": "Die KI antwortet nicht rechtzeitig – bitte erneut versuchen.",
     "ai.error.voice": "Spracheingabe nicht möglich.",
+    "ai.sources": "Quellen:",
   },
   en: {
     "voice.error.unsupported": "Speech recognition is not supported by this browser.",
@@ -41,6 +42,7 @@ export const assistant: Bundle = {
     "ai.error.generic": "The AI could not answer.",
     "ai.error.timeout": "The AI did not respond in time – please try again.",
     "ai.error.voice": "Voice input is not possible.",
+    "ai.sources": "Sources:",
   },
   ru: {
     "voice.error.unsupported": "Распознавание речи не поддерживается этим браузером.",
@@ -61,6 +63,7 @@ export const assistant: Bundle = {
     "ai.error.generic": "ИИ не смог ответить.",
     "ai.error.timeout": "ИИ не ответил вовремя — попробуйте ещё раз.",
     "ai.error.voice": "Голосовой ввод недоступен.",
+    "ai.sources": "Источники:",
   },
   tr: {
     "voice.error.unsupported": "Bu tarayıcı ses tanımayı desteklemiyor.",
@@ -81,6 +84,7 @@ export const assistant: Bundle = {
     "ai.error.generic": "YZ yanıt veremedi.",
     "ai.error.timeout": "YZ zamanında yanıt vermedi – lütfen tekrar deneyin.",
     "ai.error.voice": "Sesli giriş yapılamıyor.",
+    "ai.sources": "Kaynaklar:",
   },
   pl: {
     "voice.error.unsupported": "Ta przeglądarka nie obsługuje rozpoznawania mowy.",
@@ -101,5 +105,6 @@ export const assistant: Bundle = {
     "ai.error.generic": "AI nie mogło odpowiedzieć.",
     "ai.error.timeout": "AI nie odpowiedziało na czas – spróbuj ponownie.",
     "ai.error.voice": "Wprowadzanie głosowe niemożliwe.",
+    "ai.sources": "Źródła:",
   },
 };

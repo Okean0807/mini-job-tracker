@@ -8,14 +8,16 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuthSession } from "@/hooks/use-auth-session";
-import { languageLabel, useT } from "@/lib/i18n";
+import { sourceDisplayLabel } from "@/lib/ai/sources";
+import type { AskSource } from "@/lib/ai/types";
 import { ASK_CLIENT_TIMEOUT_MS, runAssistantAsk } from "@/lib/ai-ask";
 import { aiClientErrorMessage } from "@/lib/ai-client-error";
 import { askAssistant } from "@/lib/ai.functions";
+import { languageLabel, useT } from "@/lib/i18n";
 import { MONTHS_DE, isoDate, shiftsInMonth, shiftsInYear } from "@/lib/minijob/calc";
+import { monthlyLimitOf, yearlyLimitOf } from "@/lib/minijob/limits";
 import { payrollTotals } from "@/lib/minijob/payroll";
 import { makeResolver } from "@/lib/minijob/resolve";
-import { monthlyLimitOf, yearlyLimitOf } from "@/lib/minijob/limits";
 import { useAppData } from "@/lib/minijob/store";
 import { listenOnce, voiceSupported } from "@/lib/minijob/voice";
 
@@ -38,13 +40,19 @@ export const Route = createFileRoute("/assistent")({
   component: AssistantPage,
 });
 
+type ChatMessage = {
+  role: "user" | "ai";
+  text: string;
+  sources?: AskSource[];
+};
+
 function AssistantPage() {
   const { t, lang } = useT();
   const data = useAppData();
   const { status: authStatus } = useAuthSession();
   const call = useServerFn(askAssistant);
   const [question, setQuestion] = useState("");
-  const [messages, setMessages] = useState<{ role: "user" | "ai"; text: string }[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
 
   const SUGGESTIONS = [
@@ -107,7 +115,14 @@ function AssistantPage() {
       () => call({ data: { question: q, context, language: languageLabel(lang) } }),
       {
         setBusy,
-        onAnswer: (answer) => setMessages((m) => [...m, { role: "ai", text: answer }]),
+        onAnswer: (result) =>
+          setMessages((m) => {
+            const msg: ChatMessage = { role: "ai", text: result.answer };
+            if (result.sources && result.sources.length > 0) {
+              msg.sources = result.sources;
+            }
+            return [...m, msg];
+          }),
         onError: (message) => {
           toast.error(message);
           setMessages((m) => [...m, { role: "ai", text: message }]);
@@ -176,6 +191,25 @@ function AssistantPage() {
                   }
                 >
                   {m.text}
+                  {m.role === "ai" && m.sources && m.sources.length > 0 ? (
+                    <div className="mt-2 border-t border-border/60 pt-2 text-xs text-muted-foreground">
+                      <span className="font-medium">{t("ai.sources")}</span>
+                      <ul className="mt-1 space-y-0.5">
+                        {m.sources.map((s) => (
+                          <li key={s.url}>
+                            <a
+                              href={s.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="underline underline-offset-2 hover:text-foreground"
+                            >
+                              {sourceDisplayLabel(s)}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                 </div>
               ))}
               {busy ? <p className="text-xs text-muted-foreground">{t("ai.thinking")}</p> : null}

@@ -36,7 +36,7 @@ This document records **verified** facts only. Items not actually performed are 
 
 1. Open Supabase project for MiniJob Companion (or Lovable secrets UI).
 2. Rotate **publishable** (anon) key; update local `.env` / Lovable env; redeploy if needed.
-3. If `SERVICE_ROLE` or `LOVABLE_API_KEY` were ever in the leaked `.env`, rotate those too.
+3. If `SERVICE_ROLE` or a former `LOVABLE_API_KEY` / current `GEMINI_API_KEY` were ever in the leaked `.env`, rotate those too.
 4. Confirm app login + cloud sync still work with the new key.
 5. Tell Stabschef the date/time of rotation (do **not** paste the new key into chat).
 

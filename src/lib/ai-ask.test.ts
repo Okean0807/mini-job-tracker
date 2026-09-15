@@ -67,7 +67,7 @@ describe("runAssistantAsk — pending never stuck on failure/timeout", () => {
       },
       {
         setBusy: (b) => busyLog.push(b),
-        onAnswer: (a) => answers.push(a),
+        onAnswer: (r) => answers.push(r.answer),
         onError: (m) => errors.push(m),
       },
       {
@@ -121,7 +121,7 @@ describe("runAssistantAsk — pending never stuck on failure/timeout", () => {
       async () => ({ answer: "42 Stunden" }),
       {
         setBusy: (b) => busyLog.push(b),
-        onAnswer: (a) => answers.push(a),
+        onAnswer: (r) => answers.push(r.answer),
         onError: () => {
           throw new Error("should not error");
         },

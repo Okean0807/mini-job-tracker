@@ -1,6 +1,7 @@
 /**
  * Regression O/K: KI must not look usable when signed_out; unavailable/unauthorized
  * must surface via toast + chat message (not silent hang).
+ * Also: Gemini detachment — no Lovable AI gateway in KI path; sources UI when present.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -8,9 +9,12 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import { sourceDisplayLabel } from "@/lib/ai/sources";
+
 const here = dirname(fileURLToPath(import.meta.url));
 const src = readFileSync(join(here, "assistent.tsx"), "utf8");
 const fnSrc = readFileSync(join(here, "../lib/ai.functions.ts"), "utf8");
+const geminiSrc = readFileSync(join(here, "../lib/ai/gemini-provider.ts"), "utf8");
 
 describe("KI auth gate (assistent.tsx) — acceptance O", () => {
   it("uses shared useAuthSession", () => {
@@ -67,19 +71,53 @@ describe("KI error surfacing (assistent.tsx) — acceptance K", () => {
   });
 });
 
-describe("askAssistant server auth + missing key (ai.functions.ts)", () => {
+describe("askAssistant server auth + Gemini provider (ai.functions.ts)", () => {
   it("keeps requireSupabaseAuth middleware (no auth weaken)", () => {
     expect(fnSrc).toMatch(/middleware\(\[requireSupabaseAuth\]\)/);
   });
 
-  it("throws clear unavailable when LOVABLE_API_KEY missing", () => {
-    expect(fnSrc).toMatch(/process\.env\["LOVABLE_API_KEY"\]/);
-    expect(fnSrc).toMatch(/KI ist derzeit nicht verfügbar/);
+  it("throws clear unavailable when GEMINI_API_KEY missing (via provider)", () => {
+    expect(fnSrc).toMatch(/createDefaultProvider/);
+    expect(geminiSrc).toMatch(/GEMINI_API_KEY/);
+    expect(geminiSrc).toMatch(/KI ist derzeit nicht verfügbar/);
+    expect(fnSrc).not.toMatch(/LOVABLE_API_KEY/);
+    expect(fnSrc).not.toMatch(/process\.env\["LOVABLE_API_KEY"\]/);
   });
 
-  it("aborts hung gateway fetch with AbortSignal.timeout (hang root cause)", () => {
+  it("aborts hung provider fetch with AbortSignal.timeout (hang root cause)", () => {
     expect(fnSrc).toMatch(/AbortSignal\.timeout\(ASK_GATEWAY_TIMEOUT_MS\)/);
     expect(fnSrc).toMatch(/isAbortOrTimeoutError/);
     expect(fnSrc).toMatch(/ASK_GATEWAY_TIMEOUT_MESSAGE/);
+  });
+});
+
+describe("Gemini AI detachment — no Lovable AI runtime in KI path", () => {
+  it("ai.functions.ts has no Lovable gateway / LOVABLE_API_KEY", () => {
+    expect(fnSrc).not.toMatch(/ai\.gateway\.lovable\.dev/);
+    expect(fnSrc).not.toMatch(/LOVABLE_API_KEY/);
+  });
+
+  it("gemini-provider.ts has no Lovable gateway / LOVABLE_API_KEY", () => {
+    expect(geminiSrc).not.toMatch(/ai\.gateway\.lovable\.dev/);
+    expect(geminiSrc).not.toMatch(/LOVABLE_API_KEY/);
+    expect(geminiSrc).toMatch(/google_search/);
+    expect(geminiSrc).toMatch(/generativelanguage\.googleapis\.com/);
+  });
+});
+
+describe("assistent UI renders sources when present", () => {
+  it("renders Quellen section with links only when sources exist", () => {
+    expect(src).toMatch(/ai\.sources/);
+    expect(src).toMatch(/m\.sources && m\.sources\.length > 0/);
+    expect(src).toMatch(/sourceDisplayLabel/);
+    expect(src).toMatch(/target="_blank"/);
+    expect(src).toMatch(/rel="noopener noreferrer"/);
+  });
+
+  it("sourceDisplayLabel prefers title else hostname", () => {
+    expect(sourceDisplayLabel({ url: "https://www.bmas.de/path", title: "BMAS" })).toBe("BMAS");
+    expect(sourceDisplayLabel({ url: "https://www.minijob-zentrale.de/x" })).toBe(
+      "www.minijob-zentrale.de",
+    );
   });
 });
