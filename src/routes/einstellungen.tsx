@@ -17,9 +17,11 @@ import { formatDateDE, formatEuro, formatHours, isoDate } from "@/lib/minijob/ca
 import { monthlyHoursLimit, monthlyLimitOf, yearlyLimitOf } from "@/lib/minijob/limits";
 import {
   backupNow,
+  forceFailStuckSync,
   restoreNow,
   resolveConflict,
   retryPending,
+  SYNC_TIMEOUT_MS,
   useSyncState,
 } from "@/lib/minijob/cloud";
 
@@ -674,6 +676,15 @@ function SyncStatusRow({
 }) {
   const { t } = useT();
   const sync = useSyncState();
+
+  // UI failsafe: never leave "Wird synchronisiert …" past timeout even if cloud Promise.race fails.
+  useEffect(() => {
+    if (sync.status !== "syncing") return;
+    const id = globalThis.setTimeout(() => {
+      forceFailStuckSync();
+    }, SYNC_TIMEOUT_MS + 500);
+    return () => globalThis.clearTimeout(id);
+  }, [sync.status]);
 
   const label =
     sync.status === "syncing"
