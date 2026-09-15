@@ -559,6 +559,48 @@ describe("Sync-Timeout (SYNC-LIVE-P1)", () => {
     }
   });
 
+  it("forceFailStuckSync verlässt syncing (UI-Failsafe)", async () => {
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(mod.getSyncState().status).toBe("synced");
+
+    cloud.gate = new Promise<void>(() => {});
+    local = makeData(2);
+    changeHook?.(local);
+    await vi.advanceTimersByTimeAsync(2500);
+    await settle();
+    expect(mod.getSyncState().status).toBe("syncing");
+
+    mod.forceFailStuckSync();
+    expect(mod.getSyncState().status).not.toBe("syncing");
+    expect(["error", "offline"]).toContain(mod.getSyncState().status);
+    // Idempotent when already left syncing
+    const after = mod.getSyncState();
+    mod.forceFailStuckSync();
+    expect(mod.getSyncState()).toEqual(after);
+  });
+
+  it("hard watchdog beendet syncing auch wenn nur Epoch-Timer weiterläuft", async () => {
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    await vi.advanceTimersByTimeAsync(1000);
+
+    cloud.gate = new Promise<void>(() => {});
+    local = makeData(2);
+    changeHook?.(local);
+    await vi.advanceTimersByTimeAsync(2500);
+    await settle();
+    expect(mod.getSyncState().status).toBe("syncing");
+
+    // Watchdog + Promise.race share SYNC_TIMEOUT_MS; either must leave syncing.
+    await vi.advanceTimersByTimeAsync(mod.SYNC_TIMEOUT_MS + 50);
+    await settle();
+    expect(mod.getSyncState().status).not.toBe("syncing");
+  });
+
   it("applyRemote löst keinen Backup-Loop über onDataChange aus", async () => {
     local = makeData(0);
     cloud.remote = { payload: makeData(3), updated_at: new Date().toISOString() };

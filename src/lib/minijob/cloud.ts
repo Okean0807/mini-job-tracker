@@ -356,21 +356,37 @@ function applyRemote(remote: { payload: AppData; updatedAt: number }) {
 
 export async function backupNow(): Promise<void> {
   if (!userId) throw new Error(t("error.notSignedIn"));
+  // Mutex: do not overlap forever with autoSync / another manual sync.
+  if (syncing) throw new Error(t("error.sync"));
+  syncing = true;
+  const epoch = ++syncEpoch;
   setState({ status: "syncing", message: null });
+  armSyncWatchdog(epoch);
   try {
     await withSyncTimeout(push(getData()));
+    if (epoch !== syncEpoch) return;
     setState({ status: "synced", pending: false, message: null, lastSyncedAt: meta.lastSyncedAt });
   } catch (error) {
-    failed(error);
+    if (epoch === syncEpoch) failed(error);
     throw error;
+  } finally {
+    if (epoch === syncEpoch) {
+      clearSyncWatchdog();
+      syncing = false;
+    }
   }
 }
 
 export async function restoreNow(): Promise<boolean> {
   if (!userId) throw new Error(t("error.notSignedIn"));
+  if (syncing) throw new Error(t("error.sync"));
+  syncing = true;
+  const epoch = ++syncEpoch;
   setState({ status: "syncing", message: null });
+  armSyncWatchdog(epoch);
   try {
     const remote = await withSyncTimeout(fetchRemote());
+    if (epoch !== syncEpoch) return false;
     if (!remote) {
       setState({ status: "idle", message: null });
       return false;
@@ -379,8 +395,13 @@ export async function restoreNow(): Promise<boolean> {
     setState({ status: "synced", pending: false, message: null, lastSyncedAt: meta.lastSyncedAt });
     return true;
   } catch (error) {
-    failed(error);
+    if (epoch === syncEpoch) failed(error);
     throw error;
+  } finally {
+    if (epoch === syncEpoch) {
+      clearSyncWatchdog();
+      syncing = false;
+    }
   }
 }
 
@@ -407,6 +428,41 @@ function failed(error: unknown) {
  * und mit ihren Metadaten überkreuz landen.
  */
 let syncing = false;
+/** Bumped whenever a sync attempt starts (or is force-failed) so stale timers cannot clobber a newer run. */
+let syncEpoch = 0;
+let syncWatchdog: ReturnType<typeof setTimeout> | null = null;
+
+function clearSyncWatchdog() {
+  if (syncWatchdog !== null) {
+    globalThis.clearTimeout(syncWatchdog);
+    syncWatchdog = null;
+  }
+}
+
+/**
+ * Hard wall-clock failsafe: if status is still "syncing" after SYNC_TIMEOUT_MS for
+ * this epoch, force error/offline. Independent of Promise.race (which alone left
+ * prod UI stuck past 15s when I/O hung or sync restarted).
+ */
+function armSyncWatchdog(epoch: number) {
+  clearSyncWatchdog();
+  syncWatchdog = globalThis.setTimeout(() => {
+    syncWatchdog = null;
+    if (epoch !== syncEpoch) return;
+    if (getSyncState().status !== "syncing") return;
+    syncing = false;
+    failed(new DOMException("Sync timed out", "TimeoutError"));
+  }, SYNC_TIMEOUT_MS);
+}
+
+/** UI failsafe: clear a stuck "syncing" status (e.g. if Promise.race did not land). */
+export function forceFailStuckSync(): void {
+  if (getSyncState().status !== "syncing") return;
+  clearSyncWatchdog();
+  syncing = false;
+  syncEpoch += 1;
+  failed(new DOMException("Sync timed out", "TimeoutError"));
+}
 
 async function autoSync(): Promise<void> {
   if (!userId) return;
@@ -420,40 +476,49 @@ async function autoSync(): Promise<void> {
     return;
   }
   syncing = true;
+  const epoch = ++syncEpoch;
   // Änderungsmarke zu Beginn: Änderungen *während* des Abgleichs dürfen nicht
   // als "gesichert" gelten, sonst landen sie nie in der Cloud.
   const changedAtStart = meta.localChangedAt;
   setState({ status: "syncing", message: null });
+  armSyncWatchdog(epoch);
   try {
-    const local = getData();
-    const remote = await withSyncTimeout(fetchRemote());
-    const decision = decideSync({
-      hasLocalWorkData: local.shifts.length > 0,
-      hasLocalJobs: local.jobs.length > 0,
-      hasRemote: remote !== null,
-      localChangedAt: meta.localChangedAt,
-      lastSyncedAt: meta.lastSyncedAt,
-      remoteUpdatedAt: remote?.updatedAt ?? null,
-    });
+    // Single wall-clock race for fetch+decide+push (not per-call clocks that can stack).
+    await withSyncTimeout((async () => {
+      const local = getData();
+      const remote = await fetchRemote();
+      const decision = decideSync({
+        hasLocalWorkData: local.shifts.length > 0,
+        hasLocalJobs: local.jobs.length > 0,
+        hasRemote: remote !== null,
+        localChangedAt: meta.localChangedAt,
+        lastSyncedAt: meta.lastSyncedAt,
+        remoteUpdatedAt: remote?.updatedAt ?? null,
+      });
 
-    if (decision === "conflict") {
-      setState({ status: "conflict", pending: true, message: null });
-      return;
-    }
-    if (decision === "restore" && remote) applyRemote(remote);
-    if (decision === "push") await withSyncTimeout(push(local));
-    const changedDuringSync =
-      decision !== "restore" && meta.localChangedAt !== null && meta.localChangedAt !== changedAtStart;
-    setState({
-      status: "synced",
-      pending: changedDuringSync,
-      message: null,
-      lastSyncedAt: meta.lastSyncedAt,
-    });
+      if (decision === "conflict") {
+        setState({ status: "conflict", pending: true, message: null });
+        return;
+      }
+      if (decision === "restore" && remote) applyRemote(remote);
+      if (decision === "push") await push(local);
+      if (epoch !== syncEpoch) return;
+      const changedDuringSync =
+        decision !== "restore" && meta.localChangedAt !== null && meta.localChangedAt !== changedAtStart;
+      setState({
+        status: "synced",
+        pending: changedDuringSync,
+        message: null,
+        lastSyncedAt: meta.lastSyncedAt,
+      });
+    })());
   } catch (error) {
-    failed(error);
+    if (epoch === syncEpoch) failed(error);
   } finally {
-    syncing = false;
+    if (epoch === syncEpoch) {
+      clearSyncWatchdog();
+      syncing = false;
+    }
   }
   // Local edits during sync left pending=true without a timer — push after debounce.
   if (state.pending && state.status === "synced" && userId && !applyingRemote) {
@@ -577,6 +642,9 @@ export function initCloudSync() {
         if (timeout) clearTimeout(timeout);
         timeout = null;
         initSyncQueued = false;
+        clearSyncWatchdog();
+        syncing = false;
+        syncEpoch += 1;
         setState({ status: "idle", pending: false, message: null, lastSyncedAt: null });
       }
     });
