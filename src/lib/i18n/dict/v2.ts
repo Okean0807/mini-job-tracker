@@ -11,6 +11,8 @@ export const v2: Bundle = {
     "limit.autoHint": "{hours} bei {rate}/Std.",
     "limit.month": "Monat",
     "limit.year": "Jahr",
+    "limit.notApplicable": "Nicht anwendbar (Selbstständig)",
+    "limit.notApplicableHint": "Die Arbeitnehmer-Minijob-Grenze (€603) gilt hier nicht.",
 
     "pay.title": "Zahltag",
     "pay.period": "Abrechnung {month}",
@@ -71,6 +73,8 @@ export const v2: Bundle = {
     "limit.autoHint": "{hours} at {rate}/hr",
     "limit.month": "Month",
     "limit.year": "Year",
+    "limit.notApplicable": "Not applicable (self-employed)",
+    "limit.notApplicableHint": "The employee minijob limit does not apply here.",
 
     "pay.title": "Payday",
     "pay.period": "Payroll {month}",
@@ -131,6 +135,8 @@ export const v2: Bundle = {
     "limit.autoHint": "{hours} при {rate}/час",
     "limit.month": "Месяц",
     "limit.year": "Год",
+    "limit.notApplicable": "Не применимо (самозанятость)",
+    "limit.notApplicableHint": "Лимит миниджоба для работников здесь не действует.",
 
     "pay.title": "День выплаты",
     "pay.period": "Расчёт за {month}",
@@ -191,6 +197,8 @@ export const v2: Bundle = {
     "limit.autoHint": "{rate}/saat ile {hours}",
     "limit.month": "Ay",
     "limit.year": "Yıl",
+    "limit.notApplicable": "Uygulanamaz (serbest çalışan)",
+    "limit.notApplicableHint": "Çalışan minijob limiti burada geçerli değildir.",
 
     "pay.title": "Ödeme günü",
     "pay.period": "{month} bordrosu",
@@ -251,6 +259,8 @@ export const v2: Bundle = {
     "limit.autoHint": "{hours} przy {rate}/godz.",
     "limit.month": "Miesiąc",
     "limit.year": "Rok",
+    "limit.notApplicable": "Nie dotyczy (samozatrudnienie)",
+    "limit.notApplicableHint": "Limit minijoba dla pracowników tutaj nie obowiązuje.",
 
     "pay.title": "Dzień wypłaty",
     "pay.period": "Rozliczenie {month}",

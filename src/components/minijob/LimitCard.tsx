@@ -11,10 +11,26 @@ interface LimitCardProps {
   scopeLabel: string;
   rate: number;
   auto: boolean;
+  /** Self-employed: employee Minijob limit not applicable. */
+  notApplicable?: boolean;
 }
 
-export function LimitCard({ usage, scopeLabel, rate, auto }: LimitCardProps) {
+export function LimitCard({ usage, scopeLabel, rate, auto, notApplicable }: LimitCardProps) {
   const { t } = useT();
+  if (notApplicable) {
+    return (
+      <div className="rounded-2xl border bg-card p-4 shadow-card">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t("limit.title")} · {scopeLabel}
+          </span>
+          <Gauge className="size-4 text-muted-foreground" />
+        </div>
+        <p className="mt-3 text-sm font-semibold">{t("limit.notApplicable")}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{t("limit.notApplicableHint")}</p>
+      </div>
+    );
+  }
   return (
     <div className="rounded-2xl border bg-card p-4 shadow-card">
       <div className="flex items-center justify-between">

@@ -19,7 +19,7 @@ describe("OnboardingWizard OAuth resume wiring", () => {
     expect(src).toMatch(/clearOnboardingDraft/);
     // Must run checkpoint before signInWithOAuthProvider
     const checkpointAt = src.indexOf("checkpointOnboardingBeforeOAuth");
-    const signInAt = src.indexOf("signInWithOAuthProvider(provider)");
+    const signInAt = src.indexOf('signInWithOAuthProvider("google")');
     expect(checkpointAt).toBeGreaterThan(-1);
     expect(signInAt).toBeGreaterThan(checkpointAt);
   });

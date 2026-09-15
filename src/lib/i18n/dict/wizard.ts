@@ -19,6 +19,10 @@ export const wizard: Bundle = {
 
     "wiz.workMode.title": "Wie arbeitest du?",
     "wiz.workMode.hint": "Bestimmt, wie Schichten erfasst werden.",
+    "wiz.workMode.explain.flex": "Flexibler Zeitplan: echte Schichten zählen; Minijob-Grenze gilt.",
+    "wiz.workMode.explain.fest": "Fester Arbeitsplan: Wochenplan als Soll, Erfassung als Ist; Grenze gilt.",
+    "wiz.workMode.explain.selbststaendig": "Selbstständig: Tracking ohne Arbeitnehmer-Minijob-Grenze.",
+
 
     "wiz.region.title": "Land und Region",
     "wiz.region.hint": "Für automatische Feiertage.",
@@ -64,6 +68,10 @@ export const wizard: Bundle = {
 
     "wiz.workMode.title": "How do you work?",
     "wiz.workMode.hint": "Determines how shifts are recorded.",
+    "wiz.workMode.explain.flex": "Flexible schedule: actual shifts count; minijob limit applies.",
+    "wiz.workMode.explain.fest": "Fixed schedule: week plan is planned, entries are actual; limit applies.",
+    "wiz.workMode.explain.selbststaendig": "Self-employed: tracking without employee minijob limit.",
+
 
     "wiz.region.title": "Country and region",
     "wiz.region.hint": "For automatic public holidays.",
@@ -109,6 +117,10 @@ export const wizard: Bundle = {
 
     "wiz.workMode.title": "Как вы работаете?",
     "wiz.workMode.hint": "Определяет, как фиксируются смены.",
+    "wiz.workMode.explain.flex": "Гибкий график: учитываются фактические смены; лимит миниджоба действует.",
+    "wiz.workMode.explain.fest": "Фиксированный график: план недели и факт; лимит действует.",
+    "wiz.workMode.explain.selbststaendig": "Самозанятость: учёт без лимита миниджоба для работников.",
+
 
     "wiz.region.title": "Страна и регион",
     "wiz.region.hint": "Для автоматического учёта праздников.",
@@ -154,6 +166,10 @@ export const wizard: Bundle = {
 
     "wiz.workMode.title": "Nasıl çalışıyorsun?",
     "wiz.workMode.hint": "Vardiyaların nasıl kaydedileceğini belirler.",
+    "wiz.workMode.explain.flex": "Esnek program: gerçek vardiyalar sayılır; minijob limiti geçerlidir.",
+    "wiz.workMode.explain.fest": "Sabit program: haftalık plan ve gerçek kayıt; limit geçerlidir.",
+    "wiz.workMode.explain.selbststaendig": "Serbest çalışan: çalışan minijob limiti olmadan takip.",
+
 
     "wiz.region.title": "Ülke ve bölge",
     "wiz.region.hint": "Resmî tatillerin otomatik olması için.",
@@ -199,6 +215,10 @@ export const wizard: Bundle = {
 
     "wiz.workMode.title": "Jak pracujesz?",
     "wiz.workMode.hint": "Określa sposób rejestrowania zmian.",
+    "wiz.workMode.explain.flex": "Elastyczny grafik: liczą się rzeczywiste zmiany; limit minijoba obowiązuje.",
+    "wiz.workMode.explain.fest": "Stały grafik: plan tygodnia i zapis rzeczywisty; limit obowiązuje.",
+    "wiz.workMode.explain.selbststaendig": "Samozatrudnienie: śledzenie bez limitu minijoba dla pracowników.",
+
 
     "wiz.region.title": "Kraj i region",
     "wiz.region.hint": "Dla automatycznych świąt.",

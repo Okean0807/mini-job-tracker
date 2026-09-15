@@ -98,6 +98,7 @@ export const settingsDict: Bundle = {
     "set.account.cloud.sync.error": "Synchronisierung fehlgeschlagen",
     "set.account.cloud.sync.retry": "Erneut versuchen",
     "set.account.cloud.sync.conflict": "Konflikt: Gerät und Cloud wurden beide geändert",
+    "set.account.cloud.sync.conflictFirstSync": "Erste Synchronisation: Lokale Jobs und Cloud-Stand unterscheiden sich – wähle, welcher Stand gelten soll.",
     "set.account.cloud.sync.keepLocal": "Gerät behalten",
     "set.account.cloud.sync.keepCloud": "Cloud behalten",
 
@@ -239,6 +240,7 @@ export const settingsDict: Bundle = {
     "set.account.cloud.sync.error": "Synchronisation failed",
     "set.account.cloud.sync.retry": "Try again",
     "set.account.cloud.sync.conflict": "Conflict: device and cloud were both changed",
+    "set.account.cloud.sync.conflictFirstSync": "First sync: local jobs and cloud differ — choose which version to keep.",
     "set.account.cloud.sync.keepLocal": "Keep device",
     "set.account.cloud.sync.keepCloud": "Keep cloud",
 
@@ -380,6 +382,7 @@ export const settingsDict: Bundle = {
     "set.account.cloud.sync.error": "Синхронизация не удалась",
     "set.account.cloud.sync.retry": "Повторить",
     "set.account.cloud.sync.conflict": "Конфликт: устройство и облако изменены",
+    "set.account.cloud.sync.conflictFirstSync": "Первая синхронизация: локальные работы и облако различаются — выберите версию.",
     "set.account.cloud.sync.keepLocal": "Оставить устройство",
     "set.account.cloud.sync.keepCloud": "Оставить облако",
 
@@ -521,6 +524,7 @@ export const settingsDict: Bundle = {
     "set.account.cloud.sync.error": "Eşitleme başarısız",
     "set.account.cloud.sync.retry": "Tekrar dene",
     "set.account.cloud.sync.conflict": "Çakışma: cihaz ve bulut değişti",
+    "set.account.cloud.sync.conflictFirstSync": "İlk senkronizasyon: yerel işler ve bulut farklı — hangi sürümün kalacağını seç.",
     "set.account.cloud.sync.keepLocal": "Cihazı koru",
     "set.account.cloud.sync.keepCloud": "Bulutu koru",
 
@@ -662,6 +666,7 @@ export const settingsDict: Bundle = {
     "set.account.cloud.sync.error": "Synchronizacja nie powiodła się",
     "set.account.cloud.sync.retry": "Spróbuj ponownie",
     "set.account.cloud.sync.conflict": "Konflikt: urządzenie i chmura zostały zmienione",
+    "set.account.cloud.sync.conflictFirstSync": "Pierwsza synchronizacja: lokalne prace i chmura się różnią — wybierz wersję.",
     "set.account.cloud.sync.keepLocal": "Zachowaj urządzenie",
     "set.account.cloud.sync.keepCloud": "Zachowaj chmurę",
 

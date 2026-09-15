@@ -101,6 +101,31 @@ describe("decideSync", () => {
     ).toBe("CONFLICT");
   });
 
+  it("FIRST_SYNC: onboarding / wizard jobs ignored → restore (no false conflict)", () => {
+    expect(
+      decideSync({
+        ...base,
+        hasLocalWorkData: false,
+        hasLocalJobs: true,
+        ignoreLocalJobsOnFirstSync: true,
+        localChangedAt: 900,
+        lastSyncedAt: null,
+        remoteUpdatedAt: 800,
+      }),
+    ).toBe("restore");
+    expect(
+      classifySyncSituation({
+        ...base,
+        hasLocalWorkData: false,
+        hasLocalJobs: true,
+        ignoreLocalJobsOnFirstSync: true,
+        localChangedAt: 900,
+        lastSyncedAt: null,
+        remoteUpdatedAt: 800,
+      }),
+    ).toBe("FIRST_SYNC_RESTORE");
+  });
+
   it("FIRST_SYNC: keine Jobs und keine Schichten → restore", () => {
     expect(
       decideSync({

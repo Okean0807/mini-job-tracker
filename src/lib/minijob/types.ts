@@ -374,8 +374,8 @@ export const BUNDESLAENDER: { code: string; name: string }[] = [
 ];
 
 export const WORK_MODE_LABEL: Record<WorkMode, string> = {
-  flex: "Flexible Arbeitszeit",
-  fest: "Feste Arbeitszeit",
+  flex: "Flexibler Zeitplan",
+  fest: "Fester Arbeitsplan",
   selbststaendig: "Selbstständig",
 };
 

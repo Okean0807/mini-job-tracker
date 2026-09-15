@@ -77,7 +77,7 @@ vi.mock("./notify", () => ({ markBackup: vi.fn() }));
 
 /* ---------- Hilfen ---------- */
 
-function makeData(shifts: number, autoBackup = true): AppData {
+function makeData(shifts: number, autoBackup = true, onboarded = true): AppData {
   return {
     shifts: Array.from({ length: shifts }, (_, i) => ({ id: `s${i}` })),
     jobs: [],
@@ -85,7 +85,7 @@ function makeData(shifts: number, autoBackup = true): AppData {
     projects: [],
     payments: [],
     goals: [],
-    settings: { autoBackup },
+    settings: { autoBackup, onboarded },
     timer: null,
   } as unknown as AppData;
 }
@@ -196,8 +196,9 @@ describe("initCloudSync", () => {
   });
 
   it("FIRST_SYNC: Jobs ohne Schichten + Cloud → conflict (jobs-only survival bis resolve)", async () => {
+    // onboarded + no wizard flag → leftover jobs still compete (#78)
     local = {
-      ...makeData(0),
+      ...makeData(0, true, true),
       jobs: [{ id: "j1", name: "Demo", color: "#0d9488", mode: "flex" }],
     } as unknown as AppData;
     cloud.remote = { payload: makeData(5), updated_at: new Date().toISOString() };
@@ -220,6 +221,84 @@ describe("initCloudSync", () => {
     expect(cloud.upserts).toBe(0);
     // Local jobs survive until the user resolves keep local vs cloud.
     expect(local.jobs).toHaveLength(1);
+  });
+
+  it("Onboarding unvollständig + Wizard-Job + Cloud → restore (kein Falsch-Konflikt)", async () => {
+    local = {
+      ...makeData(0, true, false),
+      jobs: [{ id: "j1", name: "Wizard", color: "#0d9488", mode: "flex" }],
+    } as unknown as AppData;
+    cloud.remote = { payload: makeData(5), updated_at: new Date().toISOString() };
+    window.localStorage.setItem(
+      "minijob-sync-meta-v1",
+      JSON.stringify({
+        userId: "user-1",
+        localChangedAt: Date.now(),
+        lastSyncedAt: null,
+        remoteSeenAt: null,
+      }),
+    );
+
+    const { initCloudSync, getSyncState } = await loadModule();
+    initCloudSync();
+    await settle();
+
+    expect(getSyncState().status).not.toBe("conflict");
+    expect(replaced).toHaveLength(1);
+    expect(cloud.upserts).toBe(0);
+  });
+
+  it("Race finish-before-sync: wizardPendingFirstSync + Job + Cloud → restore", async () => {
+    local = {
+      ...makeData(0, true, true),
+      jobs: [{ id: "j1", name: "Wizard", color: "#0d9488", mode: "flex" }],
+    } as unknown as AppData;
+    cloud.remote = { payload: makeData(5), updated_at: new Date().toISOString() };
+    window.localStorage.setItem(
+      "minijob-sync-meta-v1",
+      JSON.stringify({
+        userId: "user-1",
+        localChangedAt: Date.now(),
+        lastSyncedAt: null,
+        remoteSeenAt: null,
+        wizardPendingFirstSync: true,
+      }),
+    );
+
+    const { initCloudSync, getSyncState } = await loadModule();
+    initCloudSync();
+    await settle();
+
+    expect(getSyncState().status).not.toBe("conflict");
+    expect(replaced).toHaveLength(1);
+    // Flag cleared after successful restore
+    const meta = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1")!);
+    expect(meta.wizardPendingFirstSync).toBe(false);
+  });
+
+  it("Leftover jobs nach Onboarding ohne Flag + Cloud → conflict (jobs-only survival)", async () => {
+    local = {
+      ...makeData(0, true, true),
+      jobs: [{ id: "j1", name: "Alt", color: "#0d9488", mode: "flex" }],
+    } as unknown as AppData;
+    cloud.remote = { payload: makeData(5), updated_at: new Date().toISOString() };
+    window.localStorage.setItem(
+      "minijob-sync-meta-v1",
+      JSON.stringify({
+        userId: "user-1",
+        localChangedAt: Date.now(),
+        lastSyncedAt: null,
+        remoteSeenAt: null,
+        wizardPendingFirstSync: false,
+      }),
+    );
+
+    const { initCloudSync, getSyncState } = await loadModule();
+    initCloudSync();
+    await settle();
+
+    expect(getSyncState().status).toBe("conflict");
+    expect(replaced).toHaveLength(0);
   });
 
   it("nie synced + lokale Schichten + Cloud → Konflikt (datensicher)", async () => {

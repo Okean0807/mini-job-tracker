@@ -71,8 +71,8 @@ export const common: Bundle = {
     "kind.krank": "Krank",
     "kind.feiertag": "Feiertag",
 
-    "mode.flex": "Flexible Arbeitszeit",
-    "mode.fest": "Feste Arbeitszeit",
+    "mode.flex": "Flexibler Zeitplan",
+    "mode.fest": "Fester Arbeitsplan",
     "mode.selbststaendig": "Selbstständig",
 
     "supp.saturday": "Samstag",

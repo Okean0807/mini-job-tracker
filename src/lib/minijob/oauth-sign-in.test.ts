@@ -16,7 +16,7 @@ describe("signInWithOAuthProvider", () => {
     signInWithOAuth.mockResolvedValue({ data: { url: "https://example", provider: "google" }, error: null });
   });
 
-  it("calls supabase.auth.signInWithOAuth with provider and redirectTo (not Lovable broker)", async () => {
+  it("calls supabase.auth.signInWithOAuth with google and redirectTo (not Lovable broker)", async () => {
     const { signInWithOAuthProvider } = await import("./oauth-sign-in");
     const result = await signInWithOAuthProvider("google", "https://mini-job-tracker-blue.vercel.app/einstellungen");
     expect(result.error).toBeNull();
@@ -34,9 +34,9 @@ describe("signInWithOAuthProvider", () => {
     vi.stubGlobal("window", { location: { origin: "https://app.example" } });
     vi.resetModules();
     const { signInWithOAuthProvider } = await import("./oauth-sign-in");
-    await signInWithOAuthProvider("apple");
+    await signInWithOAuthProvider("google");
     expect(signInWithOAuth).toHaveBeenCalledWith({
-      provider: "apple",
+      provider: "google",
       options: {
         redirectTo: "https://app.example/einstellungen",
         skipBrowserRedirect: false,
@@ -48,7 +48,14 @@ describe("signInWithOAuthProvider", () => {
   it("propagates supabase errors", async () => {
     signInWithOAuth.mockResolvedValue({ data: { url: null, provider: "google" }, error: new Error("provider disabled") });
     const { signInWithOAuthProvider } = await import("./oauth-sign-in");
-    const result = await signInWithOAuthProvider("apple", "https://example.com/einstellungen");
+    const result = await signInWithOAuthProvider("google", "https://example.com/einstellungen");
     expect(result.error?.message).toBe("provider disabled");
+  });
+
+  it("exports only google as OAuthProvider (Apple absent from public API)", async () => {
+    const mod = await import("./oauth-sign-in");
+    // Type-level: OAuthProvider is "google". Runtime sanity: no apple helper.
+    expect(typeof mod.signInWithOAuthProvider).toBe("function");
+    expect(Object.keys(mod)).not.toContain("signInWithApple");
   });
 });

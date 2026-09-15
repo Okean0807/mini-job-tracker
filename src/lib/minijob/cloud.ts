@@ -11,7 +11,8 @@
  * | Situation | Result |
  * |---|---|
  * | FIRST_SYNC / NEW_DEVICE / EMPTY_DEVICE (no shifts, no jobs) + cloud | **restore** |
- * | Never synced + has jobs (no shifts) + remote | **conflict** (jobs-only survival) |
+ * | Never synced + has jobs (no shifts) + remote | **conflict** (jobs-only survival; not during onboarding / wizard-pending-first-sync) |
+ * | Onboarding incomplete or wizardPendingFirstSync + jobs + remote | **restore** (wizard jobs are not competing) |
  * | DEVICE_CHANGED only (cloud unchanged since baseline) | **push** |
  * | CLOUD_CHANGED only (device unchanged since baseline) | **restore** |
  * | BOTH_CHANGED after shared lastSyncedAt baseline | **conflict** |
@@ -50,6 +51,12 @@ export type SyncMeta = {
   lastSyncedAt: number | null;
   /** `updated_at` des zuletzt gesehenen Cloud-Standes (ms). */
   remoteSeenAt: number | null;
+  /**
+   * Wizard just finished (or still incomplete): first sync must restore cloud
+   * instead of treating the wizard-created job as a competing jobs-only version.
+   * Cleared after a successful first sync. Local-only — not part of cloud payload.
+   */
+  wizardPendingFirstSync?: boolean;
 };
 
 const EMPTY_META: SyncMeta = {
@@ -57,6 +64,7 @@ const EMPTY_META: SyncMeta = {
   localChangedAt: null,
   lastSyncedAt: null,
   remoteSeenAt: null,
+  wizardPendingFirstSync: false,
 };
 
 /**
@@ -84,6 +92,8 @@ export function metaForUser(
     localChangedAt: hasLocalWorkData ? (current.localChangedAt ?? Date.now()) : current.localChangedAt,
     lastSyncedAt: null,
     remoteSeenAt: null,
+    // Keep wizard flag across account bind so finish→sign-in race still restores.
+    wizardPendingFirstSync: Boolean(current.wizardPendingFirstSync),
   };
 }
 
@@ -111,6 +121,16 @@ function saveMeta(patch: Partial<SyncMeta>) {
   }
 }
 
+/** Mark that the onboarding wizard just created a job — first sync should restore cloud. */
+export function markWizardPendingFirstSync(): void {
+  saveMeta({ wizardPendingFirstSync: true });
+}
+
+/** Clear after a successful first sync (push or restore). */
+export function clearWizardPendingFirstSync(): void {
+  if (!meta.wizardPendingFirstSync) return;
+  saveMeta({ wizardPendingFirstSync: false });
+}
 
 /* ---------- Konfliktentscheidung (rein, testbar) ---------- */
 
@@ -135,6 +155,11 @@ export type SyncDecisionInput = {
    * jobs-only devices conflict so the user can keep local vs cloud.
    */
   hasLocalJobs?: boolean;
+  /**
+   * When true, ignore hasLocalJobs on first sync (onboarding / wizard pending).
+   * Outside onboarding keep false so leftover jobs still conflict (#78).
+   */
+  ignoreLocalJobsOnFirstSync?: boolean;
   /** Existiert überhaupt ein Cloud-Stand? */
   hasRemote: boolean;
   localChangedAt: number | null;
@@ -148,7 +173,8 @@ export type SyncDecisionInput = {
  * - Kein Cloud-Stand → hochladen (sofern lokale Arbeit/Änderungen existieren).
  * - FIRST_SYNC / NEW_DEVICE / EMPTY_DEVICE (keine Schichten, keine Jobs) + Cloud → restore
  *   (Einstellungen allein zählen nicht als lokale Arbeitsversion).
- * - Nie synchronisiert, Jobs ohne Schichten + Cloud → conflict (jobs-only survival).
+ * - Nie synchronisiert, Jobs ohne Schichten + Cloud → conflict (jobs-only survival),
+ *   außer ignoreLocalJobsOnFirstSync (Onboarding / Wizard pending).
  * - Nie synchronisiert, aber lokale Schichten + Cloud → conflict (datensicher).
  * - Cloud unverändert seit letztem Abgleich → lokale Änderungen hochladen.
  * - Cloud neuer als letzter Abgleich UND lokal seither geändert → Konflikt.
@@ -165,9 +191,10 @@ export function decideSync(input: SyncDecisionInput): SyncDecision {
   if (!hasRemote) return hasLocalWorkData || localIsNew ? "push" : "none";
 
   // FIRST_SYNC: never synced, no shifts, cloud exists.
-  // Jobs-only → conflict (user chooses keep local vs cloud). Settings-only → restore.
+  // Jobs-only → conflict (user chooses keep local vs cloud), unless onboarding ignores
+  // wizard-created jobs. Settings-only → restore.
   if (lastSyncedAt == null && !hasLocalWorkData && hasRemote) {
-    if (hasLocalJobs) return "conflict";
+    if (hasLocalJobs && !input.ignoreLocalJobsOnFirstSync) return "conflict";
     return "restore";
   }
 
@@ -305,7 +332,11 @@ async function push(data: AppData): Promise<void> {
     updated_at: updatedAt.toISOString(),
   });
   if (error) throw error;
-  saveMeta({ lastSyncedAt: updatedAt.getTime(), remoteSeenAt: updatedAt.getTime() });
+  saveMeta({
+    lastSyncedAt: updatedAt.getTime(),
+    remoteSeenAt: updatedAt.getTime(),
+    wizardPendingFirstSync: false,
+  });
   // Auch automatische Backups als frisch markieren, sonst meldet die
   // Backup-Erinnerung fälschlich einen veralteten Stand.
   markBackup();
@@ -348,6 +379,7 @@ function applyRemote(remote: { payload: AppData; updatedAt: number }) {
     lastSyncedAt: Date.now(),
     remoteSeenAt: remote.updatedAt,
     localChangedAt: null,
+    wizardPendingFirstSync: false,
   });
 }
 
@@ -500,9 +532,12 @@ async function autoSync(): Promise<void> {
       const remote = await fetchRemote();
       // After forceFail / watchdog / timeout abandon, late fetch must not mutate.
       if (epoch !== syncEpoch) return;
+      const ignoreLocalJobsOnFirstSync =
+        !local.settings.onboarded || Boolean(meta.wizardPendingFirstSync);
       const decision = decideSync({
         hasLocalWorkData: local.shifts.length > 0,
         hasLocalJobs: local.jobs.length > 0,
+        ignoreLocalJobsOnFirstSync,
         hasRemote: remote !== null,
         localChangedAt: meta.localChangedAt,
         lastSyncedAt: meta.lastSyncedAt,

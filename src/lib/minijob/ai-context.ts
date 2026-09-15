@@ -8,15 +8,22 @@ import { monthlyHoursLimitFor } from "./legal";
 import { monthlyHoursLimit, monthlyLimitOf, yearlyLimitOf } from "./limits";
 import { payrollTotals } from "./payroll";
 import { makeResolver } from "./resolve";
-import type { AppData } from "./types";
+import type { AppData, WorkMode } from "./types";
+import {
+  jobsApplyMinijobLimit,
+  primaryWorkMode,
+  workModeAppliesMinijobLimit,
+} from "./work-mode";
 
 export type AssistantContextPayload = {
   currentDate: string;
   settings: {
     hourlyRate: number;
-    legalMonthlyLimit: number;
-    automaticMonthlyHours: number;
-    annualLimit: number;
+    legalMonthlyLimit: number | null;
+    automaticMonthlyHours: number | null;
+    annualLimit: number | null;
+    workMode: WorkMode;
+    minijobLimitApplies: boolean;
   };
   currentMonth: {
     year: number;
@@ -42,9 +49,11 @@ export type AssistantContextPayload = {
   jobs: Array<{
     id: string;
     name: string;
+    mode: WorkMode;
     hourlyRate: number | null;
     hours: number;
     earnings: number;
+    minijobLimitApplies: boolean;
   }>;
 };
 
@@ -56,11 +65,14 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
   const currentDate = isoDate(now);
   const hourlyRate = data.settings.defaultRate;
 
-  const legalMonthly = monthlyLimitOf(data.settings, year, month);
-  const autoHours =
-    monthlyHoursLimit(data.settings, year, month) ||
-    monthlyHoursLimitFor(currentDate, hourlyRate);
-  const annual = yearlyLimitOf(data.settings, year);
+  const limitApplies = jobsApplyMinijobLimit(data.jobs);
+  const workMode = primaryWorkMode(data.jobs, data.settings.activeJobId);
+  const legalMonthly = limitApplies ? monthlyLimitOf(data.settings, year, month) : null;
+  const autoHours = limitApplies
+    ? monthlyHoursLimit(data.settings, year, month) ||
+      monthlyHoursLimitFor(currentDate, hourlyRate)
+    : null;
+  const annual = limitApplies ? yearlyLimitOf(data.settings, year) : null;
 
   const currentList = shiftsInMonth(data.shifts, year, month);
   const currentTotals = payrollTotals(currentList, resolve, data.shifts);
@@ -89,9 +101,11 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
     return {
       id: job.id,
       name: job.name,
+      mode: job.mode,
       hourlyRate: typeof job.rate === "number" ? job.rate : null,
       hours: Number(totals.workedHours.toFixed(2)),
       earnings: Number(totals.earnings.toFixed(2)),
+      minijobLimitApplies: workModeAppliesMinijobLimit(job.mode),
     };
   });
 
@@ -100,8 +114,10 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
     settings: {
       hourlyRate,
       legalMonthlyLimit: legalMonthly,
-      automaticMonthlyHours: Number(autoHours.toFixed(2)),
+      automaticMonthlyHours: autoHours == null ? null : Number(autoHours.toFixed(2)),
       annualLimit: annual,
+      workMode,
+      minijobLimitApplies: limitApplies,
     },
     currentMonth: {
       year,
