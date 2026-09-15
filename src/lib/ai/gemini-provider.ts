@@ -10,8 +10,8 @@ const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models
 const DEFAULT_MODEL = "gemini-3.6-flash";
 
 export const GROUNDING_UNAVAILABLE_NOTE =
-  "Hinweis: Eine aktuelle Web-Prüfung ist vorübergehend nicht verfügbar. " +
-  "Behandle Angaben zu gesetzlichen Grenzen und aktuellem Recht als allgemeine Orientierung, nicht als verbindliche Auskunft.";
+  "Hinweis: Die aktuelle Web-Prüfung ist momentan nicht verfügbar. " +
+  "Die folgende Antwort basiert nur auf den gespeicherten Daten bzw. dem Modellwissen.";
 
 /** Strip surrounding quotes often introduced by Vercel/env paste mistakes. */
 function normalizeEnvSecret(raw: string): string {
@@ -73,6 +73,9 @@ function buildSystemInstruction(language: string): string {
     "Du bist KEIN Anwalt und gibst keine Rechtsberatung. Unterscheide ausdrücklich zwischen allgemeiner Information und rechtlicher Beratung. " +
     "Erfinde niemals Gesetze, Paragraphen, Grenzwerte, Urteile oder URLs. " +
     "Wenn dir Suchergebnisse bereitgestellt werden, stütze aktuelle Grenzwerte und Rechtsangaben bevorzugt darauf und nenne nur URLs aus diesen Ergebnissen. " +
+    "Bevorzuge Tier1-offizielle Quellen; bei Widersprüchen zuerst offizielle Behördenquellen, dann die frischere Angabe. Social/UGC nie als primäre Rechtsgrundlage. " +
+    "Behaupte niemals „web-geprüft“ / „aktuell geprüft“, wenn keine Suchergebnisse vorliegen. " +
+    "Wenn Suchergebnisse vorliegen, strukturiere die Antwort idealerweise mit: 🌐 Aktuell geprüft (oder 🔎 Aktuelle Information), 📊 Deine Daten (wenn Nutzer-Stunden/Verdienst in der Datenbasis vorkommen), 📈 Einschätzung. " +
     "Wenn keine Suchergebnisse vorliegen, kennzeichne Unsicherheit offen und erfinde keine Quellen. " +
     "Unterscheide bundesweite Regeln von betrieblichen/tariflichen Regelungen. " +
     "Du erhältst die Arbeitszeit-Daten des Nutzers als JSON-Zusammenfassung: nutze sie für persönliche Berechnungen, nenne Zahlen mit Einheit (Stunden bzw. Euro) und weise auf Trends, Muster oder die Minijob-Grenze hin. " +
@@ -180,7 +183,10 @@ export function mapHttpError(status: number, bodyText: string): AiGuardError {
 
 /** Append clear note when web verification / grounding is unavailable. */
 export function withGroundingUnavailableNote(response: AskResponse): AskResponse {
-  if (response.answer.includes("Web-Prüfung ist vorübergehend nicht verfügbar")) {
+  if (
+    response.answer.includes("Web-Prüfung ist momentan nicht verfügbar") ||
+    response.answer.includes("Web-Prüfung ist vorübergehend nicht verfügbar")
+  ) {
     return response;
   }
   const answer = `${response.answer.trim()}\n\n${GROUNDING_UNAVAILABLE_NOTE}`;

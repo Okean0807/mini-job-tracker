@@ -3,9 +3,16 @@ import {
   GROUNDING_UNAVAILABLE_NOTE,
   withGroundingUnavailableNote,
 } from "@/lib/ai/gemini-provider";
+import { sourceDisplayLabel } from "@/lib/ai/sources";
 import type { AIProvider, AskRequest, AskResponse, AskSource } from "@/lib/ai/types";
 import { needsCurrentInfo } from "@/lib/ai/web-search/needs-current-info";
 import type { WebSearchProvider } from "@/lib/ai/web-search/provider";
+import { buildTavilyQuery } from "@/lib/ai/web-search/query-strategy";
+import {
+  rankWebSearchResults,
+  tierLabel,
+  type RankedWebSearchResult,
+} from "@/lib/ai/web-search/source-rank";
 import {
   TavilyWebSearchProvider,
   WEB_SEARCH_QUOTA_EXHAUSTED_MESSAGE,
@@ -17,25 +24,55 @@ export const WEB_SEARCH_QUOTA_NOTE =
   `Hinweis: ${WEB_SEARCH_QUOTA_EXHAUSTED_MESSAGE} ` +
   "Behandle Angaben zu gesetzlichen Grenzen und aktuellem Recht als allgemeine Orientierung, nicht als verbindliche Auskunft.";
 
-/** Format Tavily hits for Gemini context injection. */
-export function formatWebResultsForContext(results: WebSearchResultItem[]): string {
+/** Context preface for Gemini when ranked web results are present. */
+export const WEB_RESULTS_CONTEXT_PREFACE =
+  "WEB-PRÜFUNG (verifiziert):\n" +
+  "- Bevorzuge Tier1-offizielle Quellen; bei Widersprüchen zuerst offizielle Behördenquellen, dann die frischere Angabe.\n" +
+  "- Nutze Social/UGC (Tier4) niemals als primäre Rechtsgrundlage.\n" +
+  "- Erfinde keine URLs; nenne nur URLs aus den Suchergebnissen unten.\n" +
+  "- Kennzeichne web-geprüfte Aussagen klar. Strukturiere die Antwort idealerweise so:\n" +
+  "  🌐 Aktuell geprüft (oder 🔎 Aktuelle Information)\n" +
+  "  📊 Deine Daten (wenn Nutzer-Stunden/Verdienst in der Datenbasis vorkommen)\n" +
+  "  📈 Einschätzung\n";
+
+/** Heuristic: context likely contains user hours/earnings JSON. */
+export function contextHasUserData(context: string): boolean {
+  return /hours|earnings|verdienst|stunden|entries|shifts|monthTotal|hourlyRate/i.test(
+    context,
+  );
+}
+
+/** Format ranked Tavily hits for Gemini context injection (with tier labels). */
+export function formatWebResultsForContext(
+  results: RankedWebSearchResult[] | WebSearchResultItem[],
+): string {
   if (results.length === 0) return "";
   const lines = results.map((r, i) => {
     const title = r.title.trim() || r.url;
     const snippet = r.snippet.trim();
-    return `${i + 1}. ${title}\n${r.url}${snippet ? `\n${snippet}` : ""}`;
+    const tier =
+      "tier" in r && typeof r.tier === "number"
+        ? tierLabel(r.tier as RankedWebSearchResult["tier"])
+        : "Tier3-sekundär";
+    return `${i + 1}. [${tier}] ${title}\n${r.url}${snippet ? `\n${snippet}` : ""}`;
   });
   return `Suchergebnisse:\n${lines.join("\n\n")}`;
 }
 
-export function sourcesFromWebResults(results: WebSearchResultItem[]): AskSource[] {
+export function sourcesFromWebResults(
+  results: WebSearchResultItem[] | RankedWebSearchResult[],
+): AskSource[] {
   const seen = new Set<string>();
   const sources: AskSource[] = [];
   for (const r of results) {
     const url = r.url.trim();
     if (!url || seen.has(url)) continue;
     seen.add(url);
-    const title = r.title.trim();
+    const rawTitle = r.title.trim();
+    const title =
+      rawTitle && rawTitle !== url
+        ? rawTitle
+        : sourceDisplayLabel(rawTitle ? { url, title: rawTitle } : { url });
     if (title && title !== url) {
       sources.push({ url, title });
     } else {
@@ -47,6 +84,7 @@ export function sourcesFromWebResults(results: WebSearchResultItem[]): AskSource
 
 function withSearchUnavailableNote(response: AskResponse, note: string): AskResponse {
   if (
+    response.answer.includes("Web-Prüfung ist momentan nicht verfügbar") ||
     response.answer.includes("Web-Prüfung ist vorübergehend nicht verfügbar") ||
     response.answer.includes("Web-Suche-Kontingent (Free Tier) aufgebraucht")
   ) {
@@ -60,7 +98,7 @@ function withSearchUnavailableNote(response: AskResponse, note: string): AskResp
 }
 
 /**
- * Thin orchestrator: Tavily Free for current-info search → Gemini reasoning only.
+ * Thin orchestrator: Tavily Free for current-info search → rank → Gemini reasoning only.
  * Never uses Google Search grounding, Lovable AI, OpenAI, or paid auto-fallback.
  */
 export class OrchestratingAIProvider implements AIProvider {
@@ -77,9 +115,14 @@ export class OrchestratingAIProvider implements AIProvider {
       return this.llm.ask(req, opts);
     }
 
+    const plan = buildTavilyQuery(req.question);
+
     let searchOutcome;
     try {
-      searchOutcome = await this.webSearch.search(req.question, opts);
+      searchOutcome = await this.webSearch.search(plan.query, {
+        ...(opts?.signal ? { signal: opts.signal } : {}),
+        includeDomains: plan.includeDomains,
+      });
     } catch (error) {
       if (
         error instanceof Error &&
@@ -100,8 +143,17 @@ export class OrchestratingAIProvider implements AIProvider {
       return withSearchUnavailableNote(response, note);
     }
 
-    const formatted = formatWebResultsForContext(searchOutcome.results);
-    const enrichedContext = formatted ? `${req.context}\n\n${formatted}` : req.context;
+    const ranked = rankWebSearchResults(searchOutcome.results, plan.query);
+    if (ranked.length === 0) {
+      const response = await this.llm.ask(req, opts);
+      return withGroundingUnavailableNote(response);
+    }
+
+    const formatted = formatWebResultsForContext(ranked);
+    const userDataHint = contextHasUserData(req.context)
+      ? "\n(Nutzerdaten vorhanden — Abschnitt 📊 Deine Daten einbeziehen.)\n"
+      : "\n";
+    const enrichedContext = `${req.context}\n\n${WEB_RESULTS_CONTEXT_PREFACE}${userDataHint}${formatted}`;
 
     const response = await this.llm.ask(
       {
@@ -112,7 +164,7 @@ export class OrchestratingAIProvider implements AIProvider {
       opts,
     );
 
-    const sources = sourcesFromWebResults(searchOutcome.results);
+    const sources = sourcesFromWebResults(ranked);
     if (sources.length === 0) {
       return withGroundingUnavailableNote(response);
     }
