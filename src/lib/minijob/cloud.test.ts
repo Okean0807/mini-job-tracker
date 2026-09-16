@@ -5,6 +5,7 @@ import {
   decideSync,
   explainSyncDecision,
   metaForUser,
+  workFingerprint,
   type SyncDecisionInput,
 } from "./cloud";
 
@@ -526,5 +527,84 @@ describe("decideSync A–I (false conflict / work vs settings)", () => {
     expect(explained.localWorkIsNew).toBe(false);
     expect(explained).not.toHaveProperty("payload");
     expect(JSON.stringify(explained)).not.toMatch(/password|token|secret|pin/i);
+  });
+});
+
+describe("workFingerprint (normalize-safe)", () => {
+  type Work = Pick<import("./types").AppData, "shifts" | "jobs">;
+
+  it("raw remote missing kind/breakMinutes equals normalized local with defaults", () => {
+    const rawRemote = {
+      shifts: [{ id: "s1", date: "2026-09-01", start: "09:00", end: "12:00", jobId: "j1" }],
+      jobs: [{ id: "j1", name: "Café", color: "#0d9488", mode: "flex" as const }],
+    } as unknown as Work;
+    const normalizedLocal = {
+      shifts: [
+        {
+          id: "s1",
+          date: "2026-09-01",
+          start: "09:00",
+          end: "12:00",
+          jobId: "j1",
+          kind: "arbeit" as const,
+          breakMinutes: 0,
+        },
+      ],
+      jobs: [{ id: "j1", name: "Café", color: "#0d9488", mode: "flex" as const }],
+    } as unknown as Work;
+    expect(workFingerprint(normalizedLocal)).toBe(workFingerprint(rawRemote));
+  });
+
+  it("job rate:0 on remote stripped locally → equal fingerprint", () => {
+    const rawRemote = {
+      shifts: [],
+      jobs: [{ id: "j1", name: "Café", color: "#0d9488", mode: "flex" as const, rate: 0 }],
+    } as unknown as Work;
+    const normalizedLocal = {
+      shifts: [],
+      jobs: [{ id: "j1", name: "Café", color: "#0d9488", mode: "flex" as const }],
+    } as unknown as Work;
+    expect(workFingerprint(normalizedLocal)).toBe(workFingerprint(rawRemote));
+  });
+
+  it("different key order same data → equal fingerprint", () => {
+    const a = {
+      shifts: [{ id: "s1", date: "2026-09-01", start: "09:00", end: "12:00", kind: "arbeit" as const, breakMinutes: 0 }],
+      jobs: [{ id: "j1", name: "Café", color: "#0d9488", mode: "flex" as const, rate: 12 }],
+    } as unknown as Work;
+    const b = {
+      shifts: [{ breakMinutes: 0, kind: "arbeit" as const, end: "12:00", start: "09:00", date: "2026-09-01", id: "s1" }],
+      jobs: [{ mode: "flex" as const, color: "#0d9488", name: "Café", id: "j1", rate: 12 }],
+    } as unknown as Work;
+    expect(workFingerprint(a)).toBe(workFingerprint(b));
+  });
+
+  it("different shift hours → unequal fingerprint", () => {
+    const a = {
+      shifts: [{ id: "s1", date: "2026-09-01", start: "09:00", end: "12:00", kind: "arbeit" as const, breakMinutes: 0 }],
+      jobs: [],
+    } as unknown as Work;
+    const b = {
+      shifts: [{ id: "s1", date: "2026-09-01", start: "09:00", end: "17:00", kind: "arbeit" as const, breakMinutes: 0 }],
+      jobs: [],
+    } as unknown as Work;
+    expect(workFingerprint(a)).not.toBe(workFingerprint(b));
+  });
+
+  it("jobs-only identical → equal; jobs-only different → unequal", () => {
+    const a = {
+      shifts: [],
+      jobs: [{ id: "j1", name: "Café", color: "#0d9488", mode: "flex" as const }],
+    } as unknown as Work;
+    const b = {
+      shifts: [],
+      jobs: [{ id: "j1", name: "Café", color: "#0d9488", mode: "flex" as const }],
+    } as unknown as Work;
+    const c = {
+      shifts: [],
+      jobs: [{ id: "j1", name: "Bar", color: "#0d9488", mode: "flex" as const }],
+    } as unknown as Work;
+    expect(workFingerprint(a)).toBe(workFingerprint(b));
+    expect(workFingerprint(a)).not.toBe(workFingerprint(c));
   });
 });

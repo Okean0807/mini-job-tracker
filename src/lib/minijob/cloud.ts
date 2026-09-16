@@ -18,8 +18,9 @@
  * | BOTH work+cloud changed after shared lastSyncedAt | **conflict** |
  * | Settings-only local change + cloud unchanged | **push** (not conflict) |
  * | Settings-only local change + cloud new, work unchanged | **restore** |
- * | Never synced + has shifts/jobs + remote, work fingerprint equal | **synced** (re-establish baseline; no UI) |
- * | Never synced + has shifts/jobs + remote, work fingerprint differs | **conflict** (data-safe; user chooses) |
+ * | Never synced + has shifts/jobs + remote, work fingerprint equal (after normalize) | **synced** (re-establish baseline; no UI) |
+ * | Baseline set + both sides "new" but work fingerprint equal (after normalize) | **synced** (stale marks; quiet re-baseline) |
+ * | Work fingerprint differs | **conflict** (data-safe; user chooses) |
  * | Settings-only without jobs/shifts before first sync | → restore |
  *
  * Labels from `classifySyncSituation`: NO_CHANGE | PUSH | RESTORE | CONFLICT | FIRST_SYNC_RESTORE
@@ -33,7 +34,7 @@ import { markBackup } from "./notify";
 
 import { mergeDeviceAuthFromLocal, stripDeviceAuthForCloud } from "./device-auth";
 import { isValidPayload } from "./payload";
-import { getData, onDataChange, replaceAll } from "./store";
+import { getData, normalize, onDataChange, replaceAll } from "./store";
 import type { AppData } from "./types";
 
 export { isValidPayload };
@@ -400,9 +401,42 @@ async function withSyncTimeout<T>(promise: Promise<T>): Promise<T> {
   }
 }
 
-/** Stable fingerprint of local work (shifts + jobs). Settings are excluded. */
+/**
+ * Recursively stringify with sorted object keys so key-order differences in
+ * cloud JSON do not look like different work.
+ */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return `{${keys
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(obj[key])}`)
+    .join(",")}}`;
+}
+
+/**
+ * Stable fingerprint of work (shifts + jobs). Settings are excluded.
+ *
+ * Both sides are run through `normalize` first so local defaults
+ * (`kind`/`breakMinutes`, stripped job `rate:0`) match raw cloud JSON.
+ * Arrays are sorted by id; object keys are sorted for stable stringify.
+ */
 export function workFingerprint(data: Pick<AppData, "shifts" | "jobs">): string {
-  return JSON.stringify({ shifts: data.shifts, jobs: data.jobs });
+  const { shifts, jobs } = normalize({
+    shifts: data.shifts ?? [],
+    jobs: data.jobs ?? [],
+  });
+  const byId = (a: { id: string }, b: { id: string }) =>
+    String(a.id).localeCompare(String(b.id));
+  return stableStringify({
+    shifts: [...shifts].sort(byId),
+    jobs: [...jobs].sort(byId),
+  });
 }
 
 /**
@@ -642,34 +676,37 @@ async function autoSync(): Promise<void> {
       if (epoch !== syncEpoch) return;
       const hasLocalWorkData = local.shifts.length > 0;
       const hasLocalJobs = local.jobs.length > 0;
-      // Hotfix: lost baseline (lastSyncedAt=null) with identical work on both
-      // sides used to stick CONFLICT (syncedAt=0 → both "new"). Re-establish
-      // baseline quietly when fingerprints match; real divergence still conflicts.
-      if (
-        meta.lastSyncedAt == null &&
-        remote !== null &&
-        (hasLocalWorkData || hasLocalJobs)
-      ) {
-        const localFp = workFingerprint(local);
-        const remoteFp = workFingerprint(remote.payload);
-        if (localFp === remoteFp) {
-          saveMeta({
-            lastSyncedAt: remote.updatedAt,
-            remoteSeenAt: remote.updatedAt,
-            localChangedAt: null,
-            localWorkChangedAt: null,
-            localWorkFingerprint: localFp,
-            wizardPendingFirstSync: false,
-          });
-          setState({
-            status: "synced",
-            pending: false,
-            message: null,
-            lastSyncedAt: meta.lastSyncedAt,
-          });
-          return;
-        }
+      const localFp = workFingerprint(local);
+      const remoteFp = remote ? workFingerprint(remote.payload) : null;
+      const workEqual = remote !== null && localFp === remoteFp;
+
+      // Quiet re-baseline when work is semantically identical (normalize-safe FP).
+      // Covers lost baseline (lastSyncedAt=null) and stale marks that would
+      // otherwise false-conflict (remoteIsNew && localWorkIsNew with equal work).
+      // No replaceAll / upsert — settings drift can wait for a later push.
+      const quietRebaseline = () => {
+        if (!remote) return;
+        saveMeta({
+          lastSyncedAt: remote.updatedAt,
+          remoteSeenAt: remote.updatedAt,
+          localChangedAt: null,
+          localWorkChangedAt: null,
+          localWorkFingerprint: localFp,
+          wizardPendingFirstSync: false,
+        });
+        setState({
+          status: "synced",
+          pending: false,
+          message: null,
+          lastSyncedAt: meta.lastSyncedAt,
+        });
+      };
+
+      if (workEqual && meta.lastSyncedAt == null && (hasLocalWorkData || hasLocalJobs)) {
+        quietRebaseline();
+        return;
       }
+
       const ignoreLocalJobsOnFirstSync =
         !local.settings.onboarded || Boolean(meta.wizardPendingFirstSync);
       const decisionInput = {
@@ -688,6 +725,10 @@ async function autoSync(): Promise<void> {
       }
 
       if (decision === "conflict") {
+        if (workEqual) {
+          quietRebaseline();
+          return;
+        }
         setState({ status: "conflict", pending: true, message: null });
         return;
       }

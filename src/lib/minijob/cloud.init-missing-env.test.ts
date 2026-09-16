@@ -20,21 +20,25 @@ vi.mock("@/integrations/supabase/client", () => ({
   ),
 }));
 
-vi.mock("./store", () => ({
-  getData: (): AppData =>
-    ({
-      shifts: [],
-      jobs: [],
-      customers: [],
-      projects: [],
-      payments: [],
-      goals: [],
-      settings: { autoBackup: true },
-      timer: null,
-    }) as unknown as AppData,
-  onDataChange: () => {},
-  replaceAll: () => {},
-}));
+vi.mock("./store", async () => {
+  const actual = await vi.importActual<typeof import("./store")>("./store");
+  return {
+    ...actual,
+    getData: (): AppData =>
+      ({
+        shifts: [],
+        jobs: [],
+        customers: [],
+        projects: [],
+        payments: [],
+        goals: [],
+        settings: { autoBackup: true },
+        timer: null,
+      }) as unknown as AppData,
+    onDataChange: () => {},
+    replaceAll: () => {},
+  };
+});
 
 vi.mock("./notify", () => ({ markBackup: vi.fn() }));
 

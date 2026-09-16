@@ -60,18 +60,22 @@ let local: AppData;
 let changeHook: ((data: AppData) => void) | null = null;
 const replaced: AppData[] = [];
 
-vi.mock("./store", () => ({
-  getData: () => local,
-  onDataChange: (cb: (data: AppData) => void) => {
-    changeHook = cb;
-  },
-  replaceAll: (data: AppData) => {
-    replaced.push(data);
-    local = data;
-    // Simulate store listeners observing restore writes (tests applyingRemote guard).
-    changeHook?.(data);
-  },
-}));
+vi.mock("./store", async () => {
+  const actual = await vi.importActual<typeof import("./store")>("./store");
+  return {
+    ...actual,
+    getData: () => local,
+    onDataChange: (cb: (data: AppData) => void) => {
+      changeHook = cb;
+    },
+    replaceAll: (data: AppData) => {
+      replaced.push(data);
+      local = data;
+      // Simulate store listeners observing restore writes (tests applyingRemote guard).
+      changeHook?.(data);
+    },
+  };
+});
 
 vi.mock("./notify", () => ({ markBackup: vi.fn() }));
 
@@ -905,6 +909,261 @@ describe("Sync-Timeout (SYNC-LIVE-P1)", () => {
     expect(cloud.upserts).toBe(upsertsAfterRestore);
     expect(mod.getSyncState().status).not.toBe("syncing");
     expect(mod.getSyncState().pending).toBe(false);
+  });
+});
+
+describe("normalize-safe work fingerprint (false conflict)", () => {
+  function richShift(partial: Record<string, unknown> = {}) {
+    return {
+      id: "s1",
+      date: "2026-09-01",
+      start: "09:00",
+      end: "12:00",
+      jobId: "j1",
+      ...partial,
+    };
+  }
+
+  function richJob(partial: Record<string, unknown> = {}) {
+    return {
+      id: "j1",
+      name: "Café",
+      color: "#0d9488",
+      mode: "flex",
+      ...partial,
+    };
+  }
+
+  function basePayload(shifts: unknown[], jobs: unknown[]): AppData {
+    return {
+      ...makeData(0),
+      shifts,
+      jobs,
+    } as unknown as AppData;
+  }
+
+  it("raw remote missing kind/breakMinutes vs normalized local → synced (no conflict)", async () => {
+    const remoteAt = Date.now() - 60_000;
+    local = basePayload(
+      [richShift({ kind: "arbeit", breakMinutes: 0 })],
+      [richJob()],
+    );
+    cloud.remote = {
+      payload: basePayload([richShift()], [richJob()]),
+      updated_at: new Date(remoteAt).toISOString(),
+    };
+    window.localStorage.setItem(
+      "minijob-sync-meta-v1",
+      JSON.stringify({
+        userId: "user-1",
+        localChangedAt: Date.now(),
+        localWorkChangedAt: Date.now(),
+        lastSyncedAt: null,
+        remoteSeenAt: null,
+      }),
+    );
+
+    const { initCloudSync, getSyncState } = await loadModule();
+    initCloudSync();
+    await settle();
+
+    expect(getSyncState().status).toBe("synced");
+    expect(replaced).toHaveLength(0);
+    expect(cloud.upserts).toBe(0);
+  });
+
+  it("job rate:0 on remote stripped locally → no conflict", async () => {
+    const remoteAt = Date.now() - 60_000;
+    local = basePayload([], [richJob()]); // rate stripped
+    cloud.remote = {
+      payload: basePayload([], [richJob({ rate: 0 })]),
+      updated_at: new Date(remoteAt).toISOString(),
+    };
+    window.localStorage.setItem(
+      "minijob-sync-meta-v1",
+      JSON.stringify({
+        userId: "user-1",
+        localChangedAt: Date.now(),
+        localWorkChangedAt: Date.now(),
+        lastSyncedAt: null,
+        remoteSeenAt: null,
+      }),
+    );
+
+    const { initCloudSync, getSyncState } = await loadModule();
+    initCloudSync();
+    await settle();
+
+    expect(getSyncState().status).toBe("synced");
+    expect(replaced).toHaveLength(0);
+    expect(cloud.upserts).toBe(0);
+  });
+
+  it("different key order same data → no conflict", async () => {
+    const remoteAt = Date.now() - 60_000;
+    local = basePayload(
+      [richShift({ kind: "arbeit", breakMinutes: 0 })],
+      [richJob({ rate: 12 })],
+    );
+    cloud.remote = {
+      payload: {
+        ...makeData(0),
+        shifts: [
+          {
+            breakMinutes: 0,
+            kind: "arbeit",
+            end: "12:00",
+            start: "09:00",
+            date: "2026-09-01",
+            jobId: "j1",
+            id: "s1",
+          },
+        ],
+        jobs: [{ mode: "flex", color: "#0d9488", name: "Café", id: "j1", rate: 12 }],
+      } as unknown as AppData,
+      updated_at: new Date(remoteAt).toISOString(),
+    };
+    window.localStorage.setItem(
+      "minijob-sync-meta-v1",
+      JSON.stringify({
+        userId: "user-1",
+        localChangedAt: Date.now(),
+        localWorkChangedAt: Date.now(),
+        lastSyncedAt: null,
+        remoteSeenAt: null,
+      }),
+    );
+
+    const { initCloudSync, getSyncState } = await loadModule();
+    initCloudSync();
+    await settle();
+
+    expect(getSyncState().status).toBe("synced");
+    expect(replaced).toHaveLength(0);
+  });
+
+  it("lastSyncedAt set + remote newer + localWorkChangedAt + equal FP → no conflict", async () => {
+    const syncedAt = Date.now() - 120_000;
+    const remoteAt = Date.now() - 30_000;
+    const workLocal = basePayload(
+      [richShift({ kind: "arbeit", breakMinutes: 0 })],
+      [richJob()],
+    );
+    local = workLocal;
+    cloud.remote = {
+      // semantically same, raw missing defaults
+      payload: basePayload([richShift()], [richJob()]),
+      updated_at: new Date(remoteAt).toISOString(),
+    };
+    window.localStorage.setItem(
+      "minijob-sync-meta-v1",
+      JSON.stringify({
+        userId: "user-1",
+        localChangedAt: Date.now() - 10_000,
+        localWorkChangedAt: Date.now() - 10_000,
+        lastSyncedAt: syncedAt,
+        remoteSeenAt: syncedAt,
+        localWorkFingerprint: "stale-mark",
+      }),
+    );
+
+    const { initCloudSync, getSyncState } = await loadModule();
+    initCloudSync();
+    await settle();
+
+    expect(getSyncState().status).toBe("synced");
+    expect(getSyncState().status).not.toBe("conflict");
+    expect(replaced).toHaveLength(0);
+    expect(cloud.upserts).toBe(0);
+    const meta = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1")!);
+    expect(meta.lastSyncedAt).toBe(remoteAt);
+    expect(meta.localChangedAt).toBeNull();
+    expect(meta.localWorkChangedAt).toBeNull();
+  });
+
+  it("different shift hours → still conflict", async () => {
+    local = basePayload(
+      [richShift({ kind: "arbeit", breakMinutes: 0, end: "12:00" })],
+      [richJob()],
+    );
+    cloud.remote = {
+      payload: basePayload(
+        [richShift({ end: "17:00" })],
+        [richJob()],
+      ),
+      updated_at: new Date().toISOString(),
+    };
+    window.localStorage.setItem(
+      "minijob-sync-meta-v1",
+      JSON.stringify({
+        userId: "user-1",
+        localChangedAt: Date.now(),
+        localWorkChangedAt: Date.now(),
+        lastSyncedAt: null,
+        remoteSeenAt: null,
+      }),
+    );
+
+    const { initCloudSync, getSyncState } = await loadModule();
+    initCloudSync();
+    await settle();
+
+    expect(getSyncState().status).toBe("conflict");
+    expect(replaced).toHaveLength(0);
+    expect(cloud.upserts).toBe(0);
+  });
+
+  it("jobs-only identical → no conflict; jobs-only different → conflict", async () => {
+    const remoteAt = Date.now() - 60_000;
+    // identical jobs-only
+    local = basePayload([], [richJob()]);
+    cloud.remote = {
+      payload: basePayload([], [richJob({ rate: 0 })]),
+      updated_at: new Date(remoteAt).toISOString(),
+    };
+    window.localStorage.setItem(
+      "minijob-sync-meta-v1",
+      JSON.stringify({
+        userId: "user-1",
+        localChangedAt: Date.now(),
+        localWorkChangedAt: Date.now(),
+        lastSyncedAt: null,
+        remoteSeenAt: null,
+      }),
+    );
+
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    expect(mod.getSyncState().status).toBe("synced");
+    expect(replaced).toHaveLength(0);
+
+    // different jobs-only
+    window.localStorage.clear();
+    replaced.length = 0;
+    cloud.upserts = 0;
+    local = basePayload([], [richJob({ name: "Café" })]);
+    cloud.remote = {
+      payload: basePayload([], [richJob({ name: "Bar" })]),
+      updated_at: new Date().toISOString(),
+    };
+    window.localStorage.setItem(
+      "minijob-sync-meta-v1",
+      JSON.stringify({
+        userId: "user-1",
+        localChangedAt: Date.now(),
+        localWorkChangedAt: Date.now(),
+        lastSyncedAt: null,
+        remoteSeenAt: null,
+      }),
+    );
+
+    const mod2 = await loadModule();
+    mod2.initCloudSync();
+    await settle();
+    expect(mod2.getSyncState().status).toBe("conflict");
+    expect(replaced).toHaveLength(0);
+    expect(cloud.upserts).toBe(0);
   });
 });
 
