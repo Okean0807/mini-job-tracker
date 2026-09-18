@@ -48,3 +48,20 @@ describe("useAuthSession soft-fail (hook)", () => {
     expect(hook).toMatch(/bindAuthSession\(supabase,/);
   });
 });
+
+describe("CloudSync local demo mode", () => {
+  it("shows local-only copy when localDemoMode and never SyncStatus without session", () => {
+    const body = cloudSyncBody();
+    expect(body).toMatch(/localDemoMode/);
+    expect(body).toMatch(/set\.account\.demo\.localOnly/);
+    expect(body).toMatch(/set\.account\.demo\.signInPrompt/);
+    // SyncStatusRow only in signed-in return path
+    const signedOutAt = body.indexOf('authStatus === "signed_out"');
+    const syncRowAt = body.indexOf("SyncStatusRow");
+    expect(signedOutAt).toBeGreaterThan(-1);
+    expect(syncRowAt).toBeGreaterThan(signedOutAt);
+    const signedOutBlock = body.slice(signedOutAt, syncRowAt);
+    expect(signedOutBlock).not.toMatch(/SyncStatusRow/);
+    expect(signedOutBlock).not.toMatch(/set\.account\.cloud\.sync\.synced/);
+  });
+});

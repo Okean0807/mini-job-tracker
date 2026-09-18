@@ -47,9 +47,18 @@ describe("OnboardingWizard Cloud step auth", () => {
     expect(src).not.toMatch(/wiz\.cloud\.apple/);
   });
 
-  it("requires Google before leaving the cloud step", () => {
+  it("requires Google before leaving the cloud step unless demo", () => {
     expect(src).toMatch(/WIZARD_STEP_INDEX\.cloud/);
     expect(src).toMatch(/wiz\.cloud\.required/);
+    expect(src).toMatch(/canAdvancePastCloud/);
+    expect(src).toMatch(/wiz\.cloud\.demoTest/);
+    expect(src).toMatch(/startLocalDemo/);
     expect(WIZARD_STEP_INDEX.cloud).toBe(1);
+  });
+
+  it("demo path sets localDemoMode without fake auth session", () => {
+    expect(src).toMatch(/localDemoMode:\s*true/);
+    expect(src).toMatch(/WIZARD_STEP_INDEX\.workMode/);
+    expect(src).not.toMatch(/signInWithPassword|fakeUser|demo@/);
   });
 });
