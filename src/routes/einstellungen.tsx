@@ -29,20 +29,31 @@ import { downloadText, shiftsToCsv } from "@/lib/minijob/csv";
 import { exportXlsx } from "@/lib/minijob/export";
 import { holidaysFor } from "@/lib/minijob/holidays";
 import { markBackup, notificationPermission, requestNotificationPermission } from "@/lib/minijob/notify";
-import { registerBiometricCredentialId } from "@/lib/minijob/biometric";
+import {
+  canOfferBiometricToggle,
+  detectBiometricCapability,
+  registerBiometricCredentialId,
+  type BiometricCapability,
+} from "@/lib/minijob/biometric";
 import { isValidPayload } from "@/lib/minijob/payload";
-import { isValidPin } from "@/lib/minijob/pin";
+import { isValidPin, validatePinConfirm } from "@/lib/minijob/pin";
 import { disableBiometric, getData, replaceAll, updateSettings, updateSupplements, useAppData } from "@/lib/minijob/store";
 import { LANGUAGES, useT } from "@/lib/i18n";
 import type { Lang } from "@/lib/i18n";
 import { ACCENTS, THEME_MODES } from "@/lib/minijob/theme";
-import { UI_MODES } from "@/lib/minijob/uimode";
+import {
+  UI_MODES,
+  isPreviewPending,
+  previewVisibility,
+  type Feature,
+} from "@/lib/minijob/uimode";
 import {
   BUNDESLAENDER,
   COUNTRIES,
   type NotificationSettings,
   type TextSize,
   type TouchSize,
+  type UiMode,
 } from "@/lib/minijob/types";
 import { cn } from "@/lib/utils";
 
@@ -69,6 +80,25 @@ function SettingsPage() {
   const { settings, shifts } = useAppData();
   const { t } = useT();
   const [pinSetupOpen, setPinSetupOpen] = useState(false);
+  const [pinDraft, setPinDraft] = useState("");
+  const [pinConfirm, setPinConfirm] = useState("");
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [bioCapability, setBioCapability] = useState<BiometricCapability>("unsupported");
+  const [previewMode, setPreviewMode] = useState<UiMode | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void detectBiometricCapability().then((cap) => {
+      if (!cancelled) setBioCapability(cap);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectedUiMode: UiMode = previewMode ?? settings.uiMode;
+  const previewPending = isPreviewPending(settings.uiMode, previewMode);
 
   return (
     <main className="mx-auto max-w-lg px-4 pt-6">
@@ -278,19 +308,31 @@ function SettingsPage() {
               onChange={(checked) => {
                 if (!checked) {
                   setPinSetupOpen(false);
+                  setPinDraft("");
+                  setPinConfirm("");
+                  setPinError(null);
                   updateSettings({ pinEnabled: false });
                   return;
                 }
                 if (!isValidPin(settings.pin)) {
                   toast.error(t("set.security.pinRequired"));
                   setPinSetupOpen(true);
+                  setPinDraft("");
+                  setPinConfirm("");
+                  setPinError(null);
                   return;
                 }
                 updateSettings({ pinEnabled: true });
               }}
             />
             {settings.pinEnabled || pinSetupOpen ? (
-              <div className="grid gap-2">
+              <div
+                className="grid gap-2"
+                data-testid="pin-setup"
+                style={{
+                  paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0px))",
+                }}
+              >
                 <Label htmlFor="pin">{t("set.security.pinLabel")}</Label>
                 <Input
                   id="pin"
@@ -298,38 +340,122 @@ function SettingsPage() {
                   inputMode="numeric"
                   maxLength={8}
                   autoFocus={pinSetupOpen && !settings.pinEnabled}
-                  defaultValue={settings.pin ?? ""}
-                  onBlur={(e) => {
-                    const pin = e.target.value;
-                    if (!isValidPin(pin)) {
-                      toast.error(t("set.security.pinRequired"));
-                      if (settings.pinEnabled) updateSettings({ pinEnabled: false });
-                      return;
-                    }
-                    updateSettings(
-                      pinSetupOpen || settings.pinEnabled
-                        ? { pin, pinEnabled: true }
-                        : { pin },
-                    );
-                    setPinSetupOpen(false);
+                  value={pinDraft}
+                  onChange={(e) => {
+                    setPinDraft(e.target.value);
+                    setPinError(null);
                   }}
+                  aria-invalid={Boolean(pinError)}
                 />
+                <Label htmlFor="pin-confirm">{t("set.security.pinConfirm")}</Label>
+                <Input
+                  id="pin-confirm"
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={8}
+                  value={pinConfirm}
+                  onChange={(e) => {
+                    setPinConfirm(e.target.value);
+                    setPinError(null);
+                  }}
+                  aria-invalid={Boolean(pinError)}
+                />
+                {pinError ? (
+                  <p className="text-xs text-destructive" role="alert" data-testid="pin-setup-error">
+                    {pinError}
+                  </p>
+                ) : null}
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Button
+                    type="button"
+                    className="min-h-11 flex-1"
+                    data-testid="pin-setup-save"
+                    onClick={() => {
+                      const result = validatePinConfirm(pinDraft, pinConfirm);
+                      if (!result.ok) {
+                        const key =
+                          result.error === "short"
+                            ? "set.security.pinErrorShort"
+                            : result.error === "mismatch"
+                              ? "set.security.pinErrorMismatch"
+                              : result.error === "cancel"
+                                ? "set.security.pinErrorCancel"
+                                : "set.security.pinErrorInvalid";
+                        setPinError(t(key));
+                        toast.error(t(key));
+                        if (settings.pinEnabled && result.error !== "mismatch") {
+                          updateSettings({ pinEnabled: false });
+                        }
+                        return;
+                      }
+                      updateSettings({ pin: result.pin, pinEnabled: true });
+                      setPinSetupOpen(false);
+                      setPinDraft("");
+                      setPinConfirm("");
+                      setPinError(null);
+                      toast.success(t("set.security.pinSaved"));
+                    }}
+                  >
+                    {t("set.security.pinSave")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-11 flex-1"
+                    data-testid="pin-setup-cancel"
+                    onClick={() => {
+                      const cancelled = validatePinConfirm(pinDraft, pinConfirm, { cancel: true });
+                      if (!cancelled.ok) {
+                        setPinError(t("set.security.pinErrorCancel"));
+                        toast.message(t("set.security.pinErrorCancel"));
+                      }
+                      setPinSetupOpen(false);
+                      setPinDraft("");
+                      setPinConfirm("");
+                      if (!isValidPin(settings.pin)) {
+                        updateSettings({ pinEnabled: false });
+                      }
+                    }}
+                  >
+                    {t("set.security.pinCancel")}
+                  </Button>
+                </div>
               </div>
             ) : null}
             <ToggleRow
               title={t("set.security.biometric")}
-              description={t("set.security.biometricDesc")}
+              description={
+                canOfferBiometricToggle(bioCapability)
+                  ? t("set.security.biometricDesc")
+                  : bioCapability === "unsupported"
+                    ? t("set.security.biometricUnsupported")
+                    : t("set.security.biometricUnavailable")
+              }
               checked={settings.biometric && Boolean(settings.biometricCredentialId)}
+              disabled={!canOfferBiometricToggle(bioCapability)}
               onChange={async (checked) => {
                 if (!checked) {
                   disableBiometric();
+                  return;
+                }
+                if (!canOfferBiometricToggle(bioCapability)) {
+                  toast.error(t("set.security.biometricUnavailable"));
+                  return;
+                }
+                if (!isValidPin(settings.pin)) {
+                  toast.error(t("set.security.pinRequired"));
+                  setPinSetupOpen(true);
                   return;
                 }
                 const outcome = await registerBiometricCredentialId(
                   settings.pin ?? "minijob-local",
                 );
                 if (!outcome.ok) {
-                  toast.error(t("pin.biometricFailed"));
+                  toast.error(
+                    outcome.result === "unavailable"
+                      ? t("set.security.biometricUnavailable")
+                      : t("pin.biometricFailed"),
+                  );
                   disableBiometric();
                   return;
                 }
@@ -399,23 +525,88 @@ function SettingsPage() {
 
           <Section title={t("ui.title")}>
             <p className="text-xs text-muted-foreground">{t("ui.hint")}</p>
-            <div className="grid gap-2">
-              {UI_MODES.map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => updateSettings({ uiMode: mode })}
-                  aria-pressed={settings.uiMode === mode}
-                  className={cn(
-                    "rounded-xl border px-3 py-3 text-left",
-                    settings.uiMode === mode ? "border-primary bg-primary/10" : "bg-card",
-                  )}
-                >
-                  <span className="block text-sm font-semibold">{t(`ui.${mode}`)}</span>
-                  <span className="block text-xs text-muted-foreground">{t(`ui.${mode}Desc`)}</span>
-                </button>
-              ))}
+            <div className="grid gap-2" data-testid="ui-mode-picker">
+              {UI_MODES.map((mode) => {
+                const applied = settings.uiMode === mode;
+                const selected = selectedUiMode === mode;
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setPreviewMode(mode)}
+                    aria-pressed={selected}
+                    data-applied={applied ? "true" : "false"}
+                    data-preview-selected={selected ? "true" : "false"}
+                    className={cn(
+                      "rounded-xl border px-3 py-3 text-left",
+                      selected ? "border-primary bg-primary/10" : "bg-card",
+                    )}
+                  >
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="block text-sm font-semibold">{t(`ui.${mode}`)}</span>
+                      {applied ? (
+                        <span className="text-[10px] font-medium uppercase tracking-wide text-primary">
+                          {t("ui.applied")}
+                        </span>
+                      ) : selected && previewPending ? (
+                        <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          {t("ui.selected")}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">{t(`ui.${mode}Desc`)}</span>
+                  </button>
+                );
+              })}
             </div>
+            <div
+              className="flex flex-wrap gap-2 pt-1"
+              style={{ paddingBottom: "max(0.25rem, env(safe-area-inset-bottom, 0px))" }}
+            >
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11 flex-1"
+                data-testid="ui-mode-preview"
+                onClick={() => {
+                  setPreviewMode(selectedUiMode);
+                  setPreviewOpen(true);
+                }}
+              >
+                {t("ui.preview")}
+              </Button>
+              <Button
+                type="button"
+                className="min-h-11 flex-1"
+                data-testid="ui-mode-apply"
+                disabled={!previewPending}
+                onClick={() => {
+                  if (!previewMode) return;
+                  updateSettings({ uiMode: previewMode });
+                  setPreviewMode(null);
+                  setPreviewOpen(false);
+                  toast.success(t(`ui.${previewMode}`));
+                }}
+              >
+                {t("ui.apply")}
+              </Button>
+            </div>
+            {previewPending ? (
+              <p className="text-xs text-muted-foreground" data-testid="ui-mode-preview-hint">
+                {t("ui.previewHint")}
+              </p>
+            ) : null}
+            {previewOpen ? (
+              <UiModePreviewOverlay
+                mode={selectedUiMode}
+                onClose={() => setPreviewOpen(false)}
+                onApply={() => {
+                  updateSettings({ uiMode: selectedUiMode });
+                  setPreviewMode(null);
+                  setPreviewOpen(false);
+                }}
+              />
+            ) : null}
           </Section>
 
           <Section title={t("a11y.title")}>
@@ -554,24 +745,129 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+
+const NAV_PREVIEW: Feature[] = ["nav.stats", "nav.jobs", "nav.docs", "nav.ai"];
+const WIDGET_PREVIEW: Feature[] = [
+  "dash.statGrid",
+  "dash.limitMonth",
+  "dash.limitYear",
+  "dash.payday",
+  "dash.insights",
+  "dash.goals",
+  "dash.calendar",
+];
+
+function UiModePreviewOverlay({
+  mode,
+  onClose,
+  onApply,
+}: {
+  mode: UiMode;
+  onClose: () => void;
+  onApply: () => void;
+}) {
+  const { t } = useT();
+  const vis = previewVisibility(mode);
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t("ui.previewTitle")}
+      data-testid="ui-mode-preview-overlay"
+      style={{
+        paddingTop: "max(1rem, env(safe-area-inset-top, 0px))",
+        paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))",
+        paddingLeft: "max(1rem, env(safe-area-inset-left, 0px))",
+        paddingRight: "max(1rem, env(safe-area-inset-right, 0px))",
+      }}
+    >
+      <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border bg-background p-4 shadow-lg sm:rounded-2xl">
+        <h3 className="text-base font-semibold">{t("ui.previewTitle")}</h3>
+        <p className="mt-1 text-xs text-muted-foreground">{t("ui.previewHint")}</p>
+        <p className="mt-2 text-sm font-medium">{t(`ui.${mode}`)}</p>
+
+        <div className="mt-3 space-y-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {t("ui.previewNav")}
+            </p>
+            <ul className="mt-1 space-y-1 text-sm">
+              {NAV_PREVIEW.map((f) => (
+                <li key={f} className="flex justify-between gap-2">
+                  <span>{t(`ui.feature.${f}`)}</span>
+                  <span className={vis[f] ? "text-primary" : "text-muted-foreground"}>
+                    {vis[f] ? "✓" : "–"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {t("ui.previewWidgets")}
+            </p>
+            <ul className="mt-1 space-y-1 text-sm">
+              {WIDGET_PREVIEW.map((f) => (
+                <li key={f} className="flex justify-between gap-2">
+                  <span>{t(`ui.feature.${f}`)}</span>
+                  <span className={vis[f] ? "text-primary" : "text-muted-foreground"}>
+                    {vis[f] ? "✓" : "–"}
+                  </span>
+                </li>
+              ))}
+              <li className="flex justify-between gap-2">
+                <span>{t("ui.feature.settings.advanced")}</span>
+                <span
+                  className={
+                    vis["settings.advanced"] ? "text-primary" : "text-muted-foreground"
+                  }
+                >
+                  {vis["settings.advanced"] ? "✓" : "–"}
+                </span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button type="button" variant="outline" className="min-h-11 flex-1" onClick={onClose}>
+            {t("action.cancel")}
+          </Button>
+          <Button type="button" className="min-h-11 flex-1" data-testid="ui-mode-preview-apply" onClick={onApply}>
+            {t("ui.apply")}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ToggleRow({
   title,
   description,
   checked,
   onChange,
+  disabled,
 }: {
   title: string;
   description: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between">
-      <div>
+    <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0">
         <p className="text-sm font-medium">{title}</p>
         <p className="text-xs text-muted-foreground">{description}</p>
       </div>
-      <Switch checked={checked} onCheckedChange={onChange} aria-label={title} />
+      <Switch
+        checked={checked}
+        onCheckedChange={onChange}
+        aria-label={title}
+        disabled={disabled}
+      />
     </div>
   );
 }

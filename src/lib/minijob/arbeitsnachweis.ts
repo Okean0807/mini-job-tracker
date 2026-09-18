@@ -30,13 +30,21 @@ function num(value: number, digits = 2): string {
   return value.toFixed(digits).replace(".", ",");
 }
 
-/** Kompakte Adresszeile: „Musterstraße 15, 3. OG, links“. */
+/** Kompakte Adresszeile: „Musterstraße 15, 12345 Berlin, 3. OG, links“. */
 export function addressLine(shift: Shift, jobs: Job[] = []): string {
   const street = [shift.street, shift.houseNo]
     .map((part) => (part ?? "").trim())
     .filter(Boolean)
     .join(" ");
-  const place = street || shift.workplace || jobs.find((j) => j.id === shift.jobId)?.name || "";
+  const locality = [shift.zip, shift.city]
+    .map((part) => (part ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+  const place =
+    [street, locality].filter(Boolean).join(", ") ||
+    shift.workplace ||
+    jobs.find((j) => j.id === shift.jobId)?.name ||
+    "";
   return [place, shift.floor, shift.doorSide]
     .map((part) => (part ?? "").trim())
     .filter(Boolean)

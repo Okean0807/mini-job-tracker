@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   attemptBiometricUnlock,
+  biometricCopyKind,
+  canOfferBiometricToggle,
+  detectBiometricCapability,
   registerBiometricCredentialId,
   shouldUnlockFromBiometric,
 } from "./biometric";
@@ -116,5 +119,47 @@ describe("registerBiometricCredentialId", () => {
       ok: false,
       result: "unavailable",
     });
+  });
+});
+
+describe("biometric honesty (Batch F)", () => {
+  it("maps capability to copy / toggle gate without fingerprint claims", () => {
+    expect(biometricCopyKind("unsupported")).toBe("unavailable");
+    expect(biometricCopyKind("passkey")).toBe("passkey");
+    expect(biometricCopyKind("platform")).toBe("passkey");
+    expect(canOfferBiometricToggle("unsupported")).toBe(false);
+    expect(canOfferBiometricToggle("passkey")).toBe(false);
+    expect(canOfferBiometricToggle("platform")).toBe(true);
+  });
+
+  it("detects unsupported without PublicKeyCredential", async () => {
+    const prev = window.PublicKeyCredential;
+    // @ts-expect-error test cleanup
+    delete window.PublicKeyCredential;
+    await expect(detectBiometricCapability(async () => true)).resolves.toBe("unsupported");
+    Object.defineProperty(window, "PublicKeyCredential", {
+      configurable: true,
+      value: prev,
+    });
+  });
+
+  it("returns passkey when WebAuthn exists but platform UV is unavailable", async () => {
+    Object.defineProperty(window, "PublicKeyCredential", {
+      configurable: true,
+      value: {
+        isUserVerifyingPlatformAuthenticatorAvailable: vi.fn().mockResolvedValue(false),
+      },
+    });
+    await expect(detectBiometricCapability()).resolves.toBe("passkey");
+  });
+
+  it("returns platform when UV platform authenticator is available", async () => {
+    Object.defineProperty(window, "PublicKeyCredential", {
+      configurable: true,
+      value: {
+        isUserVerifyingPlatformAuthenticatorAvailable: vi.fn().mockResolvedValue(true),
+      },
+    });
+    await expect(detectBiometricCapability()).resolves.toBe("platform");
   });
 });

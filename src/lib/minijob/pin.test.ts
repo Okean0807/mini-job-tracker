@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { isValidPin, PIN_MAX_LENGTH, PIN_MIN_LENGTH, withConsistentPinSettings } from "./pin";
+import { isValidPin, PIN_MAX_LENGTH, PIN_MIN_LENGTH, validatePinConfirm, withConsistentPinSettings } from "./pin";
 import { getData, normalize, replaceAll, updateSettings } from "./store";
 import { DEFAULT_SETTINGS } from "./types";
 
@@ -93,5 +93,22 @@ describe("normalize pinEnabled gate", () => {
     });
     expect(data.settings.pinEnabled).toBe(true);
     expect(data.settings.pin).toBe("9999");
+  });
+});
+
+
+describe("validatePinConfirm (Batch F setup UX)", () => {
+  it("accepts matching valid PIN + confirm", () => {
+    expect(validatePinConfirm("1357", "1357")).toEqual({ ok: true, pin: "1357" });
+  });
+
+  it("errors short / mismatch / invalid / cancel", () => {
+    expect(validatePinConfirm("12", "12")).toEqual({ ok: false, error: "short" });
+    expect(validatePinConfirm("1357", "1358")).toEqual({ ok: false, error: "mismatch" });
+    expect(validatePinConfirm("12ab", "12ab")).toEqual({ ok: false, error: "invalid" });
+    expect(validatePinConfirm("1357", "1357", { cancel: true })).toEqual({
+      ok: false,
+      error: "cancel",
+    });
   });
 });
