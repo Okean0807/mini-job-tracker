@@ -3,7 +3,7 @@ import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n";
-import { isoDate, monthNames, weekdayNames } from "@/lib/minijob/calc";
+import { formatEuro, isoDate, monthNames, weekdayNames } from "@/lib/minijob/calc";
 import { holidayName } from "@/lib/minijob/holidays";
 import { generateFixedMonth } from "@/lib/minijob/schedule";
 import { shiftPayroll } from "@/lib/minijob/payroll";
@@ -30,25 +30,25 @@ const KIND_STYLE: Record<
   { cell: string; icon: LucideIcon; legend: string; labelKey: string }
 > = {
   arbeit: {
-    cell: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 border-emerald-500/30",
+    cell: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 border-emerald-500/40",
     icon: Briefcase,
     legend: "bg-emerald-500",
     labelKey: "kind.arbeit",
   },
   krank: {
-    cell: "bg-amber-500/15 text-amber-900 dark:text-amber-100 border-amber-500/30",
+    cell: "bg-amber-500/15 text-amber-900 dark:text-amber-100 border-amber-500/40",
     icon: Thermometer,
     legend: "bg-amber-500",
     labelKey: "kind.krank",
   },
   urlaub: {
-    cell: "bg-sky-500/15 text-sky-900 dark:text-sky-100 border-sky-500/30",
+    cell: "bg-sky-500/15 text-sky-900 dark:text-sky-100 border-sky-500/40",
     icon: Palmtree,
     legend: "bg-sky-500",
     labelKey: "kind.urlaub",
   },
   feiertag: {
-    cell: "bg-violet-500/15 text-violet-900 dark:text-violet-100 border-violet-500/30",
+    cell: "bg-violet-500/15 text-violet-900 dark:text-violet-100 border-violet-500/40",
     icon: PartyPopper,
     legend: "bg-violet-500",
     labelKey: "kind.feiertag",
@@ -63,7 +63,12 @@ export function primaryDayKind(dayShifts: Shift[]): ShiftKind | null {
   return null;
 }
 
-/** Hours shown for a day: worked or paid-absence hours (matches ShiftList), never raw clock duration for unpaid absences. */
+/** Dual status: public holiday + recorded work on the same day. */
+export function isHolidayWorkDay(dayShifts: Shift[], holiday: string | undefined): boolean {
+  return Boolean(holiday) && dayShifts.some((s) => s.kind === "arbeit");
+}
+
+/** Hours shown for a day: worked or paid-absence hours (matches ShiftList). */
 function dayDisplayHours(
   dayShifts: Shift[],
   allShifts: Shift[],
@@ -73,6 +78,32 @@ function dayDisplayHours(
     const pay = shiftPayroll(s, { ...resolve(s), history: allShifts });
     return acc + (s.kind === "arbeit" ? pay.workedHours : pay.paidAbsenceHours);
   }, 0);
+}
+
+function dayEarningsTotal(
+  dayShifts: Shift[],
+  allShifts: Shift[],
+  resolve: (shift: Shift) => ResolveOptions,
+): number {
+  return dayShifts.reduce((acc, s) => {
+    const pay = shiftPayroll(s, { ...resolve(s), history: allShifts });
+    return acc + pay.earnings;
+  }, 0);
+}
+
+export function buildDayTitle(options: {
+  holiday?: string | undefined;
+  kind: ShiftKind | null;
+  hours: number;
+  earnings: number;
+  kindLabel: (kind: ShiftKind) => string;
+}): string {
+  const parts: string[] = [];
+  if (options.holiday) parts.push(options.holiday);
+  if (options.kind) parts.push(options.kindLabel(options.kind));
+  if (options.hours > 0) parts.push(`${options.hours.toFixed(1).replace(".", ",")} h`);
+  if (options.earnings > 0) parts.push(formatEuro(options.earnings));
+  return parts.join(" · ");
 }
 
 export function CalendarKindLegend() {
@@ -174,38 +205,70 @@ export function MonthCalendar({
           const iso = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
           const dayShifts = byDate.get(iso) ?? [];
           const hours = dayDisplayHours(dayShifts, shifts, resolve);
+          const earnings = dayEarningsTotal(dayShifts, shifts, resolve);
           const feiertag = holidayName(iso, bundesland);
           const kind = primaryDayKind(dayShifts);
           const kindMeta = kind ? KIND_STYLE[kind] : null;
           const KindIcon = kindMeta?.icon;
+          const holidayAndWork = isHolidayWorkDay(dayShifts, feiertag);
           const colors = dayShifts
             .map((s) => jobs.find((j) => j.id === s.jobId)?.color)
             .filter((c): c is string => Boolean(c));
-          // Job color only for pure Arbeit days without mixed absence kinds
-          const useJobColor = kind === "arbeit" && colors[0] && dayShifts.every((s) => s.kind === "arbeit");
-          const firstColor = useJobColor ? colors[0] : undefined;
+          // Job color as left border + dot — never full cell fill (dark-mode readability).
+          const jobAccent =
+            kind === "arbeit" && colors[0] && dayShifts.every((s) => s.kind === "arbeit")
+              ? colors[0]
+              : undefined;
+
+          const title = buildDayTitle({
+            holiday: feiertag,
+            kind,
+            hours,
+            earnings,
+            kindLabel: (k) => t(KIND_STYLE[k].labelKey),
+          });
 
           return (
             <button
               key={iso}
               type="button"
-              title={feiertag ?? (kind ? t(KIND_STYLE[kind].labelKey) : undefined)}
+              title={title || undefined}
               data-kind={kind ?? (feiertag ? "feiertag-cal" : undefined)}
+              data-holiday={feiertag ? "1" : undefined}
+              data-holiday-work={holidayAndWork ? "1" : undefined}
               onClick={() => onSelectDay(iso)}
-              style={firstColor ? { backgroundColor: firstColor, color: "#fff" } : undefined}
+              style={
+                jobAccent
+                  ? { borderLeftWidth: 3, borderLeftColor: jobAccent }
+                  : undefined
+              }
               className={cn(
                 "relative flex aspect-square flex-col items-center justify-center rounded-xl border text-sm transition-colors",
-                !firstColor && kindMeta && kindMeta.cell,
-                dayShifts.length && !firstColor && !kindMeta && "bg-gradient-primary font-semibold text-primary-foreground",
+                kindMeta && kindMeta.cell,
                 dayShifts.length && "font-semibold",
-                !dayShifts.length && !plannedDates.has(iso) && "border-transparent hover:bg-muted",
-                !dayShifts.length && plannedDates.has(iso) && "border-dashed border-muted-foreground/40 bg-muted/40 text-muted-foreground",
-                !dayShifts.length && feiertag && "border-violet-500/40 bg-violet-500/10 text-violet-800 dark:text-violet-200",
+                !dayShifts.length && !plannedDates.has(iso) && !feiertag && "border-transparent hover:bg-muted",
+                !dayShifts.length &&
+                  plannedDates.has(iso) &&
+                  "border-dashed border-muted-foreground/40 bg-muted/40 text-muted-foreground",
+                !dayShifts.length &&
+                  feiertag &&
+                  "border-violet-500/40 bg-violet-500/10 text-violet-800 dark:text-violet-200",
+                holidayAndWork && "border-violet-500/50 ring-1 ring-violet-500/30",
                 iso === today && !dayShifts.length && "border-primary text-primary",
               )}
             >
               <span className="flex items-center gap-0.5">
-                {KindIcon ? <KindIcon className="size-2.5 opacity-90" aria-hidden /> : null}
+                {feiertag ? (
+                  <PartyPopper
+                    className="size-2.5 text-violet-600 opacity-90 dark:text-violet-300"
+                    aria-hidden
+                  />
+                ) : null}
+                {KindIcon && kind === "arbeit" ? (
+                  <KindIcon className="size-2.5 opacity-90" aria-hidden />
+                ) : KindIcon && !feiertag ? (
+                  <KindIcon className="size-2.5 opacity-90" aria-hidden />
+                ) : null}
                 <span>{day}</span>
               </span>
               {hours > 0 ? (
@@ -213,13 +276,28 @@ export function MonthCalendar({
                   {hours.toFixed(1).replace(".", ",")} h
                 </span>
               ) : plannedDates.has(iso) ? (
-                <span className="text-[9px] font-medium text-muted-foreground" title={t("cal.plannedHint")}>
+                <span
+                  className="text-[9px] font-medium text-muted-foreground"
+                  title={t("cal.plannedHint")}
+                >
                   {t("cal.planned")}
                 </span>
+              ) : feiertag && !dayShifts.length ? (
+                <span className="max-w-full truncate px-0.5 text-[8px] font-medium text-violet-700 dark:text-violet-300">
+                  {feiertag}
+                </span>
               ) : null}
-              {colors.length > 1 && kind === "arbeit" ? (
+              {earnings > 0 && hours > 0 ? (
+                <span className="text-[8px] tabular-nums opacity-80">{formatEuro(earnings)}</span>
+              ) : null}
+              {jobAccent ? (
+                <span
+                  className="absolute bottom-1 size-1.5 rounded-full ring-1 ring-background"
+                  aria-hidden
+                />
+              ) : colors.length > 1 && kind === "arbeit" ? (
                 <span className="absolute bottom-1 flex gap-0.5">
-                  {colors.slice(1, 4).map((c, i) => (
+                  {colors.slice(0, 3).map((c, i) => (
                     <span
                       key={`${c}-${i}`}
                       className="size-1.5 rounded-full"

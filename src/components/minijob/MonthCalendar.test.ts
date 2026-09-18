@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { primaryDayKind } from "./MonthCalendar";
+import { buildDayTitle, isHolidayWorkDay, primaryDayKind } from "./MonthCalendar";
 import type { Shift } from "@/lib/minijob/types";
 
 const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "MonthCalendar.tsx"), "utf8");
@@ -46,5 +46,35 @@ describe("MonthCalendar kind rendering (CAL-P2)", () => {
         shift({ kind: "arbeit", id: "s2" }),
       ]),
     ).toBe("arbeit");
+  });
+});
+
+describe("MonthCalendar holiday + work dual display (Batch B)", () => {
+  it("isHolidayWorkDay is true only when holiday name and arbeit coexist", () => {
+    expect(isHolidayWorkDay([], "Ostern")).toBe(false);
+    expect(isHolidayWorkDay([shift({ kind: "feiertag" })], "Ostern")).toBe(false);
+    expect(isHolidayWorkDay([shift({ kind: "arbeit" })], undefined)).toBe(false);
+    expect(isHolidayWorkDay([shift({ kind: "arbeit" })], "Ostern")).toBe(true);
+  });
+
+  it("buildDayTitle shows holiday, kind, hours and earnings together", () => {
+    const title = buildDayTitle({
+      holiday: "Ostermontag",
+      kind: "arbeit",
+      hours: 4,
+      earnings: 54,
+      kindLabel: (k) => k,
+    });
+    expect(title).toContain("Ostermontag");
+    expect(title).toContain("arbeit");
+    expect(title).toMatch(/4/);
+    expect(title).toMatch(/54/);
+  });
+
+  it("cell markup keeps holiday marker alongside work (not color-only)", () => {
+    expect(src).toMatch(/data-holiday-work/);
+    expect(src).toMatch(/PartyPopper/);
+    expect(src).toMatch(/Briefcase/);
+    expect(src).toMatch(/borderLeftColor|borderLeftWidth/);
   });
 });

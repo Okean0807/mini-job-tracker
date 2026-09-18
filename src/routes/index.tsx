@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { AlertTriangle, Clock, Euro, LayoutGrid, Plus, TrendingUp } from "lucide-react";
+import { AlertTriangle, Clock, Euro, LayoutGrid, Palmtree, Plus, TrendingUp } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { DashboardCustomizer } from "@/components/minijob/DashboardCustomizer";
@@ -8,6 +8,7 @@ import { LimitCard } from "@/components/minijob/LimitCard";
 import { PaydayCard } from "@/components/minijob/PaydayCard";
 import { InsightsCard } from "@/components/minijob/InsightsCard";
 import { MonthCalendar } from "@/components/minijob/MonthCalendar";
+import { AbsenceDialog } from "@/components/minijob/AbsenceDialog";
 import { ShiftDialog } from "@/components/minijob/ShiftDialog";
 import { ShiftList } from "@/components/minijob/ShiftList";
 import { StatCard } from "@/components/minijob/StatCard";
@@ -59,6 +60,8 @@ function DashboardPage() {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [absenceOpen, setAbsenceOpen] = useState(false);
+  const [absenceSeed, setAbsenceSeed] = useState<Shift | null>(null);
   const [selectedDate, setSelectedDate] = useState(isoDate(now));
   const [editing, setEditing] = useState<Shift | null>(null);
   const [customizeOpen, setCustomizeOpen] = useState(false);
@@ -194,7 +197,10 @@ function DashboardPage() {
         }}
         onSelectDay={(date) => {
           const existing = shifts.find((s) => s.date === date);
-          if (existing) openEdit(existing);
+          if (existing && (existing.kind === "urlaub" || existing.kind === "krank")) {
+            setAbsenceSeed(existing);
+            setAbsenceOpen(true);
+          } else if (existing) openEdit(existing);
           else openNew(date);
         }}
       />
@@ -259,13 +265,26 @@ function DashboardPage() {
         ))}
       </div>
 
-      <Button
-        size="lg"
-        onClick={() => openNew(isoDate(new Date()))}
-        className="dash-fab fixed bottom-20 right-4 z-40 h-14 rounded-full px-5 shadow-float"
-      >
-        <Plus className="size-5" /> {t("dash.newEntry")}
-      </Button>
+      <div className="dash-fab fixed bottom-20 right-4 z-40 flex flex-col items-end gap-2">
+        <Button
+          size="lg"
+          variant="secondary"
+          onClick={() => {
+            setAbsenceSeed(null);
+            setAbsenceOpen(true);
+          }}
+          className="h-12 rounded-full px-4 shadow-float"
+        >
+          <Palmtree className="size-5" /> {t("dash.absence")}
+        </Button>
+        <Button
+          size="lg"
+          onClick={() => openNew(isoDate(new Date()))}
+          className="h-14 rounded-full px-5 shadow-float"
+        >
+          <Plus className="size-5" /> {t("dash.newEntry")}
+        </Button>
+      </div>
 
       {/* Scroll clearance so last cards sit above FAB + tall glove/large nav */}
       <div className="dash-fab-spacer h-24" aria-hidden />
@@ -285,6 +304,16 @@ function DashboardPage() {
         customers={customers}
         projects={projects}
         settings={settings}
+      />
+
+      <AbsenceDialog
+        open={absenceOpen}
+        onOpenChange={setAbsenceOpen}
+        jobs={jobs}
+        shifts={shifts}
+        seed={absenceSeed}
+        defaultFrom={selectedDate}
+        activeJobId={settings.activeJobId}
       />
     </main>
   );

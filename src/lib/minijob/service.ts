@@ -314,11 +314,58 @@ export function applyFixedMonth(job: Job, year: number, month: number): Shift[] 
   return created;
 }
 
-/** Urlaub / Krank für einen Zeitraum eintragen. */
+/** Urlaub / Krank für einen Zeitraum eintragen (überspringt Tage mit bestehendem Job-Eintrag). */
 export function addAbsence(job: Job, kind: ShiftKind, from: string, to: string): Shift[] {
-  const created = generateAbsence(job, kind, from, to, getData().settings.bundesland);
+  const data = getData();
+  const created = generateAbsence(
+    job,
+    kind,
+    from,
+    to,
+    data.settings.bundesland,
+    data.shifts,
+  );
   if (created.length) storeSaveShifts(created);
   return created;
+}
+
+/**
+ * Löscht nur Abwesenheiten (urlaub/krank) eines Jobs im Zeitraum.
+ * Arbeit / Feiertag-Einträge bleiben unberührt — keine stillen Löschungen.
+ */
+export function removeAbsenceRange(
+  jobId: string | undefined,
+  kind: ShiftKind,
+  from: string,
+  to: string,
+): number {
+  if (kind !== "urlaub" && kind !== "krank") return 0;
+  const data = getData();
+  const lo = from <= to ? from : to;
+  const hi = from <= to ? to : from;
+  const targets = data.shifts.filter(
+    (s) =>
+      s.kind === kind &&
+      (s.jobId ?? "") === (jobId ?? "") &&
+      s.date >= lo &&
+      s.date <= hi,
+  );
+  for (const s of targets) storeDeleteShift(s.id);
+  return targets.length;
+}
+
+/**
+ * Zeitraum ersetzen: zuerst passende Abwesenheiten entfernen, dann neu anlegen.
+ * Arbeitstage im Intervall werden nicht gelöscht; generateAbsence überspringt sie.
+ */
+export function replaceAbsenceRange(
+  job: Job,
+  kind: ShiftKind,
+  from: string,
+  to: string,
+): Shift[] {
+  removeAbsenceRange(job.id, kind, from, to);
+  return addAbsence(job, kind, from, to);
 }
 
 export function plannedWeeklyHours(job: Job): number {

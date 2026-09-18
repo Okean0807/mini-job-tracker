@@ -48,19 +48,26 @@ function localDate(iso: string): Date {
   return new Date(y!, (m ?? 1) - 1, d ?? 1);
 }
 
-/** Erzeugt Abwesenheitseinträge (Urlaub / Krank) für einen Zeitraum. */
+/**
+ * Erzeugt Abwesenheitseinträge (Urlaub / Krank) für einen Zeitraum.
+ * Überspringt Tage, an denen für denselben Job bereits ein Eintrag existiert
+ * (keine stillen Löschungen / Überschreibungen von Arbeit).
+ */
 export function generateAbsence(
   job: Job,
   kind: ShiftKind,
   from: string,
   to: string,
   bundesland: string,
+  existing: Shift[] = [],
 ): Shift[] {
   const result: Shift[] = [];
+  const taken = new Set(existing.filter((s) => s.jobId === job.id).map((s) => s.date));
   const start = localDate(from);
   const end = localDate(to);
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const date = isoDate(d);
+    if (taken.has(date)) continue;
     const weekdayIndex = (d.getDay() + 6) % 7;
     const plan = job.week?.[weekdayIndex];
     if (job.week && !plan?.active) continue;
