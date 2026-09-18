@@ -1,4 +1,4 @@
-import { Fingerprint, Lock } from "lucide-react";
+import { KeyRound, Lock } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -51,7 +51,16 @@ export function PinLock({ settings, onUnlock }: PinLockProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background px-6">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background px-6"
+      style={{
+        paddingTop: "max(1.5rem, env(safe-area-inset-top, 0px))",
+        paddingBottom: "max(1.5rem, env(safe-area-inset-bottom, 0px))",
+        paddingLeft: "max(1.5rem, env(safe-area-inset-left, 0px))",
+        paddingRight: "max(1.5rem, env(safe-area-inset-right, 0px))",
+      }}
+      data-testid="pin-lock"
+    >
       <div className="w-full max-w-xs text-center">
         <Lock className="mx-auto size-10 text-primary" />
         <h1 className="mt-4 text-xl font-bold">{t("pin.locked")}</h1>
@@ -70,12 +79,17 @@ export function PinLock({ settings, onUnlock }: PinLockProps) {
           aria-label={t("pin.enterPin")}
         />
         {error ? <p className="mt-2 text-xs text-destructive">{t(errorKey)}</p> : null}
-        <Button className="mt-4 w-full" onClick={submit}>
+        <Button className="mt-4 min-h-11 w-full" onClick={submit}>
           {t("pin.unlock")}
         </Button>
         {biometricReady ? (
-          <Button variant="outline" className="mt-2 w-full" onClick={biometric} disabled={busy}>
-            <Fingerprint className="size-4" /> {t("pin.biometric")}
+          <Button
+            variant="outline"
+            className="mt-2 min-h-11 w-full"
+            onClick={biometric}
+            disabled={busy}
+          >
+            <KeyRound className="size-4" aria-hidden /> {t("pin.biometric")}
           </Button>
         ) : null}
       </div>

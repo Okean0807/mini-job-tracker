@@ -120,3 +120,42 @@ export async function attemptBiometricUnlock(credentialId?: string): Promise<Bio
     return "failed";
   }
 }
+
+/** Honest capability labels — never claim fingerprint when only passkey exists. */
+export type BiometricCapability =
+  | "unsupported"
+  | "passkey"
+  | "platform";
+
+export type BiometricCopyKind = "passkey" | "unavailable";
+
+/**
+ * Classify what the UI may honestly claim.
+ * - unsupported: no WebAuthn
+ * - passkey: WebAuthn present but platform UV authenticator not available
+ * - platform: UV platform authenticator available (may include fingerprint/face via OS)
+ */
+export async function detectBiometricCapability(
+  checkPlatform: () => Promise<boolean> = async () => {
+    if (!canUsePlatformAuthenticator()) return false;
+    try {
+      return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+    } catch {
+      return false;
+    }
+  },
+): Promise<BiometricCapability> {
+  if (!canUsePlatformAuthenticator()) return "unsupported";
+  const platform = await checkPlatform();
+  return platform ? "platform" : "passkey";
+}
+
+/** i18n key suffix for settings copy based on capability. */
+export function biometricCopyKind(capability: BiometricCapability): BiometricCopyKind {
+  return capability === "unsupported" ? "unavailable" : "passkey";
+}
+
+/** Toggle may only be offered when WebAuthn + platform UV authenticator exist. */
+export function canOfferBiometricToggle(capability: BiometricCapability): boolean {
+  return capability === "platform";
+}

@@ -34,6 +34,11 @@ import {
 import { WORK_CODES, WORK_CODE_LABELS } from "@/lib/minijob/arbeitsnachweis";
 import { listenOnce, parseVoice, voiceSupported } from "@/lib/minijob/voice";
 import {
+  applyReverseOrKeep,
+  formatGermanAddress,
+  reverseGeocodeGerman,
+} from "@/lib/minijob/geo-address";
+import {
   CLEANING_TASKS,
   compressPhoto,
   currentPosition,
@@ -83,6 +88,9 @@ export function ShiftDialog({
   const [customTask, setCustomTask] = useState("");
   const [street, setStreet] = useState("");
   const [houseNo, setHouseNo] = useState("");
+  const [zip, setZip] = useState("");
+  const [city, setCity] = useState("");
+  const [gpsBusy, setGpsBusy] = useState(false);
   const [floor, setFloor] = useState("");
   const [doorSide, setDoorSide] = useState("");
   const [workCode, setWorkCode] = useState("");
@@ -146,6 +154,9 @@ export function ShiftDialog({
     setCustomTask("");
     setStreet(shift?.street ?? "");
     setHouseNo(shift?.houseNo ?? "");
+    setZip(shift?.zip ?? "");
+    setCity(shift?.city ?? "");
+    setGpsBusy(false);
     setFloor(shift?.floor ?? "");
     setDoorSide(shift?.doorSide ?? "");
     setWorkCode(shift?.workCode ?? "");
@@ -155,6 +166,8 @@ export function ShiftDialog({
         shift &&
           (shift.workplace ||
             shift.street ||
+            shift.zip ||
+            shift.city ||
             shift.floor ||
             shift.doorSide ||
             shift.workCode ||
@@ -268,6 +281,8 @@ export function ShiftDialog({
     if (gps) next.gps = gps;
     if (street.trim()) next.street = street.trim();
     if (houseNo.trim()) next.houseNo = houseNo.trim();
+    if (zip.trim()) next.zip = zip.trim();
+    if (city.trim()) next.city = city.trim();
     if (floor.trim()) next.floor = floor.trim();
     if (doorSide.trim()) next.doorSide = doorSide.trim();
     if (workCode) next.workCode = workCode;
@@ -512,6 +527,32 @@ export function ShiftDialog({
               </div>
             </div>
 
+            <div className="grid grid-cols-[1fr_2fr] gap-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="plz" className="text-xs">
+                  {t("worklog.zip")}
+                </Label>
+                <Input
+                  id="plz"
+                  value={zip}
+                  inputMode="numeric"
+                  placeholder={t("worklog.zipPlaceholder")}
+                  onChange={(e) => setZip(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="ort" className="text-xs">
+                  {t("worklog.city")}
+                </Label>
+                <Input
+                  id="ort"
+                  value={city}
+                  placeholder={t("worklog.cityPlaceholder")}
+                  onChange={(e) => setCity(e.target.value)}
+                />
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-2">
               <div className="grid gap-1.5">
                 <Label htmlFor="etage" className="text-xs">
@@ -702,30 +743,71 @@ export function ShiftDialog({
               </label>
             </div>
 
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-xs">
-                <p className="font-medium">{t("worklog.gps")}</p>
-                <p className="text-muted-foreground">{gps ? formatGps(gps) : "–"}</p>
-              </div>
-              <div className="flex gap-1">
-                {gps ? (
-                  <Button variant="ghost" size="sm" onClick={() => setGps(undefined)}>
-                    <X className="size-4" />
+            <div
+              className="flex flex-col gap-2"
+              data-testid="worklog-geo-controls"
+              style={{
+                paddingBottom: "max(0.25rem, env(safe-area-inset-bottom, 0px))",
+              }}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 text-xs">
+                  <p className="font-medium">{t("worklog.gps")}</p>
+                  <p className="truncate text-muted-foreground">
+                    {gps ? formatGps(gps) : "–"}
+                  </p>
+                  {(street || zip || city) ? (
+                    <p className="mt-0.5 truncate text-muted-foreground" data-testid="worklog-geo-address">
+                      {formatGermanAddress({ street, houseNo, zip, city })}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  {gps ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="min-h-11"
+                      onClick={() => setGps(undefined)}
+                    >
+                      <X className="size-4" />
+                    </Button>
+                  ) : null}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="min-h-11"
+                    disabled={gpsBusy}
+                    onClick={async () => {
+                      setGpsBusy(true);
+                      try {
+                        const pos = await currentPosition();
+                        // Always keep coords separate — never copy into address fields.
+                        setGps(pos);
+                        const previous = { street, houseNo, zip, city };
+                        const reverse = await reverseGeocodeGerman(pos.lat, pos.lng);
+                        if (reverse) {
+                          const next = applyReverseOrKeep(previous, reverse);
+                          setStreet(next.street ?? "");
+                          setHouseNo(next.houseNo ?? "");
+                          setZip(next.zip ?? "");
+                          setCity(next.city ?? "");
+                          toast.success(t("worklog.gpsAddressOk"));
+                        } else {
+                          // Failure: leave editable address untouched; gps already set.
+                          toast.message(t("worklog.gpsAddressFail"));
+                        }
+                      } catch {
+                        toast.error(t("worklog.gpsError"));
+                      } finally {
+                        setGpsBusy(false);
+                      }
+                    }}
+                  >
+                    <MapPin className="size-4" />{" "}
+                    {gpsBusy ? t("worklog.gpsLookingUp") : t("worklog.gpsAdd")}
                   </Button>
-                ) : null}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={async () => {
-                    try {
-                      setGps(await currentPosition());
-                    } catch {
-                      toast.error(t("worklog.gpsError"));
-                    }
-                  }}
-                >
-                  <MapPin className="size-4" /> {t("worklog.gpsAdd")}
-                </Button>
+                </div>
               </div>
             </div>
           </div>

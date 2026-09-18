@@ -135,6 +135,10 @@ export interface Shift {
   street?: string;
   /** Arbeitsnachweis: Hausnummer */
   houseNo?: string;
+  /** Arbeitsnachweis: PLZ */
+  zip?: string;
+  /** Arbeitsnachweis: Ort */
+  city?: string;
   /** Leistungsnachweis: Tätigkeiten ("#key" = Vorlage, sonst freier Text) */
   tasks?: string[];
   /** Leistungsnachweis: Fotos als komprimierte Data-URLs */
