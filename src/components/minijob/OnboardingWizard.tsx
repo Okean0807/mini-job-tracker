@@ -15,9 +15,11 @@ import {
   checkpointOnboardingBeforeOAuth,
   clearOnboardingDraft,
   loadOnboardingDraft,
+  persistOnboardingProgress,
 } from "@/lib/minijob/onboarding-draft";
 import { LANGUAGES } from "@/lib/i18n/core";
 import { useT } from "@/lib/i18n";
+import { weekdayNames } from "@/lib/minijob/calc";
 import { weeklyPlanHours } from "@/lib/minijob/schedule";
 import { newId, nextJobColor, saveJob, updateSettings } from "@/lib/minijob/store";
 import {
@@ -26,12 +28,14 @@ import {
   DEFAULT_SUPPLEMENTS,
   EMPTY_WEEK,
   WORK_MODE_LABEL,
+  type FixedDay,
   type Job,
   type Settings,
   type Supplement,
   type Supplements,
   type WorkMode,
 } from "@/lib/minijob/types";
+import { WIZARD_STEP_COUNT, WIZARD_STEP_INDEX } from "@/lib/minijob/wizard-flow";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -40,14 +44,14 @@ interface Props {
 }
 
 export function OnboardingWizard({ settings, onDone }: Props) {
-  const { t } = useT();
+  const { t, locale } = useT();
   const STEPS = [
-    t("wiz.step.language"),
+    t("wiz.step.welcome"),
+    t("wiz.step.cloud"),
     t("wiz.step.workMode"),
     t("wiz.step.region"),
     t("wiz.step.rate"),
-    t("wiz.step.supplements"),
-    t("wiz.step.cloud"),
+    t("wiz.step.personalized"),
     t("wiz.step.firstJob"),
   ];
   const WORK_MODE_KEY: Record<WorkMode, string> = {
@@ -56,19 +60,64 @@ export function OnboardingWizard({ settings, onDone }: Props) {
     selbststaendig: "mode.selbststaendig",
   };
 
-  // Resume after OAuth full-page return (draft in localStorage; settings from store).
+  // Resume after OAuth / incomplete wizard (draft in localStorage; settings from store).
   const { status: authStatus, session } = useAuthSession();
-  const [draft] = useState(() => loadOnboardingDraft(STEPS.length));
+  const [draft] = useState(() => loadOnboardingDraft(WIZARD_STEP_COUNT));
   const [step, setStep] = useState(draft?.step ?? 0);
   const [mode, setMode] = useState<WorkMode>(draft?.mode ?? "flex");
   const [country, setCountry] = useState(settings.country);
   const [bundesland, setBundesland] = useState(settings.bundesland);
   const [rate, setRate] = useState(String(settings.defaultRate));
   const [supplements, setSupplements] = useState<Supplements>(settings.supplements ?? DEFAULT_SUPPLEMENTS);
+  const [week, setWeek] = useState<FixedDay[]>(() => EMPTY_WEEK.map((d) => ({ ...d })));
+  const [weeklyTarget, setWeeklyTarget] = useState("20");
   const [jobName, setJobName] = useState("");
   const [employer, setEmployer] = useState("");
+  const [activity, setActivity] = useState("");
+  const [location, setLocation] = useState("");
 
   const numericRate = Number(rate.replace(",", ".")) || 0;
+
+  function flushSettings() {
+    updateSettings({
+      country,
+      bundesland,
+      defaultRate: numericRate,
+      supplements,
+    });
+  }
+
+  function persistProgress(atStep: number, atMode: WorkMode = mode) {
+    persistOnboardingProgress({
+      step: atStep,
+      mode: atMode,
+      persistSettings: flushSettings,
+    });
+  }
+
+  function goNext() {
+    // Google must complete before personalized onboarding so data binds to account.
+    if (step === WIZARD_STEP_INDEX.cloud && authStatus !== "signed_in") {
+      toast.error(t("wiz.cloud.required"));
+      return;
+    }
+    const next = Math.min(step + 1, STEPS.length - 1);
+    persistProgress(next);
+    setStep(next);
+  }
+
+  function goBack() {
+    const prev = Math.max(step - 1, 0);
+    // Keep all entered data; only move the index.
+    persistProgress(prev);
+    setStep(prev);
+  }
+
+  function selectMode(m: WorkMode) {
+    // Never wipe region/rate/supplements/week when switching modes.
+    setMode(m);
+    persistProgress(step, m);
+  }
 
   function finish() {
     clearOnboardingDraft();
@@ -93,8 +142,13 @@ export function OnboardingWizard({ settings, onDone }: Props) {
         supplements,
       };
       if (mode === "fest") {
-        job.week = EMPTY_WEEK.map((d) => ({ ...d }));
-        job.weeklyTarget = weeklyPlanHours(job) || 20;
+        job.week = week.map((d) => ({ ...d }));
+        const planned = weeklyPlanHours(job);
+        job.weeklyTarget = Number(weeklyTarget.replace(",", ".")) || planned || 20;
+      }
+      if (mode === "selbststaendig") {
+        if (activity.trim()) job.notes = activity.trim();
+        if (location.trim()) job.address = location.trim();
       }
       saveJob(job);
     }
@@ -103,12 +157,11 @@ export function OnboardingWizard({ settings, onDone }: Props) {
   }
 
   async function oauth() {
-    // Persist region/rate/supplements + step/mode before browser leaves for Google.
+    // Persist language/region/rate/supplements + step/mode before browser leaves for Google.
     checkpointOnboardingBeforeOAuth({
       step,
       mode,
-      persistSettings: () =>
-        updateSettings({ country, bundesland, defaultRate: numericRate, supplements }),
+      persistSettings: flushSettings,
     });
     try {
       const { error } = await signInWithOAuthProvider("google");
@@ -118,27 +171,33 @@ export function OnboardingWizard({ settings, onDone }: Props) {
     }
   }
 
+  const weekdays = weekdayNames(locale, "short");
+
   return (
     <div className="fixed inset-0 z-[60] overflow-y-auto bg-background">
-      <div className="mx-auto flex min-h-screen max-w-lg flex-col px-4 py-6">
-        <header>
+      <div className="mx-auto flex min-h-[100dvh] max-w-lg flex-col px-4 pt-6 pb-0">
+        <header className="shrink-0">
           <p className="text-xs font-medium text-muted-foreground">
             {t("wiz.stepOf", { current: step + 1, total: STEPS.length, step: STEPS[step] ?? "" })}
           </p>
-          <h1 className="mt-1 text-2xl font-extrabold tracking-tight">{t("wiz.title")}</h1>
+          <h1 className="mt-1 text-2xl font-extrabold tracking-tight">
+            {step === WIZARD_STEP_INDEX.welcome ? t("wiz.welcome.title") : t("wiz.title")}
+          </h1>
           <div className="mt-3 flex gap-1" aria-hidden>
             {STEPS.map((s, i) => (
               <span
-                key={s}
+                key={`${s}-${i}`}
                 className={cn("h-1.5 flex-1 rounded-full", i <= step ? "bg-primary" : "bg-muted")}
               />
             ))}
           </div>
         </header>
 
-        <div className="mt-6 flex-1 space-y-4">
-          {step === 0 ? (
-            <Card title={t("wiz.language.title")} hint={t("wiz.language.hint")}>
+        <div className="mt-6 flex-1 space-y-4 pb-4">
+          {step === WIZARD_STEP_INDEX.welcome ? (
+            <Card title={t("wiz.welcome.cardTitle")} hint={t("wiz.welcome.body")}>
+              <p className="text-sm font-semibold">{t("wiz.language.select")}</p>
+              <FieldHelp>{t("wiz.language.hint")}</FieldHelp>
               {LANGUAGES.map((l) => (
                 <Choice
                   key={l.code}
@@ -150,21 +209,45 @@ export function OnboardingWizard({ settings, onDone }: Props) {
             </Card>
           ) : null}
 
-          {step === 1 ? (
+          {step === WIZARD_STEP_INDEX.cloud ? (
+            <Card title={t("wiz.cloud.title")} hint={t("wiz.cloud.hint")}>
+              {authStatus === "loading" ? (
+                <div aria-busy="true" aria-label="loading" className="space-y-2 py-2">
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              ) : authStatus === "signed_in" ? (
+                <p className="text-sm text-muted-foreground">
+                  {t("set.account.cloud.signedInAs", {
+                    email: session?.user.email ?? "",
+                  })}
+                </p>
+              ) : (
+                <>
+                  <Button className="min-h-11 w-full" onClick={() => oauth()}>
+                    {t("wiz.cloud.google")}
+                  </Button>
+                  <FieldHelp>{t("wiz.cloud.requiredHint")}</FieldHelp>
+                </>
+              )}
+            </Card>
+          ) : null}
+
+          {step === WIZARD_STEP_INDEX.workMode ? (
             <Card title={t("wiz.workMode.title")} hint={t("wiz.workMode.hint")}>
+              <FieldHelp>{t("wiz.help.workMode")}</FieldHelp>
               {(Object.keys(WORK_MODE_LABEL) as WorkMode[]).map((m) => (
                 <Choice
                   key={m}
                   label={t(WORK_MODE_KEY[m])}
                   hint={t(`wiz.workMode.explain.${m}`)}
                   active={mode === m}
-                  onClick={() => setMode(m)}
+                  onClick={() => selectMode(m)}
                 />
               ))}
             </Card>
           ) : null}
 
-          {step === 2 ? (
+          {step === WIZARD_STEP_INDEX.region ? (
             <Card title={t("wiz.region.title")} hint={t("wiz.region.hint")}>
               <div className="grid gap-2">
                 <Label htmlFor="ob-land">{t("wiz.region.country")}</Label>
@@ -172,7 +255,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
                   id="ob-land"
                   value={country}
                   onChange={(e) => setCountry(e.target.value)}
-                  className="h-10 rounded-md border bg-background px-2 text-sm"
+                  className="h-11 rounded-md border bg-background px-2 text-sm"
                 >
                   {COUNTRIES.map((c) => (
                     <option key={c.code} value={c.code}>
@@ -188,7 +271,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
                     id="ob-bl"
                     value={bundesland}
                     onChange={(e) => setBundesland(e.target.value)}
-                    className="h-10 rounded-md border bg-background px-2 text-sm"
+                    className="h-11 rounded-md border bg-background px-2 text-sm"
                   >
                     {BUNDESLAENDER.map((b) => (
                       <option key={b.code} value={b.code}>
@@ -196,6 +279,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
                       </option>
                     ))}
                   </select>
+                  <FieldHelp>{t("wiz.help.absence")}</FieldHelp>
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground">{t("wiz.region.noStateHint")}</p>
@@ -203,7 +287,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
             </Card>
           ) : null}
 
-          {step === 3 ? (
+          {step === WIZARD_STEP_INDEX.rate ? (
             <Card title={t("wiz.rate.title")} hint={t("wiz.rate.hint")}>
               <div className="grid gap-2">
                 <Label htmlFor="ob-rate">{t("wiz.rate.label")}</Label>
@@ -213,106 +297,242 @@ export function OnboardingWizard({ settings, onDone }: Props) {
                   inputMode="decimal"
                   step="0.5"
                   min="0"
+                  className="min-h-11"
                   value={rate}
                   onChange={(e) => setRate(e.target.value)}
                 />
+                <FieldHelp>{t("wiz.help.rate")}</FieldHelp>
               </div>
-            </Card>
-          ) : null}
-
-          {step === 4 ? (
-            <Card title={t("wiz.supplements.title")} hint={t("wiz.supplements.hint")}>
-              {(
-                [
-                  ["sunday", "supp.sunday"],
-                  ["holiday", "supp.holiday"],
-                  ["night", "supp.night"],
-                  ["overtime", "supp.overtime"],
-                ] as const
-              ).map(([key, labelKey]) => {
-                const value = supplements[key] as Supplement;
-                const label = t(labelKey);
-                return (
-                  <div key={key} className="flex items-center gap-3">
-                    <Switch
-                      checked={value.enabled}
-                      aria-label={label}
-                      onCheckedChange={(enabled) =>
-                        setSupplements((s) => ({ ...s, [key]: { ...value, enabled } }))
-                      }
-                    />
-                    <span className="flex-1 text-sm font-medium">{label}</span>
-                    <Input
-                      type="number"
-                      inputMode="decimal"
-                      className="w-20"
-                      value={value.value}
-                      disabled={!value.enabled}
-                      onChange={(e) =>
-                        setSupplements((s) => ({
-                          ...s,
-                          [key]: { ...value, mode: "prozent", value: Number(e.target.value) || 0 },
-                        }))
-                      }
-                    />
-                    <span className="text-sm text-muted-foreground">%</span>
-                  </div>
-                );
-              })}
-            </Card>
-          ) : null}
-
-          {step === 5 ? (
-            <Card title={t("wiz.cloud.title")} hint={t("wiz.cloud.hint")}>
-              {authStatus === "loading" ? (
-                <div aria-busy="true" aria-label="loading" className="space-y-2 py-2">
-                  <Skeleton className="h-10 w-full" />
-                </div>
-              ) : authStatus === "signed_in" ? (
-                <p className="text-sm text-muted-foreground">
-                  {t("set.account.cloud.signedInAs", {
-                    email: session?.user.email ?? "",
-                  })}
+              {mode !== "selbststaendig" ? (
+                <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+                  {t("wiz.help.monthLimit")}
                 </p>
               ) : (
-                <>
-                  <Button className="w-full" onClick={() => oauth()}>
-                    {t("wiz.cloud.google")}
-                  </Button>
-                  <p className="text-xs text-muted-foreground">{t("wiz.cloud.skipHint")}</p>
-                </>
+                <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+                  {t("wiz.personalized.self.noLimit")}
+                </p>
               )}
+              <FieldHelp>{t("wiz.help.tax")}</FieldHelp>
             </Card>
           ) : null}
 
-          {step === 6 ? (
-            <Card title={t("wiz.firstJob.title")} hint={t("wiz.firstJob.hint")}>
+          {step === WIZARD_STEP_INDEX.personalized ? (
+            mode === "fest" ? (
+              <Card title={t("wiz.personalized.fest.title")} hint={t("wiz.personalized.fest.hint")}>
+                <div className="space-y-3">
+                  {week.map((day, idx) => (
+                    <div key={weekdays[idx]} className="space-y-2 rounded-xl border p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium">{weekdays[idx]}</span>
+                        <Switch
+                          checked={day.active}
+                          onCheckedChange={(checked) =>
+                            setWeek(week.map((d, i) => (i === idx ? { ...d, active: checked } : d)))
+                          }
+                          aria-label={weekdays[idx]}
+                        />
+                      </div>
+                      {day.active ? (
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="grid gap-1">
+                            <Label className="text-xs">{t("wiz.help.startLabel")}</Label>
+                            <Input
+                              type="time"
+                              className="min-h-11"
+                              value={day.start}
+                              onChange={(e) =>
+                                setWeek(
+                                  week.map((d, i) => (i === idx ? { ...d, start: e.target.value } : d)),
+                                )
+                              }
+                            />
+                          </div>
+                          <div className="grid gap-1">
+                            <Label className="text-xs">{t("wiz.help.endLabel")}</Label>
+                            <Input
+                              type="time"
+                              className="min-h-11"
+                              value={day.end}
+                              onChange={(e) =>
+                                setWeek(
+                                  week.map((d, i) => (i === idx ? { ...d, end: e.target.value } : d)),
+                                )
+                              }
+                            />
+                          </div>
+                          <div className="grid gap-1">
+                            <Label className="text-xs">{t("wiz.help.breakLabel")}</Label>
+                            <Input
+                              type="number"
+                              inputMode="numeric"
+                              className="min-h-11"
+                              value={day.breakMinutes}
+                              onChange={(e) =>
+                                setWeek(
+                                  week.map((d, i) =>
+                                    i === idx
+                                      ? { ...d, breakMinutes: Number(e.target.value) || 0 }
+                                      : d,
+                                  ),
+                                )
+                              }
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                  <FieldHelp>{t("wiz.help.startEnd")}</FieldHelp>
+                  <FieldHelp>{t("wiz.help.break")}</FieldHelp>
+                  <div className="grid gap-2">
+                    <Label htmlFor="ob-weekly">{t("wiz.personalized.fest.weeklyTarget")}</Label>
+                    <Input
+                      id="ob-weekly"
+                      type="number"
+                      inputMode="decimal"
+                      className="min-h-11"
+                      value={weeklyTarget}
+                      onChange={(e) => setWeeklyTarget(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </Card>
+            ) : mode === "selbststaendig" ? (
+              <Card title={t("wiz.personalized.self.title")} hint={t("wiz.personalized.self.hint")}>
+                <p className="rounded-lg border border-dashed px-3 py-3 text-sm">
+                  {t("wiz.personalized.self.noLimit")}
+                </p>
+                <p className="text-sm text-muted-foreground">{t("wiz.personalized.self.projects")}</p>
+                <FieldHelp>{t("wiz.help.tax")}</FieldHelp>
+              </Card>
+            ) : (
+              <Card title={t("wiz.personalized.flex.title")} hint={t("wiz.personalized.flex.hint")}>
+                <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+                  {t("wiz.help.monthLimit")}
+                </p>
+                <FieldHelp>{t("wiz.help.supplements")}</FieldHelp>
+                {(
+                  [
+                    ["sunday", "supp.sunday"],
+                    ["holiday", "supp.holiday"],
+                    ["night", "supp.night"],
+                    ["overtime", "supp.overtime"],
+                  ] as const
+                ).map(([key, labelKey]) => {
+                  const value = supplements[key] as Supplement;
+                  const label = t(labelKey);
+                  return (
+                    <div key={key} className="flex items-center gap-3">
+                      <Switch
+                        checked={value.enabled}
+                        aria-label={label}
+                        onCheckedChange={(enabled) =>
+                          setSupplements((s) => ({ ...s, [key]: { ...value, enabled } }))
+                        }
+                      />
+                      <span className="flex-1 text-sm font-medium">{label}</span>
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        className="min-h-11 w-20"
+                        value={value.value}
+                        disabled={!value.enabled}
+                        onChange={(e) =>
+                          setSupplements((s) => ({
+                            ...s,
+                            [key]: { ...value, mode: "prozent", value: Number(e.target.value) || 0 },
+                          }))
+                        }
+                      />
+                      <span className="text-sm text-muted-foreground">%</span>
+                    </div>
+                  );
+                })}
+              </Card>
+            )
+          ) : null}
+
+          {step === WIZARD_STEP_INDEX.firstJob ? (
+            <Card
+              title={
+                mode === "selbststaendig" ? t("wiz.firstJob.selfTitle") : t("wiz.firstJob.title")
+              }
+              hint={
+                mode === "selbststaendig" ? t("wiz.firstJob.selfHint") : t("wiz.firstJob.hint")
+              }
+            >
               <div className="grid gap-2">
-                <Label htmlFor="ob-job">{t("wiz.firstJob.name")}</Label>
+                <Label htmlFor="ob-job">
+                  {mode === "selbststaendig" ? t("wiz.firstJob.project") : t("wiz.firstJob.name")}
+                </Label>
                 <Input
                   id="ob-job"
+                  className="min-h-11"
                   value={jobName}
-                  placeholder={t("wiz.firstJob.namePlaceholder")}
+                  placeholder={
+                    mode === "selbststaendig"
+                      ? t("wiz.firstJob.projectPlaceholder")
+                      : t("wiz.firstJob.namePlaceholder")
+                  }
                   onChange={(e) => setJobName(e.target.value)}
                 />
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="ob-emp">{t("wiz.firstJob.employer")}</Label>
-                <Input id="ob-emp" value={employer} onChange={(e) => setEmployer(e.target.value)} />
-              </div>
+              {mode === "selbststaendig" ? (
+                <>
+                  <div className="grid gap-2">
+                    <Label htmlFor="ob-act">{t("wiz.firstJob.activity")}</Label>
+                    <Input
+                      id="ob-act"
+                      className="min-h-11"
+                      value={activity}
+                      onChange={(e) => setActivity(e.target.value)}
+                    />
+                    <FieldHelp>{t("wiz.help.activity")}</FieldHelp>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="ob-loc">{t("wiz.firstJob.location")}</Label>
+                    <Input
+                      id="ob-loc"
+                      className="min-h-11"
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                    />
+                    <FieldHelp>{t("wiz.help.location")}</FieldHelp>
+                  </div>
+                </>
+              ) : (
+                <div className="grid gap-2">
+                  <Label htmlFor="ob-emp">{t("wiz.firstJob.employer")}</Label>
+                  <Input
+                    id="ob-emp"
+                    className="min-h-11"
+                    value={employer}
+                    onChange={(e) => setEmployer(e.target.value)}
+                  />
+                  <FieldHelp>{t("wiz.help.employer")}</FieldHelp>
+                </div>
+              )}
             </Card>
           ) : null}
         </div>
 
-        <footer className="sticky bottom-0 mt-6 flex gap-3 bg-background py-3">
+        <footer
+          className="sticky bottom-0 z-10 mt-auto flex gap-3 border-t bg-background/95 pt-3 backdrop-blur supports-[backdrop-filter]:bg-background/80"
+          style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
+        >
           {step > 0 ? (
-            <Button variant="outline" onClick={() => setStep((s) => s - 1)}>
+            <Button
+              variant="outline"
+              className="min-h-11 shrink-0 px-4"
+              onClick={goBack}
+              aria-label={t("action.back")}
+            >
               <ArrowLeft className="size-4" /> {t("action.back")}
             </Button>
           ) : (
             <Button
               variant="ghost"
-              className="text-muted-foreground"
+              className="min-h-11 text-muted-foreground"
               onClick={() => {
                 clearOnboardingDraft();
                 updateSettings({ onboarded: true });
@@ -323,11 +543,15 @@ export function OnboardingWizard({ settings, onDone }: Props) {
             </Button>
           )}
           {step < STEPS.length - 1 ? (
-            <Button className="flex-1" onClick={() => setStep((s) => s + 1)}>
+            <Button
+              className="min-h-11 flex-1"
+              onClick={goNext}
+              disabled={step === WIZARD_STEP_INDEX.cloud && authStatus === "loading"}
+            >
               {t("action.next")} <ArrowRight className="size-4" />
             </Button>
           ) : (
-            <Button className="flex-1" onClick={finish}>
+            <Button className="min-h-11 flex-1" onClick={finish}>
               <Check className="size-4" /> {t("action.finish")}
             </Button>
           )}
@@ -335,6 +559,10 @@ export function OnboardingWizard({ settings, onDone }: Props) {
       </div>
     </div>
   );
+}
+
+function FieldHelp({ children }: { children: React.ReactNode }) {
+  return <p className="text-xs leading-snug text-muted-foreground">{children}</p>;
 }
 
 function Card({
@@ -373,7 +601,7 @@ function Choice({
       type="button"
       onClick={onClick}
       className={cn(
-        "w-full rounded-xl border px-4 py-3 text-left text-sm font-medium",
+        "min-h-11 w-full rounded-xl border px-4 py-3 text-left text-sm font-medium",
         active ? "border-primary bg-primary/10" : "bg-background",
       )}
     >
