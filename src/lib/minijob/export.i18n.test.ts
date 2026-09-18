@@ -52,14 +52,15 @@ vi.mock("./generated-docs", async () => {
   };
 });
 
-import { tl } from "@/lib/i18n";
 import { updateSettings, loadFromStorage } from "./store";
 import { exportPdf, exportXlsx } from "./export";
 import { arbeitsnachweisLabels } from "./arbeitsnachweis";
+import { DOCUMENT_LOCALE, documentCategoryLabel, td } from "./document-i18n";
 import { shiftBreakdown } from "./calc";
 import { DEFAULT_SUPPLEMENTS, type Job, type Shift } from "./types";
 import { saveAndRegisterBytes } from "./generated-docs";
 import { clearGeneratedDocuments } from "./generated-docs";
+import type { Lang } from "@/lib/i18n";
 
 const job = {
   id: "j1",
@@ -90,6 +91,17 @@ const shifts: Shift[] = [
 
 const ctx = { jobs: [job], bundesland: "NW", defaultRate: 15 };
 
+const DE_PDF_HEAD = [
+  "Datum",
+  "Job",
+  "Art",
+  "Zeit",
+  "Pause",
+  "Stunden",
+  "Zuschläge",
+  "Verdienst",
+];
+
 beforeEach(() => {
   vi.clearAllMocks();
   clearGeneratedDocuments();
@@ -101,29 +113,22 @@ beforeEach(() => {
   output.mockReturnValue(new Uint8Array([37, 80, 68, 70]).buffer);
 });
 
-describe("export DE labels (Batch E)", () => {
-  it("PDF head uses German labels when language=de", () => {
-    updateSettings({ language: "de" });
+describe("documents always German (independent of UI locale)", () => {
+  const locales: Lang[] = ["ru", "en", "de"];
+
+  it.each(locales)("PDF head stays German when UI language=%s", (lang) => {
+    updateSettings({ language: lang });
     exportPdf(shifts, "Monatsbericht März 2026", ctx);
     expect(autoTableMock).toHaveBeenCalled();
     const opts = autoTableMock.mock.calls[0]![1] as { head: string[][] };
-    expect(opts.head[0]).toEqual([
-      "Datum",
-      "Job",
-      "Art",
-      "Zeit",
-      "Pause",
-      "Stunden",
-      "Zuschläge",
-      "Verdienst",
-    ]);
+    expect(opts.head[0]).toEqual(DE_PDF_HEAD);
     expect(saveAndRegisterBytes).toHaveBeenCalledWith(
       expect.objectContaining({ category: "report_pdf", filename: "Monatsbericht März 2026.pdf" }),
     );
   });
 
-  it("XLSX column keys are German when language=de", () => {
-    updateSettings({ language: "de" });
+  it.each(locales)("XLSX column keys stay German when UI language=%s", (lang) => {
+    updateSettings({ language: lang });
     exportXlsx(shifts, "Monatsbericht", ctx);
     const call = json_to_sheet.mock.calls[0] as unknown as [Record<string, unknown>[]];
     const rows = call[0];
@@ -135,27 +140,8 @@ describe("export DE labels (Batch E)", () => {
     );
   });
 
-  it("PDF head switches to English when language=en", () => {
-    updateSettings({ language: "en" });
-    exportPdf(shifts, "Month report", ctx);
-    const opts = autoTableMock.mock.calls[0]![1] as { head: string[][] };
-    expect(opts.head[0]).toEqual([
-      tl("en", "label.date"),
-      tl("en", "label.job"),
-      tl("en", "label.kind"),
-      tl("en", "label.time"),
-      tl("en", "label.break"),
-      tl("en", "label.hours"),
-      tl("en", "label.bonus"),
-      tl("en", "label.earnings"),
-    ]);
-    expect(opts.head[0]).not.toContain("Datum");
-  });
-});
-
-describe("Arbeitsnachweis DE labels", () => {
-  it("exposes correct German proof strings", () => {
-    updateSettings({ language: "de" });
+  it.each(locales)("Arbeitsnachweis labels stay German when UI language=%s", (lang) => {
+    updateSettings({ language: lang });
     const L = arbeitsnachweisLabels();
     expect(L.title).toBe("Arbeitsnachweis");
     expect(L.employee).toBe("Mitarbeiter");
@@ -173,18 +159,28 @@ describe("Arbeitsnachweis DE labels", () => {
     expect(L.signEmployee).toBe("Unterschrift Mitarbeiter");
     expect(L.pageOf(1, 2)).toBe("Seite 1 von 2");
   });
+});
 
-  it("does not mix DE labels when language=en", () => {
-    updateSettings({ language: "en" });
-    const L = arbeitsnachweisLabels();
-    expect(L.title).toBe("Work record");
-    expect(L.employee).toBe("Employee");
-    expect(L.title).not.toBe("Arbeitsnachweis");
+describe("document dictionary German glyphs", () => {
+  it("exposes umlauts, ß and € in document strings", () => {
+    const samples = [
+      td("report.earningsEur"),
+      td("report.bonusEur"),
+      td("report.rateEur"),
+      td("label.bonus"),
+      td("proof.workHours"),
+      documentCategoryLabel("lohnabrechnung"),
+    ].join(" ");
+    expect(DOCUMENT_LOCALE).toBe("de-DE");
+    expect(samples).toMatch(/[äöüÄÖÜß]/);
+    expect(samples).toContain("€");
+    expect(td("report.earningsEur")).toBe("Verdienst (€)");
+    expect(documentCategoryLabel("arbeitsnachweis")).toBe("Arbeitsnachweis");
   });
 });
 
-describe("shiftBreakdown bonus labels follow language", () => {
-  it("DE", () => {
+describe("shiftBreakdown bonus labels still follow UI language", () => {
+  it("DE in UI", () => {
     updateSettings({ language: "de" });
     const b = shiftBreakdown(
       { ...shifts[0]!, date: "2026-03-08" } as Shift,
@@ -198,7 +194,7 @@ describe("shiftBreakdown bonus labels follow language", () => {
     expect(b.labels).toEqual(["Sonntag"]);
   });
 
-  it("EN", () => {
+  it("EN in UI (not document export)", () => {
     updateSettings({ language: "en" });
     const b = shiftBreakdown(
       { ...shifts[0]!, date: "2026-03-08" } as Shift,
@@ -209,7 +205,7 @@ describe("shiftBreakdown bonus labels follow language", () => {
         },
       },
     );
-    expect(b.labels).toEqual([tl("en", "supp.sunday")]);
+    expect(b.labels).toEqual(["Sunday"]);
     expect(b.labels).not.toContain("Sonntag");
   });
 });

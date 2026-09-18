@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
-import { t } from "@/lib/i18n";
+import { td, DOCUMENT_LOCALE } from "./document-i18n";
 
 import { monthNames, shiftHours, sumHours } from "./calc";
 import { saveAndRegisterBytes } from "./generated-docs";
@@ -78,22 +78,22 @@ export interface ArbeitsnachweisContext {
 /** Collect localized Arbeitsnachweis strings (for tests + PDF). */
 export function arbeitsnachweisLabels() {
   return {
-    title: t("proof.title"),
-    employee: t("proof.employee"),
-    month: t("label.month"),
-    employer: t("label.employer"),
-    date: t("label.date"),
-    start: t("label.start"),
-    break: t("label.break"),
-    end: t("label.end"),
-    workHours: t("proof.workHours"),
-    recordedAt: t("proof.recordedAt"),
-    remark: t("proof.remark"),
-    totalHours: t("proof.totalHours"),
-    placeDate: t("proof.placeDate"),
-    signEmployee: t("proof.signEmployee"),
-    pageOf: (page: number, pages: number) => t("proof.pageOf", { page, pages }),
-    minutes: t("label.minutes"),
+    title: td("proof.title"),
+    employee: td("proof.employee"),
+    month: td("label.month"),
+    employer: td("label.employer"),
+    date: td("label.date"),
+    start: td("label.start"),
+    break: td("label.break"),
+    end: td("label.end"),
+    workHours: td("proof.workHours"),
+    recordedAt: td("proof.recordedAt"),
+    remark: td("proof.remark"),
+    totalHours: td("proof.totalHours"),
+    placeDate: td("proof.placeDate"),
+    signEmployee: td("proof.signEmployee"),
+    pageOf: (page: number, pages: number) => td("proof.pageOf", { page, pages }),
+    minutes: td("label.minutes"),
   };
 }
 
@@ -103,7 +103,7 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 12;
-  const months = monthNames();
+  const months = monthNames(DOCUMENT_LOCALE);
   const monthName = months[ctx.month] ?? "";
   const monthLabel = `${monthName} ${ctx.year}`;
   const list = [...shifts].sort((a, b) => (a.date > b.date ? 1 : -1));
@@ -247,7 +247,7 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
   }
 
   const safeMonth = monthName.replace(/\s+/g, "_") || String(ctx.month + 1);
-  const filename = `${t("proof.fileName")}_${safeMonth}_${ctx.year}.pdf`;
+  const filename = `${td("proof.fileName")}_${safeMonth}_${ctx.year}.pdf`;
   const buffer = doc.output("arraybuffer") as ArrayBuffer;
   saveAndRegisterBytes({
     bytes: buffer,

@@ -39,6 +39,7 @@ import { buildAnnualReport } from "@/lib/minijob/annual";
 import { exportPdf, exportXlsx } from "@/lib/minijob/export";
 import { exportArbeitsnachweisPdf } from "@/lib/minijob/arbeitsnachweis";
 import { exportWorkReportPdf } from "@/lib/minijob/worklog";
+import { DOCUMENT_LOCALE, td } from "@/lib/minijob/document-i18n";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { yearlyLimitOf } from "@/lib/minijob/limits";
 import { canUse } from "@/lib/minijob/premium";
@@ -338,7 +339,7 @@ function StatsPage() {
                 doExport(
                   "xlsx",
                   monthShifts,
-                  t("report.monthTitle", { month: months[month]!, year }),
+                  td("report.monthTitle", { month: monthNames(DOCUMENT_LOCALE)[month]!, year }),
                 )
               }
             >
@@ -350,7 +351,7 @@ function StatsPage() {
                 doExport(
                   "pdf",
                   monthShifts,
-                  t("report.monthTitle", { month: months[month]!, year }),
+                  td("report.monthTitle", { month: monthNames(DOCUMENT_LOCALE)[month]!, year }),
                 )
               }
             >
@@ -367,7 +368,7 @@ function StatsPage() {
               }
               exportWorkReportPdf(monthShifts, {
                 jobs,
-                month: `${months[month]!} ${year}`,
+                month: `${monthNames(DOCUMENT_LOCALE)[month]!} ${year}`,
                 includePhotos: true,
               });
               toast.success(t("stats.toast.exportSuccess"));
@@ -466,13 +467,13 @@ function StatsPage() {
           <div className="grid grid-cols-2 gap-3 pb-4">
             <Button
               variant="outline"
-              onClick={() => doExport("xlsx", yearShifts, t("report.yearTitle", { year }))}
+              onClick={() => doExport("xlsx", yearShifts, td("report.yearTitle", { year }))}
             >
               <FileSpreadsheet className="size-4" /> Excel
             </Button>
             <Button
               variant="outline"
-              onClick={() => doExport("pdf", yearShifts, t("report.yearTitle", { year }))}
+              onClick={() => doExport("pdf", yearShifts, td("report.yearTitle", { year }))}
             >
               <FileDown className="size-4" /> PDF
             </Button>

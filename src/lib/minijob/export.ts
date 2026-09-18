@@ -2,7 +2,7 @@ import * as XLSX from "xlsx";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
-import { t } from "@/lib/i18n";
+import { td, DOCUMENT_LOCALE } from "./document-i18n";
 
 import { formatDate, formatEuro, formatHours } from "./calc";
 import { saveAndRegisterBytes } from "./generated-docs";
@@ -49,24 +49,24 @@ function total(shifts: Shift[], ctx: ExportContext) {
 }
 
 function rows(shifts: Shift[], ctx: ExportContext) {
-  const dateLabel = t("label.date");
-  const jobLabel = t("label.job");
-  const kindLabel = t("label.kind");
-  const startLabel = t("label.start");
-  const endLabel = t("label.end");
-  const breakLabel = t("label.breakMinutes");
-  const hoursLabel = t("label.hours");
-  const rateLabel = t("report.rateEur");
-  const bonusLabel = t("report.bonusEur");
-  const earningsLabel = t("report.earningsEur");
-  const noteLabel = t("label.note");
+  const dateLabel = td("label.date");
+  const jobLabel = td("label.job");
+  const kindLabel = td("label.kind");
+  const startLabel = td("label.start");
+  const endLabel = td("label.end");
+  const breakLabel = td("label.breakMinutes");
+  const hoursLabel = td("label.hours");
+  const rateLabel = td("report.rateEur");
+  const bonusLabel = td("report.bonusEur");
+  const earningsLabel = td("report.earningsEur");
+  const noteLabel = td("label.note");
 
   return sorted(shifts).map((s) => {
     const b = resolve(s, ctx, shifts);
     return {
-      [dateLabel]: formatDate(s.date),
+      [dateLabel]: formatDate(s.date, DOCUMENT_LOCALE),
       [jobLabel]: ctx.jobs.find((j) => j.id === s.jobId)?.name ?? "–",
-      [kindLabel]: t(`kind.${s.kind}`),
+      [kindLabel]: td(`kind.${s.kind}`),
       [startLabel]: s.start,
       [endLabel]: s.end,
       [breakLabel]: s.breakMinutes,
@@ -85,21 +85,21 @@ function rows(shifts: Shift[], ctx: ExportContext) {
 }
 
 export function exportXlsx(shifts: Shift[], title: string, ctx: ExportContext) {
-  const dateLabel = t("label.date");
-  const jobLabel = t("label.job");
-  const kindLabel = t("label.kind");
-  const startLabel = t("label.start");
-  const endLabel = t("label.end");
-  const breakLabel = t("label.breakMinutes");
-  const hoursLabel = t("label.hours");
-  const rateLabel = t("report.rateEur");
-  const bonusLabel = t("report.bonusEur");
-  const earningsLabel = t("report.earningsEur");
-  const noteLabel = t("label.note");
+  const dateLabel = td("label.date");
+  const jobLabel = td("label.job");
+  const kindLabel = td("label.kind");
+  const startLabel = td("label.start");
+  const endLabel = td("label.end");
+  const breakLabel = td("label.breakMinutes");
+  const hoursLabel = td("label.hours");
+  const rateLabel = td("report.rateEur");
+  const bonusLabel = td("report.bonusEur");
+  const earningsLabel = td("report.earningsEur");
+  const noteLabel = td("label.note");
 
   const data = rows(shifts, ctx);
   data.push({
-    [dateLabel]: t("label.total"),
+    [dateLabel]: td("label.total"),
     [jobLabel]: "",
     [kindLabel]: "",
     [startLabel]: "",
@@ -114,7 +114,7 @@ export function exportXlsx(shifts: Shift[], title: string, ctx: ExportContext) {
   const sheet = XLSX.utils.json_to_sheet(data);
   sheet["!cols"] = [12, 16, 10, 8, 8, 12, 10, 16, 14, 16, 24].map((wch) => ({ wch }));
   const book = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(book, sheet, t("report.sheetName"));
+  XLSX.utils.book_append_sheet(book, sheet, td("report.sheetName"));
   const filename = `${title}.xlsx`;
   const buffer = XLSX.write(book, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
   saveAndRegisterBytes({
@@ -128,7 +128,7 @@ export function exportXlsx(shifts: Shift[], title: string, ctx: ExportContext) {
 export function exportPdf(shifts: Shift[], title: string, ctx: ExportContext) {
   const doc = new jsPDF();
   doc.setFontSize(16);
-  doc.text(t("app.name"), 14, 18);
+  doc.text(td("app.name"), 14, 18);
   doc.setFontSize(11);
   doc.text(title, 14, 26);
 
@@ -136,39 +136,39 @@ export function exportPdf(shifts: Shift[], title: string, ctx: ExportContext) {
     startY: 32,
     head: [
       [
-        t("label.date"),
-        t("label.job"),
-        t("label.kind"),
-        t("label.time"),
-        t("label.break"),
-        t("label.hours"),
-        t("label.bonus"),
-        t("label.earnings"),
+        td("label.date"),
+        td("label.job"),
+        td("label.kind"),
+        td("label.time"),
+        td("label.break"),
+        td("label.hours"),
+        td("label.bonus"),
+        td("label.earnings"),
       ],
     ],
     body: sorted(shifts).map((s) => {
       const b = resolve(s, ctx, shifts);
       return [
-        formatDate(s.date),
+        formatDate(s.date, DOCUMENT_LOCALE),
         ctx.jobs.find((j) => j.id === s.jobId)?.name ?? "–",
-        t(`kind.${s.kind}`),
+        td(`kind.${s.kind}`),
         `${s.start}–${s.end}`,
-        `${s.breakMinutes} ${t("label.minutes")}`,
-        formatHours(paidHours(b)),
-        formatEuro(b.bonus),
-        formatEuro(b.earnings),
+        `${s.breakMinutes} ${td("label.minutes")}`,
+        formatHours(paidHours(b), DOCUMENT_LOCALE),
+        formatEuro(b.bonus, DOCUMENT_LOCALE),
+        formatEuro(b.earnings, DOCUMENT_LOCALE),
       ];
     }),
     foot: [
       [
-        t("label.total"),
+        td("label.total"),
         "",
         "",
         "",
         "",
-        formatHours(totalHours(shifts, ctx)),
+        formatHours(totalHours(shifts, ctx), DOCUMENT_LOCALE),
         "",
-        formatEuro(total(shifts, ctx)),
+        formatEuro(total(shifts, ctx), DOCUMENT_LOCALE),
       ],
     ],
     styles: { fontSize: 8 },
