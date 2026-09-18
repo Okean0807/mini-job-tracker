@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, Check } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,7 +35,12 @@ import {
   type Supplements,
   type WorkMode,
 } from "@/lib/minijob/types";
-import { WIZARD_STEP_COUNT, WIZARD_STEP_INDEX } from "@/lib/minijob/wizard-flow";
+import {
+  WIZARD_STEP_COUNT,
+  WIZARD_STEP_INDEX,
+  oauthResumeStep,
+  resolveWizardResumeStep,
+} from "@/lib/minijob/wizard-flow";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -63,8 +68,28 @@ export function OnboardingWizard({ settings, onDone }: Props) {
   // Resume after OAuth / incomplete wizard (draft in localStorage; settings from store).
   const { status: authStatus, session } = useAuthSession();
   const [draft] = useState(() => loadOnboardingDraft(WIZARD_STEP_COUNT));
-  const [step, setStep] = useState(draft?.step ?? 0);
+  const [step, setStep] = useState(() =>
+    resolveWizardResumeStep(draft?.step, "loading"),
+  );
   const [mode, setMode] = useState<WorkMode>(draft?.mode ?? "flex");
+
+  // After Google: Cloud → Work Mode. Signed-out: cannot stay past Cloud.
+  useEffect(() => {
+    if (authStatus === "loading") return;
+    setStep((current) => {
+      const resolved = resolveWizardResumeStep(current, authStatus);
+      if (resolved !== current) {
+        persistOnboardingProgress({
+          step: resolved,
+          mode,
+          persistSettings: () => {
+            /* settings already in store; step/mode draft only */
+          },
+        });
+      }
+      return resolved;
+    });
+  }, [authStatus, mode]);
   const [country, setCountry] = useState(settings.country);
   const [bundesland, setBundesland] = useState(settings.bundesland);
   const [rate, setRate] = useState(String(settings.defaultRate));
@@ -157,9 +182,9 @@ export function OnboardingWizard({ settings, onDone }: Props) {
   }
 
   async function oauth() {
-    // Persist language/region/rate/supplements + step/mode before browser leaves for Google.
+    // Persist language/region/rate/supplements + resume at Work Mode after Google returns.
     checkpointOnboardingBeforeOAuth({
-      step,
+      step: oauthResumeStep(),
       mode,
       persistSettings: flushSettings,
     });
@@ -530,17 +555,9 @@ export function OnboardingWizard({ settings, onDone }: Props) {
               <ArrowLeft className="size-4" /> {t("action.back")}
             </Button>
           ) : (
-            <Button
-              variant="ghost"
-              className="min-h-11 text-muted-foreground"
-              onClick={() => {
-                clearOnboardingDraft();
-                updateSettings({ onboarded: true });
-                onDone();
-              }}
-            >
-              {t("action.skip")}
-            </Button>
+            // No Skip on Welcome: marking onboarded here sent new users to Dashboard
+            // before Google + Work Mode + personalized steps (Batch #85 regression).
+            <span className="inline-block min-h-11 min-w-11 shrink-0" aria-hidden />
           )}
           {step < STEPS.length - 1 ? (
             <Button
