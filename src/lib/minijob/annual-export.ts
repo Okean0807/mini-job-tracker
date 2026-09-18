@@ -5,6 +5,7 @@ import * as XLSX from "xlsx";
 import { t } from "@/lib/i18n";
 
 import { formatDate, formatEuro, formatHours, weekdayNames } from "./calc";
+import { saveAndRegisterBytes } from "./generated-docs";
 import type { AnnualReport } from "./annual";
 
 const TEAL: [number, number, number] = [16, 122, 110];
@@ -200,8 +201,16 @@ export function exportAnnualPdf(report: AnnualReport) {
     highlights.forEach((line, i) => doc.text(line, 14, lastY + 16 + i * 5));
   }
 
-  doc.save(`${title}.pdf`);
+  const filename = `${title}.pdf`;
+  const buffer = doc.output("arraybuffer") as ArrayBuffer;
+  saveAndRegisterBytes({
+    bytes: buffer,
+    filename,
+    category: "annual_pdf",
+    mimeType: "application/pdf",
+  });
 }
+
 
 export function exportAnnualXlsx(report: AnnualReport) {
   const title = t("annual.title", { year: report.year });
@@ -272,5 +281,13 @@ export function exportAnnualXlsx(report: AnnualReport) {
   weekdaySheet["!cols"] = [{ wch: 18 }, { wch: 10 }];
   XLSX.utils.book_append_sheet(book, weekdaySheet, t("annual.sheet.weekdays"));
 
-  XLSX.writeFile(book, `${title}.xlsx`);
+  const filename = `${title}.xlsx`;
+  const buffer = XLSX.write(book, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
+  saveAndRegisterBytes({
+    bytes: buffer,
+    filename,
+    category: "annual_xlsx",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
 }
+

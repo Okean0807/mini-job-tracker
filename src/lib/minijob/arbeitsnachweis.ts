@@ -1,7 +1,10 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
-import { shiftHours, sumHours } from "./calc";
+import { t } from "@/lib/i18n";
+
+import { monthNames, shiftHours, sumHours } from "./calc";
+import { saveAndRegisterBytes } from "./generated-docs";
 import type { Job, Shift } from "./types";
 
 /** Leistungsarten (DATEV-Stil Kürzel) für den Arbeitsnachweis. */
@@ -15,21 +18,6 @@ export const WORK_CODE_LABELS: Record<WorkCode, string> = {
   BR: "Büroreinigung",
   SR: "Sonderreinigung",
 };
-
-const MONTHS_DE = [
-  "Januar",
-  "Februar",
-  "März",
-  "April",
-  "Mai",
-  "Juni",
-  "Juli",
-  "August",
-  "September",
-  "Oktober",
-  "November",
-  "Dezember",
-];
 
 function de(date: string | undefined): string {
   if (!date) return "";
@@ -79,31 +67,55 @@ export interface ArbeitsnachweisContext {
   customCodes?: { code: string; label: string }[];
 }
 
+/** Collect localized Arbeitsnachweis strings (for tests + PDF). */
+export function arbeitsnachweisLabels() {
+  return {
+    title: t("proof.title"),
+    employee: t("proof.employee"),
+    month: t("label.month"),
+    employer: t("label.employer"),
+    date: t("label.date"),
+    start: t("label.start"),
+    break: t("label.break"),
+    end: t("label.end"),
+    workHours: t("proof.workHours"),
+    recordedAt: t("proof.recordedAt"),
+    remark: t("proof.remark"),
+    totalHours: t("proof.totalHours"),
+    placeDate: t("proof.placeDate"),
+    signEmployee: t("proof.signEmployee"),
+    pageOf: (page: number, pages: number) => t("proof.pageOf", { page, pages }),
+    minutes: t("label.minutes"),
+  };
+}
+
 /** DATEV-inspirierter Arbeitsnachweis: A4 hoch, Schwarz-Weiß, druckfertig. */
 export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisContext) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 12;
-  const monthName = MONTHS_DE[ctx.month] ?? "";
+  const months = monthNames();
+  const monthName = months[ctx.month] ?? "";
   const monthLabel = `${monthName} ${ctx.year}`;
   const list = [...shifts].sort((a, b) => (a.date > b.date ? 1 : -1));
   const totalHours = sumHours(list);
+  const L = arbeitsnachweisLabels();
 
   const header = () => {
     doc.setTextColor(0, 0, 0);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
-    doc.text("Arbeitsnachweis", margin, 14);
+    doc.text(L.title, margin, 14);
 
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
     const col2 = margin + 62;
     const col3 = margin + 124;
     doc.setTextColor(80, 80, 80);
-    doc.text("Mitarbeiter:", margin, 20);
-    doc.text("Monat:", col2, 20);
-    doc.text("Arbeitgeber:", col3, 20);
+    doc.text(`${L.employee}:`, margin, 20);
+    doc.text(`${L.month}:`, col2, 20);
+    doc.text(`${L.employer}:`, col3, 20);
     doc.setTextColor(0, 0, 0);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9.5);
@@ -120,11 +132,11 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
     startY: 32,
     margin: { left: margin, right: margin, top: 32, bottom: 14 },
     theme: "grid",
-    head: [["Datum", "Beginn", "Pause", "Ende", "Arbeitszeit (h)", "Erfasst am", "Bemerkung"]],
+    head: [[L.date, L.start, L.break, L.end, L.workHours, L.recordedAt, L.remark]],
     body: list.map((s) => [
       de(s.date),
       s.start,
-      `${s.breakMinutes} min`,
+      `${s.breakMinutes} ${L.minutes}`,
       s.end,
       num(shiftHours(s)),
       de(s.createdAt),
@@ -132,7 +144,7 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
     ]),
     foot: [
       [
-        { content: "Gesamtstunden:", colSpan: 4, styles: { halign: "right" as const } },
+        { content: `${L.totalHours}:`, colSpan: 4, styles: { halign: "right" as const } },
         { content: `${num(totalHours)} h`, styles: { halign: "right" as const } },
         "",
         "",
@@ -210,8 +222,8 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
   doc.line(margin, y, margin + colWidth, y);
   doc.line(rightX, y, rightX + colWidth, y);
   doc.setFontSize(8);
-  doc.text("Ort, Datum", margin, y + 4);
-  doc.text("Unterschrift Mitarbeiter", rightX, y + 4);
+  doc.text(L.placeDate, margin, y + 4);
+  doc.text(L.signEmployee, rightX, y + 4);
 
   // Seitenzahlen
   const pages = doc.getNumberOfPages();
@@ -220,11 +232,19 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7.5);
     doc.setTextColor(0, 0, 0);
-    doc.text(`Seite ${i} von ${pages}`, pageWidth - margin, pageHeight - 7, {
+    doc.text(L.pageOf(i, pages), pageWidth - margin, pageHeight - 7, {
       align: "right",
     });
-    doc.text(`Arbeitsnachweis · ${monthLabel}`, margin, pageHeight - 7);
+    doc.text(`${L.title} · ${monthLabel}`, margin, pageHeight - 7);
   }
 
-  doc.save(`Arbeitsnachweis_${monthName}_${ctx.year}.pdf`);
+  const safeMonth = monthName.replace(/\s+/g, "_") || String(ctx.month + 1);
+  const filename = `${t("proof.fileName")}_${safeMonth}_${ctx.year}.pdf`;
+  const buffer = doc.output("arraybuffer") as ArrayBuffer;
+  saveAndRegisterBytes({
+    bytes: buffer,
+    filename,
+    category: "arbeitsnachweis",
+    mimeType: "application/pdf",
+  });
 }

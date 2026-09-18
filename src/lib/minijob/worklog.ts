@@ -4,6 +4,7 @@ import autoTable from "jspdf-autotable";
 import { t, type TFunction } from "@/lib/i18n";
 
 import { formatDate, formatHours, shiftHours, sumHours } from "./calc";
+import { saveAndRegisterBytes } from "./generated-docs";
 import type { Job, Shift } from "./types";
 
 const TEAL: [number, number, number] = [16, 122, 110];
@@ -184,5 +185,13 @@ export function exportWorkReportPdf(shifts: Shift[], ctx: WorkReportContext) {
     }
   }
 
-  doc.save(`${t("worklog.fileName")}-${ctx.month}.pdf`.replace(/\s+/g, "-"));
+  const filename = `${t("worklog.fileName")}-${ctx.month}.pdf`.replace(/\s+/g, "-");
+  const buffer = doc.output("arraybuffer") as ArrayBuffer;
+  saveAndRegisterBytes({
+    bytes: buffer,
+    filename,
+    category: "worklog",
+    mimeType: "application/pdf",
+  });
 }
+
