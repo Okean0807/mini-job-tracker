@@ -1,6 +1,6 @@
 /**
  * Onboarding wizard step order (Batch A).
- * Welcome+Lang → Google → WorkMode → personalized… → done.
+ * Welcome+Lang → Google|Demo → WorkMode → personalized… → done.
  * Indices are stable for draft resume; do not reorder without draft migration.
  */
 
@@ -80,29 +80,53 @@ export function shouldShowOnboardingWizard(
   return !isWizardComplete(settings, jobs);
 }
 
+/** Options for wizard resume / cloud gate (demo vs Google). */
+export type WizardResumeOptions = {
+  /** When true, allow past Cloud without signed_in (local demo path). */
+  localDemoMode?: boolean;
+};
+
+/**
+ * True when the Cloud step may be left without a Google session.
+ * Demo path: localDemoMode. Google path: signed_in only.
+ */
+export function canAdvancePastCloud(
+  authStatus: WizardAuthStatus,
+  localDemoMode?: boolean,
+): boolean {
+  if (localDemoMode === true) return true;
+  return authStatus === "signed_in";
+}
+
 /**
  * Resolve wizard step after OAuth redirect / session restore / reload.
  *
- * Rules (Batch A+):
+ * Rules (Batch A+ / demo):
  * - After Google (signed_in at Cloud), MUST continue at Work Mode — never Dashboard.
- * - Signed-out users cannot be past Cloud (Google is required before later steps).
+ * - Signed-out users cannot be past Cloud unless localDemoMode (Google required otherwise).
  * - Incomplete signed-in users keep a draft step beyond Work Mode (resume).
  * - While auth is loading, keep the draft step (OAuth resume may already be Work Mode).
  */
 export function resolveWizardResumeStep(
   draftStep: number | null | undefined,
   authStatus: WizardAuthStatus,
+  options?: WizardResumeOptions,
 ): number {
   const max = WIZARD_STEP_COUNT - 1;
   const step =
     typeof draftStep === "number" && Number.isInteger(draftStep) && draftStep >= 0
       ? Math.min(draftStep, max)
       : 0;
+  const localDemo = options?.localDemoMode === true;
 
   if (authStatus === "loading") return step;
 
-  // Google required before Work Mode and all following steps.
-  if (authStatus === "signed_out" && step > WIZARD_STEP_INDEX.cloud) {
+  // Google required before Work Mode — unless local demo mode.
+  if (
+    authStatus === "signed_out" &&
+    !localDemo &&
+    step > WIZARD_STEP_INDEX.cloud
+  ) {
     return WIZARD_STEP_INDEX.cloud;
   }
 

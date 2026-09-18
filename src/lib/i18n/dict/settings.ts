@@ -88,6 +88,8 @@ export const settingsDict: Bundle = {
     "set.account.signIn.desc": "Melde dich an, damit deine Daten automatisch gesichert und auf einem neuen Gerät wiederhergestellt werden.",
     "set.account.signIn.google": "Mit Google anmelden",
     "set.account.signIn.apple": "Mit Apple anmelden",
+    "set.account.demo.localOnly": "Testmodus – Daten werden nur auf diesem Gerät gespeichert.",
+    "set.account.demo.signInPrompt": "Für Cloud-Backup und Gerätewechsel mit Google anmelden.",
 
     "set.account.cloud.title": "Cloud-Sicherung",
     "set.account.cloud.signedInAs": "Angemeldet als {email}",
@@ -240,6 +242,8 @@ export const settingsDict: Bundle = {
     "set.account.signIn.desc": "Sign in so your data is automatically backed up and can be restored on a new device.",
     "set.account.signIn.google": "Sign in with Google",
     "set.account.signIn.apple": "Sign in with Apple",
+    "set.account.demo.localOnly": "Test mode – data is stored only on this device.",
+    "set.account.demo.signInPrompt": "Sign in with Google for cloud backup and device switch.",
 
     "set.account.cloud.title": "Cloud backup",
     "set.account.cloud.signedInAs": "Signed in as {email}",
@@ -392,6 +396,8 @@ export const settingsDict: Bundle = {
     "set.account.signIn.desc": "Войдите, чтобы ваши данные автоматически сохранялись и восстанавливались на новом устройстве.",
     "set.account.signIn.google": "Войти через Google",
     "set.account.signIn.apple": "Войти через Apple",
+    "set.account.demo.localOnly": "Тестовый режим — данные только на этом устройстве.",
+    "set.account.demo.signInPrompt": "Войдите через Google для облачного резерва и смены устройства.",
 
     "set.account.cloud.title": "Облачное резервное копирование",
     "set.account.cloud.signedInAs": "Вы вошли как {email}",
@@ -544,6 +550,8 @@ export const settingsDict: Bundle = {
     "set.account.signIn.desc": "Verilerinizin otomatik olarak yedeklenmesi ve yeni bir cihazda geri yüklenmesi için giriş yapın.",
     "set.account.signIn.google": "Google ile giriş yap",
     "set.account.signIn.apple": "Apple ile giriş yap",
+    "set.account.demo.localOnly": "Test modu – veriler yalnızca bu cihazda saklanır.",
+    "set.account.demo.signInPrompt": "Bulut yedekleme ve cihaz değişimi için Google ile giriş yapın.",
 
     "set.account.cloud.title": "Bulut yedekleme",
     "set.account.cloud.signedInAs": "{email} olarak giriş yapıldı",
@@ -696,6 +704,8 @@ export const settingsDict: Bundle = {
     "set.account.signIn.desc": "Zaloguj się, aby Twoje dane były automatycznie zapisywane i przywracane na nowym urządzeniu.",
     "set.account.signIn.google": "Zaloguj się przez Google",
     "set.account.signIn.apple": "Zaloguj się przez Apple",
+    "set.account.demo.localOnly": "Tryb testowy – dane tylko na tym urządzeniu.",
+    "set.account.demo.signInPrompt": "Zaloguj się przez Google, aby mieć kopię w chmurze i zmianę urządzenia.",
 
     "set.account.cloud.title": "Kopia zapasowa w chmurze",
     "set.account.cloud.signedInAs": "Zalogowano jako {email}",

@@ -38,6 +38,7 @@ import {
 import {
   WIZARD_STEP_COUNT,
   WIZARD_STEP_INDEX,
+  canAdvancePastCloud,
   oauthResumeStep,
   resolveWizardResumeStep,
 } from "@/lib/minijob/wizard-flow";
@@ -73,11 +74,15 @@ export function OnboardingWizard({ settings, onDone }: Props) {
   );
   const [mode, setMode] = useState<WorkMode>(draft?.mode ?? "flex");
 
-  // After Google: Cloud → Work Mode. Signed-out: cannot stay past Cloud.
+  const localDemoMode = settings.localDemoMode === true;
+
+  // After Google: Cloud → Work Mode. Signed-out: cannot stay past Cloud (unless demo).
   useEffect(() => {
     if (authStatus === "loading") return;
     setStep((current) => {
-      const resolved = resolveWizardResumeStep(current, authStatus);
+      const resolved = resolveWizardResumeStep(current, authStatus, {
+        localDemoMode,
+      });
       if (resolved !== current) {
         persistOnboardingProgress({
           step: resolved,
@@ -89,7 +94,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
       }
       return resolved;
     });
-  }, [authStatus, mode]);
+  }, [authStatus, mode, localDemoMode]);
   const [country, setCountry] = useState(settings.country);
   const [bundesland, setBundesland] = useState(settings.bundesland);
   const [rate, setRate] = useState(String(settings.defaultRate));
@@ -121,13 +126,28 @@ export function OnboardingWizard({ settings, onDone }: Props) {
   }
 
   function goNext() {
-    // Google must complete before personalized onboarding so data binds to account.
-    if (step === WIZARD_STEP_INDEX.cloud && authStatus !== "signed_in") {
+    // Google required before later steps — unless local demo mode.
+    if (
+      step === WIZARD_STEP_INDEX.cloud &&
+      !canAdvancePastCloud(authStatus, localDemoMode)
+    ) {
       toast.error(t("wiz.cloud.required"));
       return;
     }
     const next = Math.min(step + 1, STEPS.length - 1);
     persistProgress(next);
+    setStep(next);
+  }
+
+  /** Local demo: no Google, no fake session — on-device store only. */
+  function startLocalDemo() {
+    updateSettings({ localDemoMode: true });
+    const next = WIZARD_STEP_INDEX.workMode;
+    persistOnboardingProgress({
+      step: next,
+      mode,
+      persistSettings: flushSettings,
+    });
     setStep(next);
   }
 
@@ -183,6 +203,10 @@ export function OnboardingWizard({ settings, onDone }: Props) {
   }
 
   async function oauth() {
+    // Choosing real Google exits demo — do not treat demo as a cloud account.
+    if (localDemoMode) {
+      updateSettings({ localDemoMode: false });
+    }
     // Persist language/region/rate/supplements + resume at Work Mode after Google returns.
     checkpointOnboardingBeforeOAuth({
       step: oauthResumeStep(),
@@ -217,6 +241,14 @@ export function OnboardingWizard({ settings, onDone }: Props) {
               />
             ))}
           </div>
+          {localDemoMode ? (
+            <p
+              className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-900 dark:text-amber-100"
+              role="status"
+            >
+              {t("wiz.demo.banner")}
+            </p>
+          ) : null}
         </header>
 
         <div className="mt-6 flex-1 space-y-4 pb-4">
@@ -252,6 +284,15 @@ export function OnboardingWizard({ settings, onDone }: Props) {
                   <Button className="min-h-11 w-full" onClick={() => oauth()}>
                     {t("wiz.cloud.google")}
                   </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-11 w-full"
+                    onClick={() => startLocalDemo()}
+                  >
+                    {t("wiz.cloud.demoTest")}
+                  </Button>
+                  <FieldHelp>{t("wiz.cloud.demoHint")}</FieldHelp>
                   <FieldHelp>{t("wiz.cloud.requiredHint")}</FieldHelp>
                 </>
               )}

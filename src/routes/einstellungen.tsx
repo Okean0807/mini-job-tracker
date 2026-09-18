@@ -729,7 +729,7 @@ function SettingsPage() {
               onChange={(v) => updateSettings({ premium: v })}
             />
           </Section>
-          <CloudSync autoBackup={settings.autoBackup} />
+          <CloudSync autoBackup={settings.autoBackup} localDemoMode={settings.localDemoMode === true} />
         </TabsContent>
       </Tabs>
     </main>
@@ -1040,13 +1040,23 @@ function SyncStatusRow({
   );
 }
 
-function CloudSync({ autoBackup }: { autoBackup: boolean }) {
+function CloudSync({
+  autoBackup,
+  localDemoMode = false,
+}: {
+  autoBackup: boolean;
+  localDemoMode?: boolean;
+}) {
 
   const { t } = useT();
   const { status: authStatus, session } = useAuthSession();
   const [busy, setBusy] = useState(false);
 
   async function oauthGoogle() {
+    // Signing in exits local demo — real auth only; never invent cloud completion from demo.
+    if (localDemoMode) {
+      updateSettings({ localDemoMode: false });
+    }
     try {
       const { error } = await signInWithOAuthProvider("google");
       if (error) toast.error(t("error.signIn"));
@@ -1089,7 +1099,16 @@ function CloudSync({ autoBackup }: { autoBackup: boolean }) {
   if (authStatus === "signed_out" || !session) {
     return (
       <Section title={t("set.account.signIn.title")}>
-        <p className="text-xs text-muted-foreground">{t("set.account.signIn.desc")}</p>
+        {localDemoMode ? (
+          <>
+            <p className="text-xs font-medium text-amber-900 dark:text-amber-100">
+              {t("set.account.demo.localOnly")}
+            </p>
+            <p className="text-xs text-muted-foreground">{t("set.account.demo.signInPrompt")}</p>
+          </>
+        ) : (
+          <p className="text-xs text-muted-foreground">{t("set.account.signIn.desc")}</p>
+        )}
         <Button className="w-full" onClick={() => oauthGoogle()}>
           {t("set.account.signIn.google")}
         </Button>

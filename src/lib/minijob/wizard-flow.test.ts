@@ -8,6 +8,7 @@ import {
   WIZARD_STEPS,
   WIZARD_STEP_COUNT,
   WIZARD_STEP_INDEX,
+  canAdvancePastCloud,
   isPersonalizedStep,
   isWizardComplete,
   newUserFlowOrder,
@@ -230,5 +231,91 @@ describe("post-Google onboarding routing", () => {
     expect(resolveWizardResumeStep(oauthResumeStep(), "loading")).toBe(
       WIZARD_STEP_INDEX.workMode,
     );
+  });
+});
+
+describe("local demo onboarding (no Google)", () => {
+  it("demo may advance past Cloud without signed_in; non-demo cannot", () => {
+    expect(canAdvancePastCloud("signed_out", true)).toBe(true);
+    expect(canAdvancePastCloud("loading", true)).toBe(true);
+    expect(canAdvancePastCloud("signed_in", false)).toBe(true);
+    expect(canAdvancePastCloud("signed_out", false)).toBe(false);
+    expect(canAdvancePastCloud("loading", false)).toBe(false);
+  });
+
+  it("resolveWizardResumeStep: demo keeps Work Mode when signed_out", () => {
+    expect(
+      resolveWizardResumeStep(WIZARD_STEP_INDEX.workMode, "signed_out", {
+        localDemoMode: true,
+      }),
+    ).toBe(WIZARD_STEP_INDEX.workMode);
+    expect(
+      resolveWizardResumeStep(WIZARD_STEP_INDEX.region, "signed_out", {
+        localDemoMode: true,
+      }),
+    ).toBe(WIZARD_STEP_INDEX.region);
+    expect(
+      resolveWizardResumeStep(WIZARD_STEP_INDEX.personalized, "signed_out", {
+        localDemoMode: true,
+      }),
+    ).toBe(WIZARD_STEP_INDEX.personalized);
+  });
+
+  it("resolveWizardResumeStep: non-demo still blocked past Cloud when signed_out", () => {
+    expect(
+      resolveWizardResumeStep(WIZARD_STEP_INDEX.workMode, "signed_out"),
+    ).toBe(WIZARD_STEP_INDEX.cloud);
+    expect(
+      resolveWizardResumeStep(WIZARD_STEP_INDEX.workMode, "signed_out", {
+        localDemoMode: false,
+      }),
+    ).toBe(WIZARD_STEP_INDEX.cloud);
+  });
+
+  it("all three modes still branch after workMode (indices unchanged)", () => {
+    expect(WIZARD_STEP_INDEX.workMode).toBe(2);
+    expect(isPersonalizedStep(WIZARD_STEP_INDEX.personalized)).toBe(true);
+    for (const mode of ["flex", "fest", "selbststaendig"] as const) {
+      expect(["flex", "fest", "selbststaendig"]).toContain(mode);
+    }
+    const src = readFileSync(join(root, "components/minijob/OnboardingWizard.tsx"), "utf8");
+    expect(src).toMatch(/wiz\.personalized\.flex/);
+    expect(src).toMatch(/wiz\.personalized\.fest/);
+    expect(src).toMatch(/wiz\.personalized\.self/);
+  });
+
+  it("finish() completes wizard in demo (onboarded + stamp; localDemoMode kept)", async () => {
+    window.localStorage.clear();
+    vi.resetModules();
+    const store = await import("./store");
+    store.updateSettings({
+      localDemoMode: true,
+      onboarded: true,
+      wizardCompletedAt: Date.now(),
+      language: "de",
+    });
+    const data = store.getData();
+    expect(data.settings.localDemoMode).toBe(true);
+    expect(isWizardComplete(data.settings, data.jobs)).toBe(true);
+    expect(shouldShowOnboardingWizard(data.settings, data.jobs)).toBe(false);
+  });
+
+  it("Google path resume still advances Cloud → Work Mode when signed_in", () => {
+    expect(
+      resolveWizardResumeStep(WIZARD_STEP_INDEX.cloud, "signed_in", {
+        localDemoMode: false,
+      }),
+    ).toBe(WIZARD_STEP_INDEX.workMode);
+  });
+
+  it("OnboardingWizard exposes demo CTA and gates goNext via canAdvancePastCloud", () => {
+    const src = readFileSync(join(root, "components/minijob/OnboardingWizard.tsx"), "utf8");
+    expect(src).toMatch(/wiz\.cloud\.demoTest/);
+    expect(src).toMatch(/startLocalDemo/);
+    expect(src).toMatch(/localDemoMode:\s*true/);
+    expect(src).toMatch(/canAdvancePastCloud/);
+    expect(src).toMatch(/wiz\.demo\.banner/);
+    // Must not invent fake Supabase/Google session for demo
+    expect(src).not.toMatch(/fake.*supabase|demo@|fake@google/i);
   });
 });

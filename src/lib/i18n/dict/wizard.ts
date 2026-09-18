@@ -61,6 +61,9 @@ export const wizard: Bundle = {
     "wiz.cloud.skipHint": "Du kannst diesen Schritt überspringen und dich später in den Einstellungen anmelden.",
     "wiz.cloud.required": "Bitte zuerst mit Google anmelden.",
     "wiz.cloud.requiredHint": "Anmeldung ist nötig, bevor persönliche Angaben gespeichert werden.",
+    "wiz.cloud.demoTest": "Ohne Registrierung testen",
+    "wiz.cloud.demoHint": "Testmodus – Daten werden nur auf diesem Gerät gespeichert. Kein Google-Konto nötig.",
+    "wiz.demo.banner": "Testmodus – Daten werden nur auf diesem Gerät gespeichert.",
 
     "wiz.firstJob.title": "Ersten Job anlegen",
     "wiz.firstJob.hint": "Name genügt – Details später ergänzen.",
@@ -150,6 +153,9 @@ export const wizard: Bundle = {
     "wiz.cloud.skipHint": "You can skip this step and sign in later in Settings.",
     "wiz.cloud.required": "Please sign in with Google first.",
     "wiz.cloud.requiredHint": "Sign-in is required before personal details are saved.",
+    "wiz.cloud.demoTest": "Try without registration",
+    "wiz.cloud.demoHint": "Test mode – data is stored only on this device. No Google account needed.",
+    "wiz.demo.banner": "Test mode – data is stored only on this device.",
 
     "wiz.firstJob.title": "Create your first job",
     "wiz.firstJob.hint": "A name is enough – add details later.",
@@ -239,6 +245,9 @@ export const wizard: Bundle = {
     "wiz.cloud.skipHint": "Вы можете пропустить этот шаг и войти позже в настройках.",
     "wiz.cloud.required": "Сначала войдите через Google.",
     "wiz.cloud.requiredHint": "Вход нужен до сохранения личных данных.",
+    "wiz.cloud.demoTest": "Попробовать без регистрации",
+    "wiz.cloud.demoHint": "Тестовый режим — данные только на этом устройстве. Аккаунт Google не нужен.",
+    "wiz.demo.banner": "Тестовый режим — данные только на этом устройстве.",
 
     "wiz.firstJob.title": "Создать первую работу",
     "wiz.firstJob.hint": "Достаточно названия – детали можно добавить позже.",
@@ -328,6 +337,9 @@ export const wizard: Bundle = {
     "wiz.cloud.skipHint": "Bu adımı atlayıp daha sonra Ayarlar'dan giriş yapabilirsin.",
     "wiz.cloud.required": "Lütfen önce Google ile giriş yap.",
     "wiz.cloud.requiredHint": "Kişisel bilgilerden önce giriş gerekli.",
+    "wiz.cloud.demoTest": "Kayıt olmadan dene",
+    "wiz.cloud.demoHint": "Test modu – veriler yalnızca bu cihazda saklanır. Google hesabı gerekmez.",
+    "wiz.demo.banner": "Test modu – veriler yalnızca bu cihazda saklanır.",
 
     "wiz.firstJob.title": "İlk işini oluştur",
     "wiz.firstJob.hint": "Bir ad yeterli – ayrıntıları sonra ekle.",
@@ -417,6 +429,9 @@ export const wizard: Bundle = {
     "wiz.cloud.skipHint": "Możesz pominąć ten krok i zalogować się później w ustawieniach.",
     "wiz.cloud.required": "Najpierw zaloguj się przez Google.",
     "wiz.cloud.requiredHint": "Logowanie jest wymagane przed danymi osobowymi.",
+    "wiz.cloud.demoTest": "Wypróbuj bez rejestracji",
+    "wiz.cloud.demoHint": "Tryb testowy – dane tylko na tym urządzeniu. Konto Google nie jest potrzebne.",
+    "wiz.demo.banner": "Tryb testowy – dane tylko na tym urządzeniu.",
 
     "wiz.firstJob.title": "Utwórz pierwszą pracę",
     "wiz.firstJob.hint": "Wystarczy nazwa – szczegóły dodasz później.",

@@ -279,6 +279,12 @@ export interface Settings {
    * from a real finish — used by isWizardComplete.
    */
   wizardCompletedAt?: number;
+  /**
+   * Local demo/test mode: onboarding and Dashboard without Google.
+   * Data stays on-device only; not a real cloud account.
+   * Cleared when the user signs in with Google (exits demo).
+   */
+  localDemoMode?: boolean;
 
   /** Name für Arbeitsnachweis / Berichte */
   employeeName?: string;
@@ -327,6 +333,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoBackup: true,
   language: "de",
   onboarded: false,
+  localDemoMode: false,
   notifications: DEFAULT_NOTIFICATIONS,
   dashboard: {
     layout: "work",

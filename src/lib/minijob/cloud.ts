@@ -34,12 +34,24 @@ import { markBackup } from "./notify";
 
 import { mergeDeviceAuthFromLocal, stripDeviceAuthForCloud } from "./device-auth";
 import { isValidPayload } from "./payload";
-import { getData, normalize, onDataChange, replaceAll } from "./store";
+import { getData, normalize, onDataChange, replaceAll, updateSettings } from "./store";
 import { clearOnboardingDraft } from "./onboarding-draft";
 import { isWizardComplete } from "./wizard-flow";
 import type { AppData } from "./types";
 
 export { isValidPayload };
+
+/** Clear local demo flag when a real Google session starts. */
+function exitLocalDemoMode(): void {
+  try {
+    if (getData().settings.localDemoMode === true) {
+      updateSettings({ localDemoMode: false });
+    }
+  } catch {
+    /* store may be mid-init */
+  }
+}
+
 
 /* ---------- Sync-Metadaten (pro Gerät, lokal) ---------- */
 
@@ -894,6 +906,7 @@ export function initCloudSync() {
       .then(({ data }) => {
         if (data.session) {
           userId = data.session.user.id;
+          exitLocalDemoMode();
           adoptUser(userId);
           setState({ signedIn: true });
           requestInitSync();
@@ -907,6 +920,7 @@ export function initCloudSync() {
       userId = session?.user.id ?? null;
       setState({ signedIn: userId !== null });
       if (event === "SIGNED_IN" && userId) {
+        exitLocalDemoMode();
         adoptUser(userId);
         requestInitSync();
       }
