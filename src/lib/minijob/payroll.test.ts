@@ -8,7 +8,7 @@ import {
   vacationDailyPay,
 } from "./payroll";
 import { isoDate } from "./calc";
-import type { Job, Shift } from "./types";
+import { DEFAULT_SUPPLEMENTS, type Job, type Shift } from "./types";
 
 const RATE = 15;
 
@@ -154,5 +154,47 @@ describe("Summen / keine Doppelzählung", () => {
     expect(totals.absenceEarnings).toBeCloseTo(150);
     expect(totals.earnings).toBeCloseTo(225);
     expect(totals.estimated).toBe(true);
+  });
+});
+
+
+describe("Arbeit am Feiertag (Batch B)", () => {
+  it("zahlt Stunden × Lohn für kind=arbeit an einem Feiertag (ohne Zuschlag)", () => {
+    const work = shift({ date: "2026-04-06", kind: "arbeit", start: "09:00", end: "13:00", breakMinutes: 0 });
+    const p = shiftPayroll(work, {
+      ...opts,
+      holiday: true,
+      supplements: {
+        ...DEFAULT_SUPPLEMENTS,
+        holiday: { enabled: false, mode: "prozent", value: 100 },
+      },
+    });
+    expect(p.reason).toBe("worked");
+    expect(p.workedHours).toBe(4);
+    expect(p.earnings).toBeCloseTo(4 * RATE);
+    expect(p.bonus).toBe(0);
+  });
+
+  it("addiert Feiertagszuschlag nur wenn konfiguriert", () => {
+    const work = shift({ date: "2026-04-06", kind: "arbeit", start: "09:00", end: "13:00", breakMinutes: 0 });
+    const p = shiftPayroll(work, {
+      ...opts,
+      holiday: true,
+      supplements: {
+        ...DEFAULT_SUPPLEMENTS,
+        holiday: { enabled: true, mode: "prozent", value: 100 },
+      },
+    });
+    expect(p.workedHours).toBe(4);
+    expect(p.bonus).toBeCloseTo(4 * RATE);
+    expect(p.earnings).toBeCloseTo(8 * RATE);
+  });
+
+  it("Feiertag ohne Arbeit bleibt holiday-off-day (0 gearbeitete Stunden)", () => {
+    const off = shift({ date: "2026-04-08", kind: "feiertag" });
+    const p = shiftPayroll(off, { ...opts, holiday: true });
+    expect(p.workedHours).toBe(0);
+    expect(p.reason).toBe("holiday-off-day");
+    expect(p.earnings).toBe(0);
   });
 });

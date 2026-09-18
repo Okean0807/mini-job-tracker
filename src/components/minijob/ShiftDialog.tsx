@@ -18,6 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/lib/i18n";
 import { formatDate, formatEuro, formatHours, isoDate, shiftBreakdown } from "@/lib/minijob/calc";
+import { shiftPayroll } from "@/lib/minijob/payroll";
 import { holidayName } from "@/lib/minijob/holidays";
 import { parseRateInput, suggestedRate } from "@/lib/minijob/rate";
 import { addShift, removeShift, upsertShift } from "@/lib/minijob/service";
@@ -182,12 +183,50 @@ export function ShiftDialog({
   const parsedRate = parseRateInput(rate);
   if (parsedRate !== undefined) draft.rate = parsedRate;
   if (jobId) draft.jobId = jobId;
-  const preview = shiftBreakdown(draft, {
+
+  // Work on a public holiday must pay hours×rate (optional surcharge). Kind "feiertag"
+  // is only for not working. Preview uses payroll for absences and breakdown for work.
+  const workPreview = shiftBreakdown(draft, {
     job,
     supplements: job?.supplements ?? settings.supplements,
     holiday: Boolean(holiday),
     defaultRate: settings.defaultRate,
   });
+  const absencePreview = shiftPayroll(draft, {
+    job,
+    supplements: job?.supplements ?? settings.supplements,
+    holiday: Boolean(holiday),
+    defaultRate: settings.defaultRate,
+  });
+  const preview =
+    kind === "arbeit"
+      ? {
+          hours: workPreview.hours,
+          bonus: workPreview.bonus,
+          total: workPreview.total,
+          labels: workPreview.labels,
+        }
+      : {
+          hours: absencePreview.paidAbsenceHours,
+          bonus: 0,
+          total: absencePreview.earnings,
+          labels: [] as string[],
+        };
+
+  function selectKind(next: ShiftKind) {
+    setKind(next);
+  }
+
+  function onStartChange(value: string) {
+    setStart(value);
+    // Entering/changing times on a holiday means the user worked → force "arbeit".
+    if (holiday && kind === "feiertag") setKind("arbeit");
+  }
+
+  function onEndChange(value: string) {
+    setEnd(value);
+    if (holiday && kind === "feiertag") setKind("arbeit");
+  }
 
   async function voice() {
     try {
@@ -292,7 +331,7 @@ export function ShiftDialog({
                 <button
                   key={k}
                   type="button"
-                  onClick={() => setKind(k)}
+                  onClick={() => selectKind(k)}
                   className={cn(
                     "rounded-lg border px-2 py-1.5 text-xs font-medium",
                     kind === k ? "border-primary bg-primary/10" : "bg-card",
@@ -304,14 +343,43 @@ export function ShiftDialog({
             </div>
           </div>
 
+          {holiday ? (
+            <div
+              className="rounded-xl border border-violet-500/30 bg-violet-500/10 p-3 text-xs text-violet-900 dark:text-violet-100"
+              data-testid="holiday-pay-hint"
+            >
+              <p className="font-medium">{t("shift.holidayBannerTitle", { name: holiday })}</p>
+              <p className="mt-1 text-muted-foreground dark:text-violet-200/80">
+                {kind === "arbeit"
+                  ? t(
+                      (job?.supplements ?? settings.supplements).holiday.enabled
+                        ? "shift.holidayWorkWithBonus"
+                        : "shift.holidayWorkNoBonus",
+                    )
+                  : t("shift.holidayNoWork")}
+              </p>
+              {kind === "feiertag" ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() => selectKind("arbeit")}
+                >
+                  {t("shift.markAsWorked")}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
               <Label htmlFor="von">{t("label.start")}</Label>
-              <Input id="von" type="time" value={start} onChange={(e) => setStart(e.target.value)} />
+              <Input id="von" type="time" value={start} onChange={(e) => onStartChange(e.target.value)} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="bis">{t("label.end")}</Label>
-              <Input id="bis" type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
+              <Input id="bis" type="time" value={end} onChange={(e) => onEndChange(e.target.value)} />
             </div>
           </div>
 

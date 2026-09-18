@@ -13,3 +13,13 @@ describe("ShiftDialog Feiertag default (CAL-P2)", () => {
     expect(src).toMatch(/holidayName\(date,\s*settings\.bundesland\)\s*\?\s*"feiertag"/);
   });
 });
+
+describe("ShiftDialog work-on-holiday pay (Batch B)", () => {
+  it("forces arbeit when times change on a holiday and shows pay hint", () => {
+    expect(src).toMatch(/onStartChange/);
+    expect(src).toMatch(/setKind\("arbeit"\)/);
+    expect(src).toMatch(/holiday-pay-hint/);
+    expect(src).toMatch(/shift\.markAsWorked/);
+    expect(src).toMatch(/shiftPayroll/);
+  });
+});
