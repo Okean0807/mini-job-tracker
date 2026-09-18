@@ -20,7 +20,7 @@ describe("Dokumente auth unify (dokumente.tsx)", () => {
     expect(render).toMatch(/authStatus === "signed_out"/);
     const loadingAt = render.indexOf('authStatus === "loading"');
     const signedOutBranchAt = render.indexOf('authStatus === "signed_out"');
-    const signedOutAt = render.indexOf('t("doc.signedOut")');
+    const signedOutAt = render.indexOf('t("doc.signedOutUploads")');
     expect(loadingAt).toBeGreaterThan(-1);
     expect(signedOutBranchAt).toBeGreaterThan(loadingAt);
     expect(signedOutAt).toBeGreaterThan(signedOutBranchAt);

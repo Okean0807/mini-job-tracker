@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { FileText, FolderPlus, Pencil, Trash2, Upload } from "lucide-react";
+import { Download, FileText, FolderPlus, Pencil, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuthSession } from "@/hooks/use-auth-session";
@@ -22,6 +22,7 @@ import { useT } from "@/lib/i18n";
 import { formatDate } from "@/lib/minijob/calc";
 import {
   DOC_CATEGORIES,
+  HUB_DOC_CATEGORIES,
   deleteDocument,
   documentCreatedDay,
   documentUrl,
@@ -33,6 +34,13 @@ import {
   type DocumentRow,
   type FolderRow,
 } from "@/lib/minijob/documents";
+import {
+  deleteGeneratedDocument,
+  downloadGeneratedDocument,
+  listGeneratedDocuments,
+  openGeneratedDocument,
+  type GeneratedDocument,
+} from "@/lib/minijob/generated-docs";
 import { useAppData } from "@/lib/minijob/store";
 
 export const Route = createFileRoute("/dokumente")({
@@ -42,12 +50,12 @@ export const Route = createFileRoute("/dokumente")({
       {
         name: "description",
         content:
-          "Arbeitsverträge, Lohnabrechnungen und Bescheinigungen als PDF sicher speichern, nach Sammlung, Schlagwort und Job sortiert.",
+          "Arbeitsverträge, Lohnabrechnungen, Bescheinigungen und App-Exporte (PDF, Excel, Arbeitsnachweis) an einem Ort.",
       },
       { property: "og:title", content: "Dokumente – MiniJob Tracker" },
       {
         property: "og:description",
-        content: "Verträge, Lohnabrechnungen und Bescheinigungen sicher in der Cloud verwalten.",
+        content: "Uploads und App-Exporte sicher verwalten.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -58,11 +66,16 @@ export const Route = createFileRoute("/dokumente")({
 
 const MAX_SIZE = 20 * 1024 * 1024;
 
+type HubItem =
+  | { kind: "upload"; doc: DocumentRow }
+  | { kind: "generated"; doc: GeneratedDocument };
+
 function DocumentsPage() {
   const { t } = useT();
   const { jobs } = useAppData();
   const { status: authStatus, session } = useAuthSession();
   const [docs, setDocs] = useState<DocumentRow[]>([]);
+  const [generated, setGenerated] = useState<GeneratedDocument[]>([]);
   const [folders, setFolders] = useState<FolderRow[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [category, setCategory] = useState<string>("vertrag");
@@ -75,47 +88,89 @@ function DocumentsPage() {
   const [search, setSearch] = useState("");
   const [filterFolder, setFilterFolder] = useState<string>("all");
   const [filterTag, setFilterTag] = useState<string>("all");
+  const [filterCategory, setFilterCategory] = useState<string>("all");
   const [editDoc, setEditDoc] = useState<DocumentRow | null>(null);
   const [folderDialog, setFolderDialog] = useState(false);
 
+  const refreshGenerated = useCallback(() => {
+    setGenerated(listGeneratedDocuments());
+  }, []);
+
   const refresh = useCallback(async () => {
+    refreshGenerated();
     try {
       const [d, f] = await Promise.all([listDocuments(), listFolders()]);
       setDocs(d);
       setFolders(f);
     } catch {
-      /* ohne Anmeldung keine Liste */
+      /* ohne Anmeldung keine Cloud-Liste */
     }
-  }, []);
+  }, [refreshGenerated]);
+
+  useEffect(() => {
+    refreshGenerated();
+  }, [refreshGenerated]);
 
   useEffect(() => {
     if (authStatus === "signed_in" && session) void refresh();
     else if (authStatus === "signed_out") {
       setDocs([]);
       setFolders([]);
+      refreshGenerated();
     }
-  }, [authStatus, session, refresh]);
+  }, [authStatus, session, refresh, refreshGenerated]);
 
   const allTags = useMemo(
     () => Array.from(new Set(docs.flatMap((d) => d.tags ?? []))).sort(),
     [docs],
   );
 
+  const hubItems = useMemo((): HubItem[] => {
+    const uploads: HubItem[] = docs.map((doc) => ({ kind: "upload", doc }));
+    const gens: HubItem[] = generated.map((doc) => ({ kind: "generated", doc }));
+    return [...gens, ...uploads].sort((a, b) => {
+      const aDay =
+        a.kind === "upload"
+          ? documentCreatedDay(a.doc.created_at) || a.doc.created_at || ""
+          : a.doc.createdAt;
+      const bDay =
+        b.kind === "upload"
+          ? documentCreatedDay(b.doc.created_at) || b.doc.created_at || ""
+          : b.doc.createdAt;
+      return aDay < bDay ? 1 : -1;
+    });
+  }, [docs, generated]);
+
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return docs.filter((d) => {
-      if (filterFolder === "none" && d.folder_id !== null) return false;
-      if (filterFolder !== "all" && filterFolder !== "none" && d.folder_id !== filterFolder)
-        return false;
-      if (filterTag !== "all" && !(d.tags ?? []).includes(filterTag)) return false;
+    return hubItems.filter((item) => {
+      if (item.kind === "upload") {
+        const d = item.doc;
+        if (filterFolder === "none" && d.folder_id !== null) return false;
+        if (filterFolder !== "all" && filterFolder !== "none" && d.folder_id !== filterFolder)
+          return false;
+        if (filterTag !== "all" && !(d.tags ?? []).includes(filterTag)) return false;
+        if (filterCategory !== "all" && d.category !== filterCategory) return false;
+        if (!q) return true;
+        return (
+          d.name.toLowerCase().includes(q) ||
+          (d.note ?? "").toLowerCase().includes(q) ||
+          (d.tags ?? []).some((tag) => tag.toLowerCase().includes(q)) ||
+          d.category.toLowerCase().includes(q)
+        );
+      }
+      const d = item.doc;
+      if (filterFolder !== "all" && filterFolder !== "none") return false;
+      if (filterTag !== "all") return false;
+      if (filterCategory !== "all" && d.category !== filterCategory) return false;
       if (!q) return true;
       return (
         d.name.toLowerCase().includes(q) ||
-        (d.note ?? "").toLowerCase().includes(q) ||
-        (d.tags ?? []).some((tag) => tag.toLowerCase().includes(q))
+        d.category.toLowerCase().includes(q) ||
+        t(`doc.cat.${d.category}`).toLowerCase().includes(q)
       );
     });
-  }, [docs, search, filterFolder, filterTag]);
+  }, [hubItems, search, filterFolder, filterTag, filterCategory, t]);
 
   async function handleUpload() {
     if (!file) {
@@ -147,7 +202,7 @@ function DocumentsPage() {
     }
   }
 
-  async function handleOpen(doc: DocumentRow) {
+  async function handleOpenUpload(doc: DocumentRow) {
     try {
       window.open(await documentUrl(doc.path), "_blank", "noopener");
     } catch {
@@ -155,7 +210,17 @@ function DocumentsPage() {
     }
   }
 
-  async function handleDelete(doc: DocumentRow) {
+  function handleOpenGenerated(doc: GeneratedDocument) {
+    if (openGeneratedDocument(doc)) return;
+    if (downloadGeneratedDocument(doc)) return;
+    toast.error(t("doc.noPayload"));
+  }
+
+  function handleRedownload(doc: GeneratedDocument) {
+    if (!downloadGeneratedDocument(doc)) toast.error(t("doc.noPayload"));
+  }
+
+  async function handleDeleteUpload(doc: DocumentRow) {
     try {
       await deleteDocument(doc);
       toast.success(t("doc.deleteOk"));
@@ -164,6 +229,15 @@ function DocumentsPage() {
       toast.error(t("doc.error"));
     }
   }
+
+  function handleDeleteGenerated(doc: GeneratedDocument) {
+    deleteGeneratedDocument(doc.id);
+    toast.success(t("doc.deleteOk"));
+    refreshGenerated();
+  }
+
+  const signedIn = authStatus === "signed_in";
+  const hasAny = hubItems.length > 0;
 
   return (
     <main className="mx-auto max-w-lg px-4 pt-6">
@@ -179,104 +253,108 @@ function DocumentsPage() {
           <Skeleton className="mx-auto h-4 w-56" />
           <Skeleton className="mx-auto mt-3 h-4 w-40" />
         </div>
-      ) : authStatus === "signed_out" ? (
-        <div className="mt-6 rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-          {t("doc.signedOut")}
-        </div>
       ) : (
         <>
-          <section className="mt-5 space-y-3 rounded-2xl border bg-card p-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="doc-file">{t("doc.file")}</Label>
-              <Input
-                id="doc-file"
-                type="file"
-                accept="application/pdf,image/*"
-                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              />
+          {authStatus === "signed_out" ? (
+            <div className="mt-4 rounded-2xl border border-dashed p-4 text-center text-sm text-muted-foreground">
+              {t("doc.signedOutUploads")}
             </div>
+          ) : null}
 
-            <div className="grid grid-cols-2 gap-3">
+          {signedIn ? (
+            <section className="mt-5 space-y-3 rounded-2xl border bg-card p-4">
               <div className="space-y-1.5">
-                <Label>{t("doc.category")}</Label>
-                <Select value={category} onValueChange={setCategory}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DOC_CATEGORIES.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {t(`doc.cat.${c}`)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="doc-file">{t("doc.file")}</Label>
+                <Input
+                  id="doc-file"
+                  type="file"
+                  accept="application/pdf,image/*"
+                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                />
               </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>{t("doc.category")}</Label>
+                  <Select value={category} onValueChange={setCategory}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DOC_CATEGORIES.map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {t(`doc.cat.${c}`)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>{t("doc.job")}</Label>
+                  <Select value={jobId} onValueChange={setJobId}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">{t("doc.noJob")}</SelectItem>
+                      {jobs.map((j) => (
+                        <SelectItem key={j.id} value={j.id}>
+                          {j.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
               <div className="space-y-1.5">
-                <Label>{t("doc.job")}</Label>
-                <Select value={jobId} onValueChange={setJobId}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">{t("doc.noJob")}</SelectItem>
-                    {jobs.map((j) => (
-                      <SelectItem key={j.id} value={j.id}>
-                        {j.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>{t("doc.folder")}</Label>
+                <div className="flex gap-2">
+                  <Select value={folderId} onValueChange={setFolderId}>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">{t("doc.noFolder")}</SelectItem>
+                      {folders.map((f) => (
+                        <SelectItem key={f.id} value={f.id}>
+                          {f.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label={t("doc.manageFolders")}
+                    onClick={() => setFolderDialog(true)}
+                  >
+                    <FolderPlus className="size-4" />
+                  </Button>
+                </div>
               </div>
-            </div>
 
-            <div className="space-y-1.5">
-              <Label>{t("doc.folder")}</Label>
-              <div className="flex gap-2">
-                <Select value={folderId} onValueChange={setFolderId}>
-                  <SelectTrigger className="flex-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">{t("doc.noFolder")}</SelectItem>
-                    {folders.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>
-                        {f.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  aria-label={t("doc.manageFolders")}
-                  onClick={() => setFolderDialog(true)}
-                >
-                  <FolderPlus className="size-4" />
-                </Button>
+              <div className="space-y-1.5">
+                <Label htmlFor="doc-tags">{t("doc.tags")}</Label>
+                <Input
+                  id="doc-tags"
+                  value={tags}
+                  onChange={(e) => setTags(e.target.value)}
+                  placeholder={t("doc.tagsHint")}
+                />
               </div>
-            </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="doc-tags">{t("doc.tags")}</Label>
-              <Input
-                id="doc-tags"
-                value={tags}
-                onChange={(e) => setTags(e.target.value)}
-                placeholder={t("doc.tagsHint")}
-              />
-            </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="doc-note">{t("doc.note")}</Label>
+                <Input id="doc-note" value={note} onChange={(e) => setNote(e.target.value)} />
+              </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="doc-note">{t("doc.note")}</Label>
-              <Input id="doc-note" value={note} onChange={(e) => setNote(e.target.value)} />
-            </div>
-
-            <Button className="w-full" onClick={() => void handleUpload()} disabled={busy}>
-              <Upload className="mr-2 size-4" />
-              {busy ? t("doc.uploading") : t("doc.upload")}
-            </Button>
-          </section>
+              <Button className="w-full" onClick={() => void handleUpload()} disabled={busy}>
+                <Upload className="mr-2 size-4" />
+                {busy ? t("doc.uploading") : t("doc.upload")}
+              </Button>
+            </section>
+          ) : null}
 
           <section className="mt-5 space-y-3">
             <Input
@@ -285,28 +363,46 @@ function DocumentsPage() {
               placeholder={t("doc.search")}
               aria-label={t("doc.search")}
             />
-            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
-              {[
-                { id: "all", name: t("doc.allFolders"), color: "" },
-                ...folders,
-                { id: "none", name: t("doc.noFolder"), color: "" },
-              ].map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  onClick={() => setFilterFolder(f.id)}
-                  className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                    filterFolder === f.id ? "bg-primary text-primary-foreground" : "bg-card"
-                  }`}
-                >
-                  {f.color ? (
-                    <span className="size-2 rounded-full" style={{ backgroundColor: f.color }} />
-                  ) : null}
-                  {f.name}
-                </button>
-              ))}
+            <div className="space-y-1.5">
+              <Label>{t("doc.filterCategory")}</Label>
+              <Select value={filterCategory} onValueChange={setFilterCategory}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("doc.allCategories")}</SelectItem>
+                  {HUB_DOC_CATEGORIES.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {t(`doc.cat.${c}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            {allTags.length > 0 ? (
+            {signedIn ? (
+              <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
+                {[
+                  { id: "all", name: t("doc.allFolders"), color: "" },
+                  ...folders,
+                  { id: "none", name: t("doc.noFolder"), color: "" },
+                ].map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setFilterFolder(f.id)}
+                    className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                      filterFolder === f.id ? "bg-primary text-primary-foreground" : "bg-card"
+                    }`}
+                  >
+                    {f.color ? (
+                      <span className="size-2 rounded-full" style={{ backgroundColor: f.color }} />
+                    ) : null}
+                    {f.name}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {signedIn && allTags.length > 0 ? (
               <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
                 {["all", ...allTags].map((tag) => (
                   <button
@@ -325,7 +421,7 @@ function DocumentsPage() {
           </section>
 
           <section className="mt-3 space-y-2 pb-4">
-            {docs.length === 0 ? (
+            {!hasAny ? (
               <div className="rounded-2xl border border-dashed p-8 text-center">
                 <FileText className="mx-auto size-8 text-muted-foreground" />
                 <p className="mt-3 text-sm text-muted-foreground">{t("doc.empty")}</p>
@@ -335,7 +431,48 @@ function DocumentsPage() {
                 {t("doc.noResults")}
               </div>
             ) : (
-              visible.map((doc) => {
+              visible.map((item) => {
+                if (item.kind === "generated") {
+                  const doc = item.doc;
+                  const createdDay = documentCreatedDay(doc.createdAt);
+                  return (
+                    <div key={doc.id} className="rounded-2xl border bg-card p-3">
+                      <div className="flex items-center gap-3">
+                        <FileText className="size-5 shrink-0 text-primary" />
+                        <button
+                          type="button"
+                          className="min-w-0 flex-1 text-left"
+                          onClick={() => handleOpenGenerated(doc)}
+                        >
+                          <p className="truncate text-sm font-semibold">{doc.name}</p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {t(`doc.cat.${doc.category}`)} · {t("doc.source.generated")} ·{" "}
+                            {formatSize(doc.size)}
+                            {createdDay ? ` · ${formatDate(createdDay)}` : ""}
+                          </p>
+                        </button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={t("doc.redownload")}
+                          onClick={() => handleRedownload(doc)}
+                        >
+                          <Download className="size-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={t("doc.delete")}
+                          onClick={() => handleDeleteGenerated(doc)}
+                        >
+                          <Trash2 className="size-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                const doc = item.doc;
                 const job = jobs.find((j) => j.id === doc.job_id);
                 const folder = folders.find((f) => f.id === doc.folder_id);
                 const createdDay = documentCreatedDay(doc.created_at);
@@ -346,11 +483,12 @@ function DocumentsPage() {
                       <button
                         type="button"
                         className="min-w-0 flex-1 text-left"
-                        onClick={() => void handleOpen(doc)}
+                        onClick={() => void handleOpenUpload(doc)}
                       >
                         <p className="truncate text-sm font-semibold">{doc.name}</p>
                         <p className="truncate text-xs text-muted-foreground">
-                          {t(`doc.cat.${doc.category}`)} · {formatSize(doc.size)}
+                          {t(`doc.cat.${doc.category}`)} · {t("doc.source.upload")} ·{" "}
+                          {formatSize(doc.size)}
                           {createdDay ? ` · ${formatDate(createdDay)}` : ""}
                           {job ? ` · ${job.name}` : ""}
                         </p>
@@ -367,7 +505,7 @@ function DocumentsPage() {
                         variant="ghost"
                         size="icon"
                         aria-label={t("doc.delete")}
-                        onClick={() => void handleDelete(doc)}
+                        onClick={() => void handleDeleteUpload(doc)}
                       >
                         <Trash2 className="size-4 text-destructive" />
                       </Button>
@@ -404,19 +542,23 @@ function DocumentsPage() {
             )}
           </section>
 
-          <DocumentDialog
-            doc={editDoc}
-            folders={folders}
-            jobs={jobs}
-            onClose={() => setEditDoc(null)}
-            onSaved={() => void refresh()}
-          />
-          <FolderDialog
-            open={folderDialog}
-            folders={folders}
-            onClose={() => setFolderDialog(false)}
-            onChanged={() => void refresh()}
-          />
+          {signedIn ? (
+            <>
+              <DocumentDialog
+                doc={editDoc}
+                folders={folders}
+                jobs={jobs}
+                onClose={() => setEditDoc(null)}
+                onSaved={() => void refresh()}
+              />
+              <FolderDialog
+                open={folderDialog}
+                folders={folders}
+                onClose={() => setFolderDialog(false)}
+                onChanged={() => void refresh()}
+              />
+            </>
+          ) : null}
         </>
       )}
     </main>

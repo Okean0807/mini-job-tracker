@@ -1,4 +1,4 @@
-import { currentLocale } from "@/lib/i18n";
+import { currentLocale, t } from "@/lib/i18n";
 
 import { effectiveShiftRate } from "./rate";
 import { DEFAULT_SUPPLEMENTS, type Job, type Shift, type Supplements } from "./types";
@@ -81,28 +81,28 @@ export function shiftBreakdown(
   const day = weekday(shift.date);
   if (options.holiday && sup.holiday.enabled) {
     const value = bonusFor(sup.holiday, hours, rate);
-    if (value) labels.push("Feiertag");
+    if (value) labels.push(t("supp.holiday"));
     bonus += value;
   } else if (day === 0 && sup.sunday.enabled) {
     const value = bonusFor(sup.sunday, hours, rate);
-    if (value) labels.push("Sonntag");
+    if (value) labels.push(t("supp.sunday"));
     bonus += value;
   } else if (day === 6 && sup.saturday.enabled) {
     const value = bonusFor(sup.saturday, hours, rate);
-    if (value) labels.push("Samstag");
+    if (value) labels.push(t("supp.saturday"));
     bonus += value;
   }
 
   if (sup.night.enabled) {
     const nh = nightHours(shift, sup.nightStart, sup.nightEnd);
     const value = bonusFor(sup.night, nh, rate);
-    if (value) labels.push("Nacht");
+    if (value) labels.push(t("supp.night"));
     bonus += value;
   }
 
   if (shift.overtime && sup.overtime.enabled) {
     const value = bonusFor(sup.overtime, hours, rate);
-    if (value) labels.push("Überstunden");
+    if (value) labels.push(t("supp.overtime"));
     bonus += value;
   }
 

@@ -5,6 +5,7 @@ import autoTable from "jspdf-autotable";
 import { t } from "@/lib/i18n";
 
 import { formatDate, formatEuro, formatHours } from "./calc";
+import { saveAndRegisterBytes } from "./generated-docs";
 import { shiftPayroll } from "./payroll";
 import { isHoliday } from "./holidays";
 import { effectiveShiftRate } from "./rate";
@@ -114,7 +115,14 @@ export function exportXlsx(shifts: Shift[], title: string, ctx: ExportContext) {
   sheet["!cols"] = [12, 16, 10, 8, 8, 12, 10, 16, 14, 16, 24].map((wch) => ({ wch }));
   const book = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(book, sheet, t("report.sheetName"));
-  XLSX.writeFile(book, `${title}.xlsx`);
+  const filename = `${title}.xlsx`;
+  const buffer = XLSX.write(book, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
+  saveAndRegisterBytes({
+    bytes: buffer,
+    filename,
+    category: "report_xlsx",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
 }
 
 export function exportPdf(shifts: Shift[], title: string, ctx: ExportContext) {
@@ -168,5 +176,12 @@ export function exportPdf(shifts: Shift[], title: string, ctx: ExportContext) {
     footStyles: { fillColor: [230, 230, 230], textColor: 20, fontStyle: "bold" },
   });
 
-  doc.save(`${title}.pdf`);
+  const filename = `${title}.pdf`;
+  const buffer = doc.output("arraybuffer") as ArrayBuffer;
+  saveAndRegisterBytes({
+    bytes: buffer,
+    filename,
+    category: "report_pdf",
+    mimeType: "application/pdf",
+  });
 }

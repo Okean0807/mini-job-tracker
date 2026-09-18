@@ -1,5 +1,13 @@
 import { supabase } from "@/integrations/supabase/client";
 
+import {
+  GENERATED_DOC_CATEGORIES,
+  type GeneratedDocCategory,
+} from "./generated-docs";
+
+export { GENERATED_DOC_CATEGORIES };
+export type { GeneratedDocCategory };
+
 export const DOC_CATEGORIES = [
   "vertrag",
   "lohnabrechnung",
@@ -9,6 +17,14 @@ export const DOC_CATEGORIES = [
 ] as const;
 
 export type DocCategory = (typeof DOC_CATEGORIES)[number];
+
+/** Upload categories + generated export categories for hub filters. */
+export const HUB_DOC_CATEGORIES = [
+  ...DOC_CATEGORIES,
+  ...GENERATED_DOC_CATEGORIES,
+] as const;
+
+export type HubDocCategory = (typeof HUB_DOC_CATEGORIES)[number];
 
 export const FOLDER_COLORS = ["#0d9488", "#2563eb", "#16a34a", "#ea580c", "#dc2626", "#7c3aed"];
 

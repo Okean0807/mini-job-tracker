@@ -34,3 +34,22 @@ describe("dokumente list render (source)", () => {
     expect(src).not.toMatch(/created_at\.slice\s*\(/);
   });
 });
+
+describe("dokumente hub generated exports (source)", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "../../routes/dokumente.tsx"),
+    "utf8",
+  );
+
+  it("lists generated docs alongside uploads", () => {
+    expect(src).toMatch(/listGeneratedDocuments/);
+    expect(src).toMatch(/HUB_DOC_CATEGORIES/);
+    expect(src).toMatch(/filterCategory/);
+    expect(src).toMatch(/doc\.cat\.arbeitsnachweis|doc\.cat\.\$\{/);
+  });
+
+  it("supports open / re-download for generated docs", () => {
+    expect(src).toMatch(/openGeneratedDocument|downloadGeneratedDocument/);
+    expect(src).toMatch(/doc\.redownload/);
+  });
+});
