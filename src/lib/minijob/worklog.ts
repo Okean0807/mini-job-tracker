@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
 import { t, type TFunction } from "@/lib/i18n";
+import { td, DOCUMENT_LOCALE } from "./document-i18n";
 
 import { formatDate, formatHours, shiftHours, sumHours } from "./calc";
 import { saveAndRegisterBytes } from "./generated-docs";
@@ -89,7 +90,7 @@ export function exportWorkReportPdf(shifts: Shift[], ctx: WorkReportContext) {
 
   doc.setFontSize(17);
   doc.setTextColor(...TEAL);
-  doc.text(t("worklog.pdfTitle"), 14, 18);
+  doc.text(td("worklog.pdfTitle"), 14, 18);
   doc.setFontSize(11);
   doc.setTextColor(20, 20, 20);
   doc.text(ctx.month, 14, 26);
@@ -98,31 +99,31 @@ export function exportWorkReportPdf(shifts: Shift[], ctx: WorkReportContext) {
   const jobNames = [...new Set(list.map((s) => ctx.jobs.find((j) => j.id === s.jobId)?.name))]
     .filter(Boolean)
     .join(", ");
-  doc.text([ctx.employeeName, jobNames].filter(Boolean).join(" · ") || t("app.name"), 14, 31);
+  doc.text([ctx.employeeName, jobNames].filter(Boolean).join(" · ") || td("app.name"), 14, 31);
 
   autoTable(doc, {
     startY: 36,
     head: [
       [
-        t("label.date"),
-        t("worklog.workplace"),
-        t("label.start"),
-        t("label.end"),
-        t("label.hours"),
-        t("worklog.tasks"),
-        t("label.note"),
+        td("label.date"),
+        td("worklog.workplace"),
+        td("label.start"),
+        td("label.end"),
+        td("label.hours"),
+        td("worklog.tasks"),
+        td("label.note"),
       ],
     ],
     body: list.map((s) => [
-      formatDate(s.date),
+      formatDate(s.date, DOCUMENT_LOCALE),
       s.workplace ?? ctx.jobs.find((j) => j.id === s.jobId)?.name ?? "–",
       s.start,
       s.end,
-      formatHours(shiftHours(s)),
-      taskListLabel(s.tasks) || "–",
+      formatHours(shiftHours(s), DOCUMENT_LOCALE),
+      taskListLabel(s.tasks, td) || "–",
       [s.note, s.gps ? `GPS ${formatGps(s.gps)}` : null].filter(Boolean).join(" · "),
     ]),
-    foot: [[t("label.total"), "", "", "", formatHours(sumHours(list)), "", ""]],
+    foot: [[td("label.total"), "", "", "", formatHours(sumHours(list), DOCUMENT_LOCALE), "", ""]],
     styles: { fontSize: 8, cellPadding: 2, valign: "top" },
     columnStyles: {
       0: { cellWidth: 20 },
@@ -147,8 +148,8 @@ export function exportWorkReportPdf(shifts: Shift[], ctx: WorkReportContext) {
   doc.line(110, y, 190, y);
   doc.setFontSize(8);
   doc.setTextColor(...GREY);
-  doc.text(t("worklog.signEmployee"), 14, y + 5);
-  doc.text(t("worklog.signEmployer"), 110, y + 5);
+  doc.text(td("worklog.signEmployee"), 14, y + 5);
+  doc.text(td("worklog.signEmployer"), 110, y + 5);
 
   if (ctx.includePhotos) {
     const photos = list.flatMap((s) =>
@@ -158,7 +159,7 @@ export function exportWorkReportPdf(shifts: Shift[], ctx: WorkReportContext) {
       doc.addPage();
       doc.setFontSize(12);
       doc.setTextColor(20, 20, 20);
-      doc.text(t("worklog.photos"), 14, 20);
+      doc.text(td("worklog.photos"), 14, 20);
       let px = 14;
       let py = 28;
       photos.forEach((photo) => {
@@ -174,7 +175,7 @@ export function exportWorkReportPdf(shifts: Shift[], ctx: WorkReportContext) {
         }
         doc.setFontSize(7);
         doc.setTextColor(...GREY);
-        doc.text([formatDate(photo.date), photo.place].filter(Boolean).join(" · "), px, py + 64);
+        doc.text([formatDate(photo.date, DOCUMENT_LOCALE), photo.place].filter(Boolean).join(" · "), px, py + 64);
         if (px === 14) {
           px = 110;
         } else {
@@ -185,7 +186,7 @@ export function exportWorkReportPdf(shifts: Shift[], ctx: WorkReportContext) {
     }
   }
 
-  const filename = `${t("worklog.fileName")}-${ctx.month}.pdf`.replace(/\s+/g, "-");
+  const filename = `${td("worklog.fileName")}-${ctx.month}.pdf`.replace(/\s+/g, "-");
   const buffer = doc.output("arraybuffer") as ArrayBuffer;
   saveAndRegisterBytes({
     bytes: buffer,

@@ -1,4 +1,5 @@
 import { t } from "@/lib/i18n";
+import { td } from "./document-i18n";
 
 import { newId } from "./store";
 import type { Job, Shift } from "./types";
@@ -6,20 +7,20 @@ import type { Job, Shift } from "./types";
 /** Übersetzte Spaltenüberschriften für Export/Vorlage (nur für die Anzeige, der Parser ist sprachunabhängig). */
 export function csvHeaders(): string[] {
   return [
-    t("label.date"),
-    t("label.start"),
-    t("label.end"),
-    t("label.break"),
-    t("label.rate"),
-    t("label.job"),
-    t("label.note"),
+    td("label.date"),
+    td("label.start"),
+    td("label.end"),
+    td("label.break"),
+    td("label.rate"),
+    td("label.job"),
+    td("label.note"),
   ];
 }
 
 export function csvTemplate(): string {
   return [
     csvHeaders().join(";"),
-    `01.03.2026;09:00;17:00;30;13,50;Café Nord;${t("csv.template.note")}`,
+    `01.03.2026;09:00;17:00;30;13,50;Café Nord;${td("csv.template.note")}`,
     "2026-03-02;18:00;23:30;0;15,00;Café Nord;",
   ].join("\n");
 }

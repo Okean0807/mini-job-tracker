@@ -2,9 +2,9 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 
-import { t } from "@/lib/i18n";
+import { td, DOCUMENT_LOCALE } from "./document-i18n";
 
-import { formatDate, formatEuro, formatHours, weekdayNames } from "./calc";
+import { formatDate, formatEuro, formatHours, monthNames, weekdayNames } from "./calc";
 import { saveAndRegisterBytes } from "./generated-docs";
 import type { AnnualReport } from "./annual";
 
@@ -12,17 +12,30 @@ const TEAL: [number, number, number] = [16, 122, 110];
 const TEAL_LIGHT: [number, number, number] = [170, 216, 210];
 const GREY: [number, number, number] = [120, 120, 120];
 
+function docMonthLabel(monthIndex: number): string {
+  return monthNames(DOCUMENT_LOCALE)[monthIndex] ?? "";
+}
+
+function docFormatEuro(v: number): string {
+  return formatEuro(v, DOCUMENT_LOCALE);
+}
+
+function docFormatHours(v: number): string {
+  return formatHours(v, DOCUMENT_LOCALE);
+}
+
+
 function kpis(report: AnnualReport) {
   return [
-    { label: t("annual.kpi.earnings"), value: formatEuro(report.earnings) },
-    { label: t("annual.kpi.hours"), value: formatHours(report.hours) },
-    { label: t("annual.kpi.avgRate"), value: formatEuro(report.avgRate) },
-    { label: t("annual.kpi.workDays"), value: String(report.workDays) },
-    { label: t("annual.kpi.bonus"), value: formatEuro(report.bonus) },
-    { label: t("annual.kpi.avgMonth"), value: formatEuro(report.avgMonthEarnings) },
-    { label: t("annual.kpi.avgDay"), value: formatHours(report.avgDayHours) },
+    { label: td("annual.kpi.earnings"), value: formatEuro(report.earnings, DOCUMENT_LOCALE) },
+    { label: td("annual.kpi.hours"), value: formatHours(report.hours, DOCUMENT_LOCALE) },
+    { label: td("annual.kpi.avgRate"), value: formatEuro(report.avgRate, DOCUMENT_LOCALE) },
+    { label: td("annual.kpi.workDays"), value: String(report.workDays) },
+    { label: td("annual.kpi.bonus"), value: formatEuro(report.bonus, DOCUMENT_LOCALE) },
+    { label: td("annual.kpi.avgMonth"), value: formatEuro(report.avgMonthEarnings, DOCUMENT_LOCALE) },
+    { label: td("annual.kpi.avgDay"), value: formatHours(report.avgDayHours, DOCUMENT_LOCALE) },
     {
-      label: t("annual.kpi.limit"),
+      label: td("annual.kpi.limit"),
       value: report.limit > 0 ? `${Math.round(report.limitShare)} %` : "–",
     },
   ];
@@ -91,71 +104,71 @@ function drawBarChart(
 
 export function exportAnnualPdf(report: AnnualReport) {
   const doc = new jsPDF();
-  const title = t("annual.title", { year: report.year });
+  const title = td("annual.title", { year: report.year });
 
   doc.setFontSize(17);
   doc.setTextColor(...TEAL);
-  doc.text(t("app.name"), 14, 18);
+  doc.text(td("app.name"), 14, 18);
   doc.setFontSize(12);
   doc.setTextColor(20, 20, 20);
   doc.text(title, 14, 26);
   doc.setFontSize(8);
   doc.setTextColor(...GREY);
-  doc.text(t("annual.subtitle", { entries: report.entries, months: report.activeMonths }), 14, 31);
+  doc.text(td("annual.subtitle", { entries: report.entries, months: report.activeMonths }), 14, 31);
 
   let y = drawKpiGrid(doc, report, 36);
   y = drawBarChart(
     doc,
-    t("annual.chart.earnings"),
-    report.months.map((m) => m.label.slice(0, 3)),
+    td("annual.chart.earnings"),
+    report.months.map((m) => docMonthLabel(m.month).slice(0, 3)),
     report.months.map((m) => m.earnings),
     y + 6,
-    formatEuro,
+    docFormatEuro,
   );
   y = drawBarChart(
     doc,
-    t("annual.chart.hours"),
-    report.months.map((m) => m.label.slice(0, 3)),
+    td("annual.chart.hours"),
+    report.months.map((m) => docMonthLabel(m.month).slice(0, 3)),
     report.months.map((m) => m.hours),
     y + 4,
-    formatHours,
+    docFormatHours,
   );
   y = drawBarChart(
     doc,
-    t("annual.chart.weekdays"),
-    weekdayNames(undefined, "short"),
+    td("annual.chart.weekdays"),
+    weekdayNames(DOCUMENT_LOCALE, "short"),
     report.weekdayHours,
     y + 4,
-    formatHours,
+    docFormatHours,
   );
 
   autoTable(doc, {
     startY: y + 4,
     head: [
       [
-        t("annual.table.month"),
-        t("label.hours"),
-        t("annual.table.base"),
-        t("label.bonus"),
-        t("label.earnings"),
-        t("annual.table.entries"),
+        td("annual.table.month"),
+        td("label.hours"),
+        td("annual.table.base"),
+        td("label.bonus"),
+        td("label.earnings"),
+        td("annual.table.entries"),
       ],
     ],
     body: report.months.map((m) => [
-      m.label,
-      formatHours(m.hours),
-      formatEuro(m.base),
-      formatEuro(m.bonus),
-      formatEuro(m.earnings),
+      docMonthLabel(m.month),
+      formatHours(m.hours, DOCUMENT_LOCALE),
+      formatEuro(m.base, DOCUMENT_LOCALE),
+      formatEuro(m.bonus, DOCUMENT_LOCALE),
+      formatEuro(m.earnings, DOCUMENT_LOCALE),
       String(m.entries),
     ]),
     foot: [
       [
-        t("label.total"),
-        formatHours(report.hours),
-        formatEuro(report.base),
-        formatEuro(report.bonus),
-        formatEuro(report.earnings),
+        td("label.total"),
+        formatHours(report.hours, DOCUMENT_LOCALE),
+        formatEuro(report.base, DOCUMENT_LOCALE),
+        formatEuro(report.bonus, DOCUMENT_LOCALE),
+        formatEuro(report.earnings, DOCUMENT_LOCALE),
         String(report.entries),
       ],
     ],
@@ -166,11 +179,11 @@ export function exportAnnualPdf(report: AnnualReport) {
 
   if (report.jobs.length > 0) {
     autoTable(doc, {
-      head: [[t("label.job"), t("label.hours"), t("label.earnings"), t("annual.table.share")]],
+      head: [[td("label.job"), td("label.hours"), td("label.earnings"), td("annual.table.share")]],
       body: report.jobs.map((j) => [
         j.name,
-        formatHours(j.hours),
-        formatEuro(j.earnings),
+        formatHours(j.hours, DOCUMENT_LOCALE),
+        formatEuro(j.earnings, DOCUMENT_LOCALE),
         `${j.share.toFixed(1)} %`,
       ]),
       styles: { fontSize: 8 },
@@ -180,13 +193,13 @@ export function exportAnnualPdf(report: AnnualReport) {
 
   const highlights = [
     report.bestMonth
-      ? `${t("annual.best.month")}: ${report.bestMonth.label} · ${formatEuro(report.bestMonth.earnings)}`
+      ? `${td("annual.best.month")}: ${docMonthLabel(report.bestMonth.month)} · ${formatEuro(report.bestMonth.earnings, DOCUMENT_LOCALE)}`
       : null,
     report.bestDay
-      ? `${t("annual.best.day")}: ${formatDate(report.bestDay.date)} · ${formatEuro(report.bestDay.earnings)}`
+      ? `${td("annual.best.day")}: ${formatDate(report.bestDay.date, DOCUMENT_LOCALE)} · ${formatEuro(report.bestDay.earnings, DOCUMENT_LOCALE)}`
       : null,
     report.limit > 0
-      ? `${t("annual.kpi.limit")}: ${formatEuro(report.earnings)} / ${formatEuro(report.limit)} (${Math.round(report.limitShare)} %)`
+      ? `${td("annual.kpi.limit")}: ${formatEuro(report.earnings, DOCUMENT_LOCALE)} / ${formatEuro(report.limit, DOCUMENT_LOCALE)} (${Math.round(report.limitShare)} %)`
       : null,
   ].filter(Boolean) as string[];
 
@@ -195,7 +208,7 @@ export function exportAnnualPdf(report: AnnualReport) {
       (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y;
     doc.setFontSize(9);
     doc.setTextColor(20, 20, 20);
-    doc.text(t("annual.best.title"), 14, lastY + 10);
+    doc.text(td("annual.best.title"), 14, lastY + 10);
     doc.setFontSize(8);
     doc.setTextColor(...GREY);
     highlights.forEach((line, i) => doc.text(line, 14, lastY + 16 + i * 5));
@@ -213,73 +226,73 @@ export function exportAnnualPdf(report: AnnualReport) {
 
 
 export function exportAnnualXlsx(report: AnnualReport) {
-  const title = t("annual.title", { year: report.year });
+  const title = td("annual.title", { year: report.year });
   const book = XLSX.utils.book_new();
 
   const overview = kpis(report).map((k) => ({
-    [t("annual.table.metric")]: k.label,
-    [t("annual.table.value")]: k.value,
+    [td("annual.table.metric")]: k.label,
+    [td("annual.table.value")]: k.value,
   }));
   overview.push(
     {
-      [t("annual.table.metric")]: t("annual.best.month"),
-      [t("annual.table.value")]: report.bestMonth
-        ? `${report.bestMonth.label} · ${formatEuro(report.bestMonth.earnings)}`
+      [td("annual.table.metric")]: td("annual.best.month"),
+      [td("annual.table.value")]: report.bestMonth
+        ? `${docMonthLabel(report.bestMonth.month)} · ${formatEuro(report.bestMonth.earnings, DOCUMENT_LOCALE)}`
         : "–",
     },
     {
-      [t("annual.table.metric")]: t("annual.best.day"),
-      [t("annual.table.value")]: report.bestDay
-        ? `${formatDate(report.bestDay.date)} · ${formatEuro(report.bestDay.earnings)}`
+      [td("annual.table.metric")]: td("annual.best.day"),
+      [td("annual.table.value")]: report.bestDay
+        ? `${formatDate(report.bestDay.date, DOCUMENT_LOCALE)} · ${formatEuro(report.bestDay.earnings, DOCUMENT_LOCALE)}`
         : "–",
     },
   );
   const overviewSheet = XLSX.utils.json_to_sheet(overview);
   overviewSheet["!cols"] = [{ wch: 28 }, { wch: 24 }];
-  XLSX.utils.book_append_sheet(book, overviewSheet, t("annual.sheet.overview"));
+  XLSX.utils.book_append_sheet(book, overviewSheet, td("annual.sheet.overview"));
 
   const monthRows = report.months.map((m) => ({
-    [t("annual.table.month")]: m.label,
-    [t("label.hours")]: Number(m.hours.toFixed(2)),
-    [t("annual.table.base")]: Number(m.base.toFixed(2)),
-    [t("report.bonusEur")]: Number(m.bonus.toFixed(2)),
-    [t("report.earningsEur")]: Number(m.earnings.toFixed(2)),
-    [t("annual.table.entries")]: m.entries,
+    [td("annual.table.month")]: docMonthLabel(m.month),
+    [td("label.hours")]: Number(m.hours.toFixed(2)),
+    [td("annual.table.base")]: Number(m.base.toFixed(2)),
+    [td("report.bonusEur")]: Number(m.bonus.toFixed(2)),
+    [td("report.earningsEur")]: Number(m.earnings.toFixed(2)),
+    [td("annual.table.entries")]: m.entries,
   }));
   monthRows.push({
-    [t("annual.table.month")]: t("label.total"),
-    [t("label.hours")]: Number(report.hours.toFixed(2)),
-    [t("annual.table.base")]: Number(report.base.toFixed(2)),
-    [t("report.bonusEur")]: Number(report.bonus.toFixed(2)),
-    [t("report.earningsEur")]: Number(report.earnings.toFixed(2)),
-    [t("annual.table.entries")]: report.entries,
+    [td("annual.table.month")]: td("label.total"),
+    [td("label.hours")]: Number(report.hours.toFixed(2)),
+    [td("annual.table.base")]: Number(report.base.toFixed(2)),
+    [td("report.bonusEur")]: Number(report.bonus.toFixed(2)),
+    [td("report.earningsEur")]: Number(report.earnings.toFixed(2)),
+    [td("annual.table.entries")]: report.entries,
   });
   const monthSheet = XLSX.utils.json_to_sheet(monthRows);
   monthSheet["!cols"] = [18, 10, 14, 14, 16, 12].map((wch) => ({ wch }));
-  XLSX.utils.book_append_sheet(book, monthSheet, t("annual.sheet.months"));
+  XLSX.utils.book_append_sheet(book, monthSheet, td("annual.sheet.months"));
 
   if (report.jobs.length > 0) {
     const jobSheet = XLSX.utils.json_to_sheet(
       report.jobs.map((j) => ({
-        [t("label.job")]: j.name,
-        [t("label.hours")]: Number(j.hours.toFixed(2)),
-        [t("report.earningsEur")]: Number(j.earnings.toFixed(2)),
-        [t("annual.table.share")]: Number(j.share.toFixed(1)),
+        [td("label.job")]: j.name,
+        [td("label.hours")]: Number(j.hours.toFixed(2)),
+        [td("report.earningsEur")]: Number(j.earnings.toFixed(2)),
+        [td("annual.table.share")]: Number(j.share.toFixed(1)),
       })),
     );
     jobSheet["!cols"] = [22, 10, 16, 12].map((wch) => ({ wch }));
-    XLSX.utils.book_append_sheet(book, jobSheet, t("annual.sheet.jobs"));
+    XLSX.utils.book_append_sheet(book, jobSheet, td("annual.sheet.jobs"));
   }
 
-  const days = weekdayNames();
+  const days = weekdayNames(DOCUMENT_LOCALE);
   const weekdaySheet = XLSX.utils.json_to_sheet(
     report.weekdayHours.map((h, i) => ({
-      [t("annual.table.weekday")]: days[i] ?? "",
-      [t("label.hours")]: Number(h.toFixed(2)),
+      [td("annual.table.weekday")]: days[i] ?? "",
+      [td("label.hours")]: Number(h.toFixed(2)),
     })),
   );
   weekdaySheet["!cols"] = [{ wch: 18 }, { wch: 10 }];
-  XLSX.utils.book_append_sheet(book, weekdaySheet, t("annual.sheet.weekdays"));
+  XLSX.utils.book_append_sheet(book, weekdaySheet, td("annual.sheet.weekdays"));
 
   const filename = `${title}.xlsx`;
   const buffer = XLSX.write(book, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
