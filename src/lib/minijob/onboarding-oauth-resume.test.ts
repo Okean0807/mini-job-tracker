@@ -4,8 +4,10 @@ import { fileURLToPath } from "node:url";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { WIZARD_STEP_COUNT, WIZARD_STEP_INDEX } from "./wizard-flow";
+
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
-const STEPS = 7;
+const STEPS = WIZARD_STEP_COUNT;
 
 /**
  * Regression: setup wizard must checkpoint step/mode (+ settings) before OAuth
@@ -17,7 +19,6 @@ describe("OnboardingWizard OAuth resume wiring", () => {
     expect(src).toMatch(/checkpointOnboardingBeforeOAuth/);
     expect(src).toMatch(/loadOnboardingDraft/);
     expect(src).toMatch(/clearOnboardingDraft/);
-    // Must run checkpoint before signInWithOAuthProvider
     const checkpointAt = src.indexOf("checkpointOnboardingBeforeOAuth");
     const signInAt = src.indexOf('signInWithOAuthProvider("google")');
     expect(checkpointAt).toBeGreaterThan(-1);
@@ -35,7 +36,6 @@ describe("OAuth remount resume scenario", () => {
     const store = await import("./store");
     const { checkpointOnboardingBeforeOAuth } = await import("./onboarding-draft");
 
-    // User filled wizard through Cloud step — settings in store, step/mode in draft
     store.updateSettings({
       language: "en",
       country: "AT",
@@ -49,14 +49,13 @@ describe("OAuth remount resume scenario", () => {
     });
 
     checkpointOnboardingBeforeOAuth({
-      step: 5,
+      step: WIZARD_STEP_INDEX.cloud,
       mode: "fest",
       persistSettings: () => {
         /* settings already flushed via updateSettings above */
       },
     });
 
-    // Full page return after Google: modules re-init, storage re-hydrated
     vi.resetModules();
     const storeAfter = await import("./store");
     const draftAfter = await import("./onboarding-draft");
@@ -69,7 +68,10 @@ describe("OAuth remount resume scenario", () => {
     expect(settings.supplements.sunday.enabled).toBe(true);
     expect(settings.onboarded).toBe(false);
 
-    expect(draftAfter.loadOnboardingDraft(STEPS)).toEqual({ step: 5, mode: "fest" });
+    expect(draftAfter.loadOnboardingDraft(STEPS)).toEqual({
+      step: WIZARD_STEP_INDEX.cloud,
+      mode: "fest",
+    });
 
     draftAfter.clearOnboardingDraft();
     expect(draftAfter.loadOnboardingDraft(STEPS)).toBeNull();
