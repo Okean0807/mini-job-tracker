@@ -25,11 +25,15 @@ import {
   formatHours,
   monthNames,
   monthNamesShort,
-  shiftEarnings,
-  shiftHours,
   shiftsInMonth,
   shiftsInYear,
 } from "@/lib/minijob/calc";
+import {
+  buildDailyMonthSeries,
+  dailyChartTitle,
+  dailyXAxisTicks,
+  formatDailyTooltipLine,
+} from "@/lib/minijob/stats-charts";
 import { payrollTotals } from "@/lib/minijob/payroll";
 import { buildAnnualReport } from "@/lib/minijob/annual";
 import { exportPdf, exportXlsx } from "@/lib/minijob/export";
@@ -95,16 +99,16 @@ function StatsPage() {
   );
 
   const dailyData = useMemo(
-    () =>
-      [...monthShifts]
-        .sort((a, b) => (a.date > b.date ? 1 : -1))
-        .map((s) => ({
-          tag: s.date.slice(8),
-          verdienst: Number(shiftEarnings(s, resolve(s)).toFixed(2)),
-          stunden: Number(shiftHours(s).toFixed(2)),
-        })),
-    [monthShifts, resolve],
+    () => buildDailyMonthSeries(year, month, monthShifts, resolve),
+    [year, month, monthShifts, resolve],
   );
+  const dailyTicks = useMemo(() => dailyXAxisTicks(dailyData.length), [dailyData.length]);
+  const earningsDayTitle = dailyChartTitle(
+    t("stats.chart.earningsDay"),
+    months[month] ?? "",
+    year,
+  );
+  const hoursDayTitle = dailyChartTitle(t("stats.chart.hoursDay"), months[month] ?? "", year);
 
   const perJob = useMemo(
     () =>
@@ -245,25 +249,83 @@ function StatsPage() {
             />
           </div>
 
-          <ChartCard title={t("stats.chart.earningsDay")}>
+          <ChartCard title={earningsDayTitle}>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={dailyData}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                <XAxis dataKey="tag" fontSize={11} />
-                <YAxis fontSize={11} width={38} />
-                <Tooltip formatter={(v: number) => formatEuro(v)} />
+                <XAxis
+                  dataKey="day"
+                  ticks={dailyTicks}
+                  fontSize={11}
+                  label={{ value: t("stats.axis.day"), position: "insideBottom", offset: -2 }}
+                  height={36}
+                />
+                <YAxis
+                  fontSize={11}
+                  width={42}
+                  label={{
+                    value: t("stats.axis.earnings"),
+                    angle: -90,
+                    position: "insideLeft",
+                    offset: 8,
+                  }}
+                />
+                <Tooltip
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null;
+                    const row = payload[0]?.payload as {
+                      date: string;
+                      stunden: number;
+                      verdienst: number;
+                    };
+                    return (
+                      <div className="rounded-md border bg-card px-2.5 py-1.5 text-xs shadow-md">
+                        {formatDailyTooltipLine(row.date, row.stunden, row.verdienst)}
+                      </div>
+                    );
+                  }}
+                />
                 <Bar dataKey="verdienst" radius={[6, 6, 0, 0]} fill="var(--primary)" />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
 
-          <ChartCard title={t("stats.chart.hoursDay")}>
+          <ChartCard title={hoursDayTitle}>
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={dailyData}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                <XAxis dataKey="tag" fontSize={11} />
-                <YAxis fontSize={11} width={38} />
-                <Tooltip formatter={(v: number) => formatHours(v)} />
+                <XAxis
+                  dataKey="day"
+                  ticks={dailyTicks}
+                  fontSize={11}
+                  label={{ value: t("stats.axis.day"), position: "insideBottom", offset: -2 }}
+                  height={36}
+                />
+                <YAxis
+                  fontSize={11}
+                  width={42}
+                  label={{
+                    value: t("stats.axis.hours"),
+                    angle: -90,
+                    position: "insideLeft",
+                    offset: 8,
+                  }}
+                />
+                <Tooltip
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null;
+                    const row = payload[0]?.payload as {
+                      date: string;
+                      stunden: number;
+                      verdienst: number;
+                    };
+                    return (
+                      <div className="rounded-md border bg-card px-2.5 py-1.5 text-xs shadow-md">
+                        {formatDailyTooltipLine(row.date, row.stunden, row.verdienst)}
+                      </div>
+                    );
+                  }}
+                />
                 <Line type="monotone" dataKey="stunden" stroke="var(--primary)" strokeWidth={2} />
               </LineChart>
             </ResponsiveContainer>
