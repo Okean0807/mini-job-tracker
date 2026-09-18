@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { AlertTriangle, Clock, Euro, LayoutGrid, Palmtree, Plus, TrendingUp } from "lucide-react";
+import { AlertTriangle, Clock, Euro, LayoutGrid, Plus, TrendingUp } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { DashboardCustomizer } from "@/components/minijob/DashboardCustomizer";
@@ -268,17 +268,6 @@ function DashboardPage() {
       </div>
 
       <div className="dash-fab fixed bottom-20 right-4 z-40 flex flex-col items-end gap-2">
-        <Button
-          size="lg"
-          variant="secondary"
-          onClick={() => {
-            setAbsenceSeed(null);
-            setAbsenceOpen(true);
-          }}
-          className="h-12 rounded-full px-4 shadow-float"
-        >
-          <Palmtree className="size-5" /> {t("dash.absence")}
-        </Button>
         <Button
           size="lg"
           onClick={() => openNew(isoDate(new Date()))}

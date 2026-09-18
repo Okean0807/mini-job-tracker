@@ -9,6 +9,7 @@ import {
   WIZARD_STEP_COUNT,
   WIZARD_STEP_INDEX,
   isPersonalizedStep,
+  isWizardComplete,
   newUserFlowOrder,
   oauthResumeStep,
   resolveWizardResumeStep,
@@ -100,10 +101,10 @@ describe("returning user skips wizard; language persists", () => {
     vi.resetModules();
   });
 
-  it("root only shows wizard when !onboarded", () => {
+  it("root gates wizard via shouldShowOnboardingWizard(settings, jobs)", () => {
     const rootSrc = readFileSync(join(root, "routes/__root.tsx"), "utf8");
-    expect(rootSrc).toMatch(/shouldShowOnboardingWizard\(loaded\.onboarded\)/);
-    expect(rootSrc).toMatch(/shouldShowOnboardingWizard\(settings\.onboarded\)/);
+    expect(rootSrc).toMatch(/shouldShowOnboardingWizard\(loaded, data\.jobs\)/);
+    expect(rootSrc).toMatch(/shouldShowOnboardingWizard\(settings, jobs\)/);
     expect(rootSrc).toMatch(/showWizard && !locked/);
   });
 
@@ -141,13 +142,12 @@ describe("returning user skips wizard; language persists", () => {
     });
   });
 
-  it("onboarded users do not need the wizard (gate flag)", async () => {
+  it("completed users with jobs do not need the wizard", async () => {
     const store = await import("./store");
-    store.updateSettings({ onboarded: true, language: "de" });
-    expect(store.getData().settings.onboarded).toBe(true);
-    // Mirror __root gate
-    const showWizard = !store.getData().settings.onboarded;
-    expect(showWizard).toBe(false);
+    store.updateSettings({ onboarded: true, wizardCompletedAt: Date.now(), language: "de" });
+    const data = store.getData();
+    expect(isWizardComplete(data.settings, data.jobs)).toBe(true);
+    expect(shouldShowOnboardingWizard(data.settings, data.jobs)).toBe(false);
   });
 });
 
@@ -162,17 +162,48 @@ describe("post-Google onboarding routing", () => {
       resolveWizardResumeStep(WIZARD_STEP_INDEX.workMode, "signed_in"),
     ).toBe(WIZARD_STEP_INDEX.workMode);
     // Still incomplete → wizard must show
-    expect(shouldShowOnboardingWizard(false)).toBe(true);
+    expect(shouldShowOnboardingWizard({ onboarded: false }, [])).toBe(true);
   });
 
   it("completed onboarded users skip wizard (Dashboard)", () => {
-    expect(shouldShowOnboardingWizard(true)).toBe(false);
+    expect(
+      shouldShowOnboardingWizard({ onboarded: true, wizardCompletedAt: 1 }, []),
+    ).toBe(false);
+    expect(
+      shouldShowOnboardingWizard({ onboarded: true }, [{ id: "j1" }]),
+    ).toBe(false);
   });
 
   it("empty/partial backup onboarded flag must not look completed", () => {
-    // normalize defaults + applyRemote force false when not === true
-    expect(shouldShowOnboardingWizard(false)).toBe(true);
-    expect(shouldShowOnboardingWizard(undefined as unknown as boolean)).toBe(true);
+    expect(shouldShowOnboardingWizard({ onboarded: false }, [])).toBe(true);
+    expect(shouldShowOnboardingWizard(undefined, [])).toBe(true);
+    expect(shouldShowOnboardingWizard(null, [])).toBe(true);
+  });
+
+  it("Skip-era onboarded:true without jobs/stamp cannot hide wizard", () => {
+    expect(isWizardComplete({ onboarded: true }, [])).toBe(false);
+    expect(shouldShowOnboardingWizard({ onboarded: true }, [])).toBe(true);
+  });
+
+  it("isWizardComplete requires onboarded + (jobs OR wizardCompletedAt)", () => {
+    expect(isWizardComplete({ onboarded: false }, [{ id: "j" }])).toBe(false);
+    expect(isWizardComplete({ onboarded: true }, [])).toBe(false);
+    expect(isWizardComplete({ onboarded: true, wizardCompletedAt: 0 }, [])).toBe(false);
+    expect(isWizardComplete({ onboarded: true, wizardCompletedAt: 42 }, [])).toBe(true);
+    expect(isWizardComplete({ onboarded: true }, [{ id: "j" }])).toBe(true);
+  });
+
+  it("finish() stamps wizardCompletedAt in OnboardingWizard", () => {
+    const src = readFileSync(join(root, "components/minijob/OnboardingWizard.tsx"), "utf8");
+    expect(src).toMatch(/wizardCompletedAt:\s*Date\.now\(\)/);
+    expect(src).toMatch(/onboarded:\s*true/);
+  });
+
+  it("applyRemote uses isWizardComplete (incomplete stays wizard)", () => {
+    const cloudSrc = readFileSync(join(root, "lib/minijob/cloud.ts"), "utf8");
+    expect(cloudSrc).toMatch(/isWizardComplete\(merged\.settings, merged\.jobs\)/);
+    expect(cloudSrc).toMatch(/onboarded: false/);
+    expect(cloudSrc).toMatch(/KEEP jobs\/shifts/);
   });
 
   it("fest/selbststaendig stay on mode-specific path after Work Mode", () => {

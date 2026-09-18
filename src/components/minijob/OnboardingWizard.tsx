@@ -152,6 +152,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
       defaultRate: numericRate,
       supplements,
       onboarded: true,
+      wizardCompletedAt: Date.now(),
     });
     const name = jobName.trim();
     if (name) {

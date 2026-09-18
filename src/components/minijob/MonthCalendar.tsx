@@ -25,32 +25,34 @@ interface MonthCalendarProps {
 
 const KIND_ORDER: ShiftKind[] = ["arbeit", "krank", "urlaub", "feiertag"];
 
-const KIND_STYLE: Record<
+/** Exported for contrast/snapshot tests — meanings unchanged, dark fills brighter. */
+export const KIND_STYLE: Record<
   ShiftKind,
   { cell: string; icon: LucideIcon; legend: string; labelKey: string }
 > = {
+  // Arbeit green · Krank orange · Urlaub blue · Feiertag violet — saturated for black bg
   arbeit: {
-    cell: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 border-emerald-500/40",
+    cell: "bg-emerald-500/25 text-emerald-900 border-emerald-600/60 dark:bg-emerald-400/35 dark:text-emerald-200 dark:border-emerald-300",
     icon: Briefcase,
-    legend: "bg-emerald-500",
+    legend: "bg-emerald-600 dark:bg-emerald-400",
     labelKey: "kind.arbeit",
   },
   krank: {
-    cell: "bg-amber-500/15 text-amber-900 dark:text-amber-100 border-amber-500/40",
+    cell: "bg-orange-500/25 text-orange-950 border-orange-600/60 dark:bg-orange-400/35 dark:text-orange-200 dark:border-orange-300",
     icon: Thermometer,
-    legend: "bg-amber-500",
+    legend: "bg-orange-600 dark:bg-orange-400",
     labelKey: "kind.krank",
   },
   urlaub: {
-    cell: "bg-sky-500/15 text-sky-900 dark:text-sky-100 border-sky-500/40",
+    cell: "bg-sky-500/25 text-sky-950 border-sky-600/60 dark:bg-sky-400/35 dark:text-sky-200 dark:border-sky-300",
     icon: Palmtree,
-    legend: "bg-sky-500",
+    legend: "bg-sky-600 dark:bg-sky-400",
     labelKey: "kind.urlaub",
   },
   feiertag: {
-    cell: "bg-violet-500/15 text-violet-900 dark:text-violet-100 border-violet-500/40",
+    cell: "bg-violet-500/25 text-violet-950 border-violet-600/60 dark:bg-violet-400/35 dark:text-violet-200 dark:border-violet-300",
     icon: PartyPopper,
-    legend: "bg-violet-500",
+    legend: "bg-violet-600 dark:bg-violet-400",
     labelKey: "kind.feiertag",
   },
 };

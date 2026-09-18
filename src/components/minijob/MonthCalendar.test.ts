@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { buildDayTitle, isHolidayWorkDay, primaryDayKind } from "./MonthCalendar";
+import { buildDayTitle, isHolidayWorkDay, KIND_STYLE, primaryDayKind } from "./MonthCalendar";
 import type { Shift } from "@/lib/minijob/types";
 
 const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "MonthCalendar.tsx"), "utf8");
@@ -76,5 +76,36 @@ describe("MonthCalendar holiday + work dual display (Batch B)", () => {
     expect(src).toMatch(/PartyPopper/);
     expect(src).toMatch(/Briefcase/);
     expect(src).toMatch(/borderLeftColor|borderLeftWidth/);
+  });
+});
+
+describe("MonthCalendar KIND_STYLE dark contrast (pre-release)", () => {
+  it("uses brighter saturated tokens for arbeit/krank/urlaub/feiertag on dark bg", () => {
+    expect(KIND_STYLE.arbeit.cell).toMatch(/emerald/);
+    expect(KIND_STYLE.arbeit.cell).toMatch(/dark:bg-emerald-400\/35/);
+    expect(KIND_STYLE.arbeit.legend).toMatch(/dark:bg-emerald-400/);
+
+    expect(KIND_STYLE.krank.cell).toMatch(/orange/);
+    expect(KIND_STYLE.krank.cell).toMatch(/dark:bg-orange-400\/35/);
+    expect(KIND_STYLE.krank.legend).toMatch(/dark:bg-orange-400/);
+
+    expect(KIND_STYLE.urlaub.cell).toMatch(/sky/);
+    expect(KIND_STYLE.urlaub.cell).toMatch(/dark:bg-sky-400\/35/);
+    expect(KIND_STYLE.urlaub.legend).toMatch(/dark:bg-sky-400/);
+
+    expect(KIND_STYLE.feiertag.cell).toMatch(/violet/);
+    expect(KIND_STYLE.feiertag.cell).toMatch(/dark:bg-violet-400\/35/);
+    expect(KIND_STYLE.feiertag.legend).toMatch(/dark:bg-violet-400/);
+  });
+
+  it("keeps distinct hues (green / orange / blue / violet) for mobile distinguishability", () => {
+    const cells = [
+      KIND_STYLE.arbeit.cell,
+      KIND_STYLE.krank.cell,
+      KIND_STYLE.urlaub.cell,
+      KIND_STYLE.feiertag.cell,
+    ];
+    expect(new Set(cells).size).toBe(4);
+    expect(KIND_STYLE.arbeit.cell).not.toEqual(KIND_STYLE.krank.cell);
   });
 });
