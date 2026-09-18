@@ -14,9 +14,12 @@ const STEPS = WIZARD_STEP_COUNT;
  * so a full-page Google return does not drop the user at step 0.
  */
 describe("OnboardingWizard OAuth resume wiring", () => {
-  it("checkpoints draft before OAuth and clears on finish/skip", () => {
+  it("checkpoints draft before OAuth (Work Mode resume) and clears on finish", () => {
     const src = readFileSync(join(root, "components/minijob/OnboardingWizard.tsx"), "utf8");
     expect(src).toMatch(/checkpointOnboardingBeforeOAuth/);
+    expect(src).toMatch(/oauthResumeStep/);
+    expect(src).not.toMatch(/action\.skip/);
+    expect(src).not.toMatch(/action\.skip/);
     expect(src).toMatch(/loadOnboardingDraft/);
     expect(src).toMatch(/clearOnboardingDraft/);
     const checkpointAt = src.indexOf("checkpointOnboardingBeforeOAuth");
@@ -49,7 +52,7 @@ describe("OAuth remount resume scenario", () => {
     });
 
     checkpointOnboardingBeforeOAuth({
-      step: WIZARD_STEP_INDEX.cloud,
+      step: WIZARD_STEP_INDEX.workMode, // post-Google resume
       mode: "fest",
       persistSettings: () => {
         /* settings already flushed via updateSettings above */
@@ -69,7 +72,7 @@ describe("OAuth remount resume scenario", () => {
     expect(settings.onboarded).toBe(false);
 
     expect(draftAfter.loadOnboardingDraft(STEPS)).toEqual({
-      step: WIZARD_STEP_INDEX.cloud,
+      step: WIZARD_STEP_INDEX.workMode, // post-Google resume
       mode: "fest",
     });
 

@@ -41,3 +41,55 @@ export function workModeFollowsCloud(): boolean {
 export function newUserFlowOrder(): readonly WizardStepKey[] {
   return WIZARD_STEPS;
 }
+
+/** Auth statuses the wizard uses for resume (matches useAuthSession). */
+export type WizardAuthStatus = "loading" | "signed_in" | "signed_out";
+
+/**
+ * Gate for __root: wizard only while onboarding is incomplete.
+ * Cloud restore of a completed profile sets onboarded=true → hide wizard.
+ * Empty/partial backups normalize to onboarded=false → keep wizard.
+ */
+export function shouldShowOnboardingWizard(onboarded: boolean): boolean {
+  return onboarded !== true;
+}
+
+/**
+ * Resolve wizard step after OAuth redirect / session restore / reload.
+ *
+ * Rules (Batch A+):
+ * - After Google (signed_in at Cloud), MUST continue at Work Mode — never Dashboard.
+ * - Signed-out users cannot be past Cloud (Google is required before later steps).
+ * - Incomplete signed-in users keep a draft step beyond Work Mode (resume).
+ * - While auth is loading, keep the draft step (OAuth resume may already be Work Mode).
+ */
+export function resolveWizardResumeStep(
+  draftStep: number | null | undefined,
+  authStatus: WizardAuthStatus,
+): number {
+  const max = WIZARD_STEP_COUNT - 1;
+  const step =
+    typeof draftStep === "number" && Number.isInteger(draftStep) && draftStep >= 0
+      ? Math.min(draftStep, max)
+      : 0;
+
+  if (authStatus === "loading") return step;
+
+  // Google required before Work Mode and all following steps.
+  if (authStatus === "signed_out" && step > WIZARD_STEP_INDEX.cloud) {
+    return WIZARD_STEP_INDEX.cloud;
+  }
+
+  // Post-Google: never leave the user on Cloud — Work Mode is next.
+  if (authStatus === "signed_in" && step === WIZARD_STEP_INDEX.cloud) {
+    return WIZARD_STEP_INDEX.workMode;
+  }
+
+  return step;
+}
+
+/** Step to persist immediately before OAuth so return lands on Work Mode. */
+export function oauthResumeStep(): number {
+  return WIZARD_STEP_INDEX.workMode;
+}
+

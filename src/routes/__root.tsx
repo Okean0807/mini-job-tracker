@@ -17,6 +17,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { PinLock } from "@/components/minijob/PinLock";
 import { OnboardingWizard } from "@/components/minijob/OnboardingWizard";
+import { shouldShowOnboardingWizard } from "@/lib/minijob/wizard-flow";
 import { initCloudSync, useSyncState } from "../lib/minijob/cloud";
 import { initNotifications } from "../lib/minijob/notify";
 import {
@@ -246,7 +247,7 @@ function RootComponent() {
       initNotifications();
       registerServiceWorker();
       setUnlocked(!(loaded.pinEnabled && loaded.pin));
-      setShowWizard(!loaded.onboarded);
+      setShowWizard(shouldShowOnboardingWizard(loaded.onboarded));
     } catch (error) {
       console.error("[root] bootstrap failed", error);
     } finally {
@@ -254,6 +255,13 @@ function RootComponent() {
       setReady(true);
     }
   }, []);
+
+  // Cloud restore of a completed profile sets onboarded=true after Google —
+  // close the wizard so returning users reach Dashboard. Incomplete / empty
+  // backups keep onboarded=false so new users stay in the wizard (Work Mode…).
+  useEffect(() => {
+    setShowWizard(shouldShowOnboardingWizard(settings.onboarded));
+  }, [settings.onboarded]);
 
   useEffect(() => {
     applyAppearance(settings);

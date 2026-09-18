@@ -10,6 +10,9 @@ import {
   WIZARD_STEP_INDEX,
   isPersonalizedStep,
   newUserFlowOrder,
+  oauthResumeStep,
+  resolveWizardResumeStep,
+  shouldShowOnboardingWizard,
   workModeFollowsCloud,
 } from "./wizard-flow";
 
@@ -99,7 +102,8 @@ describe("returning user skips wizard; language persists", () => {
 
   it("root only shows wizard when !onboarded", () => {
     const rootSrc = readFileSync(join(root, "routes/__root.tsx"), "utf8");
-    expect(rootSrc).toMatch(/setShowWizard\(!loaded\.onboarded\)/);
+    expect(rootSrc).toMatch(/shouldShowOnboardingWizard\(loaded\.onboarded\)/);
+    expect(rootSrc).toMatch(/shouldShowOnboardingWizard\(settings\.onboarded\)/);
     expect(rootSrc).toMatch(/showWizard && !locked/);
   });
 
@@ -144,5 +148,56 @@ describe("returning user skips wizard; language persists", () => {
     // Mirror __root gate
     const showWizard = !store.getData().settings.onboarded;
     expect(showWizard).toBe(false);
+  });
+});
+
+
+describe("post-Google onboarding routing", () => {
+  it("new Google user resumes at Work Mode (never Dashboard via onboarded gate)", () => {
+    expect(oauthResumeStep()).toBe(WIZARD_STEP_INDEX.workMode);
+    expect(
+      resolveWizardResumeStep(WIZARD_STEP_INDEX.cloud, "signed_in"),
+    ).toBe(WIZARD_STEP_INDEX.workMode);
+    expect(
+      resolveWizardResumeStep(WIZARD_STEP_INDEX.workMode, "signed_in"),
+    ).toBe(WIZARD_STEP_INDEX.workMode);
+    // Still incomplete → wizard must show
+    expect(shouldShowOnboardingWizard(false)).toBe(true);
+  });
+
+  it("completed onboarded users skip wizard (Dashboard)", () => {
+    expect(shouldShowOnboardingWizard(true)).toBe(false);
+  });
+
+  it("empty/partial backup onboarded flag must not look completed", () => {
+    // normalize defaults + applyRemote force false when not === true
+    expect(shouldShowOnboardingWizard(false)).toBe(true);
+    expect(shouldShowOnboardingWizard(undefined as unknown as boolean)).toBe(true);
+  });
+
+  it("fest/selbststaendig stay on mode-specific path after Work Mode", () => {
+    expect(resolveWizardResumeStep(WIZARD_STEP_INDEX.personalized, "signed_in")).toBe(
+      WIZARD_STEP_INDEX.personalized,
+    );
+    expect(isPersonalizedStep(WIZARD_STEP_INDEX.personalized)).toBe(true);
+  });
+
+  it("signed-out cannot stay past Cloud; incomplete resumes open step when signed in", () => {
+    expect(
+      resolveWizardResumeStep(WIZARD_STEP_INDEX.region, "signed_out"),
+    ).toBe(WIZARD_STEP_INDEX.cloud);
+    expect(
+      resolveWizardResumeStep(WIZARD_STEP_INDEX.region, "signed_in"),
+    ).toBe(WIZARD_STEP_INDEX.region);
+  });
+
+  it("OAuth callback / session restore must not bypass Work Mode", () => {
+    // Draft checkpointed at Cloud (legacy) or Work Mode (current) → Work Mode when signed in
+    expect(resolveWizardResumeStep(WIZARD_STEP_INDEX.cloud, "signed_in")).toBe(
+      WIZARD_STEP_INDEX.workMode,
+    );
+    expect(resolveWizardResumeStep(oauthResumeStep(), "loading")).toBe(
+      WIZARD_STEP_INDEX.workMode,
+    );
   });
 });

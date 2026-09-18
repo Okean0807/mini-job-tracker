@@ -35,6 +35,7 @@ import { markBackup } from "./notify";
 import { mergeDeviceAuthFromLocal, stripDeviceAuthForCloud } from "./device-auth";
 import { isValidPayload } from "./payload";
 import { getData, normalize, onDataChange, replaceAll } from "./store";
+import { clearOnboardingDraft } from "./onboarding-draft";
 import type { AppData } from "./types";
 
 export { isValidPayload };
@@ -508,18 +509,30 @@ function applyRemote(remote: { payload: AppData; updatedAt: number }) {
   const local = getData();
   const runningTimer = local.timer ?? null;
   const merged = mergeDeviceAuthFromLocal(remote.payload, local);
+  // Empty/partial cloud backups must not complete onboarding. Only an explicit
+  // onboarded===true (finished wizard on another device) may close the wizard.
+  const remoteOnboarded = merged.settings?.onboarded === true;
+  const safePayload = remoteOnboarded
+    ? merged
+    : {
+        ...merged,
+        settings: { ...merged.settings, onboarded: false },
+      };
   applyingRemote = true;
   try {
-    replaceAll({ ...merged, timer: runningTimer });
+    replaceAll({ ...safePayload, timer: runningTimer });
   } finally {
     applyingRemote = false;
+  }
+  if (remoteOnboarded) {
+    clearOnboardingDraft();
   }
   saveMeta({
     lastSyncedAt: Date.now(),
     remoteSeenAt: remote.updatedAt,
     localChangedAt: null,
     localWorkChangedAt: null,
-    localWorkFingerprint: workFingerprint(merged),
+    localWorkFingerprint: workFingerprint(safePayload),
     wizardPendingFirstSync: false,
   });
 }
