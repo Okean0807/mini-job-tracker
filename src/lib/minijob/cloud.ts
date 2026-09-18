@@ -36,6 +36,7 @@ import { mergeDeviceAuthFromLocal, stripDeviceAuthForCloud } from "./device-auth
 import { isValidPayload } from "./payload";
 import { getData, normalize, onDataChange, replaceAll } from "./store";
 import { clearOnboardingDraft } from "./onboarding-draft";
+import { isWizardComplete } from "./wizard-flow";
 import type { AppData } from "./types";
 
 export { isValidPayload };
@@ -509,10 +510,11 @@ function applyRemote(remote: { payload: AppData; updatedAt: number }) {
   const local = getData();
   const runningTimer = local.timer ?? null;
   const merged = mergeDeviceAuthFromLocal(remote.payload, local);
-  // Empty/partial cloud backups must not complete onboarding. Only an explicit
-  // onboarded===true (finished wizard on another device) may close the wizard.
-  const remoteOnboarded = merged.settings?.onboarded === true;
-  const safePayload = remoteOnboarded
+  // Empty/partial / Skip-era cloud backups must not complete onboarding.
+  // Only isWizardComplete (onboarded + jobs|wizardCompletedAt) may close the wizard.
+  // Incomplete remotes force onboarded:false but KEEP jobs/shifts (no silent deletes).
+  const remoteComplete = isWizardComplete(merged.settings, merged.jobs);
+  const safePayload = remoteComplete
     ? merged
     : {
         ...merged,
@@ -524,7 +526,7 @@ function applyRemote(remote: { payload: AppData; updatedAt: number }) {
   } finally {
     applyingRemote = false;
   }
-  if (remoteOnboarded) {
+  if (remoteComplete) {
     clearOnboardingDraft();
   }
   saveMeta({

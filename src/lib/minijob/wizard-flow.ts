@@ -3,6 +3,9 @@
  * Welcome+Lang → Google → WorkMode → personalized… → done.
  * Indices are stable for draft resume; do not reorder without draft migration.
  */
+
+import type { Job, Settings } from "./types";
+
 export const WIZARD_STEPS = [
   "welcome",
   "cloud",
@@ -45,13 +48,36 @@ export function newUserFlowOrder(): readonly WizardStepKey[] {
 /** Auth statuses the wizard uses for resume (matches useAuthSession). */
 export type WizardAuthStatus = "loading" | "signed_in" | "signed_out";
 
+/** Minimal settings slice used by the completion gate. */
+export type WizardGateSettings = Pick<Settings, "onboarded" | "wizardCompletedAt">;
+
+/**
+ * True only when onboarding truly finished:
+ * onboarded===true AND (at least one job OR finish() stamped wizardCompletedAt).
+ * Skip-era / incomplete profiles with onboarded:true but no jobs and no stamp
+ * are NOT complete — wizard must still show (Work Mode…).
+ */
+export function isWizardComplete(
+  settings: WizardGateSettings | null | undefined,
+  jobs: readonly Job[] | readonly unknown[] | null | undefined,
+): boolean {
+  if (settings?.onboarded !== true) return false;
+  const hasJobs = Array.isArray(jobs) && jobs.length > 0;
+  const stamp = settings.wizardCompletedAt;
+  const hasStamp = typeof stamp === "number" && Number.isFinite(stamp) && stamp > 0;
+  return hasJobs || hasStamp;
+}
+
 /**
  * Gate for __root: wizard only while onboarding is incomplete.
- * Cloud restore of a completed profile sets onboarded=true → hide wizard.
- * Empty/partial backups normalize to onboarded=false → keep wizard.
+ * Cloud restore of a completed profile (isWizardComplete) → hide wizard.
+ * Empty/partial / Skip-era backups stay incomplete → keep wizard.
  */
-export function shouldShowOnboardingWizard(onboarded: boolean): boolean {
-  return onboarded !== true;
+export function shouldShowOnboardingWizard(
+  settings: WizardGateSettings | null | undefined,
+  jobs: readonly Job[] | readonly unknown[] | null | undefined = [],
+): boolean {
+  return !isWizardComplete(settings, jobs);
 }
 
 /**

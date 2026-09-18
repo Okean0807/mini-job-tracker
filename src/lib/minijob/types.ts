@@ -273,6 +273,12 @@ export interface Settings {
   /** Premium freigeschaltet (mehrere Jobs, KI, Cloud, Excel) */
   premium?: boolean;
   onboarded: boolean;
+  /**
+   * Epoch ms when the onboarding wizard finish() completed.
+   * Distinguishes Skip-era / incomplete `onboarded:true` (no jobs, no stamp)
+   * from a real finish — used by isWizardComplete.
+   */
+  wizardCompletedAt?: number;
 
   /** Name für Arbeitsnachweis / Berichte */
   employeeName?: string;

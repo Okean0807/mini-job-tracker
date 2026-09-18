@@ -233,7 +233,7 @@ function StorageAlert() {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
-  const { settings } = useAppData();
+  const { settings, jobs } = useAppData();
   const [ready, setReady] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
@@ -241,13 +241,14 @@ function RootComponent() {
   useEffect(() => {
     try {
       loadFromStorage();
-      const loaded = getData().settings;
+      const data = getData();
+      const loaded = data.settings;
       applyAppearance(loaded);
       initCloudSync();
       initNotifications();
       registerServiceWorker();
       setUnlocked(!(loaded.pinEnabled && loaded.pin));
-      setShowWizard(shouldShowOnboardingWizard(loaded.onboarded));
+      setShowWizard(shouldShowOnboardingWizard(loaded, data.jobs));
     } catch (error) {
       console.error("[root] bootstrap failed", error);
     } finally {
@@ -256,12 +257,12 @@ function RootComponent() {
     }
   }, []);
 
-  // Cloud restore of a completed profile sets onboarded=true after Google —
-  // close the wizard so returning users reach Dashboard. Incomplete / empty
-  // backups keep onboarded=false so new users stay in the wizard (Work Mode…).
+  // Cloud restore of a completed profile (isWizardComplete) after Google —
+  // close the wizard so returning users reach Dashboard. Incomplete / Skip-era /
+  // empty backups stay incomplete so new users stay in the wizard (Work Mode…).
   useEffect(() => {
-    setShowWizard(shouldShowOnboardingWizard(settings.onboarded));
-  }, [settings.onboarded]);
+    setShowWizard(shouldShowOnboardingWizard(settings, jobs));
+  }, [settings.onboarded, settings.wizardCompletedAt, jobs]);
 
   useEffect(() => {
     applyAppearance(settings);
