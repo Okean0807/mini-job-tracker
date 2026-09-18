@@ -61,7 +61,15 @@ describe("KI error surfacing (assistent.tsx) — acceptance K", () => {
   it("uses aiClientErrorMessage and shows toast + chat on failure", () => {
     expect(src).toMatch(/aiClientErrorMessage/);
     expect(src).toMatch(/toast\.error\(message\)/);
-    expect(src).toMatch(/setMessages\(\(m\) => \[\.\.\.m, \{ role: "ai", text: message \}\]\)/);
+    expect(src).toMatch(/role: "ai", text: message/);
+    expect(src).toMatch(/saveAiChatHistory/);
+  });
+
+  it("persists chat history per user and offers new conversation UX", () => {
+    expect(src).toMatch(/loadAiChatHistory/);
+    expect(src).toMatch(/startNewConversation/);
+    expect(src).toMatch(/ai\.history\.new/);
+    expect(src).toMatch(/buildAssistantContext\(getData\(\)\)/);
   });
 
   it("uses runAssistantAsk + client timeout so pending cannot stick on hang", () => {
