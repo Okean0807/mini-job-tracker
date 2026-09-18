@@ -59,6 +59,13 @@ export function LimitCard({ usage, scopeLabel, rate, auto, notApplicable }: Limi
             : t("limit.leftHours", { hours: formatHours(usage.hoursLeft) })
         }
       />
+
+      {usage.earningsShare >= 100 || usage.hoursShare >= 100 ? (
+        <div className="mt-3 space-y-1 rounded-xl border border-destructive/30 bg-destructive/5 p-2.5">
+          <p className="text-xs leading-relaxed text-destructive">{t("limit.overExplain")}</p>
+          <p className="text-xs leading-relaxed text-muted-foreground">{t("limit.disclaimer")}</p>
+        </div>
+      ) : null}
     </div>
   );
 }

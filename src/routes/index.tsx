@@ -240,6 +240,8 @@ function DashboardPage() {
               ? t("dash.limitMonthOver", { amount: formatEuro(monthLimit.earningsLimit) })
               : t("dash.limitYearOver", { amount: formatEuro(yearLimit.earningsLimit) })
           }
+          detail={t("dash.limitOverExplain")}
+          disclaimer={t("dash.limitDisclaimer")}
         />
       ) : appliesMinijobLimit && (limitShare >= 85 || yearShare >= 85) ? (
         <LimitBanner
@@ -319,7 +321,17 @@ function DashboardPage() {
   );
 }
 
-function LimitBanner({ tone, text }: { tone: "near" | "over"; text: string }) {
+function LimitBanner({
+  tone,
+  text,
+  detail,
+  disclaimer,
+}: {
+  tone: "near" | "over";
+  text: string;
+  detail?: string;
+  disclaimer?: string;
+}) {
   return (
     <div
       className={
@@ -329,7 +341,11 @@ function LimitBanner({ tone, text }: { tone: "near" | "over"; text: string }) {
       }
     >
       <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-      <p>{text}</p>
+      <div className="space-y-1.5">
+        <p className="font-medium">{text}</p>
+        {detail ? <p className="text-xs leading-relaxed opacity-90">{detail}</p> : null}
+        {disclaimer ? <p className="text-xs leading-relaxed opacity-80">{disclaimer}</p> : null}
+      </div>
     </div>
   );
 }

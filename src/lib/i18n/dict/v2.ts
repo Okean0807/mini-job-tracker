@@ -13,6 +13,8 @@ export const v2: Bundle = {
     "limit.year": "Jahr",
     "limit.notApplicable": "Nicht anwendbar (Selbstständig)",
     "limit.notApplicableHint": "Die Arbeitnehmer-Minijob-Grenze (€603) gilt hier nicht.",
+    "limit.overExplain": "Eine Überschreitung kann steuer- und sozialversicherungsrechtlich relevant sein. Die genaue Behandlung hängt von deiner persönlichen Situation ab.",
+    "limit.disclaimer": "Kein individueller Steuer- oder Rechtsrat. Die App berechnet keine Steuern oder Abgaben.",
 
     "pay.title": "Zahltag",
     "pay.period": "Abrechnung {month}",
@@ -75,6 +77,8 @@ export const v2: Bundle = {
     "limit.year": "Year",
     "limit.notApplicable": "Not applicable (self-employed)",
     "limit.notApplicableHint": "The employee minijob limit does not apply here.",
+    "limit.overExplain": "Exceeding the limit can matter for tax and social-security treatment. The exact outcome depends on your personal circumstances.",
+    "limit.disclaimer": "Not individual tax or legal advice. The app does not calculate taxes or social contributions.",
 
     "pay.title": "Payday",
     "pay.period": "Payroll {month}",
@@ -137,6 +141,8 @@ export const v2: Bundle = {
     "limit.year": "Год",
     "limit.notApplicable": "Не применимо (самозанятость)",
     "limit.notApplicableHint": "Лимит миниджоба для работников здесь не действует.",
+    "limit.overExplain": "Превышение лимита может иметь значение для налогов и соцстрахования. Точные последствия зависят от вашей ситуации.",
+    "limit.disclaimer": "Это не индивидуальная налоговая или юридическая консультация. Приложение не рассчитывает налоги или взносы.",
 
     "pay.title": "День выплаты",
     "pay.period": "Расчёт за {month}",
@@ -199,6 +205,8 @@ export const v2: Bundle = {
     "limit.year": "Yıl",
     "limit.notApplicable": "Uygulanamaz (serbest çalışan)",
     "limit.notApplicableHint": "Çalışan minijob limiti burada geçerli değildir.",
+    "limit.overExplain": "Sınırın aşılması vergi ve sosyal güvenlik açısından önemli olabilir. Kesin sonuç kişisel durumuna bağlıdır.",
+    "limit.disclaimer": "Bireysel vergi veya hukuk danışmanlığı değildir. Uygulama vergi veya prim hesaplamaz.",
 
     "pay.title": "Ödeme günü",
     "pay.period": "{month} bordrosu",
@@ -261,6 +269,8 @@ export const v2: Bundle = {
     "limit.year": "Rok",
     "limit.notApplicable": "Nie dotyczy (samozatrudnienie)",
     "limit.notApplicableHint": "Limit minijoba dla pracowników tutaj nie obowiązuje.",
+    "limit.overExplain": "Przekroczenie limitu może mieć znaczenie podatkowe i ubezpieczeniowe. Dokładne skutki zależą od Twojej sytuacji.",
+    "limit.disclaimer": "To nie jest indywidualna porada podatkowa ani prawna. Aplikacja nie oblicza podatków ani składek.",
 
     "pay.title": "Dzień wypłaty",
     "pay.period": "Rozliczenie {month}",

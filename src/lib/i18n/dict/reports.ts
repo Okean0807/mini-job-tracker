@@ -23,9 +23,12 @@ export const reports: Bundle = {
     "stats.entriesHint_other": "{count} Einträge",
 
     "stats.chart.earningsDay": "Verdienst pro Tag",
-    "stats.chart.hoursDay": "Stunden pro Tag",
+    "stats.chart.hoursDay": "Arbeitszeit pro Tag",
     "stats.chart.earningsMonth": "Verdienst pro Monat",
     "stats.chart.hoursMonth": "Stunden pro Monat",
+    "stats.axis.day": "Tag",
+    "stats.axis.earnings": "€",
+    "stats.axis.hours": "h",
 
     "stats.noJobs": "Noch keine Jobs angelegt.",
     "stats.jobHoursYear": "{hours} in {year}",
@@ -68,9 +71,12 @@ export const reports: Bundle = {
     "stats.entriesHint_other": "{count} entries",
 
     "stats.chart.earningsDay": "Earnings per day",
-    "stats.chart.hoursDay": "Hours per day",
+    "stats.chart.hoursDay": "Working time per day",
     "stats.chart.earningsMonth": "Earnings per month",
     "stats.chart.hoursMonth": "Hours per month",
+    "stats.axis.day": "Day",
+    "stats.axis.earnings": "€",
+    "stats.axis.hours": "h",
 
     "stats.noJobs": "No jobs created yet.",
     "stats.jobHoursYear": "{hours} in {year}",
@@ -116,6 +122,9 @@ export const reports: Bundle = {
     "stats.chart.hoursDay": "Часы по дням",
     "stats.chart.earningsMonth": "Заработок по месяцам",
     "stats.chart.hoursMonth": "Часы по месяцам",
+    "stats.axis.day": "День",
+    "stats.axis.earnings": "€",
+    "stats.axis.hours": "ч",
 
     "stats.noJobs": "Работы ещё не созданы.",
     "stats.jobHoursYear": "{hours} за {year}",
@@ -161,6 +170,9 @@ export const reports: Bundle = {
     "stats.chart.hoursDay": "Günlük saat",
     "stats.chart.earningsMonth": "Aylık kazanç",
     "stats.chart.hoursMonth": "Aylık saat",
+    "stats.axis.day": "Gün",
+    "stats.axis.earnings": "€",
+    "stats.axis.hours": "sa",
 
     "stats.noJobs": "Henüz iş oluşturulmadı.",
     "stats.jobHoursYear": "{year} yılında {hours}",
@@ -206,6 +218,9 @@ export const reports: Bundle = {
     "stats.chart.hoursDay": "Godziny dziennie",
     "stats.chart.earningsMonth": "Zarobek miesięcznie",
     "stats.chart.hoursMonth": "Godziny miesięcznie",
+    "stats.axis.day": "Dzień",
+    "stats.axis.earnings": "€",
+    "stats.axis.hours": "h",
 
     "stats.noJobs": "Nie utworzono jeszcze żadnej pracy.",
     "stats.jobHoursYear": "{hours} w {year}",
