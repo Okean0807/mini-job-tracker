@@ -90,6 +90,7 @@ describe("Batch A wizard step order", () => {
       "wiz.help.break",
       "wiz.help.activity",
       "wiz.help.location",
+      "wiz.help.selfActivity",
     ]) {
       expect(src).toContain(key);
     }
@@ -317,5 +318,54 @@ describe("local demo onboarding (no Google)", () => {
     expect(src).toMatch(/wiz\.demo\.banner/);
     // Must not invent fake Supabase/Google session for demo
     expect(src).not.toMatch(/fake.*supabase|demo@|fake@google/i);
+  });
+});
+
+describe("SELF rate step is Tätigkeit (no Pflicht-Stundenlohn)", () => {
+  it("SELF branches rate step to Tätigkeit UI; FLEX/FEST keep wage", () => {
+    const src = readFileSync(join(root, "components/minijob/OnboardingWizard.tsx"), "utf8");
+    // SELF: Tätigkeit at rate index — no Standard-Stundenlohn in that branch
+    expect(src).toMatch(/mode === "selbststaendig"/);
+    expect(src).toMatch(/wiz\.rate\.self\.title/);
+    expect(src).toMatch(/wiz\.rate\.self\.label/);
+    expect(src).toMatch(/wiz\.step\.activity/);
+    expect(src).toMatch(/ob-activity/);
+    expect(src).toMatch(/wiz\.help\.selfActivity/);
+    // FLEX/FEST wage screen unchanged
+    expect(src).toMatch(/wiz\.rate\.label/);
+    expect(src).toMatch(/id="ob-rate"/);
+    expect(src).toMatch(/wiz\.help\.rate/);
+    // FEST personalized Sollstunden unchanged
+    expect(src).toMatch(/wiz\.personalized\.fest\.weeklyTarget/);
+    expect(src).toMatch(/ob-weekly/);
+  });
+
+  it("SELF step label uses Tätigkeit, not Stundenlohn", () => {
+    const src = readFileSync(join(root, "components/minijob/OnboardingWizard.tsx"), "utf8");
+    expect(src).toMatch(
+      /mode === "selbststaendig" \? t\("wiz\.step\.activity"\) : t\("wiz\.step\.rate"\)/,
+    );
+  });
+
+  it("SELF finish omits Job.rate wage; stores Tätigkeit in job name", () => {
+    const src = readFileSync(join(root, "components/minijob/OnboardingWizard.tsx"), "utf8");
+    expect(src).toMatch(/mode !== "selbststaendig" \? \{ rate: numericRate \}/);
+    // Tätigkeit field writes jobName (Job.name) — existing safe field
+    expect(src).toMatch(/id="ob-activity"[\s\S]*?value=\{jobName\}/);
+  });
+
+  it("i18n: SELF Tätigkeit keys; wage label kept for FLEX; no kalk. Stundensatz", () => {
+    const dict = readFileSync(join(root, "lib/i18n/dict/wizard.ts"), "utf8");
+    expect(dict).toContain('"wiz.rate.label": "Standard-Stundenlohn (€)"');
+    expect(dict).toContain('"wiz.rate.self.title": "Deine selbständige Tätigkeit"');
+    expect(dict).toContain('"wiz.rate.self.label": "Tätigkeit / Leistung"');
+    expect(dict).toContain('"wiz.step.activity": "Tätigkeit"');
+    // No kalkulatorischer Stundensatz — Job.rate is Lohn semantics (omit without migration)
+    expect(dict).not.toContain("Kalkulatorischer Stundensatz");
+  });
+
+  it("rate step index and count stay stable", () => {
+    expect(WIZARD_STEP_INDEX.rate).toBe(4);
+    expect(WIZARD_STEP_COUNT).toBe(7);
   });
 });
