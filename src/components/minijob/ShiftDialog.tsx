@@ -56,6 +56,8 @@ interface ShiftDialogProps {
   customers: Customer[];
   projects: Project[];
   settings: Settings;
+  /** When set, choosing Urlaub/Krank closes this dialog and opens AbsenceDialog (From–To). */
+  onRequestAbsence?: (kind: "urlaub" | "krank", date: string) => void;
 }
 
 const KINDS: ShiftKind[] = ["arbeit", "urlaub", "krank", "feiertag"];
@@ -69,6 +71,7 @@ export function ShiftDialog({
   customers,
   projects,
   settings,
+  onRequestAbsence,
 }: ShiftDialogProps) {
   const { t, locale } = useT();
   const [jobId, setJobId] = useState<string | undefined>(undefined);
@@ -227,6 +230,11 @@ export function ShiftDialog({
         };
 
   function selectKind(next: ShiftKind) {
+    if ((next === "urlaub" || next === "krank") && onRequestAbsence && !shift) {
+      onRequestAbsence(next, date);
+      onOpenChange(false);
+      return;
+    }
     setKind(next);
   }
 

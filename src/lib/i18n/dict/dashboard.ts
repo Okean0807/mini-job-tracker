@@ -20,6 +20,13 @@ export const dashboard: Bundle = {
     "dash.entriesInMonth": "Einträge im {month}",
     "dash.newEntry": "Eintrag",
 
+    "timeAccount.title": "Arbeitszeitkonto",
+    "timeAccount.saldo": "Saldo (Ist − Soll)",
+    "timeAccount.soll": "Soll",
+    "timeAccount.ist": "Ist",
+    "timeAccount.vacation": "Urlaubstage",
+    "timeAccount.sick": "Krankheitstage",
+
     "timer.tracking": "Zeiterfassung",
     "timer.noJob": "Kein Job ausgewählt",
     "timer.breakMinutes": "· {minutes} Min. Pause",
@@ -81,6 +88,13 @@ export const dashboard: Bundle = {
     "dash.createJob": "Create job",
     "dash.entriesInMonth": "Entries in {month}",
     "dash.newEntry": "Entry",
+
+    "timeAccount.title": "Time account",
+    "timeAccount.saldo": "Balance (actual − planned)",
+    "timeAccount.soll": "Planned",
+    "timeAccount.ist": "Actual",
+    "timeAccount.vacation": "Vacation days",
+    "timeAccount.sick": "Sick days",
 
     "timer.tracking": "Time tracking",
     "timer.noJob": "No job selected",
@@ -144,6 +158,13 @@ export const dashboard: Bundle = {
     "dash.entriesInMonth": "Записи за {month}",
     "dash.newEntry": "Запись",
 
+    "timeAccount.title": "Time account",
+    "timeAccount.saldo": "Balance (actual − planned)",
+    "timeAccount.soll": "Planned",
+    "timeAccount.ist": "Actual",
+    "timeAccount.vacation": "Vacation days",
+    "timeAccount.sick": "Sick days",
+
     "timer.tracking": "Учёт времени",
     "timer.noJob": "Работа не выбрана",
     "timer.breakMinutes": "· перерыв {minutes} мин.",
@@ -206,6 +227,13 @@ export const dashboard: Bundle = {
     "dash.entriesInMonth": "{month} ayındaki kayıtlar",
     "dash.newEntry": "Kayıt",
 
+    "timeAccount.title": "Time account",
+    "timeAccount.saldo": "Balance (actual − planned)",
+    "timeAccount.soll": "Planned",
+    "timeAccount.ist": "Actual",
+    "timeAccount.vacation": "Vacation days",
+    "timeAccount.sick": "Sick days",
+
     "timer.tracking": "Zaman takibi",
     "timer.noJob": "İş seçilmedi",
     "timer.breakMinutes": "· {minutes} dk. mola",
@@ -267,6 +295,13 @@ export const dashboard: Bundle = {
     "dash.createJob": "Utwórz pracę",
     "dash.entriesInMonth": "Wpisy w {month}",
     "dash.newEntry": "Wpis",
+
+    "timeAccount.title": "Time account",
+    "timeAccount.saldo": "Balance (actual − planned)",
+    "timeAccount.soll": "Planned",
+    "timeAccount.ist": "Actual",
+    "timeAccount.vacation": "Vacation days",
+    "timeAccount.sick": "Sick days",
 
     "timer.tracking": "Rejestracja czasu",
     "timer.noJob": "Nie wybrano pracy",

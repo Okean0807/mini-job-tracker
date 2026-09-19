@@ -1,6 +1,7 @@
 import { formatDate, formatEuro, formatHours, shiftEarnings, shiftHours } from "./calc";
 import type { Resolver } from "./resolve";
-import type { Shift } from "./types";
+import { dayIstHours, daySollHours } from "./fest-time-account";
+import type { Job, Shift } from "./types";
 
 /** Ein Kalendertag im Monatsdiagramm (auch ohne Schichten → 0). */
 export interface DailyChartPoint {
@@ -12,6 +13,12 @@ export interface DailyChartPoint {
   date: string;
   verdienst: number;
   stunden: number;
+  /** Fest: Sollstunden laut Wochenplan */
+  soll?: number;
+  /** Fest: Iststunden (Arbeit) */
+  ist?: number;
+  /** Fest: Ist − Soll */
+  diff?: number;
 }
 
 /** Anzahl Kalendertage im Monat (month 0-basiert). */
@@ -99,4 +106,37 @@ export function dailyXAxisTicks(daysInMonth: number): number[] {
     ticks.push(daysInMonth);
   }
   return ticks;
+}
+
+
+/**
+ * Fest-Monatsreihe: jeder Kalendertag mit Soll / Ist / Diff (Arbeitszeitkonto).
+ * Tage ohne Plan haben soll=0; Ist summiert Arbeitsschichten des Jobs.
+ */
+export function buildFestDailyMonthSeries(
+  year: number,
+  month: number,
+  job: Job,
+  shifts: Shift[],
+  bundesland = "",
+): DailyChartPoint[] {
+  const n = daysInCalendarMonth(year, month);
+  const jobShifts = shifts.filter((s) => s.jobId === job.id);
+  const series: DailyChartPoint[] = [];
+  for (let day = 1; day <= n; day++) {
+    const date = isoDay(year, month, day);
+    const soll = daySollHours(job, date, bundesland);
+    const ist = dayIstHours(job, date, jobShifts);
+    series.push({
+      day,
+      tag: String(day),
+      date,
+      verdienst: 0,
+      stunden: ist,
+      soll: Number(soll.toFixed(2)),
+      ist: Number(ist.toFixed(2)),
+      diff: Number((ist - soll).toFixed(2)),
+    });
+  }
+  return series;
 }

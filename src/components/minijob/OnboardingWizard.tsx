@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, Check } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -102,12 +102,30 @@ export function OnboardingWizard({ settings, onDone }: Props) {
   const [supplements, setSupplements] = useState<Supplements>(settings.supplements ?? DEFAULT_SUPPLEMENTS);
   const [week, setWeek] = useState<FixedDay[]>(() => EMPTY_WEEK.map((d) => ({ ...d })));
   const [weeklyTarget, setWeeklyTarget] = useState("20");
+  const [weeklyTargetTouched, setWeeklyTargetTouched] = useState(false);
+  const [payType, setPayType] = useState<"monthly" | "hourly">("hourly");
+  const [monthlyGross, setMonthlyGross] = useState("");
   const [jobName, setJobName] = useState("");
   const [employer, setEmployer] = useState("");
   const [activity, setActivity] = useState("");
   const [location, setLocation] = useState("");
 
   const numericRate = Number(rate.replace(",", ".")) || 0;
+  const plannedWeekly = useMemo(
+    () =>
+      weeklyPlanHours({
+        id: "tmp",
+        name: "tmp",
+        color: "#000",
+        mode: "fest",
+        week,
+      }),
+    [week],
+  );
+
+  useEffect(() => {
+    if (!weeklyTargetTouched) setWeeklyTarget(String(plannedWeekly || 20));
+  }, [plannedWeekly, weeklyTargetTouched]);
 
   function flushSettings() {
     updateSettings({
@@ -183,8 +201,10 @@ export function OnboardingWizard({ settings, onDone }: Props) {
         id: newId(),
         name,
         color: nextJobColor(),
-        // SELF: no Pflicht-Stundenlohn — omit wage rate (Job.rate = Lohn semantics).
-        ...(mode !== "selbststaendig" ? { rate: numericRate } : {}),
+        // SELF: no Pflicht-Stundenlohn. FEST monthly: rate optional (monthlyGross primary).
+        ...(mode !== "selbststaendig" && !(mode === "fest" && payType === "monthly")
+          ? { rate: numericRate }
+          : {}),
         mode,
         ...(employer.trim() ? { employer: employer.trim() } : {}),
         supplements,
@@ -193,6 +213,11 @@ export function OnboardingWizard({ settings, onDone }: Props) {
         job.week = week.map((d) => ({ ...d }));
         const planned = weeklyPlanHours(job);
         job.weeklyTarget = Number(weeklyTarget.replace(",", ".")) || planned || 20;
+        job.payType = payType;
+        if (payType === "monthly") {
+          const gross = Number(monthlyGross.replace(",", ".")) || 0;
+          if (gross > 0) job.monthlyGross = gross;
+        }
       }
       if (mode === "selbststaendig") {
         if (activity.trim()) job.notes = activity.trim();
@@ -375,6 +400,61 @@ export function OnboardingWizard({ settings, onDone }: Props) {
                 </p>
                 <FieldHelp>{t("wiz.help.tax")}</FieldHelp>
               </Card>
+            ) : mode === "fest" ? (
+              <Card title={t("wiz.rate.title")} hint={t("wiz.personalized.fest.payHint")}>
+                <div className="grid gap-2">
+                  <Label>{t("job.payType")}</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["hourly", "monthly"] as const).map((pt) => (
+                      <button
+                        key={pt}
+                        type="button"
+                        onClick={() => setPayType(pt)}
+                        className={cn(
+                          "min-h-11 rounded-xl border px-3 py-2 text-sm",
+                          payType === pt ? "border-primary bg-primary/10 font-semibold" : "bg-card",
+                        )}
+                      >
+                        {t(pt === "hourly" ? "job.payTypeHourly" : "job.payTypeMonthly")}
+                      </button>
+                    ))}
+                  </div>
+                  <FieldHelp>{t("job.help.payType")}</FieldHelp>
+                </div>
+                {payType === "hourly" ? (
+                  <div className="grid gap-2">
+                    <Label htmlFor="ob-rate">{t("wiz.rate.label")}</Label>
+                    <Input
+                      id="ob-rate"
+                      type="number"
+                      inputMode="decimal"
+                      step="0.5"
+                      min="0"
+                      className="min-h-11"
+                      value={rate}
+                      onChange={(e) => setRate(e.target.value)}
+                    />
+                    <FieldHelp>{t("wiz.help.rate")}</FieldHelp>
+                  </div>
+                ) : (
+                  <div className="grid gap-2">
+                    <Label htmlFor="ob-monthly">{t("job.monthlyGross")}</Label>
+                    <Input
+                      id="ob-monthly"
+                      type="number"
+                      inputMode="decimal"
+                      step="1"
+                      min="0"
+                      className="min-h-11"
+                      value={monthlyGross}
+                      onChange={(e) => setMonthlyGross(e.target.value)}
+                    />
+                    <FieldHelp>{t("job.help.monthlyGross")}</FieldHelp>
+                  </div>
+                )}
+                <FieldHelp>{t("job.help.arbeitszeitkonto")}</FieldHelp>
+                <FieldHelp>{t("wiz.help.tax")}</FieldHelp>
+              </Card>
             ) : (
               <Card title={t("wiz.rate.title")} hint={t("wiz.rate.hint")}>
                 <div className="grid gap-2">
@@ -467,6 +547,12 @@ export function OnboardingWizard({ settings, onDone }: Props) {
                   ))}
                   <FieldHelp>{t("wiz.help.startEnd")}</FieldHelp>
                   <FieldHelp>{t("wiz.help.break")}</FieldHelp>
+                  <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+                    {t("job.help.wochenstunden")} · {plannedWeekly.toFixed(1)} h
+                  </p>
+                  <FieldHelp>{t("job.help.sollzeit")}</FieldHelp>
+                  <FieldHelp>{t("job.help.istzeit")}</FieldHelp>
+                  <FieldHelp>{t("job.help.arbeitszeitkonto")}</FieldHelp>
                   <div className="grid gap-2">
                     <Label htmlFor="ob-weekly">{t("wiz.personalized.fest.weeklyTarget")}</Label>
                     <Input
@@ -475,8 +561,12 @@ export function OnboardingWizard({ settings, onDone }: Props) {
                       inputMode="decimal"
                       className="min-h-11"
                       value={weeklyTarget}
-                      onChange={(e) => setWeeklyTarget(e.target.value)}
+                      onChange={(e) => {
+                        setWeeklyTargetTouched(true);
+                        setWeeklyTarget(e.target.value);
+                      }}
                     />
+                    <FieldHelp>{t("wiz.personalized.fest.weeklyTargetHint")}</FieldHelp>
                   </div>
                 </div>
               </Card>

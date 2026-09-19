@@ -29,6 +29,8 @@ interface AbsenceDialogProps {
   seed?: Shift | null;
   /** Optional default start date (e.g. selected calendar day). */
   defaultFrom?: string;
+  /** Prefill kind for new absences (ignored when editing seed). */
+  defaultKind?: "urlaub" | "krank";
   activeJobId?: string | undefined;
 }
 
@@ -39,6 +41,7 @@ export function AbsenceDialog({
   shifts,
   seed = null,
   defaultFrom,
+  defaultKind = "urlaub",
   activeJobId,
 }: AbsenceDialogProps) {
   const { t } = useT();
@@ -60,12 +63,12 @@ export function AbsenceDialog({
       setFrom(range.from);
       setTo(range.to);
     } else {
-      setKind("urlaub");
+      setKind(defaultKind);
       const start = defaultFrom ?? new Date().toISOString().slice(0, 10);
       setFrom(start);
       setTo(start);
     }
-  }, [open, seed, shifts, activeJobs, activeJobId, defaultFrom]);
+  }, [open, seed, shifts, activeJobs, activeJobId, defaultFrom, defaultKind]);
 
   const job = activeJobs.find((j) => j.id === jobId);
   const invalid = !job || !from || !to || from > to;

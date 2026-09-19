@@ -349,7 +349,10 @@ describe("SELF rate step is Tätigkeit (no Pflicht-Stundenlohn)", () => {
 
   it("SELF finish omits Job.rate wage; stores Tätigkeit in job name", () => {
     const src = readFileSync(join(root, "components/minijob/OnboardingWizard.tsx"), "utf8");
-    expect(src).toMatch(/mode !== "selbststaendig" \? \{ rate: numericRate \}/);
+    // SELF never gets Job.rate; FEST monthly also omits (monthlyGross). Flex/fest-hourly keep rate.
+    expect(src).toMatch(/mode !== "selbststaendig"/);
+    expect(src).toMatch(/rate: numericRate/);
+    expect(src).toMatch(/payType === "monthly"/);
     // Tätigkeit field writes jobName (Job.name) — existing safe field
     expect(src).toMatch(/id="ob-activity"[\s\S]*?value=\{jobName\}/);
   });

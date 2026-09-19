@@ -30,10 +30,12 @@ import {
 } from "@/lib/minijob/calc";
 import {
   buildDailyMonthSeries,
+  buildFestDailyMonthSeries,
   dailyChartTitle,
   dailyXAxisTicks,
   formatDailyTooltipLine,
 } from "@/lib/minijob/stats-charts";
+import { primaryWorkMode } from "@/lib/minijob/work-mode";
 import { payrollTotals } from "@/lib/minijob/payroll";
 import { buildAnnualReport } from "@/lib/minijob/annual";
 import { exportPdf, exportXlsx } from "@/lib/minijob/export";
@@ -99,11 +101,23 @@ function StatsPage() {
     [filtered, shifts, year, resolve, monthsShort],
   );
 
+  const workMode = primaryWorkMode(jobs, settings.activeJobId);
+  const festJob =
+    (jobFilter !== "alle" ? jobs.find((j) => j.id === jobFilter) : undefined) ??
+    jobs.find((j) => j.id === settings.activeJobId && j.mode === "fest") ??
+    jobs.find((j) => j.mode === "fest");
+  const isFestView = workMode === "fest" && festJob?.mode === "fest";
+
   const dailyData = useMemo(
     () => buildDailyMonthSeries(year, month, monthShifts, resolve),
     [year, month, monthShifts, resolve],
   );
+  const festDailyData = useMemo(() => {
+    if (!festJob || festJob.mode !== "fest") return [];
+    return buildFestDailyMonthSeries(year, month, festJob, filtered, settings.bundesland);
+  }, [year, month, festJob, filtered, settings.bundesland]);
   const dailyTicks = useMemo(() => dailyXAxisTicks(dailyData.length), [dailyData.length]);
+  const festTicks = useMemo(() => dailyXAxisTicks(festDailyData.length), [festDailyData.length]);
   const earningsDayTitle = dailyChartTitle(
     t("stats.chart.earningsDay"),
     months[month] ?? "",
@@ -331,6 +345,64 @@ function StatsPage() {
               </LineChart>
             </ResponsiveContainer>
           </ChartCard>
+
+          {isFestView && festDailyData.length > 0 ? (
+            <ChartCard title={dailyChartTitle(t("stats.chart.sollIst"), months[month] ?? "", year)}>
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={festDailyData}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                  <XAxis
+                    dataKey="day"
+                    ticks={festTicks}
+                    fontSize={11}
+                    label={{ value: t("stats.axis.day"), position: "insideBottom", offset: -2 }}
+                    height={36}
+                  />
+                  <YAxis
+                    fontSize={11}
+                    width={42}
+                    label={{
+                      value: t("stats.axis.hours"),
+                      angle: -90,
+                      position: "insideLeft",
+                      offset: 8,
+                    }}
+                  />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const row = payload[0]?.payload as {
+                        date: string;
+                        soll?: number;
+                        ist?: number;
+                        diff?: number;
+                      };
+                      return (
+                        <div className="rounded-md border bg-card px-2.5 py-1.5 text-xs shadow-md">
+                          {row.date}: Soll {row.soll ?? 0} / Ist {row.ist ?? 0} / Diff{" "}
+                          {row.diff ?? 0}
+                        </div>
+                      );
+                    }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="soll"
+                    stroke="var(--muted-foreground)"
+                    strokeWidth={2}
+                  />
+                  <Line type="monotone" dataKey="ist" stroke="var(--primary)" strokeWidth={2} />
+                  <Line
+                    type="monotone"
+                    dataKey="diff"
+                    stroke="var(--chart-3, #ea580c)"
+                    strokeWidth={1.5}
+                    strokeDasharray="4 4"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          ) : null}
 
           <div className="grid grid-cols-2 gap-3">
             <Button

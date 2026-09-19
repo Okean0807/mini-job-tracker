@@ -70,6 +70,13 @@ export interface Job {
   week?: FixedDay[];
   /** Soll-Stunden pro Woche (Überstunden-Berechnung) */
   weeklyTarget?: number;
+  /**
+   * Vergütungsart (Festanstellung). Fehlt payType und rate ist gesetzt → hourly (Migration).
+   * monthlyGross nur relevant wenn payType === "monthly".
+   */
+  payType?: "monthly" | "hourly";
+  /** Monatliches Bruttogehalt (€) – nur bei payType === "monthly" */
+  monthlyGross?: number;
   supplements?: Supplements;
   notes?: string;
   /** Zahltag: Tag im Monat (1-31) */

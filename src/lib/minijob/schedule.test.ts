@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { generateAbsence } from "./schedule";
-import type { Job } from "./types";
+import { generateAbsence, generateFixedMonth, weeklyPlanHours } from "./schedule";
+import { EMPTY_WEEK, type Job } from "./types";
 
 describe("generateAbsence", () => {
   it("überspringt Wochenendtage ohne Festplan", () => {
@@ -70,5 +70,49 @@ describe("generateAbsence", () => {
       "2026-07-10",
     ]);
     expect(created.every((s) => s.kind === "urlaub")).toBe(true);
+  });
+});
+
+describe("generateFixedMonth", () => {
+  it("skips dates that already have an entry (plan change does not rewrite)", () => {
+    const fest: Job = {
+      id: "j1",
+      name: "Fest",
+      color: "#000",
+      rate: 14,
+      mode: "fest",
+      week: EMPTY_WEEK.map((d) => ({ ...d })),
+    };
+    const existing = [
+      {
+        id: "ex",
+        jobId: "j1",
+        kind: "arbeit" as const,
+        date: "2026-09-01",
+        start: "08:00",
+        end: "12:00",
+        breakMinutes: 0,
+      },
+    ];
+    const created = generateFixedMonth(fest, 2026, 8, existing, "BE");
+    expect(created.every((s) => s.date !== "2026-09-01")).toBe(true);
+    // Changing week plan still must not touch existing
+    fest.week = fest.week!.map((d, i) =>
+      i === 0 ? { ...d, start: "10:00", end: "18:00", breakMinutes: 45 } : d,
+    );
+    const afterPlanChange = generateFixedMonth(fest, 2026, 8, existing, "BE");
+    expect(afterPlanChange.every((s) => s.date !== "2026-09-01")).toBe(true);
+    expect(existing[0]!.start).toBe("08:00");
+  });
+
+  it("weeklyPlanHours sums active days only", () => {
+    const fest: Job = {
+      id: "j1",
+      name: "Fest",
+      color: "#000",
+      mode: "fest",
+      week: EMPTY_WEEK.map((d) => ({ ...d })),
+    };
+    expect(weeklyPlanHours(fest)).toBeCloseTo(37.5, 5);
   });
 });

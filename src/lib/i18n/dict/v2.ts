@@ -11,8 +11,8 @@ export const v2: Bundle = {
     "limit.autoHint": "{hours} bei {rate}/Std.",
     "limit.month": "Monat",
     "limit.year": "Jahr",
-    "limit.notApplicable": "Nicht anwendbar (Selbstständig)",
-    "limit.notApplicableHint": "Die Arbeitnehmer-Minijob-Grenze (€603) gilt hier nicht.",
+    "limit.notApplicable": "Nicht anwendbar (Fest / Selbstständig)",
+    "limit.notApplicableHint": "Die Arbeitnehmer-Minijob-Grenze gilt für Flex. Fest nutzt das Arbeitszeitkonto.",
     "limit.overExplain": "Eine Überschreitung kann steuer- und sozialversicherungsrechtlich relevant sein. Die genaue Behandlung hängt von deiner persönlichen Situation ab.",
     "limit.disclaimer": "Kein individueller Steuer- oder Rechtsrat. Die App berechnet keine Steuern oder Abgaben.",
 
@@ -75,8 +75,8 @@ export const v2: Bundle = {
     "limit.autoHint": "{hours} at {rate}/hr",
     "limit.month": "Month",
     "limit.year": "Year",
-    "limit.notApplicable": "Not applicable (self-employed)",
-    "limit.notApplicableHint": "The employee minijob limit does not apply here.",
+    "limit.notApplicable": "Not applicable (fixed / self-employed)",
+    "limit.notApplicableHint": "The employee minijob limit applies to flex. Fixed schedule uses the time account.",
     "limit.overExplain": "Exceeding the limit can matter for tax and social-security treatment. The exact outcome depends on your personal circumstances.",
     "limit.disclaimer": "Not individual tax or legal advice. The app does not calculate taxes or social contributions.",
 
