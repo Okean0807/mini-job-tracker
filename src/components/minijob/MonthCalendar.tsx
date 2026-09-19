@@ -17,8 +17,21 @@ import { holidayName } from "@/lib/minijob/holidays";
 import { generateFixedMonth } from "@/lib/minijob/schedule";
 import { shiftPayroll } from "@/lib/minijob/payroll";
 import type { ResolveOptions } from "@/lib/minijob/resolve";
+import { KIND_ORDER, KIND_STYLE } from "@/lib/minijob/shift-kind-style";
 import type { Job, Shift, ShiftKind } from "@/lib/minijob/types";
 import { cn } from "@/lib/utils";
+
+/** Re-export for external / contrast tests. */
+export { KIND_STYLE } from "@/lib/minijob/shift-kind-style";
+
+const KIND_ICON: Record<ShiftKind, LucideIcon> = {
+  arbeit: Briefcase,
+  krank: Thermometer,
+  urlaub: Palmtree,
+  feiertag: PartyPopper,
+  frei: CircleOff,
+  sonstige: Ban,
+};
 
 interface MonthCalendarProps {
   year: number;
@@ -31,52 +44,6 @@ interface MonthCalendarProps {
   onChangeMonth: (year: number, month: number) => void;
   onSelectDay: (date: string) => void;
 }
-
-const KIND_ORDER: ShiftKind[] = ["arbeit", "krank", "urlaub", "feiertag", "frei", "sonstige"];
-
-/** Exported for contrast/snapshot tests — meanings unchanged, dark fills brighter. */
-export const KIND_STYLE: Record<
-  ShiftKind,
-  { cell: string; icon: LucideIcon; legend: string; labelKey: string }
-> = {
-  // Arbeit green · Krank orange · Urlaub blue · Feiertag violet — saturated for black bg
-  arbeit: {
-    cell: "bg-emerald-500/25 text-emerald-900 border-emerald-600/60 dark:bg-emerald-400/35 dark:text-emerald-200 dark:border-emerald-300",
-    icon: Briefcase,
-    legend: "bg-emerald-600 dark:bg-emerald-400",
-    labelKey: "kind.arbeit",
-  },
-  krank: {
-    cell: "bg-orange-500/25 text-orange-950 border-orange-600/60 dark:bg-orange-400/35 dark:text-orange-200 dark:border-orange-300",
-    icon: Thermometer,
-    legend: "bg-orange-600 dark:bg-orange-400",
-    labelKey: "kind.krank",
-  },
-  urlaub: {
-    cell: "bg-sky-500/25 text-sky-950 border-sky-600/60 dark:bg-sky-400/35 dark:text-sky-200 dark:border-sky-300",
-    icon: Palmtree,
-    legend: "bg-sky-600 dark:bg-sky-400",
-    labelKey: "kind.urlaub",
-  },
-  feiertag: {
-    cell: "bg-violet-500/25 text-violet-950 border-violet-600/60 dark:bg-violet-400/35 dark:text-violet-200 dark:border-violet-300",
-    icon: PartyPopper,
-    legend: "bg-violet-600 dark:bg-violet-400",
-    labelKey: "kind.feiertag",
-  },
-  frei: {
-    cell: "bg-zinc-500/20 text-zinc-900 border-zinc-500/50 dark:bg-zinc-400/25 dark:text-zinc-200 dark:border-zinc-400",
-    icon: CircleOff,
-    legend: "bg-zinc-500 dark:bg-zinc-400",
-    labelKey: "kind.frei",
-  },
-  sonstige: {
-    cell: "bg-stone-500/20 text-stone-900 border-stone-500/50 dark:bg-stone-400/25 dark:text-stone-200 dark:border-stone-400",
-    icon: Ban,
-    legend: "bg-stone-500 dark:bg-stone-400",
-    labelKey: "kind.sonstige",
-  },
-};
 
 /** Primary kind for day cell styling — first in KIND_ORDER that appears. */
 export function primaryDayKind(dayShifts: Shift[]): ShiftKind | null {
@@ -139,7 +106,7 @@ export function CalendarKindLegend() {
     >
       {KIND_ORDER.map((kind) => {
         const meta = KIND_STYLE[kind];
-        const Icon = meta.icon;
+        const Icon = KIND_ICON[kind];
         return (
           <li key={kind} className="inline-flex items-center gap-1" data-kind={kind}>
             <span className={cn("size-2 rounded-full", meta.legend)} aria-hidden />
@@ -232,7 +199,7 @@ export function MonthCalendar({
           const feiertag = holidayName(iso, bundesland);
           const kind = primaryDayKind(dayShifts);
           const kindMeta = kind ? KIND_STYLE[kind] : null;
-          const KindIcon = kindMeta?.icon;
+          const KindIcon = kind ? KIND_ICON[kind] : undefined;
           const holidayAndWork = isHolidayWorkDay(dayShifts, feiertag);
           const colors = dayShifts
             .map((s) => jobs.find((j) => j.id === s.jobId)?.color)

@@ -5,7 +5,9 @@ import { formatDate, formatEuro, formatHours, shiftBreakdown } from "@/lib/minij
 import { shiftPayroll } from "@/lib/minijob/payroll";
 import { effectiveShiftRate } from "@/lib/minijob/rate";
 import type { ResolveOptions } from "@/lib/minijob/resolve";
+import { getEntryIndicatorClass } from "@/lib/minijob/shift-kind-style";
 import type { Job, Shift } from "@/lib/minijob/types";
+import { cn } from "@/lib/utils";
 
 interface ShiftListProps {
   shifts: Shift[];
@@ -42,8 +44,7 @@ export function ShiftList({ shifts, jobs, resolve, onSelect }: ShiftListProps) {
               className="flex w-full items-center justify-between gap-3 rounded-2xl border bg-card p-4 text-left shadow-card transition-colors hover:bg-muted/60"
             >
               <span
-                className="h-10 w-1.5 shrink-0 rounded-full"
-                style={{ backgroundColor: job?.color ?? "var(--primary)" }}
+                className={cn("h-10 w-1.5 shrink-0 rounded-full", getEntryIndicatorClass(s.kind))}
                 aria-hidden
               />
               <div className="min-w-0 flex-1">
