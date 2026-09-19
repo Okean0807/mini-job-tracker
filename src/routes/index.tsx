@@ -30,12 +30,13 @@ import { activeWidgets, spanClass, widgetSize } from "@/lib/minijob/dashboard";
 import { goalsProgress } from "@/lib/minijob/goals";
 import { buildInsights } from "@/lib/minijob/insights";
 import { monthUsage, yearUsage } from "@/lib/minijob/limits";
+import { isAbsenceKind, type AbsenceKind } from "@/lib/minijob/absence-range";
 import { monthTimeAccount } from "@/lib/minijob/fest-time-account";
 import { jobsApplyMinijobLimit, primaryWorkMode } from "@/lib/minijob/work-mode";
 import { payPeriods } from "@/lib/minijob/payday";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { useAppData } from "@/lib/minijob/store";
-import type { Shift, ShiftKind, WidgetId } from "@/lib/minijob/types";
+import type { Shift, WidgetId } from "@/lib/minijob/types";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -65,7 +66,7 @@ function DashboardPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [absenceOpen, setAbsenceOpen] = useState(false);
   const [absenceSeed, setAbsenceSeed] = useState<Shift | null>(null);
-  const [absenceKind, setAbsenceKind] = useState<"urlaub" | "krank">("urlaub");
+  const [absenceKind, setAbsenceKind] = useState<AbsenceKind>("urlaub");
   const [selectedDate, setSelectedDate] = useState(isoDate(now));
   const [editing, setEditing] = useState<Shift | null>(null);
   const [customizeOpen, setCustomizeOpen] = useState(false);
@@ -128,7 +129,7 @@ function DashboardPage() {
     setDialogOpen(true);
   }
 
-  function requestAbsence(kind: Extract<ShiftKind, "urlaub" | "krank">, date: string) {
+  function requestAbsence(kind: AbsenceKind, date: string) {
     setSelectedDate(date);
     setAbsenceSeed(null);
     setAbsenceKind(kind);
@@ -219,7 +220,7 @@ function DashboardPage() {
         }}
         onSelectDay={(date) => {
           const existing = shifts.find((s) => s.date === date);
-          if (existing && (existing.kind === "urlaub" || existing.kind === "krank")) {
+          if (existing && isAbsenceKind(existing.kind)) {
             setAbsenceSeed(existing);
             setAbsenceOpen(true);
           } else if (existing) openEdit(existing);

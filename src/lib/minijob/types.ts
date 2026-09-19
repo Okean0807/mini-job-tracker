@@ -4,7 +4,7 @@ export type { Lang };
 
 export type WorkMode = "flex" | "fest" | "selbststaendig";
 
-export type ShiftKind = "arbeit" | "urlaub" | "krank" | "feiertag";
+export type ShiftKind = "arbeit" | "urlaub" | "krank" | "feiertag" | "frei" | "sonstige";
 
 export type SupplementMode = "prozent" | "fest";
 
@@ -68,6 +68,11 @@ export interface Job {
   address?: string;
   /** Nur bei Festanstellung */
   week?: FixedDay[];
+  /**
+   * Historische Wochenpläne (Phase A). Bei Planwechsel wird der bisherige Plan
+   * mit effectiveFrom=heute abgelegt; weekForDate nutzt ihn für Vergangenheits-Soll.
+   */
+  weekHistory?: { effectiveFrom: string; week: FixedDay[]; weeklyTarget?: number }[];
   /** Soll-Stunden pro Woche (Überstunden-Berechnung) */
   weeklyTarget?: number;
   /**
@@ -442,4 +447,6 @@ export const SHIFT_KIND_LABEL: Record<ShiftKind, string> = {
   urlaub: "Urlaub",
   krank: "Krank",
   feiertag: "Feiertag",
+  frei: "Frei",
+  sonstige: "Sonstige",
 };

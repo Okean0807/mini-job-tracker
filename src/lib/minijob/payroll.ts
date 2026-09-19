@@ -16,6 +16,7 @@
  * geleisteten Arbeitsstunden. Doppelzählung ist damit ausgeschlossen.
  */
 import { shiftBreakdown, shiftHours, sumEarnings } from "./calc";
+import { weekForDate } from "./fest-time-account";
 import { effectiveShiftRate } from "./rate";
 import type { ResolveOptions } from "./resolve";
 import type { Job, Shift, ShiftKind } from "./types";
@@ -39,7 +40,8 @@ export type PayReason =
   | "sick-waiting"
   | "sick-exceeded"
   | "sick-off-day"
-  | "vacation-pay";
+  | "vacation-pay"
+  | "unpaid-absence";
 
 /** Grundlage der Entgeltberechnung einer Abwesenheit. */
 export type PayBasis = "worked" | "plan" | "average13" | "entry" | "none";
@@ -99,7 +101,8 @@ export function isRegularWorkday(
   job: Job | undefined,
   history: Shift[] = [],
 ): boolean {
-  if (job?.week) return job.week[weekIndex(date)]?.active === true;
+  const week = job ? weekForDate(job, date) : undefined;
+  if (week) return week[weekIndex(date)]?.active === true;
   const idx = weekIndex(date);
   const previous = history
     .filter(
@@ -120,7 +123,7 @@ export function regularHoursFor(
   job: Job | undefined,
   history: Shift[] = [],
 ): { hours: number; basis: PayBasis } {
-  const plan = job?.week?.[weekIndex(shift.date)];
+  const plan = job ? weekForDate(job, shift.date)?.[weekIndex(shift.date)] : undefined;
   if (plan?.active) {
     return {
       hours: shiftHours({
@@ -269,6 +272,11 @@ export function shiftPayroll(shift: Shift, options: PayrollOptions = {}): ShiftP
       // Ohne hinterlegten Beschäftigungsbeginn ist die Wartezeit nicht prüfbar.
       estimated: basis !== "plan" || !job?.startDate,
     };
+  }
+
+  // Unbezahlte Abwesenheit (frei / sonstige) — vor Urlaub-Fallback, sonst greift vacation-pay.
+  if (shift.kind === "frei" || shift.kind === "sonstige") {
+    return unpaid("unpaid-absence");
   }
 
   // Urlaub: bezahlte Abwesenheit, Entgelt nach 13-Wochen-Durchschnitt.

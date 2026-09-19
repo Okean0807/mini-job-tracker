@@ -57,10 +57,10 @@ interface ShiftDialogProps {
   projects: Project[];
   settings: Settings;
   /** When set, choosing Urlaub/Krank closes this dialog and opens AbsenceDialog (From–To). */
-  onRequestAbsence?: (kind: "urlaub" | "krank", date: string) => void;
+  onRequestAbsence?: (kind: "urlaub" | "krank" | "frei" | "sonstige", date: string) => void;
 }
 
-const KINDS: ShiftKind[] = ["arbeit", "urlaub", "krank", "feiertag"];
+const KINDS: ShiftKind[] = ["arbeit", "urlaub", "krank", "feiertag", "frei", "sonstige"];
 
 export function ShiftDialog({
   open,
@@ -230,7 +230,11 @@ export function ShiftDialog({
         };
 
   function selectKind(next: ShiftKind) {
-    if ((next === "urlaub" || next === "krank") && onRequestAbsence && !shift) {
+    if (
+      (next === "urlaub" || next === "krank" || next === "frei" || next === "sonstige") &&
+      onRequestAbsence &&
+      !shift
+    ) {
       onRequestAbsence(next, date);
       onOpenChange(false);
       return;

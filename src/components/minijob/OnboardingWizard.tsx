@@ -184,6 +184,11 @@ export function OnboardingWizard({ settings, onDone }: Props) {
   }
 
   function finish() {
+    const name = jobName.trim();
+    if (!name) {
+      toast.error(t("job.errorName"));
+      return;
+    }
     clearOnboardingDraft();
     updateSettings({
       country,
@@ -193,7 +198,6 @@ export function OnboardingWizard({ settings, onDone }: Props) {
       onboarded: true,
       wizardCompletedAt: Date.now(),
     });
-    const name = jobName.trim();
     if (name) {
       // Avoid false FIRST_SYNC jobs conflict if sync races finish before lastSyncedAt.
       markWizardPendingFirstSync();
@@ -716,7 +720,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
               {t("action.next")} <ArrowRight className="size-4" />
             </Button>
           ) : (
-            <Button className="min-h-11 flex-1" onClick={finish}>
+            <Button className="min-h-11 flex-1" onClick={finish} disabled={!jobName.trim()}>
               <Check className="size-4" /> {t("action.finish")}
             </Button>
           )}

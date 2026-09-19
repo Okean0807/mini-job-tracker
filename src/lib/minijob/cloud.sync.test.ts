@@ -89,6 +89,7 @@ function makeData(shifts: number, autoBackup = true, onboarded = true): AppData 
     projects: [],
     payments: [],
     goals: [],
+    orders: [],
     settings: { autoBackup, onboarded },
     timer: null,
   } as unknown as AppData;
@@ -1225,5 +1226,70 @@ describe("device-local auth secrets", () => {
     expect((applied.settings as { biometricCredentialId?: string }).biometricCredentialId).toBe(
       "cred-local",
     );
+  });
+});
+
+describe("orders sync (v1.1)", () => {
+  it("Backup-Payload enthält orders", async () => {
+    local = {
+      ...makeData(1),
+      orders: [
+        {
+          id: "o1",
+          title: "Garten",
+          customerName: "Müller",
+          service: "Rasen",
+          location: "Hof",
+          dateFrom: "2026-09-01",
+          amount: 100,
+          status: "open",
+        },
+      ],
+    } as unknown as AppData;
+
+    const { initCloudSync } = await loadModule();
+    initCloudSync();
+    await settle();
+
+    expect(cloud.upserts).toBe(1);
+    const payload = cloud.remote?.payload as AppData;
+    expect(payload.orders).toBeDefined();
+    expect(payload.orders).toHaveLength(1);
+    expect(payload.orders![0]!.id).toBe("o1");
+  });
+
+  it("order-only change bump localChangedAt but not workFingerprint/localWorkChangedAt", async () => {
+    const { initCloudSync, workFingerprint } = await loadModule();
+    initCloudSync();
+    await settle();
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const metaBefore = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1")!);
+    const fpBefore = workFingerprint(local);
+    const workAtBefore = metaBefore.localWorkChangedAt ?? null;
+
+    local = {
+      ...local,
+      orders: [
+        {
+          id: "o-new",
+          title: "Auftrag",
+          customerName: "X",
+          service: "Y",
+          location: "Z",
+          dateFrom: "2026-09-10",
+          amount: 50,
+          status: "open",
+        },
+      ],
+    } as unknown as AppData;
+    changeHook?.(local);
+    await vi.advanceTimersByTimeAsync(100); // scheduleBackup stamps meta immediately
+
+    const metaAfter = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1")!);
+    expect(metaAfter.localChangedAt).toBeGreaterThan(metaBefore.localChangedAt ?? 0);
+    expect(metaAfter.localWorkChangedAt ?? null).toBe(workAtBefore);
+    expect(workFingerprint(local)).toBe(fpBefore);
+    expect(workFingerprint(local)).not.toContain("o-new");
   });
 });

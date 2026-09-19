@@ -1,11 +1,17 @@
-# FEST UX – Residuals (nicht in diesem PR)
+# FEST UX – Residuals
 
 ## frei / sonstige
-Neue `ShiftKind`-Werte `frei` und `sonstige` wurden **nicht** eingeführt.
-Grund: sichere Integration würde `ShiftKind`, Payload-Validierung (`payload.ts`), i18n-Labels,
-Kalenderfarben, Payroll/Fortzahlung und Export betreffen. Ohne diese Kette wäre der Eintrag unsicher.
-Bestehende Arten bleiben: `arbeit` | `urlaub` | `krank` | `feiertag`.
-Urlaub/Krank neu: From–To über `AbsenceDialog` (vom ShiftDialog umgeleitet).
+Umgesetzt in v1.1 Hardening: `ShiftKind` enthält `frei` | `sonstige`.
+- AbsenceDialog + `isAbsenceKind`
+- Payroll: expliziter Unpaid-Zweig vor Urlaub-Fallback (`earnings 0`, `paid false`)
+- Kalender: neutrales Grau
+- Arbeitszeitkonto: kein Ist (nur `arbeit`); Soll bleibt Plan-Soll; Arbeitstage ohne frei/sonstige
+
+## Payday / Monatsbrutto
+`payPeriod.expected` nutzt weiterhin die Schicht-Payroll-Summe (`payrollTotals`), **nicht**
+direkt `job.monthlyGross`. Residual: für FEST monthly ohne vollständige Monatserfassung
+weicht die Payday-Erwartung vom Monatsbrutto ab. Ableitung Stundenlohn aus Monatsbrutto
+(`effectiveHourlyFromMonthly`) gilt für Schicht-/Abwesenheitslohn.
 
 ## Entgeltfortzahlung
 Feiertage nutzen weiterhin `isHoliday`. Es wird **kein** neues EFZ-Recht erfunden;

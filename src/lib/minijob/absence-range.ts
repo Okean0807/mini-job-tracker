@@ -2,10 +2,12 @@
 
 import type { Shift, ShiftKind } from "./types";
 
-const ABSENCE_KINDS: ShiftKind[] = ["urlaub", "krank"];
+export type AbsenceKind = "urlaub" | "krank" | "frei" | "sonstige";
 
-export function isAbsenceKind(kind: ShiftKind): kind is "urlaub" | "krank" {
-  return ABSENCE_KINDS.includes(kind);
+const ABSENCE_KINDS: AbsenceKind[] = ["urlaub", "krank", "frei", "sonstige"];
+
+export function isAbsenceKind(kind: ShiftKind): kind is AbsenceKind {
+  return (ABSENCE_KINDS as ShiftKind[]).includes(kind);
 }
 
 /** Inclusive ISO date list from..to (local calendar, no UTC shift). */

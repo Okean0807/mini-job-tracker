@@ -6,6 +6,7 @@ import {
   daySollHours,
   effectiveWeeklyTarget,
   monthTimeAccount,
+  weekForDate,
 } from "./fest-time-account";
 import { EMPTY_WEEK, type Job, type Shift } from "./types";
 
@@ -124,5 +125,56 @@ describe("fest-time-account", () => {
     const fromPlan = festJob();
     delete (fromPlan as { weeklyTarget?: number }).weeklyTarget;
     expect(effectiveWeeklyTarget(fromPlan)).toBeCloseTo(37.5, 5);
+  });
+});
+
+describe("weekHistory Phase A (v1.1)", () => {
+  it("past date uses old week soll; future uses new", () => {
+    const oldWeek = EMPTY_WEEK.map((d, i) => ({
+      ...d,
+      active: i < 5,
+      start: "08:00",
+      end: "12:00",
+      breakMinutes: 0,
+    })); // 4h/day
+    const newWeek = EMPTY_WEEK.map((d, i) => ({
+      ...d,
+      active: i < 5,
+      start: "09:00",
+      end: "17:00",
+      breakMinutes: 30,
+    })); // 7.5h/day
+    const job = festJob({
+      week: newWeek,
+      weekHistory: [{ effectiveFrom: "2026-09-15", week: oldWeek, weeklyTarget: 20 }],
+    });
+    // Mon 2026-09-14 < change → old 4h
+    expect(daySollHours(job, "2026-09-14")).toBeCloseTo(4, 5);
+    expect(weekForDate(job, "2026-09-14")).toEqual(oldWeek);
+    // change day and after → new 7.5h
+    expect(daySollHours(job, "2026-09-15")).toBeCloseTo(7.5, 5);
+    expect(daySollHours(job, "2026-09-16")).toBeCloseTo(7.5, 5);
+    expect(weekForDate(job, "2026-09-16")).toEqual(newWeek);
+  });
+
+  it("frei/sonstige: no ist, soll still counts, not workDays", () => {
+    const job = festJob();
+    const shifts: Shift[] = [
+      {
+        id: "f1",
+        jobId: "j1",
+        kind: "frei",
+        date: "2026-09-01", // Mon
+        start: "09:00",
+        end: "17:00",
+        breakMinutes: 30,
+      },
+    ];
+    const acc = monthTimeAccount(job, 2026, 8, shifts, "BE");
+    expect(dayIstHours(job, "2026-09-01", shifts)).toBe(0);
+    expect(acc.soll).toBeGreaterThan(0);
+    // workDays excludes frei Mon
+    const without = monthTimeAccount(job, 2026, 8, [], "BE");
+    expect(acc.workDays).toBe(without.workDays - 1);
   });
 });

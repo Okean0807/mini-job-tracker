@@ -52,4 +52,22 @@ describe("absence-range", () => {
     expect(isAbsenceKind("arbeit")).toBe(false);
     expect(isAbsenceKind("urlaub")).toBe(true);
   });
+
+  it("isAbsenceKind includes frei and sonstige", () => {
+    expect(isAbsenceKind("frei")).toBe(true);
+    expect(isAbsenceKind("sonstige")).toBe(true);
+    expect(isAbsenceKind("feiertag")).toBe(false);
+  });
+
+  it("contiguousAbsenceRange expands frei blocks", () => {
+    const all = [
+      shift({ date: "2026-07-01", kind: "frei", id: "a" }),
+      shift({ date: "2026-07-02", kind: "frei", id: "b" }),
+      shift({ date: "2026-07-03", kind: "sonstige", id: "c" }),
+    ];
+    const range = contiguousAbsenceRange(all[0]!, all);
+    expect(range.from).toBe("2026-07-01");
+    expect(range.to).toBe("2026-07-02");
+    expect(range.ids.sort()).toEqual(["a", "b"]);
+  });
 });

@@ -15,7 +15,7 @@ import {
 import type { Job, Order, OrderStatus, Payment } from "@/lib/minijob/types";
 import { cn } from "@/lib/utils";
 
-const FILTERS: OrderStatusFilter[] = ["all", "open", "in_progress", "done"];
+const FILTERS: OrderStatusFilter[] = ["all", "open", "in_progress", "done", "cancelled"];
 
 function statusVariant(status: OrderStatus): "default" | "secondary" | "outline" | "destructive" {
   if (status === "done") return "default";
