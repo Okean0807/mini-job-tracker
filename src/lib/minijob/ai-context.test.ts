@@ -30,6 +30,7 @@ function makeData(overrides: Partial<AppData> = {}): AppData {
     projects: [],
     payments: [],
     goals: [],
+    orders: [],
     settings: { ...DEFAULT_SETTINGS, defaultRate: 17.1 },
     timer: null,
     ...overrides,

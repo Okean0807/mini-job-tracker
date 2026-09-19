@@ -9,6 +9,7 @@ import { dashboard } from "./dict/dashboard";
 import { docsDict } from "./dict/docs";
 import { entry } from "./dict/entry";
 import { goalsDict } from "./dict/goals";
+import { ordersDict } from "./dict/orders";
 import { jobsDict } from "./dict/jobs";
 import { reports } from "./dict/reports";
 import { settingsDict } from "./dict/settings";
@@ -33,6 +34,7 @@ const BUNDLE: Bundle = mergeBundles([
   widgets,
   annual,
   goalsDict,
+  ordersDict,
   docsDict,
   worklog,
   entry,

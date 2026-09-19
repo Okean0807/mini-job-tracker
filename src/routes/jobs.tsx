@@ -4,6 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { JobDialog } from "@/components/minijob/JobDialog";
+import { OrdersCard } from "@/components/minijob/OrdersCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +22,7 @@ import {
   useAppData,
 } from "@/lib/minijob/store";
 import { canAddJob } from "@/lib/minijob/premium";
+import { primaryWorkMode } from "@/lib/minijob/work-mode";
 import { type Job } from "@/lib/minijob/types";
 
 export const Route = createFileRoute("/jobs")({
@@ -44,13 +46,20 @@ export const Route = createFileRoute("/jobs")({
 
 function JobsPage() {
   const { t } = useT();
-  const { jobs, customers, projects, settings, shifts } = useAppData();
+  const { jobs, customers, projects, payments, orders, settings, shifts } = useAppData();
+  const isSelf = primaryWorkMode(jobs, settings.activeJobId) === "selbststaendig";
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Job | null>(null);
 
   return (
     <main className="mx-auto max-w-lg px-4 pt-6">
       <h1 className="text-2xl font-extrabold tracking-tight">{t("job.pageTitle")}</h1>
+
+      {isSelf ? (
+        <div className="mt-4 grid grid-cols-2 items-start gap-3">
+          <OrdersCard orders={orders} jobs={jobs} payments={payments} />
+        </div>
+      ) : null}
 
       <Tabs defaultValue="jobs" className="mt-4">
         <TabsList className="w-full">

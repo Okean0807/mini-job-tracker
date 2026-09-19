@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import { DashboardCustomizer } from "@/components/minijob/DashboardCustomizer";
 import { GoalsCard } from "@/components/minijob/GoalsCard";
+import { OrdersCard } from "@/components/minijob/OrdersCard";
 import { LimitCard } from "@/components/minijob/LimitCard";
 import { TimeAccountCard } from "@/components/minijob/TimeAccountCard";
 import { PaydayCard } from "@/components/minijob/PaydayCard";
@@ -57,7 +58,7 @@ export const Route = createFileRoute("/")({
 
 function DashboardPage() {
   const { t } = useT();
-  const { shifts, jobs, customers, projects, payments, goals, settings, timer } = useAppData();
+  const { shifts, jobs, customers, projects, payments, goals, orders, settings, timer } = useAppData();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
@@ -110,6 +111,7 @@ function DashboardPage() {
   const appliesMinijobLimit = jobsApplyMinijobLimit(jobs);
   const workMode = primaryWorkMode(jobs, settings.activeJobId);
   const isFest = workMode === "fest";
+  const isSelf = workMode === "selbststaendig";
   const festJob =
     jobs.find((j) => j.id === settings.activeJobId && j.mode === "fest" && !j.archived) ??
     jobs.find((j) => j.mode === "fest" && !j.archived);
@@ -282,6 +284,12 @@ function DashboardPage() {
       {isFest && timeAccount ? (
         <div className="mt-4 grid grid-cols-2 items-start gap-3">
           <TimeAccountCard account={timeAccount} monthLabel={monthLabel} year={year} />
+        </div>
+      ) : null}
+
+      {isSelf ? (
+        <div className="mt-4 grid grid-cols-2 items-start gap-3">
+          <OrdersCard orders={orders} jobs={jobs} payments={payments} />
         </div>
       ) : null}
 
