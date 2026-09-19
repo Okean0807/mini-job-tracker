@@ -24,10 +24,10 @@ function shift(partial: Partial<Shift> & { kind: Shift["kind"] }): Shift {
 describe("MonthCalendar kind rendering (CAL-P2)", () => {
   it("exports distinct styles/icons for arbeit/krank/urlaub/feiertag + legend", () => {
     expect(src).toMatch(/KIND_STYLE/);
-    expect(src).toMatch(/kind\.arbeit/);
-    expect(src).toMatch(/kind\.krank/);
-    expect(src).toMatch(/kind\.urlaub/);
-    expect(src).toMatch(/kind\.feiertag/);
+    expect(KIND_STYLE.arbeit.labelKey).toBe("kind.arbeit");
+    expect(KIND_STYLE.krank.labelKey).toBe("kind.krank");
+    expect(KIND_STYLE.urlaub.labelKey).toBe("kind.urlaub");
+    expect(KIND_STYLE.feiertag.labelKey).toBe("kind.feiertag");
     expect(src).toMatch(/CalendarKindLegend/);
     expect(src).toMatch(/data-testid="calendar-kind-legend"/);
     expect(src).toMatch(/Briefcase|Thermometer|Palmtree|PartyPopper/);
@@ -80,32 +80,36 @@ describe("MonthCalendar holiday + work dual display (Batch B)", () => {
 });
 
 describe("MonthCalendar KIND_STYLE dark contrast (pre-release)", () => {
-  it("uses brighter saturated tokens for arbeit/krank/urlaub/feiertag on dark bg", () => {
+  it("uses brighter saturated tokens aligned with semantic ShiftKind colors", () => {
     expect(KIND_STYLE.arbeit.cell).toMatch(/emerald/);
     expect(KIND_STYLE.arbeit.cell).toMatch(/dark:bg-emerald-400\/35/);
     expect(KIND_STYLE.arbeit.legend).toMatch(/dark:bg-emerald-400/);
 
-    expect(KIND_STYLE.krank.cell).toMatch(/orange/);
-    expect(KIND_STYLE.krank.cell).toMatch(/dark:bg-orange-400\/35/);
-    expect(KIND_STYLE.krank.legend).toMatch(/dark:bg-orange-400/);
+    expect(KIND_STYLE.krank.cell).toMatch(/red/);
+    expect(KIND_STYLE.krank.cell).toMatch(/dark:bg-red-400\/35/);
+    expect(KIND_STYLE.krank.legend).toMatch(/dark:bg-red-400/);
 
-    expect(KIND_STYLE.urlaub.cell).toMatch(/sky/);
-    expect(KIND_STYLE.urlaub.cell).toMatch(/dark:bg-sky-400\/35/);
-    expect(KIND_STYLE.urlaub.legend).toMatch(/dark:bg-sky-400/);
+    expect(KIND_STYLE.urlaub.cell).toMatch(/amber/);
+    expect(KIND_STYLE.urlaub.cell).toMatch(/dark:bg-amber-400\/35/);
+    expect(KIND_STYLE.urlaub.legend).toMatch(/dark:bg-amber-400/);
 
-    expect(KIND_STYLE.feiertag.cell).toMatch(/violet/);
-    expect(KIND_STYLE.feiertag.cell).toMatch(/dark:bg-violet-400\/35/);
-    expect(KIND_STYLE.feiertag.legend).toMatch(/dark:bg-violet-400/);
+    expect(KIND_STYLE.feiertag.cell).toMatch(/zinc/);
+    expect(KIND_STYLE.feiertag.legend).toMatch(/dark:bg-zinc-400/);
+
+    expect(KIND_STYLE.frei.cell).toMatch(/sky/);
+    expect(KIND_STYLE.sonstige.cell).toMatch(/violet/);
   });
 
-  it("keeps distinct hues (green / orange / blue / violet) for mobile distinguishability", () => {
+  it("keeps distinct hues for mobile distinguishability", () => {
     const cells = [
       KIND_STYLE.arbeit.cell,
       KIND_STYLE.krank.cell,
       KIND_STYLE.urlaub.cell,
       KIND_STYLE.feiertag.cell,
+      KIND_STYLE.frei.cell,
+      KIND_STYLE.sonstige.cell,
     ];
-    expect(new Set(cells).size).toBe(4);
+    expect(new Set(cells).size).toBe(6);
     expect(KIND_STYLE.arbeit.cell).not.toEqual(KIND_STYLE.krank.cell);
   });
 });
