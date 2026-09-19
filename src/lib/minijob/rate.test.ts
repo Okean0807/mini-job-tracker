@@ -2,11 +2,16 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { shiftBreakdown } from "./calc";
 import { parseCsv, shiftsToCsv } from "./csv";
-import { effectiveShiftRate, parseRateInput, resolveRate } from "./rate";
+import {
+  effectiveHourlyFromMonthly,
+  effectiveShiftRate,
+  parseRateInput,
+  resolveRate,
+} from "./rate";
 import { makeResolver } from "./resolve";
 import { rateForDate, rateOf, earningsOf } from "./service";
 import { getData, normalize, replaceAll, saveJob, updateSettings } from "./store";
-import { DEFAULT_SETTINGS, type Job, type Shift } from "./types";
+import { DEFAULT_SETTINGS, EMPTY_WEEK, type Job, type Shift } from "./types";
 
 const jobA: Job = { id: "a", name: "Job A", color: "#f00", rate: 15, mode: "flex" };
 const jobB: Job = { id: "b", name: "Job B", color: "#00f", rate: 20, mode: "flex" };
@@ -238,5 +243,57 @@ describe("Kompatibilität mit Altdaten", () => {
   it("lässt gespeicherte Schicht-Sätze von 0 unverändert", () => {
     const data = normalize({ shifts: [shift({ rate: 0 })] });
     expect(data.shifts[0]!.rate).toBe(0);
+  });
+});
+
+describe("effectiveHourlyFromMonthly (v1.1)", () => {
+  const festMonthly: Job = {
+    id: "fm",
+    name: "Fest Monat",
+    color: "#000",
+    mode: "fest",
+    payType: "monthly",
+    monthlyGross: 2000,
+    week: EMPTY_WEEK.map((d) => ({ ...d })), // 5×7.5 = 37.5
+  };
+
+  it("derives hourly from monthlyGross / (weekHours*52/12)", () => {
+    const rate = effectiveHourlyFromMonthly(festMonthly);
+    expect(rate).toBeDefined();
+    // 2000 / (37.5 * 52 / 12) = 2000 / 162.5 ≈ 12.3077
+    expect(rate!).toBeCloseTo(2000 / ((37.5 * 52) / 12), 5);
+  });
+
+  it("resolveRate / effectiveShiftRate use derivation when rate unset", () => {
+    const r = resolveRate({ jobId: "fm" }, [festMonthly], { ...DEFAULT_SETTINGS, defaultRate: 99 });
+    expect(r.source).toBe("job");
+    expect(r.rate).toBeCloseTo(2000 / ((37.5 * 52) / 12), 5);
+    expect(
+      effectiveShiftRate(
+        {},
+        { job: festMonthly, defaultRate: 99 },
+      ),
+    ).toBeCloseTo(r.rate, 5);
+  });
+
+  it("explicit job.rate wins over monthly derivation", () => {
+    const withRate = { ...festMonthly, rate: 18 };
+    expect(resolveRate({ jobId: "fm" }, [withRate], DEFAULT_SETTINGS).rate).toBe(18);
+  });
+
+  it("FLEX hourly unchanged (no monthly derivation)", () => {
+    expect(effectiveHourlyFromMonthly(jobA)).toBeUndefined();
+    expect(resolveRate({ jobId: "a" }, [jobA], { ...DEFAULT_SETTINGS, defaultRate: 12 }).rate).toBe(15);
+    expect(effectiveShiftRate({}, { job: jobA, defaultRate: 12 })).toBe(15);
+  });
+
+  it("returns undefined without week hours or gross", () => {
+    expect(effectiveHourlyFromMonthly({ ...festMonthly, monthlyGross: 0 })).toBeUndefined();
+    expect(
+      effectiveHourlyFromMonthly({
+        ...festMonthly,
+        week: EMPTY_WEEK.map((d) => ({ ...d, active: false })),
+      }),
+    ).toBeUndefined();
   });
 });

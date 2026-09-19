@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useT } from "@/lib/i18n";
-import { weekdayNames } from "@/lib/minijob/calc";
+import { isoDate, weekdayNames } from "@/lib/minijob/calc";
 import { weeklyPlanHours } from "@/lib/minijob/schedule";
 import { resolvePayType } from "@/lib/minijob/work-mode";
 import { parseRateInput } from "@/lib/minijob/rate";
@@ -118,6 +118,21 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
     };
     if (startDate) next.startDate = startDate;
     if (mode === "fest") {
+      if (job?.week) {
+        const weekChanged = JSON.stringify(job.week) !== JSON.stringify(week);
+        if (weekChanged) {
+          next.weekHistory = [
+            ...(job.weekHistory ?? []),
+            {
+              effectiveFrom: isoDate(new Date()),
+              week: job.week.map((d) => ({ ...d })),
+              ...(typeof job.weeklyTarget === "number" ? { weeklyTarget: job.weeklyTarget } : {}),
+            },
+          ];
+        } else if (job.weekHistory?.length) {
+          next.weekHistory = job.weekHistory;
+        }
+      }
       next.week = week;
       const planned = weeklyPlanHours(next);
       const target = Number(weeklyTarget.replace(",", ".")) || planned || 0;
@@ -142,6 +157,7 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
         // Keep week data inactive when switching away from fest (never delete).
         next.week = week;
         if (job?.weeklyTarget != null) next.weeklyTarget = job.weeklyTarget;
+        if (job?.weekHistory?.length) next.weekHistory = job.weekHistory;
       }
       if (job?.payType) next.payType = job.payType;
       if (job?.monthlyGross != null) next.monthlyGross = job.monthlyGross;

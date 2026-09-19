@@ -1,4 +1,13 @@
-import { Briefcase, ChevronLeft, ChevronRight, Palmtree, PartyPopper, Thermometer } from "lucide-react";
+import {
+  Ban,
+  Briefcase,
+  ChevronLeft,
+  ChevronRight,
+  CircleOff,
+  Palmtree,
+  PartyPopper,
+  Thermometer,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -23,7 +32,7 @@ interface MonthCalendarProps {
   onSelectDay: (date: string) => void;
 }
 
-const KIND_ORDER: ShiftKind[] = ["arbeit", "krank", "urlaub", "feiertag"];
+const KIND_ORDER: ShiftKind[] = ["arbeit", "krank", "urlaub", "feiertag", "frei", "sonstige"];
 
 /** Exported for contrast/snapshot tests — meanings unchanged, dark fills brighter. */
 export const KIND_STYLE: Record<
@@ -54,6 +63,18 @@ export const KIND_STYLE: Record<
     icon: PartyPopper,
     legend: "bg-violet-600 dark:bg-violet-400",
     labelKey: "kind.feiertag",
+  },
+  frei: {
+    cell: "bg-zinc-500/20 text-zinc-900 border-zinc-500/50 dark:bg-zinc-400/25 dark:text-zinc-200 dark:border-zinc-400",
+    icon: CircleOff,
+    legend: "bg-zinc-500 dark:bg-zinc-400",
+    labelKey: "kind.frei",
+  },
+  sonstige: {
+    cell: "bg-stone-500/20 text-stone-900 border-stone-500/50 dark:bg-stone-400/25 dark:text-stone-200 dark:border-stone-400",
+    icon: Ban,
+    legend: "bg-stone-500 dark:bg-stone-400",
+    labelKey: "kind.sonstige",
   },
 };
 

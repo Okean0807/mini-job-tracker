@@ -372,3 +372,12 @@ describe("SELF rate step is Tätigkeit (no Pflicht-Stundenlohn)", () => {
     expect(WIZARD_STEP_COUNT).toBe(7);
   });
 });
+
+describe("wizard job name required (v1.1)", () => {
+  it("Finish disabled when jobName empty; finish() early-returns with toast", () => {
+    const src = readFileSync(join(root, "components/minijob/OnboardingWizard.tsx"), "utf8");
+    expect(src).toMatch(/disabled=\{!jobName\.trim\(\)\}/);
+    expect(src).toMatch(/if \(!name\) \{[\s\S]*?toast\.error\(t\("job\.errorName"\)\)/);
+    expect(src).toMatch(/function finish\(\) \{[\s\S]*?const name = jobName\.trim\(\)/);
+  });
+});

@@ -198,3 +198,15 @@ describe("Arbeit am Feiertag (Batch B)", () => {
     expect(p.earnings).toBe(0);
   });
 });
+
+describe("frei / sonstige unpaid (v1.1)", () => {
+  it("frei and sonstige are unpaid before urlaub fallback", () => {
+    for (const kind of ["frei", "sonstige"] as const) {
+      const p = shiftPayroll(shift({ date: "2026-04-06", kind }), opts);
+      expect(p.paid).toBe(false);
+      expect(p.earnings).toBe(0);
+      expect(p.paidAbsenceHours).toBe(0);
+      expect(p.reason).toBe("unpaid-absence");
+    }
+  });
+});

@@ -13,9 +13,25 @@ function weekdayIndex(date: Date): number {
   return (date.getDay() + 6) % 7;
 }
 
+
+/**
+ * Wochenplan gültig an `date` (Phase A weekHistory).
+ * History-Einträge speichern den *vorherigen* Plan mit effectiveFrom = Änderungsdatum;
+ * für date < effectiveFrom gilt dieser Plan, sonst der aktuelle job.week.
+ */
+export function weekForDate(job: Job, date: string): FixedDay[] | undefined {
+  const sorted = [...(job.weekHistory ?? [])].sort((a, b) =>
+    a.effectiveFrom.localeCompare(b.effectiveFrom),
+  );
+  const futureChange = sorted.find((e) => e.effectiveFrom > date);
+  if (futureChange) return futureChange.week;
+  return job.week;
+}
+
 function planForDate(job: Job, date: string): FixedDay | undefined {
-  if (!job.week) return undefined;
-  return job.week[weekdayIndex(localDate(date))];
+  const week = weekForDate(job, date);
+  if (!week) return undefined;
+  return week[weekdayIndex(localDate(date))];
 }
 
 /** Soll-Stunden für einen Kalendertag laut Wochenplan (0 wenn inaktiv / kein Plan). */
@@ -93,6 +109,7 @@ export function monthTimeAccount(
     const dayShifts = shifts.filter((s) => s.jobId === job.id && s.date === date);
     const hasUrlaub = dayShifts.some((s) => s.kind === "urlaub");
     const hasKrank = dayShifts.some((s) => s.kind === "krank");
+    const hasUnpaidAbsence = dayShifts.some((s) => s.kind === "frei" || s.kind === "sonstige");
 
     // Absence only on active weekdays (same rule as generateAbsence)
     if (active && hasUrlaub) vacationDays += 1;
@@ -102,7 +119,8 @@ export function monthTimeAccount(
       soll += daySoll;
       // Feiertag: still count plan soll; do not invent EFZ law — holiday flagged via isHoliday for callers
       void (bundesland ? isHoliday(date, bundesland) : false);
-      if (!hasUrlaub && !hasKrank) workDays += 1;
+      // frei/sonstige: no ist (arbeit only), soll bleibt; nicht als Arbeitstag zählen
+      if (!hasUrlaub && !hasKrank && !hasUnpaidAbsence) workDays += 1;
     }
 
     ist += dayIst;

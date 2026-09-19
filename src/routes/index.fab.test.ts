@@ -25,17 +25,19 @@ describe("Dashboard FAB (pre-release)", () => {
     expect(src).toMatch(/ShiftDialog/);
   });
 
-  it("ShiftDialog still offers Arbeit|Urlaub|Krank|Feiertag; new absence routes to AbsenceDialog", () => {
+  it("ShiftDialog still offers Arbeit|Urlaub|Krank|Feiertag|Frei|Sonstige; new absence routes to AbsenceDialog", () => {
     expect(shiftDialog).toMatch(/"arbeit"/);
     expect(shiftDialog).toMatch(/"urlaub"/);
     expect(shiftDialog).toMatch(/"krank"/);
     expect(shiftDialog).toMatch(/"feiertag"/);
+    expect(shiftDialog).toMatch(/"frei"/);
+    expect(shiftDialog).toMatch(/"sonstige"/);
     expect(shiftDialog).toMatch(/onRequestAbsence/);
     expect(src).toMatch(/onRequestAbsence=\{requestAbsence\}/);
   });
 
-  it("AbsenceDialog remains for calendar edit of existing urlaub/krank", () => {
+  it("AbsenceDialog remains for calendar edit of existing absences", () => {
     expect(src).toMatch(/AbsenceDialog/);
-    expect(src).toMatch(/existing\.kind === "urlaub"/);
+    expect(src).toMatch(/isAbsenceKind\(existing\.kind\)/);
   });
 });

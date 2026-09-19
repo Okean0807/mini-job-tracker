@@ -70,6 +70,8 @@ export const common: Bundle = {
     "kind.urlaub": "Urlaub",
     "kind.krank": "Krank",
     "kind.feiertag": "Feiertag",
+    "kind.frei": "Frei",
+    "kind.sonstige": "Sonstige",
 
     "mode.flex": "Flexibler Zeitplan",
     "mode.fest": "Fester Arbeitsplan",
@@ -165,6 +167,8 @@ export const common: Bundle = {
     "kind.urlaub": "Holiday leave",
     "kind.krank": "Sick",
     "kind.feiertag": "Public holiday",
+    "kind.frei": "Off / unpaid",
+    "kind.sonstige": "Other",
 
     "mode.flex": "Flexible schedule",
     "mode.fest": "Fixed schedule",
@@ -260,6 +264,8 @@ export const common: Bundle = {
     "kind.urlaub": "Отпуск",
     "kind.krank": "Больничный",
     "kind.feiertag": "Праздник",
+    "kind.frei": "Свободный",
+    "kind.sonstige": "Прочее",
 
     "mode.flex": "Гибкий график",
     "mode.fest": "Фиксированный график",
@@ -355,6 +361,8 @@ export const common: Bundle = {
     "kind.urlaub": "İzin",
     "kind.krank": "Hastalık",
     "kind.feiertag": "Resmî tatil",
+    "kind.frei": "Serbest",
+    "kind.sonstige": "Diğer",
 
     "mode.flex": "Esnek çalışma",
     "mode.fest": "Sabit çalışma",
@@ -450,6 +458,8 @@ export const common: Bundle = {
     "kind.urlaub": "Urlop",
     "kind.krank": "Chorobowe",
     "kind.feiertag": "Święto",
+    "kind.frei": "Wolne",
+    "kind.sonstige": "Inne",
 
     "mode.flex": "Elastyczny grafik",
     "mode.fest": "Stały grafik",

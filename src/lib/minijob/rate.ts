@@ -32,6 +32,35 @@ export function findJob(jobs: Job[], jobId?: string): Job | undefined {
   return jobs.find((j) => j.id === jobId);
 }
 
+
+/** Wochenplanstunden (lokal, vermeidet rate↔schedule↔calc-Zyklus). */
+function planWeekHours(week: Job["week"]): number {
+  if (!week) return 0;
+  let total = 0;
+  for (const day of week) {
+    if (!day.active) continue;
+    const [sh, sm] = day.start.split(":").map(Number);
+    const [eh, em] = day.end.split(":").map(Number);
+    const mins = (eh ?? 0) * 60 + (em ?? 0) - ((sh ?? 0) * 60 + (sm ?? 0)) - (day.breakMinutes || 0);
+    total += Math.max(0, mins) / 60;
+  }
+  return total;
+}
+
+/**
+ * Abgeleiteter Stundenlohn aus Monatsbrutto (FEST monthly MVP).
+ * monthlyGross / (Wochenplanstunden × 52 / 12), nur wenn payType=monthly,
+ * monthlyGross>0 und Wochenstunden>0.
+ */
+export function effectiveHourlyFromMonthly(job: Pick<Job, "payType" | "monthlyGross" | "week">): number | undefined {
+  if (job.payType !== "monthly") return undefined;
+  const gross = job.monthlyGross;
+  if (!(typeof gross === "number" && gross > 0)) return undefined;
+  const weekHours = planWeekHours(job.week);
+  if (!(weekHours > 0)) return undefined;
+  return gross / ((weekHours * 52) / 12);
+}
+
 /** Gültiger Stundensatz nach Priorität Schicht > Job > Standard. */
 export function resolveRate(query: RateQuery, jobs: Job[], settings: Settings): RateResolution {
   const job = findJob(jobs, query.jobId ?? settings.activeJobId);
@@ -40,6 +69,10 @@ export function resolveRate(query: RateQuery, jobs: Job[], settings: Settings): 
   }
   if (job && typeof job.rate === "number") {
     return { rate: job.rate, source: "job", job };
+  }
+  const derived = job ? effectiveHourlyFromMonthly(job) : undefined;
+  if (derived !== undefined) {
+    return { rate: derived, source: "job", job };
   }
   return { rate: settings.defaultRate ?? 0, source: "default", job };
 }
@@ -73,5 +106,7 @@ export interface RateContext {
 export function effectiveShiftRate(shift: Pick<Shift, "rate">, ctx: RateContext = {}): number {
   if (typeof shift.rate === "number") return shift.rate;
   if (typeof ctx.job?.rate === "number") return ctx.job.rate;
+  const derived = ctx.job ? effectiveHourlyFromMonthly(ctx.job) : undefined;
+  if (derived !== undefined) return derived;
   return ctx.defaultRate ?? 0;
 }

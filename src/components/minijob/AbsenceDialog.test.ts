@@ -16,4 +16,9 @@ describe("AbsenceDialog range UI (Batch B)", () => {
     expect(src).toMatch(/urlaub/);
     expect(src).toMatch(/krank/);
   });
+
+  it("offers frei and sonstige absence kinds", () => {
+    expect(src).toMatch(/frei/);
+    expect(src).toMatch(/sonstige/);
+  });
 });

@@ -13,12 +13,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useT } from "@/lib/i18n";
-import { contiguousAbsenceRange, isAbsenceKind } from "@/lib/minijob/absence-range";
+import {
+  contiguousAbsenceRange,
+  isAbsenceKind,
+  type AbsenceKind,
+} from "@/lib/minijob/absence-range";
 import { addAbsence, removeAbsenceRange } from "@/lib/minijob/service";
 import type { Job, Shift, ShiftKind } from "@/lib/minijob/types";
 import { cn } from "@/lib/utils";
 
-const ABSENCE_KINDS: Array<"urlaub" | "krank"> = ["urlaub", "krank"];
+const ABSENCE_KINDS: AbsenceKind[] = ["urlaub", "krank", "frei", "sonstige"];
 
 interface AbsenceDialogProps {
   open: boolean;
@@ -30,7 +34,7 @@ interface AbsenceDialogProps {
   /** Optional default start date (e.g. selected calendar day). */
   defaultFrom?: string;
   /** Prefill kind for new absences (ignored when editing seed). */
-  defaultKind?: "urlaub" | "krank";
+  defaultKind?: AbsenceKind;
   activeJobId?: string | undefined;
 }
 
@@ -47,7 +51,7 @@ export function AbsenceDialog({
   const { t } = useT();
   const activeJobs = useMemo(() => jobs.filter((j) => !j.archived), [jobs]);
   const [jobId, setJobId] = useState<string | undefined>(undefined);
-  const [kind, setKind] = useState<"urlaub" | "krank">("urlaub");
+  const [kind, setKind] = useState<AbsenceKind>("urlaub");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const editing = Boolean(seed && isAbsenceKind(seed.kind));
