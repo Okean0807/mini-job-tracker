@@ -51,15 +51,7 @@ interface Props {
 
 export function OnboardingWizard({ settings, onDone }: Props) {
   const { t, locale } = useT();
-  const STEPS = [
-    t("wiz.step.welcome"),
-    t("wiz.step.cloud"),
-    t("wiz.step.workMode"),
-    t("wiz.step.region"),
-    t("wiz.step.rate"),
-    t("wiz.step.personalized"),
-    t("wiz.step.firstJob"),
-  ];
+  // Step labels depend on workMode (SELF: Tätigkeit instead of Stundenlohn).
   const WORK_MODE_KEY: Record<WorkMode, string> = {
     flex: "mode.flex",
     fest: "mode.fest",
@@ -75,6 +67,15 @@ export function OnboardingWizard({ settings, onDone }: Props) {
   const [mode, setMode] = useState<WorkMode>(draft?.mode ?? "flex");
 
   const localDemoMode = settings.localDemoMode === true;
+  const STEPS = [
+    t("wiz.step.welcome"),
+    t("wiz.step.cloud"),
+    t("wiz.step.workMode"),
+    t("wiz.step.region"),
+    mode === "selbststaendig" ? t("wiz.step.activity") : t("wiz.step.rate"),
+    t("wiz.step.personalized"),
+    t("wiz.step.firstJob"),
+  ];
 
   // After Google: Cloud → Work Mode. Signed-out: cannot stay past Cloud (unless demo).
   useEffect(() => {
@@ -182,7 +183,8 @@ export function OnboardingWizard({ settings, onDone }: Props) {
         id: newId(),
         name,
         color: nextJobColor(),
-        rate: numericRate,
+        // SELF: no Pflicht-Stundenlohn — omit wage rate (Job.rate = Lohn semantics).
+        ...(mode !== "selbststaendig" ? { rate: numericRate } : {}),
         mode,
         ...(employer.trim() ? { employer: employer.trim() } : {}),
         supplements,
@@ -355,32 +357,46 @@ export function OnboardingWizard({ settings, onDone }: Props) {
           ) : null}
 
           {step === WIZARD_STEP_INDEX.rate ? (
-            <Card title={t("wiz.rate.title")} hint={t("wiz.rate.hint")}>
-              <div className="grid gap-2">
-                <Label htmlFor="ob-rate">{t("wiz.rate.label")}</Label>
-                <Input
-                  id="ob-rate"
-                  type="number"
-                  inputMode="decimal"
-                  step="0.5"
-                  min="0"
-                  className="min-h-11"
-                  value={rate}
-                  onChange={(e) => setRate(e.target.value)}
-                />
-                <FieldHelp>{t("wiz.help.rate")}</FieldHelp>
-              </div>
-              {mode !== "selbststaendig" ? (
-                <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
-                  {t("wiz.help.monthLimit")}
-                </p>
-              ) : (
+            mode === "selbststaendig" ? (
+              <Card title={t("wiz.rate.self.title")} hint={t("wiz.rate.self.hint")}>
+                <div className="grid gap-2">
+                  <Label htmlFor="ob-activity">{t("wiz.rate.self.label")}</Label>
+                  <Input
+                    id="ob-activity"
+                    className="min-h-11"
+                    value={jobName}
+                    placeholder={t("wiz.rate.self.placeholder")}
+                    onChange={(e) => setJobName(e.target.value)}
+                  />
+                  <FieldHelp>{t("wiz.help.selfActivity")}</FieldHelp>
+                </div>
                 <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
                   {t("wiz.personalized.self.noLimit")}
                 </p>
-              )}
-              <FieldHelp>{t("wiz.help.tax")}</FieldHelp>
-            </Card>
+                <FieldHelp>{t("wiz.help.tax")}</FieldHelp>
+              </Card>
+            ) : (
+              <Card title={t("wiz.rate.title")} hint={t("wiz.rate.hint")}>
+                <div className="grid gap-2">
+                  <Label htmlFor="ob-rate">{t("wiz.rate.label")}</Label>
+                  <Input
+                    id="ob-rate"
+                    type="number"
+                    inputMode="decimal"
+                    step="0.5"
+                    min="0"
+                    className="min-h-11"
+                    value={rate}
+                    onChange={(e) => setRate(e.target.value)}
+                  />
+                  <FieldHelp>{t("wiz.help.rate")}</FieldHelp>
+                </div>
+                <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+                  {t("wiz.help.monthLimit")}
+                </p>
+                <FieldHelp>{t("wiz.help.tax")}</FieldHelp>
+              </Card>
+            )
           ) : null}
 
           {step === WIZARD_STEP_INDEX.personalized ? (
