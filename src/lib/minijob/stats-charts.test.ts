@@ -9,12 +9,13 @@ import { tl } from "@/lib/i18n";
 import { makeResolver } from "./resolve";
 import {
   buildDailyMonthSeries,
+  buildFestDailyMonthSeries,
   dailyChartTitle,
   dailyXAxisTicks,
   daysInCalendarMonth,
   formatDailyTooltipLine,
 } from "./stats-charts";
-import { DEFAULT_SETTINGS, type Shift } from "./types";
+import { DEFAULT_SETTINGS, EMPTY_WEEK, type Shift } from "./types";
 
 const resolve = makeResolver([], { ...DEFAULT_SETTINGS, defaultRate: 20.25 });
 
@@ -147,5 +148,38 @@ describe("limit overrun disclaimer copy", () => {
     expect(indexSrc).toMatch(/dash\.limitDisclaimer/);
     expect(cardSrc).toMatch(/limit\.overExplain/);
     expect(cardSrc).toMatch(/limit\.disclaimer/);
+  });
+});
+
+
+describe("buildFestDailyMonthSeries", () => {
+  it("covers every day with soll/ist/diff", () => {
+    const job = {
+      id: "j1",
+      name: "Fest",
+      color: "#000",
+      mode: "fest" as const,
+      week: EMPTY_WEEK.map((d) => ({ ...d })),
+    };
+    const series = buildFestDailyMonthSeries(
+      2026,
+      8,
+      job,
+      [
+        {
+          id: "a",
+          jobId: "j1",
+          kind: "arbeit",
+          date: "2026-09-01",
+          start: "09:00",
+          end: "18:00",
+          breakMinutes: 30,
+        },
+      ],
+      "BE",
+    );
+    expect(series).toHaveLength(30);
+    expect(series[0]).toMatchObject({ day: 1, soll: 7.5, ist: 8.5, diff: 1 });
+    expect(series[4]?.soll).toBe(0); // Saturday 2026-09-05
   });
 });

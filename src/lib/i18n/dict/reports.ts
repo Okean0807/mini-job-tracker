@@ -24,6 +24,7 @@ export const reports: Bundle = {
 
     "stats.chart.earningsDay": "Verdienst pro Tag",
     "stats.chart.hoursDay": "Arbeitszeit pro Tag",
+    "stats.chart.sollIst": "Soll / Ist / Diff",
     "stats.chart.earningsMonth": "Verdienst pro Monat",
     "stats.chart.hoursMonth": "Stunden pro Monat",
     "stats.axis.day": "Tag",
@@ -72,6 +73,7 @@ export const reports: Bundle = {
 
     "stats.chart.earningsDay": "Earnings per day",
     "stats.chart.hoursDay": "Working time per day",
+    "stats.chart.sollIst": "Planned / actual / diff",
     "stats.chart.earningsMonth": "Earnings per month",
     "stats.chart.hoursMonth": "Hours per month",
     "stats.axis.day": "Day",
@@ -120,6 +122,7 @@ export const reports: Bundle = {
 
     "stats.chart.earningsDay": "Заработок по дням",
     "stats.chart.hoursDay": "Часы по дням",
+    "stats.chart.sollIst": "Soll / Ist / Diff",
     "stats.chart.earningsMonth": "Заработок по месяцам",
     "stats.chart.hoursMonth": "Часы по месяцам",
     "stats.axis.day": "День",
@@ -168,6 +171,7 @@ export const reports: Bundle = {
 
     "stats.chart.earningsDay": "Günlük kazanç",
     "stats.chart.hoursDay": "Günlük saat",
+    "stats.chart.sollIst": "Soll / Ist / Diff",
     "stats.chart.earningsMonth": "Aylık kazanç",
     "stats.chart.hoursMonth": "Aylık saat",
     "stats.axis.day": "Gün",
@@ -216,6 +220,7 @@ export const reports: Bundle = {
 
     "stats.chart.earningsDay": "Zarobek dziennie",
     "stats.chart.hoursDay": "Godziny dziennie",
+    "stats.chart.sollIst": "Soll / Ist / Diff",
     "stats.chart.earningsMonth": "Zarobek miesięcznie",
     "stats.chart.hoursMonth": "Godziny miesięcznie",
     "stats.axis.day": "Dzień",

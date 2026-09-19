@@ -16,8 +16,8 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useT } from "@/lib/i18n";
 import { weekdayNames } from "@/lib/minijob/calc";
-import { legalMonthlyLimit } from "@/lib/minijob/limits";
 import { weeklyPlanHours } from "@/lib/minijob/schedule";
+import { resolvePayType } from "@/lib/minijob/work-mode";
 import { parseRateInput } from "@/lib/minijob/rate";
 import { deleteJob, newId, nextJobColor, saveJob } from "@/lib/minijob/store";
 import {
@@ -54,6 +54,9 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
   const [address, setAddress] = useState("");
   const [week, setWeek] = useState<FixedDay[]>(EMPTY_WEEK);
   const [weeklyTarget, setWeeklyTarget] = useState("20");
+  const [payType, setPayType] = useState<"monthly" | "hourly">("hourly");
+  const [monthlyGross, setMonthlyGross] = useState("");
+  const [weeklyTargetTouched, setWeeklyTargetTouched] = useState(false);
   const [supplements, setSupplements] = useState<Supplements>(DEFAULT_SUPPLEMENTS);
   const [notes, setNotes] = useState("");
   const [payday, setPayday] = useState("15");
@@ -74,7 +77,18 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
     setEmail(job?.email ?? "");
     setAddress(job?.address ?? "");
     setWeek(job?.week ?? EMPTY_WEEK);
-    setWeeklyTarget(String(job?.weeklyTarget ?? 20));
+    const initialWeek = job?.week ?? EMPTY_WEEK;
+    const planned = weeklyPlanHours({
+      id: "tmp",
+      name: "tmp",
+      color: "#000",
+      mode: "fest",
+      week: initialWeek,
+    });
+    setWeeklyTarget(String(job?.weeklyTarget ?? (planned || 20)));
+    setWeeklyTargetTouched(Boolean(job?.weeklyTarget));
+    setPayType(job ? resolvePayType(job) : "hourly");
+    setMonthlyGross(job?.monthlyGross != null ? String(job.monthlyGross) : "");
     setSupplements(job?.supplements ?? DEFAULT_SUPPLEMENTS);
     setNotes(job?.notes ?? "");
     setPayday(String(job?.payday ?? 15));
@@ -103,26 +117,34 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
       supplements,
     };
     if (startDate) next.startDate = startDate;
-    const rateValue = parseRateInput(rate);
-    if (rateValue !== undefined) next.rate = rateValue;
     if (mode === "fest") {
       next.week = week;
-      next.weeklyTarget = Number(weeklyTarget.replace(",", ".")) || 0;
-    } else if (week.some((d) => d.active) || job?.week) {
-      // Keep week data inactive when switching away from fest (never delete).
-      next.week = week;
-      if (job?.weeklyTarget != null) next.weeklyTarget = job.weeklyTarget;
-    }
-    if (mode === "fest" && next.week) {
-      const plannedWeekly = weeklyPlanHours(next);
-      const rate = typeof next.rate === "number" ? next.rate : defaultRate;
-      const now = new Date();
-      const monthLimit = legalMonthlyLimit(now.getFullYear(), now.getMonth()) ?? 603;
-      // ~4.33 weeks/month advisory — payroll still uses recorded shifts only.
-      const plannedMonthly = plannedWeekly * (52 / 12) * (rate || 0);
-      if (rate > 0 && plannedMonthly > monthLimit) {
-        toast.message(t("job.planExceedsLimit"));
+      const planned = weeklyPlanHours(next);
+      const target = Number(weeklyTarget.replace(",", ".")) || planned || 0;
+      next.weeklyTarget = target;
+      next.payType = payType;
+      if (payType === "monthly") {
+        const gross = Number(monthlyGross.replace(",", ".")) || 0;
+        if (gross > 0) next.monthlyGross = gross;
+        // keep rate if previously set (additive; do not delete)
+        const rateValue = parseRateInput(rate);
+        if (rateValue !== undefined) next.rate = rateValue;
+        else if (typeof job?.rate === "number") next.rate = job.rate;
+      } else {
+        const rateValue = parseRateInput(rate);
+        if (rateValue !== undefined) next.rate = rateValue;
+        if (typeof job?.monthlyGross === "number") next.monthlyGross = job.monthlyGross;
       }
+    } else {
+      const rateValue = parseRateInput(rate);
+      if (rateValue !== undefined) next.rate = rateValue;
+      if (week.some((d) => d.active) || job?.week) {
+        // Keep week data inactive when switching away from fest (never delete).
+        next.week = week;
+        if (job?.weeklyTarget != null) next.weeklyTarget = job.weeklyTarget;
+      }
+      if (job?.payType) next.payType = job.payType;
+      if (job?.monthlyGross != null) next.monthlyGross = job.monthlyGross;
     }
     saveJob(next);
     toast.success(job ? t("job.updated") : t("job.created"));
@@ -206,30 +228,82 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
               </div>
             </div>
 
-            <div className="grid gap-2">
-              <Label htmlFor="job-rate">{t("label.rateEuro")}</Label>
-              <Input
-                id="job-rate"
-                type="number"
-                step="0.5"
-                inputMode="decimal"
-                value={rate}
-                onChange={(e) => setRate(e.target.value)}
-              />
-            </div>
+            {mode === "fest" ? (
+              <div className="grid gap-2">
+                <Label>{t("job.payType")}</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["hourly", "monthly"] as const).map((pt) => (
+                    <button
+                      key={pt}
+                      type="button"
+                      onClick={() => setPayType(pt)}
+                      className={cn(
+                        "rounded-xl border px-3 py-2 text-sm",
+                        payType === pt ? "border-primary bg-primary/10 font-semibold" : "bg-card",
+                      )}
+                    >
+                      {t(pt === "hourly" ? "job.payTypeHourly" : "job.payTypeMonthly")}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">{t("job.help.payType")}</p>
+              </div>
+            ) : null}
+
+            {mode !== "fest" || payType === "hourly" ? (
+              <div className="grid gap-2">
+                <Label htmlFor="job-rate">{t("label.rateEuro")}</Label>
+                <Input
+                  id="job-rate"
+                  type="number"
+                  step="0.5"
+                  inputMode="decimal"
+                  value={rate}
+                  onChange={(e) => setRate(e.target.value)}
+                />
+              </div>
+            ) : (
+              <div className="grid gap-2">
+                <Label htmlFor="job-monthly">{t("job.monthlyGross")}</Label>
+                <Input
+                  id="job-monthly"
+                  type="number"
+                  step="1"
+                  inputMode="decimal"
+                  value={monthlyGross}
+                  onChange={(e) => setMonthlyGross(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">{t("job.help.monthlyGross")}</p>
+              </div>
+            )}
 
             {mode === "fest" ? (
               <div className="space-y-3 rounded-xl border p-3">
                 <p className="text-sm font-semibold">{t("job.weeklyPlan")}</p>
+                <p className="text-xs text-muted-foreground">{t("job.help.wochenstunden")}</p>
                 {week.map((day, idx) => (
                   <div key={weekdays[idx]} className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-sm">{weekdays[idx]}</span>
                       <Switch
                         checked={day.active}
-                        onCheckedChange={(checked) =>
-                          setWeek(week.map((d, i) => (i === idx ? { ...d, active: checked } : d)))
-                        }
+                        onCheckedChange={(checked) => {
+                          const next = week.map((d, i) => (i === idx ? { ...d, active: checked } : d));
+                          setWeek(next);
+                          if (!weeklyTargetTouched) {
+                            setWeeklyTarget(
+                              String(
+                                weeklyPlanHours({
+                                  id: "tmp",
+                                  name: "tmp",
+                                  color: "#000",
+                                  mode: "fest",
+                                  week: next,
+                                }),
+                              ),
+                            );
+                          }
+                        }}
                         aria-label={t("job.weekdayActive", { day: weekdays[idx] ?? "" })}
                       />
                     </div>
@@ -238,32 +312,72 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
                         <Input
                           type="time"
                           value={day.start}
-                          onChange={(e) =>
-                            setWeek(
-                              week.map((d, i) => (i === idx ? { ...d, start: e.target.value } : d)),
-                            )
-                          }
+                          onChange={(e) => {
+                            const next = week.map((d, i) =>
+                              i === idx ? { ...d, start: e.target.value } : d,
+                            );
+                            setWeek(next);
+                            if (!weeklyTargetTouched) {
+                              setWeeklyTarget(
+                                String(
+                                  weeklyPlanHours({
+                                    id: "tmp",
+                                    name: "tmp",
+                                    color: "#000",
+                                    mode: "fest",
+                                    week: next,
+                                  }),
+                                ),
+                              );
+                            }
+                          }}
                         />
                         <Input
                           type="time"
                           value={day.end}
-                          onChange={(e) =>
-                            setWeek(
-                              week.map((d, i) => (i === idx ? { ...d, end: e.target.value } : d)),
-                            )
-                          }
+                          onChange={(e) => {
+                            const next = week.map((d, i) =>
+                              i === idx ? { ...d, end: e.target.value } : d,
+                            );
+                            setWeek(next);
+                            if (!weeklyTargetTouched) {
+                              setWeeklyTarget(
+                                String(
+                                  weeklyPlanHours({
+                                    id: "tmp",
+                                    name: "tmp",
+                                    color: "#000",
+                                    mode: "fest",
+                                    week: next,
+                                  }),
+                                ),
+                              );
+                            }
+                          }}
                         />
                         <Input
                           type="number"
                           min="0"
                           value={day.breakMinutes}
-                          onChange={(e) =>
-                            setWeek(
-                              week.map((d, i) =>
-                                i === idx ? { ...d, breakMinutes: Number(e.target.value) || 0 } : d,
-                              ),
-                            )
-                          }
+                          onChange={(e) => {
+                            const next = week.map((d, i) =>
+                              i === idx ? { ...d, breakMinutes: Number(e.target.value) || 0 } : d,
+                            );
+                            setWeek(next);
+                            if (!weeklyTargetTouched) {
+                              setWeeklyTarget(
+                                String(
+                                  weeklyPlanHours({
+                                    id: "tmp",
+                                    name: "tmp",
+                                    color: "#000",
+                                    mode: "fest",
+                                    week: next,
+                                  }),
+                                ),
+                              );
+                            }
+                          }}
                           aria-label={t("job.breakMinutesAria")}
                         />
                       </div>
@@ -277,8 +391,14 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
                     type="number"
                     inputMode="decimal"
                     value={weeklyTarget}
-                    onChange={(e) => setWeeklyTarget(e.target.value)}
+                    onChange={(e) => {
+                      setWeeklyTargetTouched(true);
+                      setWeeklyTarget(e.target.value);
+                    }}
                   />
+                  <p className="text-xs text-muted-foreground">{t("job.help.sollzeit")}</p>
+                  <p className="text-xs text-muted-foreground">{t("job.help.istzeit")}</p>
+                  <p className="text-xs text-muted-foreground">{t("job.help.arbeitszeitkonto")}</p>
                 </div>
               </div>
             ) : null}

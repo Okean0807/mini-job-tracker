@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { DashboardCustomizer } from "@/components/minijob/DashboardCustomizer";
 import { GoalsCard } from "@/components/minijob/GoalsCard";
 import { LimitCard } from "@/components/minijob/LimitCard";
+import { TimeAccountCard } from "@/components/minijob/TimeAccountCard";
 import { PaydayCard } from "@/components/minijob/PaydayCard";
 import { InsightsCard } from "@/components/minijob/InsightsCard";
 import { MonthCalendar } from "@/components/minijob/MonthCalendar";
@@ -28,11 +29,12 @@ import { activeWidgets, spanClass, widgetSize } from "@/lib/minijob/dashboard";
 import { goalsProgress } from "@/lib/minijob/goals";
 import { buildInsights } from "@/lib/minijob/insights";
 import { monthUsage, yearUsage } from "@/lib/minijob/limits";
-import { jobsApplyMinijobLimit } from "@/lib/minijob/work-mode";
+import { monthTimeAccount } from "@/lib/minijob/fest-time-account";
+import { jobsApplyMinijobLimit, primaryWorkMode } from "@/lib/minijob/work-mode";
 import { payPeriods } from "@/lib/minijob/payday";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { useAppData } from "@/lib/minijob/store";
-import type { Shift, WidgetId } from "@/lib/minijob/types";
+import type { Shift, ShiftKind, WidgetId } from "@/lib/minijob/types";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -62,6 +64,7 @@ function DashboardPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [absenceOpen, setAbsenceOpen] = useState(false);
   const [absenceSeed, setAbsenceSeed] = useState<Shift | null>(null);
+  const [absenceKind, setAbsenceKind] = useState<"urlaub" | "krank">("urlaub");
   const [selectedDate, setSelectedDate] = useState(isoDate(now));
   const [editing, setEditing] = useState<Shift | null>(null);
   const [customizeOpen, setCustomizeOpen] = useState(false);
@@ -105,6 +108,15 @@ function DashboardPage() {
   const limitShare = monthLimit.share;
   const yearShare = yearLimit.share;
   const appliesMinijobLimit = jobsApplyMinijobLimit(jobs);
+  const workMode = primaryWorkMode(jobs, settings.activeJobId);
+  const isFest = workMode === "fest";
+  const festJob =
+    jobs.find((j) => j.id === settings.activeJobId && j.mode === "fest" && !j.archived) ??
+    jobs.find((j) => j.mode === "fest" && !j.archived);
+  const timeAccount = useMemo(() => {
+    if (!festJob) return null;
+    return monthTimeAccount(festJob, year, month, shifts, settings.bundesland);
+  }, [festJob, year, month, shifts, settings.bundesland]);
   const monthLabel = monthNames()[month] ?? "";
   const ui = settings.uiMode;
 
@@ -112,6 +124,14 @@ function DashboardPage() {
     setSelectedDate(date);
     setEditing(null);
     setDialogOpen(true);
+  }
+
+  function requestAbsence(kind: Extract<ShiftKind, "urlaub" | "krank">, date: string) {
+    setSelectedDate(date);
+    setAbsenceSeed(null);
+    setAbsenceKind(kind);
+    setDialogOpen(false);
+    setAbsenceOpen(true);
   }
 
   function openEdit(shift: Shift) {
@@ -259,6 +279,12 @@ function DashboardPage() {
         </div>
       ) : null}
 
+      {isFest && timeAccount ? (
+        <div className="mt-4 grid grid-cols-2 items-start gap-3">
+          <TimeAccountCard account={timeAccount} monthLabel={monthLabel} year={year} />
+        </div>
+      ) : null}
+
       <div className="mt-4 grid grid-cols-2 items-start gap-3">
         {widgets.map((id) => (
           <div key={id} className={spanClass(widgetSize(dash, id))}>
@@ -295,6 +321,7 @@ function DashboardPage() {
         customers={customers}
         projects={projects}
         settings={settings}
+        onRequestAbsence={requestAbsence}
       />
 
       <AbsenceDialog
@@ -304,6 +331,7 @@ function DashboardPage() {
         shifts={shifts}
         seed={absenceSeed}
         defaultFrom={selectedDate}
+        defaultKind={absenceKind}
         activeJobId={settings.activeJobId}
       />
     </main>
