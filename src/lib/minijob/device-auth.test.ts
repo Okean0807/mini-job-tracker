@@ -11,6 +11,7 @@ function base(settings: Partial<Settings> = {}): AppData {
     projects: [],
     payments: [],
     goals: [],
+    orders: [],
     settings: { ...DEFAULT_SETTINGS, ...settings },
     timer: { startedAt: 1, breakMinutes: 0 },
   };

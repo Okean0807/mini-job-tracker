@@ -16,6 +16,7 @@ import {
   type Customer,
   type Goal,
   type Job,
+  type Order,
   type Payment,
   type Project,
   type RunningTimer,
@@ -32,6 +33,7 @@ export const EMPTY_DATA: AppData = {
   projects: [],
   payments: [],
   goals: [],
+  orders: [],
   settings: DEFAULT_SETTINGS,
   timer: null,
 };
@@ -130,6 +132,7 @@ export function normalize(input: Partial<AppData>): AppData {
   const projectRows = (Array.isArray(raw.projects) ? raw.projects : []).filter(isPlainRecord);
   const paymentRows = (Array.isArray(raw.payments) ? raw.payments : []).filter(isPlainRecord);
   const goalRows = (Array.isArray(raw.goals) ? raw.goals : []).filter(isPlainRecord);
+  const orderRows = (Array.isArray(raw.orders) ? raw.orders : []).filter(isPlainRecord);
 
   return {
     shifts: shiftRows.map((s) => ({
@@ -151,6 +154,7 @@ export function normalize(input: Partial<AppData>): AppData {
     projects: projectRows as unknown as Project[],
     payments: paymentRows as unknown as Payment[],
     goals: goalRows as unknown as Goal[],
+    orders: orderRows as unknown as Order[],
     settings,
     timer: raw.timer ?? null,
   };
@@ -304,6 +308,20 @@ export function saveGoal(goal: Goal) {
 
 export function deleteGoal(id: string) {
   commit({ ...state, goals: state.goals.filter((g) => g.id !== id) });
+}
+
+/* ---------- Selbstständig-Aufträge ---------- */
+
+export function saveOrder(order: Order) {
+  const exists = state.orders.some((o) => o.id === order.id);
+  const orders = exists
+    ? state.orders.map((o) => (o.id === order.id ? order : o))
+    : [...state.orders, order];
+  commit({ ...state, orders });
+}
+
+export function deleteOrder(id: string) {
+  commit({ ...state, orders: state.orders.filter((o) => o.id !== id) });
 }
 
 /* ---------- Einstellungen ---------- */

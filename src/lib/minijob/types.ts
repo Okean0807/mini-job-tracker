@@ -185,6 +185,38 @@ export interface Goal {
   icon?: string;
 }
 
+/** Selbstständig: vereinbarter Auftrag (Preis ≠ Stundenlohn). */
+export type OrderStatus = "open" | "in_progress" | "done" | "cancelled";
+
+export interface Order {
+  id: string;
+  /** Auftragsbezeichnung */
+  title: string;
+  /** Kunde/Auftraggeber (Freitext) */
+  customerName: string;
+  /** Optionaler Link auf Customer */
+  customerId?: string;
+  /** Leistung */
+  service: string;
+  /** Objekt/Einsatzort */
+  location: string;
+  /** ISO date yyyy-MM-dd */
+  dateFrom: string;
+  /** ISO date yyyy-MM-dd */
+  dateTo?: string;
+  /** Vereinbarter Preis in EUR */
+  amount: number;
+  status: OrderStatus;
+  /** Tatsächliche Arbeitszeit in Stunden */
+  hoursWorked?: number;
+  notes?: string;
+  /** Optionaler Hook auf bestehende Einnahme/Payment */
+  paymentId?: string;
+  /** Optionaler Link auf Selbstständig-Job */
+  jobId?: string;
+  createdAt?: string;
+}
+
 export type ThemeMode = "system" | "light" | "dark";
 /** Oberflächen-Modus: Einfach, Standard, Profi */
 export type UiMode = "simple" | "standard" | "pro";
@@ -314,6 +346,8 @@ export interface AppData {
   projects: Project[];
   payments: Payment[];
   goals: Goal[];
+  /** Selbstständig-Aufträge (nicht FLEX/FEST) */
+  orders: Order[];
   settings: Settings;
   timer?: RunningTimer | null;
 }
