@@ -9,6 +9,7 @@ import {
   buildProofTableRows,
   filledAtLabel,
   proofTableHead,
+  sortProofShifts,
 } from "./arbeitsnachweis";
 import { saveAndRegisterBytes } from "./generated-docs";
 import type { Job, Shift } from "./types";
@@ -91,7 +92,7 @@ export interface WorkReportContext {
 /** Monatlicher Leistungsnachweis als PDF. */
 export function exportWorkReportPdf(shifts: Shift[], ctx: WorkReportContext) {
   const doc = new jsPDF();
-  const list = [...shifts].sort((a, b) => (a.date > b.date ? 1 : -1));
+  const list = sortProofShifts(shifts);
 
   doc.setFontSize(17);
   doc.setTextColor(...TEAL);
@@ -112,17 +113,17 @@ export function exportWorkReportPdf(shifts: Shift[], ctx: WorkReportContext) {
     head: [proofTableHead()],
     body: buildProofTableRows(list, ctx.jobs),
     foot: [[td("label.total"), "", "", "", formatHours(sumHours(list), DOCUMENT_LOCALE), "", ""]],
-    styles: { fontSize: 8, cellPadding: 2, valign: "top" },
+    styles: { fontSize: 8, cellPadding: 2, valign: "top", overflow: "linebreak" },
     columnStyles: {
       0: { cellWidth: 22 },
       1: { cellWidth: 32 },
       2: { cellWidth: 14 },
       3: { cellWidth: 14 },
       4: { cellWidth: 18 },
-      5: { cellWidth: 24 },
-      6: { cellWidth: 40 },
+      5: { cellWidth: 14 },
+      6: { cellWidth: "auto" },
     },
-    headStyles: { fillColor: TEAL },
+    headStyles: { fillColor: TEAL, overflow: "visible" },
     footStyles: { fillColor: [230, 230, 230], textColor: 20, fontStyle: "bold" },
   });
 

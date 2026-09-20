@@ -88,6 +88,49 @@ describe("noteCell", () => {
     ).toBe("Musterstraße 1\nSchlüssel beim Hausmeister");
   });
 
+  it("lists city, floor and doorSide in order and excludes zip", () => {
+    expect(
+      noteCell(
+        makeShift({
+          street: "Musterstraße",
+          houseNo: "10",
+          zip: "30161",
+          city: "Hannover",
+          floor: "3. OG",
+          doorSide: "Tür links",
+        }),
+      ),
+    ).toBe("Musterstraße 10\nHannover\n3. OG\nTür links");
+  });
+
+  it("skips a missing floor without leaving an empty line", () => {
+    expect(
+      noteCell(
+        makeShift({
+          street: "Musterstraße",
+          houseNo: "10",
+          city: "Hannover",
+          doorSide: "Tür rechts",
+        }),
+      ),
+    ).toBe("Musterstraße 10\nHannover\nTür rechts");
+  });
+
+  it("trims optional fields and omits empty lines", () => {
+    expect(
+      noteCell(
+        makeShift({
+          street: " Musterstraße ",
+          houseNo: " 10 ",
+          city: "  Hannover  ",
+          floor: "   ",
+          doorSide: " Tür links ",
+          note: " Schlüssel beim Hausmeister ",
+        }),
+      ),
+    ).toBe("Musterstraße 10\nHannover\nTür links\nSchlüssel beim Hausmeister");
+  });
+
   it("note only when no street", () => {
     expect(noteCell(makeShift({ note: "Nur Notiz", workCode: "UR" }))).toBe("Nur Notiz");
   });

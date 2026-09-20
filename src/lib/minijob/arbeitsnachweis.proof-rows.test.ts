@@ -148,6 +148,36 @@ describe("buildProofTableRows", () => {
     ]);
   });
 
+  it("sorts same-day entries by start time", () => {
+    const sa = makeShift({ id: "sa", start: "06:00", end: "07:00", workCode: "SA" });
+    const er = makeShift({ id: "er", start: "06:15", end: "07:15", workCode: "ER" });
+    const rows = buildProofTableRows([er, sa], [makeJob()]);
+
+    expect(rows.map((row) => [row[2], row[5]])).toEqual([
+      ["06:00", "SA"],
+      ["06:15", "ER"],
+    ]);
+  });
+
+  it("sorts multiple days by date and then start time", () => {
+    const rows = buildProofTableRows(
+      [
+        makeShift({ id: "d20-late", date: "2026-09-20", start: "08:00", workCode: "ER" }),
+        makeShift({ id: "d19-late", date: "2026-09-19", start: "06:15", workCode: "FR" }),
+        makeShift({ id: "d20-early", date: "2026-09-20", start: "05:30", workCode: "UR" }),
+        makeShift({ id: "d19-early", date: "2026-09-19", start: "06:00", workCode: "SA" }),
+      ],
+      [makeJob()],
+    );
+
+    expect(rows.map((row) => [row[0], row[2], row[5]])).toEqual([
+      ["19.09.2026", "06:00", "SA"],
+      ["19.09.2026", "06:15", "FR"],
+      ["20.09.2026", "05:30", "UR"],
+      ["20.09.2026", "08:00", "ER"],
+    ]);
+  });
+
   it("prefers workplace over job name; empty workCode → —", () => {
     const rows = buildProofTableRows(
       [makeShift({ workplace: "Objekt Nord" })],
