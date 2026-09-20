@@ -61,11 +61,12 @@ export function leistungsartCell(shift: Shift): string {
   return (shift.workCode ?? "").trim();
 }
 
-/** Notiz-Zelle: Straße+Nr; optional zweite Zeile mit shift.note (ohne workCode). */
+/** Notiz-Zelle: Straße+Nr, Ort, Etage, Türseite und optionale Notiz. */
 export function noteCell(shift: Shift): string {
-  const street = streetHouseLine(shift);
-  const note = (shift.note ?? "").trim();
-  return [street, note].filter(Boolean).join("\n");
+  return [streetHouseLine(shift), shift.city, shift.floor, shift.doorSide, shift.note]
+    .map((part) => (part ?? "").trim())
+    .filter(Boolean)
+    .join("\n");
 }
 
 /** PDF-Tabellenkopf (7 Spalten, §7). */
