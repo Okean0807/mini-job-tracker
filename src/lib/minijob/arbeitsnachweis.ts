@@ -197,7 +197,7 @@ export function proofNoteFontHooks(baseFontSize: number, line2ByRow: string[]) {
       const line2 = line2ByRow[data.row.index] ?? "";
       (data.cell as { _proofNoteLine2?: string })._proofNoteLine2 = line2;
 
-      // Sole painter is didDrawCell — clear text so autoTable does not emit duplicates.
+      // Clear early for layout; willDrawCell clears again immediately before autoTable paint.
       data.cell.text = [""];
 
       const lines = raw.split("\n").filter((l) => l.length > 0);
@@ -212,6 +212,11 @@ export function proofNoteFontHooks(baseFontSize: number, line2ByRow: string[]) {
       }
       const minH = data.cell.padding("top") + data.cell.padding("bottom") + contentMm;
       data.cell.styles.minCellHeight = Math.max(data.cell.styles.minCellHeight ?? 0, minH);
+    },
+    /** autoTable paints cell.text right after this hook — clear so only didDrawCell draws. */
+    willDrawCell(data: AutoTableCellHookData) {
+      if (data.section !== "body" || data.column.index !== NOTE_COL_INDEX) return;
+      data.cell.text = [];
     },
     didDrawCell(data: AutoTableCellHookData) {
       if (data.section !== "body" || data.column.index !== NOTE_COL_INDEX) return;
@@ -409,6 +414,7 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
     showHead: "everyPage",
     showFoot: "lastPage",
     didParseCell: noteHooks.didParseCell,
+    willDrawCell: noteHooks.willDrawCell,
     didDrawCell: noteHooks.didDrawCell,
     didDrawPage: () => {
       header();

@@ -278,6 +278,7 @@ describe("PDF export regression (real jspdf, no pdftotext)", () => {
   });
 
   it("PLZ/Ort appears exactly once in Notiz (no autoTable+didDrawCell double paint)", () => {
+    // Single-shift export: each Notiz line must appear exactly once in the PDF stream.
     exportArbeitsnachweisPdf(richShifts, {
       jobs: [job],
       month: 8,
@@ -286,8 +287,8 @@ describe("PDF export regression (real jspdf, no pdftotext)", () => {
       employer: "Putz GmbH",
     });
     const raw = pdfLatin1FromLastSave();
-    const plzOrt = "30159 Hannover";
-    expect(raw.split(plzOrt).length - 1).toBe(1);
+    expect(raw.split("30159 Hannover").length - 1).toBe(1);
+    expect(raw.split("Musterstraße").length - 1).toBe(1);
     expect(raw).toContain("Musterstraße 10, 3. OG, linke Tür");
     // Keep #102 markers
     assertProofPdfMarkers(raw);
