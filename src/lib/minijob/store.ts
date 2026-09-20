@@ -22,6 +22,7 @@ import {
   type RunningTimer,
   type Settings,
   type Shift,
+  type WorkObject,
 } from "./types";
 
 const STORAGE_KEY = "minijob-tracker-v1";
@@ -34,6 +35,7 @@ export const EMPTY_DATA: AppData = {
   payments: [],
   goals: [],
   orders: [],
+  objects: [],
   settings: DEFAULT_SETTINGS,
   timer: null,
 };
@@ -133,6 +135,7 @@ export function normalize(input: Partial<AppData>): AppData {
   const paymentRows = (Array.isArray(raw.payments) ? raw.payments : []).filter(isPlainRecord);
   const goalRows = (Array.isArray(raw.goals) ? raw.goals : []).filter(isPlainRecord);
   const orderRows = (Array.isArray(raw.orders) ? raw.orders : []).filter(isPlainRecord);
+  const objectRows = (Array.isArray(raw.objects) ? raw.objects : []).filter(isPlainRecord);
 
   return {
     shifts: shiftRows.map((s) => ({
@@ -155,6 +158,7 @@ export function normalize(input: Partial<AppData>): AppData {
     payments: paymentRows as unknown as Payment[],
     goals: goalRows as unknown as Goal[],
     orders: orderRows as unknown as Order[],
+    objects: objectRows as unknown as WorkObject[],
     settings,
     timer: raw.timer ?? null,
   };
@@ -322,6 +326,34 @@ export function saveOrder(order: Order) {
 
 export function deleteOrder(id: string) {
   commit({ ...state, orders: state.orders.filter((o) => o.id !== id) });
+}
+
+
+/* ---------- Einsatzobjekte ---------- */
+
+export function saveObject(obj: WorkObject) {
+  const exists = state.objects.some((o) => o.id === obj.id);
+  const objects = exists
+    ? state.objects.map((o) => (o.id === obj.id ? obj : o))
+    : [...state.objects, obj];
+  commit({ ...state, objects });
+}
+
+export function deleteObject(id: string) {
+  commit({ ...state, objects: state.objects.filter((o) => o.id !== id) });
+}
+
+/** Alias: neues Objekt anlegen oder aktualisieren (Brief-API). */
+export function addObject(obj: WorkObject) {
+  saveObject(obj);
+}
+
+export function upsertObject(obj: WorkObject) {
+  saveObject(obj);
+}
+
+export function removeObject(id: string) {
+  deleteObject(id);
 }
 
 /* ---------- Einstellungen ---------- */

@@ -159,6 +159,13 @@ describe("buildProofTableRows", () => {
     ]);
   });
 
+  it("uses stable id secondary when date and start match", () => {
+    const b = makeShift({ id: "b-id", start: "06:00", end: "07:00", workCode: "UR" });
+    const a = makeShift({ id: "a-id", start: "06:00", end: "07:00", workCode: "FR" });
+    const rows = buildProofTableRows([b, a], [makeJob()]);
+    expect(rows.map((row) => row[5])).toEqual(["FR", "UR"]);
+  });
+
   it("sorts multiple days by date and then start time", () => {
     const rows = buildProofTableRows(
       [
@@ -212,12 +219,30 @@ describe("PDF export regression (real jspdf, no pdftotext)", () => {
     expect(raw).toContain("UR");
     // ASCII-safe prefix; full "Musterstraße 10" also present with jspdf Helvetica
     expect(raw).toContain("Musterstra");
+    expect(raw).toContain("3. OG");
+    expect(raw).toContain("linke T");
+    expect(raw).toContain("30159");
+    expect(raw).toContain("Hannover");
     expect(raw).toContain("Ausgefüllt");
     expect(raw).not.toContain("Tätigkeiten");
   }
 
+  const richShifts = [
+    makeShift({
+      street: "Musterstraße",
+      houseNo: "10",
+      floor: "3. OG",
+      doorSide: "linke Tür",
+      zip: "30159",
+      city: "Hannover",
+      workCode: "UR",
+      start: "06:00",
+      end: "07:00",
+    }),
+  ];
+
   it("exportArbeitsnachweisPdf embeds Leistungsart/UR/address/Ausgefüllt, not Tätigkeiten", () => {
-    exportArbeitsnachweisPdf(shifts, {
+    exportArbeitsnachweisPdf(richShifts, {
       jobs: [job],
       month: 8,
       year: 2026,
@@ -230,12 +255,25 @@ describe("PDF export regression (real jspdf, no pdftotext)", () => {
   });
 
   it("exportWorkReportPdf (Leistungsnachweis button) shares same markers", () => {
-    exportWorkReportPdf(shifts, {
+    exportWorkReportPdf(richShifts, {
       jobs: [job],
       month: "September 2026",
       employeeName: "Max Mustermann",
       includePhotos: false,
     });
     assertProofPdfMarkers(pdfLatin1FromLastSave());
+  });
+
+  it("old shift without floor/door/zip/city still exports street only", () => {
+    exportArbeitsnachweisPdf(shifts, {
+      jobs: [job],
+      month: 8,
+      year: 2026,
+      employeeName: "Max Mustermann",
+    });
+    const raw = pdfLatin1FromLastSave();
+    expect(raw).toContain("Musterstra");
+    expect(raw).toContain("UR");
+    expect(raw).not.toContain("Tätigkeiten");
   });
 });

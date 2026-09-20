@@ -25,6 +25,7 @@ import {
   shiftsInMonth,
   shiftsInYear,
 } from "@/lib/minijob/calc";
+import { sortProofShifts } from "@/lib/minijob/arbeitsnachweis";
 import { payrollTotals } from "@/lib/minijob/payroll";
 import { activeWidgets, spanClass, widgetSize } from "@/lib/minijob/dashboard";
 import { goalsProgress } from "@/lib/minijob/goals";
@@ -59,7 +60,7 @@ export const Route = createFileRoute("/")({
 
 function DashboardPage() {
   const { t } = useT();
-  const { shifts, jobs, customers, projects, payments, goals, orders, settings, timer } = useAppData();
+  const { shifts, jobs, customers, projects, payments, goals, orders, objects, settings, timer } = useAppData();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
@@ -72,7 +73,7 @@ function DashboardPage() {
   const [customizeOpen, setCustomizeOpen] = useState(false);
 
   const resolve = useMemo(() => makeResolver(jobs, settings), [jobs, settings]);
-  const monthShifts = useMemo(() => shiftsInMonth(shifts, year, month), [shifts, year, month]);
+  const monthShifts = useMemo(() => sortProofShifts(shiftsInMonth(shifts, year, month)), [shifts, year, month]);
   const yearShifts = useMemo(() => shiftsInYear(shifts, year), [shifts, year]);
   const insights = useMemo(
     () => buildInsights(shifts, year, month, resolve),
@@ -341,6 +342,7 @@ function DashboardPage() {
         customers={customers}
         projects={projects}
         settings={settings}
+        objects={objects}
         onRequestAbsence={requestAbsence}
       />
 

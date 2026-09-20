@@ -56,17 +56,42 @@ export function streetHouseLine(shift: Shift): string {
     .join(" ");
 }
 
+/**
+ * PDF Notiz Zeile 1: streetHouse + optional `, floor` + optional `, doorSide`.
+ * Keine trailing/double commas; leer wenn nichts gesetzt.
+ */
+export function addressLine1(shift: Shift): string {
+  const street = streetHouseLine(shift);
+  const extras = [shift.floor, shift.doorSide]
+    .map((part) => (part ?? "").trim())
+    .filter(Boolean);
+  if (!street && extras.length === 0) return "";
+  if (!street) return extras.join(", ");
+  return [street, ...extras].join(", ");
+}
+
+/** PDF Notiz Zeile 2: `zip city` (Leerzeichen); leer wenn beides fehlt. */
+export function addressLine2(shift: Shift): string {
+  return [shift.zip, shift.city]
+    .map((part) => (part ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
 /** Leistungsart-Zelle: nur gespeichertes workCode (nie aus tasks/name). */
 export function leistungsartCell(shift: Shift): string {
   return (shift.workCode ?? "").trim();
 }
 
-/** Notiz-Zelle: Straße+Nr, Ort, Etage, Türseite und optionale Notiz. */
+/**
+ * Notiz-Zelle: Zeile1 Adresse, Zeile2 PLZ/Ort (kleiner im PDF), dann optionale Notiz.
+ * Alte Schichten ohne floor/door/zip/city → nur Straße+Nr, keine Leerzeilen.
+ */
 export function noteCell(shift: Shift): string {
-  return [streetHouseLine(shift), shift.city, shift.floor, shift.doorSide, shift.note]
-    .map((part) => (part ?? "").trim())
-    .filter(Boolean)
-    .join("\n");
+  const lines = [addressLine1(shift), addressLine2(shift)];
+  const note = (shift.note ?? "").trim();
+  if (note) lines.push(note);
+  return lines.filter(Boolean).join("\n");
 }
 
 /** PDF-Tabellenkopf (7 Spalten, §7). */
@@ -85,7 +110,10 @@ export function proofTableHead(): string[] {
 /** Sortiert PDF-Einträge chronologisch, ohne die gespeicherten Schichten zu verändern. */
 export function sortProofShifts(shifts: Shift[]): Shift[] {
   return [...shifts].sort(
-    (a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start),
+    (a, b) =>
+      a.date.localeCompare(b.date) ||
+      a.start.localeCompare(b.start) ||
+      a.id.localeCompare(b.id),
   );
 }
 
@@ -114,6 +142,98 @@ export function buildProofTableRows(shifts: Shift[], jobs: Job[] = []): string[]
 /** Export-Zeitstempel für Header „Ausgefüllt am“. */
 export function filledAtLabel(now = new Date()): string {
   return formatProofDate(now.toISOString());
+}
+
+/** Dynamische Leistungsart-Spaltenbreite (mm) aus Header + Werten. */
+export function computeLeistungsartColWidth(
+  doc: jsPDF,
+  shifts: Shift[],
+  header: string,
+  opts?: { minMm?: number; maxMm?: number; padMm?: number },
+): number {
+  const minMm = opts?.minMm ?? 12;
+  const maxMm = opts?.maxMm ?? 28;
+  const padMm = opts?.padMm ?? 2;
+  const values = [header, ...shifts.map((s) => leistungsartCell(s) || "—")];
+  let maxW = 0;
+  for (const value of values) {
+    maxW = Math.max(maxW, doc.getTextWidth(value));
+  }
+  return Math.min(maxMm, Math.max(minMm, maxW + padMm));
+}
+
+const NOTE_COL_INDEX = 6;
+
+type AutoTableCellHookData = {
+  section: string;
+  column: { index: number };
+  row: { index: number };
+  cell: {
+    raw?: unknown;
+    text?: string | string[];
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    padding: (side: "left" | "top" | "right" | "bottom") => number;
+  };
+  doc: jsPDF;
+};
+
+/**
+ * autoTable-Hooks für die Notiz-Spalte: PLZ/Ort-Zeile (~1.5pt kleiner).
+ * `line2ByRow` muss parallel zu `sortProofShifts(shifts)` / buildProofTableRows laufen.
+ */
+export function proofNoteFontHooks(baseFontSize: number, line2ByRow: string[]) {
+  const line2Size = Math.max(5, baseFontSize - 1.5);
+  return {
+    didParseCell(data: AutoTableCellHookData) {
+      if (data.section !== "body" || data.column.index !== NOTE_COL_INDEX) return;
+      const raw = Array.isArray(data.cell.text)
+        ? data.cell.text.join("\n")
+        : String(data.cell.text ?? data.cell.raw ?? "");
+      (data.cell as { _proofNote?: string })._proofNote = raw;
+      const line2 = line2ByRow[data.row.index] ?? "";
+      (data.cell as { _proofNoteLine2?: string })._proofNoteLine2 = line2;
+      if (raw) data.cell.text = raw.split("\n");
+    },
+    didDrawCell(data: AutoTableCellHookData) {
+      if (data.section !== "body" || data.column.index !== NOTE_COL_INDEX) return;
+      const raw = (data.cell as { _proofNote?: string })._proofNote ?? "";
+      if (!raw) return;
+      const lines = raw.split("\n").filter((l) => l.length > 0);
+      if (lines.length === 0) return;
+
+      const line2 = (data.cell as { _proofNoteLine2?: string })._proofNoteLine2 ?? "";
+      const doc = data.doc;
+      const padL = data.cell.padding("left");
+      const padT = data.cell.padding("top");
+      const x = data.cell.x + padL;
+      const maxW = Math.max(4, data.cell.width - padL - data.cell.padding("right"));
+
+      doc.setFillColor(255, 255, 255);
+      doc.rect(
+        data.cell.x + 0.15,
+        data.cell.y + 0.15,
+        data.cell.width - 0.3,
+        data.cell.height - 0.3,
+        "F",
+      );
+      doc.setTextColor(0, 0, 0);
+      doc.setFont("helvetica", "normal");
+
+      let y = data.cell.y + padT + baseFontSize * 0.35;
+      for (const line of lines) {
+        const size = line2 && line === line2 ? line2Size : baseFontSize;
+        doc.setFontSize(size);
+        const wrapped = doc.splitTextToSize(line, maxW) as string[];
+        for (const w of wrapped) {
+          doc.text(w, x, y);
+          y += size * 0.45;
+        }
+      }
+    },
+  };
 }
 
 /** Leistungszeile: „UR“ oder „SR: Wasserschaden“. */
@@ -210,11 +330,19 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
     doc.line(margin, 33, pageWidth - margin, 33);
   };
 
+  const head = proofTableHead();
+  const leistungsartWidth = computeLeistungsartColWidth(doc, list, head[5] ?? L.workCode, {
+    minMm: 12,
+    maxMm: 28,
+  });
+  const noteLine2ByRow = list.map((s) => addressLine2(s));
+  const noteHooks = proofNoteFontHooks(6.5, noteLine2ByRow);
+
   autoTable(doc, {
     startY: 37,
     margin: { left: margin, right: margin, top: 37, bottom: 14 },
     theme: "grid",
-    head: [proofTableHead()],
+    head: [head],
     body: buildProofTableRows(list, ctx.jobs),
     foot: [
       [
@@ -257,12 +385,14 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
       2: { cellWidth: 12, halign: "center" },
       3: { cellWidth: 12, halign: "center" },
       4: { cellWidth: 16, halign: "right" },
-      5: { cellWidth: 14 },
+      5: { cellWidth: leistungsartWidth, overflow: "linebreak" },
       6: { cellWidth: "auto" },
     },
     rowPageBreak: "avoid",
     showHead: "everyPage",
     showFoot: "lastPage",
+    didParseCell: noteHooks.didParseCell,
+    didDrawCell: noteHooks.didDrawCell,
     didDrawPage: () => {
       header();
     },

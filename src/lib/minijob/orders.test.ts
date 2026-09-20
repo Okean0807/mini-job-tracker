@@ -85,6 +85,7 @@ describe("store saveOrder / deleteOrder", () => {
       payments: [],
       goals: [],
       orders: [],
+    objects: [],
       settings: DEFAULT_SETTINGS,
       timer: null,
     });
@@ -133,6 +134,7 @@ describe("store saveOrder / deleteOrder", () => {
       payments: [],
       goals: [],
       orders: [],
+    objects: [],
       settings: DEFAULT_SETTINGS,
       timer: null,
     });
@@ -173,6 +175,7 @@ describe("order start/end → hoursWorked + same-day orders", () => {
       payments: [],
       goals: [],
       orders: [],
+    objects: [],
       settings: DEFAULT_SETTINGS,
       timer: null,
     });

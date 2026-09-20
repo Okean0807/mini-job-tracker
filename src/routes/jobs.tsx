@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { JobDialog } from "@/components/minijob/JobDialog";
 import { OrdersCard } from "@/components/minijob/OrdersCard";
+import { ObjectsCard } from "@/components/minijob/ObjectsCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,7 +47,7 @@ export const Route = createFileRoute("/jobs")({
 
 function JobsPage() {
   const { t } = useT();
-  const { jobs, customers, projects, payments, orders, settings, shifts } = useAppData();
+  const { jobs, customers, projects, payments, orders, objects, settings, shifts } = useAppData();
   const isSelf = primaryWorkMode(jobs, settings.activeJobId) === "selbststaendig";
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Job | null>(null);
@@ -54,6 +55,10 @@ function JobsPage() {
   return (
     <main className="mx-auto max-w-lg px-4 pt-6">
       <h1 className="text-2xl font-extrabold tracking-tight">{t("job.pageTitle")}</h1>
+
+      <div className="mt-4">
+        <ObjectsCard objects={objects} />
+      </div>
 
       {isSelf ? (
         <div className="mt-4 grid grid-cols-2 items-start gap-3">

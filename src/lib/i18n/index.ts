@@ -10,6 +10,7 @@ import { docsDict } from "./dict/docs";
 import { entry } from "./dict/entry";
 import { goalsDict } from "./dict/goals";
 import { ordersDict } from "./dict/orders";
+import { objectsDict } from "./dict/objects";
 import { jobsDict } from "./dict/jobs";
 import { reports } from "./dict/reports";
 import { settingsDict } from "./dict/settings";
@@ -35,6 +36,7 @@ const BUNDLE: Bundle = mergeBundles([
   annual,
   goalsDict,
   ordersDict,
+  objectsDict,
   docsDict,
   worklog,
   entry,

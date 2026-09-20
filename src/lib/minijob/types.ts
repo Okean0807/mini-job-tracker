@@ -141,6 +141,8 @@ export interface Shift {
   note?: string | undefined;
   /** Als Überstunden werten */
   overtime?: boolean;
+  /** Optionaler Link auf gespeichertes WorkObject */
+  objectId?: string;
   /** Leistungsnachweis: Einsatzort / Objekt */
   workplace?: string;
   /** Arbeitsnachweis: Straße */
@@ -224,6 +226,21 @@ export interface Order {
   /** Optionaler Link auf Selbstständig-Job */
   jobId?: string;
   createdAt?: string;
+}
+
+
+/** Gespeichertes Einsatzobjekt / Adresse (wiederverwendbar in Schichten). */
+export interface WorkObject {
+  id: string;
+  name: string;
+  street?: string;
+  houseNo?: string;
+  floor?: string;
+  doorSide?: string;
+  zip?: string;
+  city?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export type ThemeMode = "system" | "light" | "dark";
@@ -357,6 +374,8 @@ export interface AppData {
   goals: Goal[];
   /** Selbstständig-Aufträge (nicht FLEX/FEST) */
   orders: Order[];
+  /** Gespeicherte Einsatzobjekte / Adressen */
+  objects: WorkObject[];
   settings: Settings;
   timer?: RunningTimer | null;
 }
