@@ -138,6 +138,7 @@ export function exportWorkReportPdf(shifts: Shift[], ctx: WorkReportContext) {
     headStyles: { fillColor: TEAL, overflow: "visible" },
     footStyles: { fillColor: [230, 230, 230], textColor: 20, fontStyle: "bold" },
     didParseCell: noteHooks.didParseCell,
+    willDrawCell: noteHooks.willDrawCell,
     didDrawCell: noteHooks.didDrawCell,
   });
 
