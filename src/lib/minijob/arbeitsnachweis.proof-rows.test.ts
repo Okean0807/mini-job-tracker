@@ -276,4 +276,20 @@ describe("PDF export regression (real jspdf, no pdftotext)", () => {
     expect(raw).toContain("UR");
     expect(raw).not.toContain("Tätigkeiten");
   });
+
+  it("PLZ/Ort appears exactly once in Notiz (no autoTable+didDrawCell double paint)", () => {
+    exportArbeitsnachweisPdf(richShifts, {
+      jobs: [job],
+      month: 8,
+      year: 2026,
+      employeeName: "Max Mustermann",
+      employer: "Putz GmbH",
+    });
+    const raw = pdfLatin1FromLastSave();
+    const plzOrt = "30159 Hannover";
+    expect(raw.split(plzOrt).length - 1).toBe(1);
+    expect(raw).toContain("Musterstraße 10, 3. OG, linke Tür");
+    // Keep #102 markers
+    assertProofPdfMarkers(raw);
+  });
 });
