@@ -4,7 +4,12 @@ import autoTable from "jspdf-autotable";
 import { t, type TFunction } from "@/lib/i18n";
 import { td, DOCUMENT_LOCALE } from "./document-i18n";
 
-import { formatDate, formatHours, shiftHours, sumHours } from "./calc";
+import { formatDate, formatHours, sumHours } from "./calc";
+import {
+  buildProofTableRows,
+  filledAtLabel,
+  proofTableHead,
+} from "./arbeitsnachweis";
 import { saveAndRegisterBytes } from "./generated-docs";
 import type { Job, Shift } from "./types";
 
@@ -100,38 +105,22 @@ export function exportWorkReportPdf(shifts: Shift[], ctx: WorkReportContext) {
     .filter(Boolean)
     .join(", ");
   doc.text([ctx.employeeName, jobNames].filter(Boolean).join(" · ") || td("app.name"), 14, 31);
+  doc.text(`${td("proof.filledAt")}: ${filledAtLabel()}`, 14, 36);
 
   autoTable(doc, {
-    startY: 36,
-    head: [
-      [
-        td("label.date"),
-        td("worklog.workplace"),
-        td("label.start"),
-        td("label.end"),
-        td("label.hours"),
-        td("worklog.tasks"),
-        td("label.note"),
-      ],
-    ],
-    body: list.map((s) => [
-      formatDate(s.date, DOCUMENT_LOCALE),
-      s.workplace ?? ctx.jobs.find((j) => j.id === s.jobId)?.name ?? "–",
-      s.start,
-      s.end,
-      formatHours(shiftHours(s), DOCUMENT_LOCALE),
-      taskListLabel(s.tasks, td) || "–",
-      [s.note, s.gps ? `GPS ${formatGps(s.gps)}` : null].filter(Boolean).join(" · "),
-    ]),
+    startY: 41,
+    head: [proofTableHead()],
+    body: buildProofTableRows(list, ctx.jobs),
     foot: [[td("label.total"), "", "", "", formatHours(sumHours(list), DOCUMENT_LOCALE), "", ""]],
     styles: { fontSize: 8, cellPadding: 2, valign: "top" },
     columnStyles: {
-      0: { cellWidth: 20 },
-      1: { cellWidth: 30 },
-      2: { cellWidth: 13 },
-      3: { cellWidth: 13 },
-      4: { cellWidth: 16 },
-      5: { cellWidth: 52 },
+      0: { cellWidth: 22 },
+      1: { cellWidth: 32 },
+      2: { cellWidth: 14 },
+      3: { cellWidth: 14 },
+      4: { cellWidth: 18 },
+      5: { cellWidth: 24 },
+      6: { cellWidth: 40 },
     },
     headStyles: { fillColor: TEAL },
     footStyles: { fillColor: [230, 230, 230], textColor: 20, fontStyle: "bold" },
