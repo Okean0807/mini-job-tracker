@@ -18,6 +18,7 @@ describe("isValidPayload", () => {
   it("accepts backups that include shifts and jobs arrays", () => {
     expect(isValidPayload({ shifts: [], jobs: [] })).toBe(true);
     expect(isValidPayload({ shifts: [], jobs: [], goals: [] })).toBe(true);
+    expect(isValidPayload({ shifts: [], jobs: [], objects: [] })).toBe(true);
     expect(
       isValidPayload({
         shifts: [],
@@ -60,6 +61,8 @@ describe("isValidPayload", () => {
     expect(isValidPayload({ shifts: [], jobs: [], settings: [] })).toBe(false);
     expect(isValidPayload({ shifts: [], jobs: [], settings: "x" })).toBe(false);
     expect(isValidPayload({ shifts: [], jobs: [], goals: "x" })).toBe(false);
+    expect(isValidPayload({ shifts: [], jobs: [], objects: "x" })).toBe(false);
+    expect(isValidPayload({ shifts: [], jobs: [], objects: [null] })).toBe(false);
   });
 
   it("rejects null/primitive holes in list arrays (normalize used to throw)", () => {

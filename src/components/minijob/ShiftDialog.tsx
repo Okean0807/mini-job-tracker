@@ -17,10 +17,11 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/lib/i18n";
-import { formatDate, formatEuro, formatHours, isoDate, shiftBreakdown } from "@/lib/minijob/calc";
+import { formatEuro, formatHours, isoDate, shiftBreakdown } from "@/lib/minijob/calc";
 import { shiftPayroll } from "@/lib/minijob/payroll";
 import { holidayName } from "@/lib/minijob/holidays";
 import { parseRateInput, suggestedRate } from "@/lib/minijob/rate";
+import { ObjectDialog } from "@/components/minijob/ObjectDialog";
 import { addShift, removeShift, upsertShift } from "@/lib/minijob/service";
 import { newId, updateSettings } from "@/lib/minijob/store";
 import {
@@ -30,7 +31,14 @@ import {
   type Settings,
   type Shift,
   type ShiftKind,
+  type WorkObject,
 } from "@/lib/minijob/types";
+import {
+  applyObjectToFormFields,
+  objectAddressPreview,
+  resolveEntryDate,
+  withEntryDate,
+} from "@/lib/minijob/work-objects";
 import { WORK_CODES, WORK_CODE_LABELS } from "@/lib/minijob/arbeitsnachweis";
 import { listenOnce, parseVoice, voiceSupported } from "@/lib/minijob/voice";
 import {
@@ -56,6 +64,7 @@ interface ShiftDialogProps {
   customers: Customer[];
   projects: Project[];
   settings: Settings;
+  objects?: WorkObject[];
   /** When set, choosing Urlaub/Krank closes this dialog and opens AbsenceDialog (From–To). */
   onRequestAbsence?: (kind: "urlaub" | "krank" | "frei" | "sonstige", date: string) => void;
 }
@@ -71,6 +80,7 @@ export function ShiftDialog({
   customers,
   projects,
   settings,
+  objects = [],
   onRequestAbsence,
 }: ShiftDialogProps) {
   const { t, locale } = useT();
@@ -101,6 +111,9 @@ export function ShiftDialog({
   const [newCode, setNewCode] = useState("");
   const [newCodeLabel, setNewCodeLabel] = useState("");
   const [advanced, setAdvanced] = useState(false);
+  const [entryDate, setEntryDate] = useState(date);
+  const [objectId, setObjectId] = useState<string | undefined>(undefined);
+  const [objectDialogOpen, setObjectDialogOpen] = useState(false);
   const customCodes = settings.workCodes ?? [];
 
   const allCodes = [
@@ -130,11 +143,14 @@ export function ShiftDialog({
   useEffect(() => {
     if (!open) return;
     const fallbackJob = jobs.find((j) => j.id === settings.activeJobId) ?? jobs[0];
+    const initialDate = resolveEntryDate(shift, date);
+    setEntryDate(initialDate);
+    setObjectId(shift?.objectId);
     setJobId(shift?.jobId ?? fallbackJob?.id);
     // Existing entries keep their kind (incl. Feiertag). New entries on a
     // public holiday default to feiertag so the type matches the calendar day.
     const holidayDefault =
-      !shift && holidayName(date, settings.bundesland) ? "feiertag" : "arbeit";
+      !shift && holidayName(initialDate, settings.bundesland) ? "feiertag" : "arbeit";
     setKind(shift?.kind ?? holidayDefault);
     setStart(shift?.start ?? "09:00");
     setEnd(shift?.end ?? "17:00");
@@ -179,18 +195,20 @@ export function ShiftDialog({
             shift.customerId ||
             (shift.tasks?.length ?? 0) > 0 ||
             (shift.photos?.length ?? 0) > 0 ||
-            shift.gps),
+            shift.gps ||
+            shift.objectId),
       ),
     );
   }, [open, shift, jobs, settings.activeJobId, settings.defaultRate, settings.bundesland, date]);
 
 
   const job = jobs.find((j) => j.id === jobId);
-  const holiday = holidayName(date, settings.bundesland);
+  const holiday = holidayName(entryDate, settings.bundesland);
+  const selectedObject = objects.find((o) => o.id === objectId);
   const draft: Shift = {
     id: shift?.id ?? "draft",
     kind,
-    date,
+    date: entryDate,
     start,
     end,
     breakMinutes: Number(breakMinutes) || 0,
@@ -235,7 +253,7 @@ export function ShiftDialog({
       onRequestAbsence &&
       !shift
     ) {
-      onRequestAbsence(next, date);
+      onRequestAbsence(next, entryDate);
       onOpenChange(false);
       return;
     }
@@ -271,15 +289,52 @@ export function ShiftDialog({
     }
   }
 
+  function applyObjectSelection(id: string) {
+    if (!id) {
+      setObjectId(undefined);
+      return;
+    }
+    const obj = objects.find((o) => o.id === id);
+    if (!obj) {
+      setObjectId(undefined);
+      return;
+    }
+    const fields = applyObjectToFormFields(obj);
+    setObjectId(fields.objectId);
+    setWorkplace(fields.workplace);
+    setStreet(fields.street);
+    setHouseNo(fields.houseNo);
+    setFloor(fields.floor);
+    setDoorSide(fields.doorSide);
+    setZip(fields.zip);
+    setCity(fields.city);
+  }
+
+  function onObjectSaved(obj: WorkObject) {
+    const fields = applyObjectToFormFields(obj);
+    setObjectId(fields.objectId);
+    setWorkplace(fields.workplace);
+    setStreet(fields.street);
+    setHouseNo(fields.houseNo);
+    setFloor(fields.floor);
+    setDoorSide(fields.doorSide);
+    setZip(fields.zip);
+    setCity(fields.city);
+    setAdvanced(true);
+  }
+
   function save() {
-    const next: Shift = {
-      id: shift?.id ?? newId(),
-      kind,
-      date,
-      start,
-      end,
-      breakMinutes: Number(breakMinutes) || 0,
-    };
+    const next: Shift = withEntryDate(
+      {
+        id: shift?.id ?? newId(),
+        kind,
+        date: entryDate,
+        start,
+        end,
+        breakMinutes: Number(breakMinutes) || 0,
+      },
+      entryDate,
+    );
     const rateValue = parseRateInput(rate);
     if (rateValue !== undefined) next.rate = rateValue;
     if (jobId) next.jobId = jobId;
@@ -287,6 +342,7 @@ export function ShiftDialog({
     if (overtime) next.overtime = true;
     if (customerId) next.customerId = customerId;
     if (projectId) next.projectId = projectId;
+    if (objectId) next.objectId = objectId;
     if (workplace.trim()) next.workplace = workplace.trim();
     if (tasks.length > 0) next.tasks = tasks;
     if (photos.length > 0) next.photos = photos;
@@ -315,17 +371,26 @@ export function ShiftDialog({
   const selfEmployed = job?.mode === "selbststaendig";
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{shift ? t("shift.editTitle") : t("shift.newTitle")}</DialogTitle>
           <DialogDescription>
-            {formatDate(date, locale)}
-            {holiday ? ` · ${holiday}` : ""}
+            {holiday ? holiday : t("label.date")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
+          <div className="grid gap-2">
+            <Label htmlFor="eintrag-datum">{t("label.date")}</Label>
+            <Input
+              id="eintrag-datum"
+              type="date"
+              value={entryDate}
+              onChange={(e) => setEntryDate(e.target.value)}
+            />
+          </div>
           {jobs.length > 1 ? (
             <div className="grid gap-2">
               <Label>{t("label.job")}</Label>
@@ -505,6 +570,36 @@ export function ShiftDialog({
 
           <div className="grid gap-3 rounded-xl border p-3">
             <p className="text-sm font-semibold">{t("worklog.section")}</p>
+
+            <div className="grid gap-1.5">
+              <Label className="text-xs">{t("object.select")}</Label>
+              <select
+                value={objectId ?? ""}
+                onChange={(e) => applyObjectSelection(e.target.value)}
+                className="h-9 rounded-md border bg-background px-2 text-sm"
+              >
+                <option value="">{t("object.none")}</option>
+                {objects.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+              {selectedObject ? (
+                <p className="text-xs text-muted-foreground">
+                  {objectAddressPreview(selectedObject) || selectedObject.name}
+                </p>
+              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="justify-start"
+                onClick={() => setObjectDialogOpen(true)}
+              >
+                {t("object.new")}
+              </Button>
+            </div>
 
             <div className="grid gap-1.5">
               <Label htmlFor="einsatzort" className="text-xs">
@@ -889,5 +984,12 @@ export function ShiftDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <ObjectDialog
+      open={objectDialogOpen}
+      onOpenChange={setObjectDialogOpen}
+      onSaved={onObjectSaved}
+    />
+    </>
   );
 }

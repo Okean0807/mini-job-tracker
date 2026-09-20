@@ -35,7 +35,7 @@ export function isValidPayload(value: unknown): value is AppData {
     return false;
   }
 
-  const optionalLists = ["customers", "projects", "payments", "goals", "orders"];
+  const optionalLists = ["customers", "projects", "payments", "goals", "orders", "objects"];
   if (
     optionalLists.some(
       (key) => raw[key] !== undefined && !listElementsAreRecords(raw[key]),

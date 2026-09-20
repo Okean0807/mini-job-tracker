@@ -6,8 +6,11 @@ import { td, DOCUMENT_LOCALE } from "./document-i18n";
 
 import { formatDate, formatHours, sumHours } from "./calc";
 import {
+  addressLine2,
   buildProofTableRows,
+  computeLeistungsartColWidth,
   filledAtLabel,
+  proofNoteFontHooks,
   proofTableHead,
   sortProofShifts,
 } from "./arbeitsnachweis";
@@ -108,9 +111,18 @@ export function exportWorkReportPdf(shifts: Shift[], ctx: WorkReportContext) {
   doc.text([ctx.employeeName, jobNames].filter(Boolean).join(" · ") || td("app.name"), 14, 31);
   doc.text(`${td("proof.filledAt")}: ${filledAtLabel()}`, 14, 36);
 
+  const head = proofTableHead();
+  doc.setFontSize(8);
+  const leistungsartWidth = computeLeistungsartColWidth(doc, list, head[5] ?? td("worklog.workCode"), {
+    minMm: 12,
+    maxMm: 28,
+  });
+  const noteLine2ByRow = list.map((s) => addressLine2(s));
+  const noteHooks = proofNoteFontHooks(8, noteLine2ByRow);
+
   autoTable(doc, {
     startY: 41,
-    head: [proofTableHead()],
+    head: [head],
     body: buildProofTableRows(list, ctx.jobs),
     foot: [[td("label.total"), "", "", "", formatHours(sumHours(list), DOCUMENT_LOCALE), "", ""]],
     styles: { fontSize: 8, cellPadding: 2, valign: "top", overflow: "linebreak" },
@@ -120,11 +132,13 @@ export function exportWorkReportPdf(shifts: Shift[], ctx: WorkReportContext) {
       2: { cellWidth: 14 },
       3: { cellWidth: 14 },
       4: { cellWidth: 18 },
-      5: { cellWidth: 14 },
+      5: { cellWidth: leistungsartWidth, overflow: "linebreak" },
       6: { cellWidth: "auto" },
     },
     headStyles: { fillColor: TEAL, overflow: "visible" },
     footStyles: { fillColor: [230, 230, 230], textColor: 20, fontStyle: "bold" },
+    didParseCell: noteHooks.didParseCell,
+    didDrawCell: noteHooks.didDrawCell,
   });
 
   const after = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable;

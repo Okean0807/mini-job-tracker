@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   addressLine,
+  addressLine1,
+  addressLine2,
   leistungsartCell,
   noteCell,
   streetHouseLine,
@@ -46,6 +48,47 @@ describe("streetHouseLine", () => {
   });
 });
 
+describe("addressLine1 / addressLine2", () => {
+  it("formats street + floor + doorSide without trailing commas", () => {
+    expect(
+      addressLine1(
+        makeShift({
+          street: "Musterstraße",
+          houseNo: "10",
+          floor: "3. OG",
+          doorSide: "linke Tür",
+        }),
+      ),
+    ).toBe("Musterstraße 10, 3. OG, linke Tür");
+    expect(
+      addressLine1(makeShift({ street: "Musterstraße", houseNo: "10", floor: "3. OG" })),
+    ).toBe("Musterstraße 10, 3. OG");
+    expect(addressLine1(makeShift({ street: "Musterstraße", houseNo: "10" }))).toBe(
+      "Musterstraße 10",
+    );
+  });
+
+  it("joins zip and city with a space; empty when both missing", () => {
+    expect(addressLine2(makeShift({ zip: "30159", city: "Hannover" }))).toBe("30159 Hannover");
+    expect(addressLine2(makeShift({ zip: "30159" }))).toBe("30159");
+    expect(addressLine2(makeShift({ city: "Hannover" }))).toBe("Hannover");
+    expect(addressLine2(makeShift())).toBe("");
+  });
+
+  it("omits empty floor/door without double commas", () => {
+    expect(
+      addressLine1(
+        makeShift({
+          street: "Musterstraße",
+          houseNo: "10",
+          floor: "  ",
+          doorSide: "linke Tür",
+        }),
+      ),
+    ).toBe("Musterstraße 10, linke Tür");
+  });
+});
+
 describe("leistungsartCell", () => {
   it("returns trimmed workCode only", () => {
     expect(leistungsartCell(makeShift({ workCode: " UR " }))).toBe("UR");
@@ -75,7 +118,7 @@ describe("noteCell", () => {
     ).toBe("Berckhusenstraße 12");
   });
 
-  it("adds note as second line and never includes workCode", () => {
+  it("adds note as further line and never includes workCode", () => {
     expect(
       noteCell(
         makeShift({
@@ -88,32 +131,32 @@ describe("noteCell", () => {
     ).toBe("Musterstraße 1\nSchlüssel beim Hausmeister");
   });
 
-  it("lists city, floor and doorSide in order and excludes zip", () => {
+  it("puts floor/door on line1 and zip+city on line2", () => {
     expect(
       noteCell(
         makeShift({
           street: "Musterstraße",
           houseNo: "10",
-          zip: "30161",
+          zip: "30159",
           city: "Hannover",
           floor: "3. OG",
-          doorSide: "Tür links",
+          doorSide: "linke Tür",
         }),
       ),
-    ).toBe("Musterstraße 10\nHannover\n3. OG\nTür links");
+    ).toBe("Musterstraße 10, 3. OG, linke Tür\n30159 Hannover");
   });
 
-  it("skips a missing floor without leaving an empty line", () => {
+  it("skips missing floor without empty lines or trailing commas", () => {
     expect(
       noteCell(
         makeShift({
           street: "Musterstraße",
           houseNo: "10",
           city: "Hannover",
-          doorSide: "Tür rechts",
+          doorSide: "linke Tür",
         }),
       ),
-    ).toBe("Musterstraße 10\nHannover\nTür rechts");
+    ).toBe("Musterstraße 10, linke Tür\nHannover");
   });
 
   it("trims optional fields and omits empty lines", () => {
@@ -122,13 +165,14 @@ describe("noteCell", () => {
         makeShift({
           street: " Musterstraße ",
           houseNo: " 10 ",
+          zip: " 30159 ",
           city: "  Hannover  ",
           floor: "   ",
-          doorSide: " Tür links ",
+          doorSide: " linke Tür ",
           note: " Schlüssel beim Hausmeister ",
         }),
       ),
-    ).toBe("Musterstraße 10\nHannover\nTür links\nSchlüssel beim Hausmeister");
+    ).toBe("Musterstraße 10, linke Tür\n30159 Hannover\nSchlüssel beim Hausmeister");
   });
 
   it("note only when no street", () => {
@@ -137,6 +181,10 @@ describe("noteCell", () => {
 
   it("empty when neither street nor note", () => {
     expect(noteCell(makeShift({ workCode: "UR" }))).toBe("");
+  });
+
+  it("old shift without floor/door/zip/city exports street only", () => {
+    expect(noteCell(makeShift({ street: "Musterstraße", houseNo: "10" }))).toBe("Musterstraße 10");
   });
 });
 
