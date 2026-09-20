@@ -38,6 +38,15 @@ describe("Dashboard FAB (pre-release)", () => {
 
   it("AbsenceDialog remains for calendar edit of existing absences", () => {
     expect(src).toMatch(/AbsenceDialog/);
-    expect(src).toMatch(/isAbsenceKind\(existing\.kind\)/);
+    expect(src).toMatch(/isAbsenceKind/);
+  });
+
+  it("calendar day with arbeit opens new entry (multi-interval), not openEdit first", () => {
+    expect(src).not.toMatch(/else if \(existing\) openEdit\(existing\)/);
+    expect(src).toMatch(/shifts\.filter\(\(s\) => s\.date === date\)/);
+    expect(src).toMatch(/hasArbeitOrOther/);
+    expect(src).toMatch(/openNew\(date\)/);
+    // Editing remains via ShiftList onSelect={openEdit}
+    expect(src).toMatch(/onSelect=\{openEdit\}/);
   });
 });

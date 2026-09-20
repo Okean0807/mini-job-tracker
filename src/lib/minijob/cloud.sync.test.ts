@@ -1258,6 +1258,44 @@ describe("orders sync (v1.1)", () => {
     expect(payload.orders![0]!.id).toBe("o1");
   });
 
+  it("order with start/end round-trips in backup payload (not in workFingerprint)", async () => {
+    local = {
+      ...makeData(1),
+      orders: [
+        {
+          id: "o-times",
+          title: "Mit Zeiten",
+          customerName: "Müller",
+          service: "Rasen",
+          location: "Hof",
+          dateFrom: "2026-09-01",
+          amount: 90,
+          status: "open",
+          start: "09:00",
+          end: "12:00",
+          hoursWorked: 3,
+        },
+      ],
+    } as unknown as AppData;
+
+    const { initCloudSync, workFingerprint } = await loadModule();
+    const fpBefore = workFingerprint(local);
+    initCloudSync();
+    await settle();
+
+    expect(cloud.upserts).toBe(1);
+    const payload = cloud.remote?.payload as AppData;
+    expect(payload.orders).toHaveLength(1);
+    const o = payload.orders![0]!;
+    expect(o.id).toBe("o-times");
+    expect(o.start).toBe("09:00");
+    expect(o.end).toBe("12:00");
+    expect(o.hoursWorked).toBe(3);
+    // orders remain outside workFingerprint
+    expect(workFingerprint(local)).toBe(fpBefore);
+    expect(workFingerprint(payload)).toBe(fpBefore);
+  });
+
   it("order-only change bump localChangedAt but not workFingerprint/localWorkChangedAt", async () => {
     const { initCloudSync, workFingerprint } = await loadModule();
     initCloudSync();

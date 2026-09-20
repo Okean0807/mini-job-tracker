@@ -410,6 +410,10 @@ export function ShiftDialog({
             </div>
           </div>
 
+          {!shift && kind === "arbeit" ? (
+            <p className="text-xs text-muted-foreground">{t("shift.multiSameDayHint")}</p>
+          ) : null}
+
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
               <Label htmlFor="pause">{t("label.breakMinutes")}</Label>

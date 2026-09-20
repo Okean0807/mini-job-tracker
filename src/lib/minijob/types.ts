@@ -214,6 +214,10 @@ export interface Order {
   status: OrderStatus;
   /** Tatsächliche Arbeitszeit in Stunden */
   hoursWorked?: number;
+  /** Optional: Beginn HH:mm — Stunden können daraus abgeleitet werden */
+  start?: string;
+  /** Optional: Ende HH:mm — Stunden können daraus abgeleitet werden */
+  end?: string;
   notes?: string;
   /** Optionaler Hook auf bestehende Einnahme/Payment */
   paymentId?: string;

@@ -219,12 +219,23 @@ function DashboardPage() {
           setMonth(m);
         }}
         onSelectDay={(date) => {
-          const existing = shifts.find((s) => s.date === date);
-          if (existing && isAbsenceKind(existing.kind)) {
-            setAbsenceSeed(existing);
-            setAbsenceOpen(true);
-          } else if (existing) openEdit(existing);
-          else openNew(date);
+          const dayShifts = shifts.filter((s) => s.date === date);
+          if (dayShifts.length === 0) {
+            openNew(date);
+            return;
+          }
+          // Nur Abwesenheit(en): bestehendes Absence-Edit. Arbeit oder Mix → neuer Eintrag
+          // (mehrere Intervalle am selben Tag). Bearbeiten bleibt über ShiftList.
+          const hasArbeitOrOther = dayShifts.some((s) => !isAbsenceKind(s.kind));
+          if (!hasArbeitOrOther) {
+            const absence = dayShifts.find((s) => isAbsenceKind(s.kind));
+            if (absence) {
+              setAbsenceSeed(absence);
+              setAbsenceOpen(true);
+              return;
+            }
+          }
+          openNew(date);
         }}
       />
     ),

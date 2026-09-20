@@ -1,4 +1,20 @@
+import { toMinutes } from "./calc";
 import type { Order, OrderStatus } from "./types";
+
+/**
+ * Dauer in Stunden aus Beginn/Ende (HH:mm).
+ * Über Mitternacht: end < start → +24h. Ungültig/leer → undefined.
+ */
+export function hoursFromInterval(start?: string, end?: string): number | undefined {
+  if (!start?.trim() || !end?.trim()) return undefined;
+  if (!/^\d{1,2}:\d{2}$/.test(start.trim()) || !/^\d{1,2}:\d{2}$/.test(end.trim())) {
+    return undefined;
+  }
+  let diff = toMinutes(end.trim()) - toMinutes(start.trim());
+  if (diff < 0) diff += 24 * 60;
+  if (diff <= 0) return undefined;
+  return diff / 60;
+}
 
 /**
  * Kennzahl „Umsatz pro Arbeitsstunde“ = vereinbarter Preis ÷ tatsächliche Stunden.

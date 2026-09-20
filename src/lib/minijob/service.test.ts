@@ -1,16 +1,18 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { isoDate, shiftHours, timeFromDate } from "./calc";
+import { payrollTotals } from "./payroll";
 import {
   addShift,
   earningsOf,
   getShift,
   listShifts,
+  monthStats,
   removeShift,
   updateShift,
   upsertShift,
 } from "./service";
-import { getData, replaceAll } from "./store";
+import { getData, replaceAll, saveShift } from "./store";
 import { DEFAULT_SETTINGS, type Shift } from "./types";
 
 const base = {
@@ -126,5 +128,93 @@ describe("Timer-Regression (service.addShift)", () => {
     expect(shift.date).toBe("2026-03-04");
     expect(shiftHours(shift)).toBe(4);
     expect(shift.createdAt).toBe(isoDate(new Date()));
+  });
+});
+
+
+describe("FLEX multi arbeit same calendar day", () => {
+  beforeEach(() => {
+    replaceAll({
+      shifts: [],
+      jobs: [{ id: "j1", name: "Café", color: "#0d9488", mode: "flex", rate: 12 }],
+      settings: { ...DEFAULT_SETTINGS, defaultRate: 12 },
+    });
+  });
+
+  it("saveShift does not overwrite by date — keeps distinct ids", () => {
+    saveShift({
+      id: "a",
+      kind: "arbeit",
+      date: "2026-09-15",
+      start: "08:00",
+      end: "12:00",
+      breakMinutes: 0,
+      rate: 12,
+      jobId: "j1",
+    });
+    saveShift({
+      id: "b",
+      kind: "arbeit",
+      date: "2026-09-15",
+      start: "14:00",
+      end: "17:00",
+      breakMinutes: 0,
+      rate: 12,
+      jobId: "j1",
+    });
+    saveShift({
+      id: "c",
+      kind: "arbeit",
+      date: "2026-09-15",
+      start: "18:00",
+      end: "20:00",
+      breakMinutes: 0,
+      rate: 12,
+      jobId: "j1",
+    });
+    expect(getData().shifts).toHaveLength(3);
+    expect(getData().shifts.map((s) => s.id).sort()).toEqual(["a", "b", "c"]);
+  });
+
+  it("monthStats and payrollTotals sum 2–3 arbeit on same date", () => {
+    addShift({
+      kind: "arbeit",
+      date: "2026-09-15",
+      start: "08:00",
+      end: "12:00",
+      breakMinutes: 0,
+      rate: 12,
+      jobId: "j1",
+    });
+    addShift({
+      kind: "arbeit",
+      date: "2026-09-15",
+      start: "14:00",
+      end: "17:00",
+      breakMinutes: 0,
+      rate: 12,
+      jobId: "j1",
+    });
+    addShift({
+      kind: "arbeit",
+      date: "2026-09-15",
+      start: "18:00",
+      end: "20:00",
+      breakMinutes: 0,
+      rate: 12,
+      jobId: "j1",
+    });
+    // 4 + 3 + 2 = 9h, 9 * 12 = 108
+    const m = monthStats(2026, 8);
+    expect(m.entries).toBe(3);
+    expect(m.hours).toBe(9);
+    expect(m.earnings).toBeCloseTo(108, 10);
+    expect(m.payroll.workedHours).toBe(9);
+    expect(m.payroll.earnings).toBeCloseTo(108, 10);
+
+    const all = getData().shifts;
+    const totals = payrollTotals(all, (s) => ({ job: getData().jobs[0], defaultRate: 12 }), all);
+    expect(totals.workedHours).toBe(9);
+    expect(totals.earnings).toBeCloseTo(108, 10);
   });
 });
