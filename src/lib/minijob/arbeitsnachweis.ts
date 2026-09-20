@@ -82,13 +82,20 @@ export function proofTableHead(): string[] {
   ];
 }
 
+/** Sortiert PDF-Einträge chronologisch, ohne die gespeicherten Schichten zu verändern. */
+export function sortProofShifts(shifts: Shift[]): Shift[] {
+  return [...shifts].sort(
+    (a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start),
+  );
+}
+
 /**
  * Gemeinsame PDF-Zeilen für Arbeitsnachweis / Leistungsnachweis.
  * Spalten: Datum | Einsatzort/Objekt | Beginn | Ende | Stunden | Leistungsart | Notiz
  * Leistungsart leer → "—"; Notiz leer wenn keine Adresse/Notiz.
  */
 export function buildProofTableRows(shifts: Shift[], jobs: Job[] = []): string[][] {
-  return shifts.map((s) => {
+  return sortProofShifts(shifts).map((s) => {
     const jobName = jobs.find((j) => j.id === s.jobId)?.name;
     const einsatzort = (s.workplace ?? jobName ?? "").trim() || "—";
     const leistungsart = leistungsartCell(s) || "—";
@@ -165,7 +172,7 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
   const months = monthNames(DOCUMENT_LOCALE);
   const monthName = months[ctx.month] ?? "";
   const monthLabel = `${monthName} ${ctx.year}`;
-  const list = [...shifts].sort((a, b) => (a.date > b.date ? 1 : -1));
+  const list = sortProofShifts(shifts);
   const totalHours = sumHours(list);
   const L = arbeitsnachweisLabels();
   // Export time for header — not shift.date / createdAt
@@ -235,6 +242,7 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
       fontSize: 6.5,
       lineWidth: 0.3,
       halign: "left",
+      overflow: "visible",
     },
     footStyles: {
       fillColor: [225, 225, 225],
@@ -249,7 +257,7 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
       2: { cellWidth: 12, halign: "center" },
       3: { cellWidth: 12, halign: "center" },
       4: { cellWidth: 16, halign: "right" },
-      5: { cellWidth: 17 },
+      5: { cellWidth: 14 },
       6: { cellWidth: "auto" },
     },
     rowPageBreak: "avoid",

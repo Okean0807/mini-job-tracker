@@ -103,17 +103,17 @@ describe("noteCell", () => {
     ).toBe("Musterstraße 10\nHannover\n3. OG\nTür links");
   });
 
-  it("keeps partial address fields in order", () => {
+  it("skips a missing floor without leaving an empty line", () => {
     expect(
       noteCell(
         makeShift({
           street: "Musterstraße",
           houseNo: "10",
-          floor: "3. OG",
+          city: "Hannover",
           doorSide: "Tür rechts",
         }),
       ),
-    ).toBe("Musterstraße 10\n3. OG\nTür rechts");
+    ).toBe("Musterstraße 10\nHannover\nTür rechts");
   });
 
   it("trims optional fields and omits empty lines", () => {
