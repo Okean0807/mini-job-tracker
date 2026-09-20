@@ -1,6 +1,7 @@
 import { CalendarDays } from "lucide-react";
 
 import { useT } from "@/lib/i18n";
+import { streetHouseLine } from "@/lib/minijob/arbeitsnachweis";
 import { formatDate, formatEuro, formatHours, shiftBreakdown } from "@/lib/minijob/calc";
 import { shiftPayroll } from "@/lib/minijob/payroll";
 import { effectiveShiftRate } from "@/lib/minijob/rate";
@@ -36,6 +37,9 @@ export function ShiftList({ shifts, jobs, resolve, onSelect }: ShiftListProps) {
         const pay = shiftPayroll(s, { ...options, history: shifts });
         const job = jobs.find((j) => j.id === s.jobId);
         const rate = effectiveShiftRate(s, { job, defaultRate: options.defaultRate });
+        const street = streetHouseLine(s);
+        const workCode = (s.workCode ?? "").trim();
+        const locationLine = [street, workCode].filter(Boolean).join(" · ");
         return (
           <li key={s.id}>
             <button
@@ -58,6 +62,9 @@ export function ShiftList({ shifts, jobs, resolve, onSelect }: ShiftListProps) {
                     : t(`kind.${s.kind}`)}
                   {` ${t("list.perHour", { amount: formatEuro(rate) })}`}
                 </p>
+                {locationLine ? (
+                  <p className="truncate text-xs text-muted-foreground">{locationLine}</p>
+                ) : null}
                 {b.labels.length ? (
                   <p className="mt-1 text-[11px] font-medium text-primary">
                     {t("list.supplement", { labels: b.labels.join(", ") })}
