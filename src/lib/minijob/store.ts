@@ -8,6 +8,12 @@ import { withConsistentPinSettings } from "./pin";
 import { KNOWN_LEGAL_MONTHLY_LIMITS } from "./legal";
 import { applyAppearance } from "./theme";
 import {
+  clearObjectIdFromShifts,
+  ensureObjectsFromShifts,
+  linkShiftToObject,
+  upsertObjectFromShiftAddress,
+} from "./work-objects";
+import {
   DEFAULT_NOTIFICATIONS,
   DEFAULT_SETTINGS,
   DEFAULT_SUPPLEMENTS,
@@ -171,6 +177,15 @@ export function loadFromStorage() {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (raw) {
       state = normalize(JSON.parse(raw) as Partial<AppData>);
+      // Legacy: fehlende Objekte aus Schicht-Adressen nachziehen (nur ADD/Fill, keine Shift-Mutation)
+      const objects = ensureObjectsFromShifts(state.objects, state.shifts, {
+        newId,
+        now: todayIso(),
+      });
+      if (objects !== state.objects) {
+        state = { ...state, objects };
+        persist();
+      }
       emit(false);
       return;
     }
@@ -199,22 +214,52 @@ export function getData(): AppData {
   return state;
 }
 
+
+function todayIso(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Adresse aus Schicht lernen und objectId setzen; Objekte-Liste ggf. erweitern. */
+function learnObjectsFromShift(shift: Shift, objects: WorkObject[]): { shift: Shift; objects: WorkObject[] } {
+  const result = upsertObjectFromShiftAddress(objects, shift, { newId, now: todayIso() });
+  return {
+    shift: linkShiftToObject(shift, result.objectId),
+    objects: result.objects,
+  };
+}
+
+function learnObjectsFromShifts(list: Shift[], objects: WorkObject[]): { shifts: Shift[]; objects: WorkObject[] } {
+  let objs = objects;
+  const shifts = list.map((s) => {
+    const learned = learnObjectsFromShift(s, objs);
+    objs = learned.objects;
+    return learned.shift;
+  });
+  return { shifts, objects: objs };
+}
+
 /* ---------- Schichten ---------- */
 
 export function saveShift(shift: Shift) {
-  const exists = state.shifts.some((s) => s.id === shift.id);
+  const learned = learnObjectsFromShift(shift, state.objects);
+  const exists = state.shifts.some((s) => s.id === learned.shift.id);
   const shifts = exists
-    ? state.shifts.map((s) => (s.id === shift.id ? shift : s))
-    : [...state.shifts, shift];
+    ? state.shifts.map((s) => (s.id === learned.shift.id ? learned.shift : s))
+    : [...state.shifts, learned.shift];
   shifts.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-  commit({ ...state, shifts });
+  commit({ ...state, shifts, objects: learned.objects });
 }
 
 export function saveShifts(list: Shift[]) {
+  const learned = learnObjectsFromShifts(list, state.objects);
   const map = new Map(state.shifts.map((s) => [s.id, s]));
-  for (const s of list) map.set(s.id, s);
+  for (const s of learned.shifts) map.set(s.id, s);
   const shifts = [...map.values()].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-  commit({ ...state, shifts });
+  commit({ ...state, shifts, objects: learned.objects });
 }
 
 export function deleteShift(id: string) {
@@ -340,7 +385,12 @@ export function saveObject(obj: WorkObject) {
 }
 
 export function deleteObject(id: string) {
-  commit({ ...state, objects: state.objects.filter((o) => o.id !== id) });
+  // Objekt entfernen; Schicht-Adressfelder bleiben. objectId-Referenzen bereinigen.
+  commit({
+    ...state,
+    objects: state.objects.filter((o) => o.id !== id),
+    shifts: clearObjectIdFromShifts(state.shifts, id),
+  });
 }
 
 /** Alias: neues Objekt anlegen oder aktualisieren (Brief-API). */
@@ -404,7 +454,12 @@ export function getTimer(): RunningTimer | null {
 /* ---------- Import / Export ---------- */
 
 export function replaceAll(data: Partial<AppData>) {
-  const next = normalize(data);
+  let next = normalize(data);
+  const objects = ensureObjectsFromShifts(next.objects, next.shifts, {
+    newId,
+    now: todayIso(),
+  });
+  if (objects !== next.objects) next = { ...next, objects };
   commit(next, false);
   applyAppearance(next.settings);
 }

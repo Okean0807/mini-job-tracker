@@ -64,7 +64,8 @@ export function upsertShift(input: ShiftInput): Shift {
     createdAt: input.createdAt ?? isoDate(new Date()),
   };
   storeSaveShift(shift);
-  return shift;
+  // store kann objectId per Auto-Learn setzen — gespeicherten Stand zurückgeben
+  return getData().shifts.find((s) => s.id === shift.id) ?? shift;
 }
 
 export function addShift(input: Omit<ShiftInput, "id">): Shift {
