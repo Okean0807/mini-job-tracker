@@ -51,6 +51,26 @@ export function addressLine(shift: Shift, jobs: Job[] = []): string {
     .join(", ");
 }
 
+/** Nur Straße + Hausnummer (ohne PLZ/Ort) — Liste & Notiz-Spalte. */
+export function streetHouseLine(shift: Shift): string {
+  return [shift.street, shift.houseNo]
+    .map((part) => (part ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+/** Leistungsart-Zelle: nur gespeichertes workCode (nie aus tasks/name). */
+export function leistungsartCell(shift: Shift): string {
+  return (shift.workCode ?? "").trim();
+}
+
+/** Notiz-Zelle: Straße+Nr; optional zweite Zeile mit shift.note (ohne workCode). */
+export function noteCell(shift: Shift): string {
+  const street = streetHouseLine(shift);
+  const note = (shift.note ?? "").trim();
+  return [street, note].filter(Boolean).join("\n");
+}
+
 /** Leistungszeile: „UR“ oder „SR: Wasserschaden“. */
 export function codeLine(shift: Shift): string {
   const code = (shift.workCode ?? "").trim();
@@ -87,8 +107,9 @@ export function arbeitsnachweisLabels() {
     break: td("label.break"),
     end: td("label.end"),
     workHours: td("proof.workHours"),
-    recordedAt: td("proof.recordedAt"),
-    remark: td("proof.remark"),
+    workCode: td("worklog.workCode"),
+    note: td("label.note"),
+    filledAt: td("proof.filledAt"),
     totalHours: td("proof.totalHours"),
     placeDate: td("proof.placeDate"),
     signEmployee: td("proof.signEmployee"),
@@ -109,6 +130,8 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
   const list = [...shifts].sort((a, b) => (a.date > b.date ? 1 : -1));
   const totalHours = sumHours(list);
   const L = arbeitsnachweisLabels();
+  // Export time for header — not shift.date / createdAt
+  const filledAtLabel = de(new Date().toISOString());
 
   const header = () => {
     doc.setTextColor(0, 0, 0);
@@ -131,24 +154,30 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
     doc.text(monthLabel, col2, 25);
     doc.text(ctx.employer || "—", col3, 25);
 
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(80, 80, 80);
+    doc.text(`${L.filledAt}: ${filledAtLabel}`, margin, 30);
+    doc.setTextColor(0, 0, 0);
+
     doc.setDrawColor(0, 0, 0);
     doc.setLineWidth(0.4);
-    doc.line(margin, 28, pageWidth - margin, 28);
+    doc.line(margin, 33, pageWidth - margin, 33);
   };
 
   autoTable(doc, {
-    startY: 32,
-    margin: { left: margin, right: margin, top: 32, bottom: 14 },
+    startY: 37,
+    margin: { left: margin, right: margin, top: 37, bottom: 14 },
     theme: "grid",
-    head: [[L.date, L.start, L.break, L.end, L.workHours, L.recordedAt, L.remark]],
+    head: [[L.date, L.start, L.break, L.end, L.workHours, L.workCode, L.note]],
     body: list.map((s) => [
       de(s.date),
       s.start,
       `${s.breakMinutes} ${L.minutes}`,
       s.end,
       num(shiftHours(s)),
-      de(s.createdAt),
-      remarkText(s, ctx.jobs),
+      leistungsartCell(s),
+      noteCell(s),
     ]),
     foot: [
       [

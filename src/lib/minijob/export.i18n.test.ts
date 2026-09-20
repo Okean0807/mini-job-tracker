@@ -152,8 +152,9 @@ describe("documents always German (independent of UI locale)", () => {
     expect(L.break).toBe("Pause");
     expect(L.end).toBe("Ende");
     expect(L.workHours).toBe("Arbeitszeit (h)");
-    expect(L.recordedAt).toBe("Erfasst am");
-    expect(L.remark).toBe("Bemerkung");
+    expect(L.workCode).toBe("Leistungsart");
+    expect(L.note).toBe("Notiz");
+    expect(L.filledAt).toBe("Ausgefüllt am");
     expect(L.totalHours).toBe("Gesamtstunden");
     expect(L.placeDate).toBe("Ort, Datum");
     expect(L.signEmployee).toBe("Unterschrift Mitarbeiter");
