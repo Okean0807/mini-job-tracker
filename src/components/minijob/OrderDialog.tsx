@@ -14,8 +14,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/lib/i18n";
-import { formatEuro } from "@/lib/minijob/calc";
-import { revenuePerHour } from "@/lib/minijob/orders";
+import { formatEuro, formatHours } from "@/lib/minijob/calc";
+import { hoursFromInterval, revenuePerHour } from "@/lib/minijob/orders";
 import { deleteOrder, newId, saveOrder } from "@/lib/minijob/store";
 import type { Job, Order, OrderStatus, Payment } from "@/lib/minijob/types";
 import { cn } from "@/lib/utils";
@@ -41,6 +41,8 @@ export function OrderDialog({ open, onOpenChange, order, jobs, payments }: Order
   const [amount, setAmount] = useState("");
   const [status, setStatus] = useState<OrderStatus>("open");
   const [hoursWorked, setHoursWorked] = useState("");
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
   const [notes, setNotes] = useState("");
   const [paymentId, setPaymentId] = useState("");
   const [jobId, setJobId] = useState("");
@@ -58,6 +60,8 @@ export function OrderDialog({ open, onOpenChange, order, jobs, payments }: Order
     setAmount(order ? String(order.amount) : "");
     setStatus(order?.status ?? "open");
     setHoursWorked(order?.hoursWorked !== undefined ? String(order.hoursWorked) : "");
+    setStart(order?.start ?? "");
+    setEnd(order?.end ?? "");
     setNotes(order?.notes ?? "");
     setPaymentId(order?.paymentId ?? "");
     setJobId(order?.jobId ?? "");
@@ -88,8 +92,15 @@ export function OrderDialog({ open, onOpenChange, order, jobs, payments }: Order
       createdAt: order?.createdAt ?? new Date().toISOString(),
     };
     if (dateTo) next.dateTo = dateTo;
-    const hours = num(hoursWorked);
-    if (hoursWorked.trim() && hours > 0) next.hoursWorked = hours;
+    if (start.trim()) next.start = start.trim();
+    if (end.trim()) next.end = end.trim();
+    const fromTimes = hoursFromInterval(start.trim() || undefined, end.trim() || undefined);
+    if (fromTimes !== undefined) {
+      next.hoursWorked = fromTimes;
+    } else {
+      const hours = num(hoursWorked);
+      if (hoursWorked.trim() && hours > 0) next.hoursWorked = hours;
+    }
     if (notes.trim()) next.notes = notes.trim();
     if (paymentId) next.paymentId = paymentId;
     if (jobId) next.jobId = jobId;
@@ -105,11 +116,15 @@ export function OrderDialog({ open, onOpenChange, order, jobs, payments }: Order
     onOpenChange(false);
   }
 
+  const derivedHours = hoursFromInterval(start.trim() || undefined, end.trim() || undefined);
+  const effectiveHours =
+    derivedHours !== undefined
+      ? derivedHours
+      : hoursWorked.trim() && num(hoursWorked) > 0
+        ? num(hoursWorked)
+        : undefined;
   const previewInput: { amount: number; hoursWorked?: number } = { amount: num(amount) };
-  if (hoursWorked.trim()) {
-    const h = num(hoursWorked);
-    if (h > 0) previewInput.hoursWorked = h;
-  }
+  if (effectiveHours !== undefined) previewInput.hoursWorked = effectiveHours;
   const previewRev = revenuePerHour(previewInput);
 
   return (
@@ -183,6 +198,37 @@ export function OrderDialog({ open, onOpenChange, order, jobs, payments }: Order
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
+              <Label htmlFor="order-start">{t("order.start")}</Label>
+              <Input
+                id="order-start"
+                type="time"
+                value={start}
+                onChange={(e) => setStart(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="order-end">{t("order.end")}</Label>
+              <Input
+                id="order-end"
+                type="time"
+                value={end}
+                onChange={(e) => setEnd(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {derivedHours !== undefined ? (
+            <p className="rounded-xl bg-muted/60 px-3 py-2 text-sm tabular-nums">
+              <span className="text-muted-foreground">{t("order.duration")}: </span>
+              <span className="font-semibold">{formatHours(derivedHours)}</span>
+              <span className="ml-1 text-xs text-muted-foreground">
+                ({t("order.durationFromTimes")})
+              </span>
+            </p>
+          ) : null}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
               <Label htmlFor="order-amount">{t("order.amount")}</Label>
               <Input
                 id="order-amount"
@@ -196,8 +242,9 @@ export function OrderDialog({ open, onOpenChange, order, jobs, payments }: Order
               <Input
                 id="order-hours"
                 inputMode="decimal"
-                value={hoursWorked}
+                value={derivedHours !== undefined ? String(derivedHours) : hoursWorked}
                 onChange={(e) => setHoursWorked(e.target.value)}
+                disabled={derivedHours !== undefined}
               />
             </div>
           </div>

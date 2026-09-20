@@ -85,6 +85,7 @@ export const jobsDict: Bundle = {
     "shift.holidayWorkNoBonus": "Arbeit am Feiertag: Stunden × Lohn. Feiertagszuschlag ist nicht aktiviert.",
     "shift.holidayWorkWithBonus": "Arbeit am Feiertag: Stunden × Lohn inkl. Feiertagszuschlag.",
     "shift.markAsWorked": "Als Arbeit markieren",
+    "shift.multiSameDayHint": "Du kannst am selben Tag mehrere Arbeitsintervalle erfassen.",
   },
   en: {
     "job.pageTitle": "Jobs",
@@ -169,6 +170,7 @@ export const jobsDict: Bundle = {
     "shift.holidayWorkNoBonus": "Work on holiday: hours × rate. Holiday surcharge is off.",
     "shift.holidayWorkWithBonus": "Work on holiday: hours × rate including holiday surcharge.",
     "shift.markAsWorked": "Mark as work",
+    "shift.multiSameDayHint": "You can add multiple work intervals on the same day.",
   },
   ru: {
     "job.pageTitle": "Работы",
@@ -251,6 +253,7 @@ export const jobsDict: Bundle = {
     "shift.holidayWorkNoBonus": "Работа в праздник: часы × ставка. Праздничная надбавка выключена.",
     "shift.holidayWorkWithBonus": "Работа в праздник: часы × ставка с праздничной надбавкой.",
     "shift.markAsWorked": "Отметить как работу",
+    "shift.multiSameDayHint": "В один день можно добавить несколько рабочих интервалов.",
   },
   tr: {
     "job.pageTitle": "İşler",
@@ -333,6 +336,7 @@ export const jobsDict: Bundle = {
     "shift.holidayWorkNoBonus": "Tatilde çalışma: saat × ücret. Tatil zammı kapalı.",
     "shift.holidayWorkWithBonus": "Tatilde çalışma: saat × ücret + tatil zammı.",
     "shift.markAsWorked": "İş olarak işaretle",
+    "shift.multiSameDayHint": "Aynı güne birden fazla çalışma aralığı ekleyebilirsin.",
   },
   pl: {
     "job.pageTitle": "Prace",
@@ -415,5 +419,6 @@ export const jobsDict: Bundle = {
     "shift.holidayWorkNoBonus": "Praca w święto: godziny × stawka. Dodatek świąteczny wyłączony.",
     "shift.holidayWorkWithBonus": "Praca w święto: godziny × stawka z dodatkiem świątecznym.",
     "shift.markAsWorked": "Oznacz jako pracę",
+    "shift.multiSameDayHint": "Możesz dodać kilka przedziałów pracy tego samego dnia.",
   },
 };

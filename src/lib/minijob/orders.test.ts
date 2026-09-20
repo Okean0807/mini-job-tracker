@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   filterOrdersByStatus,
+  hoursFromInterval,
   revenuePerHour,
   sortOrdersByDateDesc,
 } from "./orders";
@@ -20,6 +21,24 @@ function baseOrder(partial: Partial<Order> & Pick<Order, "id" | "title">): Order
     ...partial,
   };
 }
+
+describe("hoursFromInterval", () => {
+  it("computes same-day duration", () => {
+    expect(hoursFromInterval("09:00", "17:00")).toBe(8);
+    expect(hoursFromInterval("08:00", "12:30")).toBe(4.5);
+  });
+
+  it("handles overnight (end < start)", () => {
+    expect(hoursFromInterval("22:00", "02:00")).toBe(4);
+  });
+
+  it("returns undefined for missing/invalid", () => {
+    expect(hoursFromInterval(undefined, "17:00")).toBeUndefined();
+    expect(hoursFromInterval("09:00", undefined)).toBeUndefined();
+    expect(hoursFromInterval("", "")).toBeUndefined();
+    expect(hoursFromInterval("xx", "yy")).toBeUndefined();
+  });
+});
 
 describe("revenuePerHour", () => {
   it("computes amount/hoursWorked when hours > 0 (450/14.5 ≈ 31.03)", () => {
@@ -140,5 +159,58 @@ describe("payload accepts orders", () => {
   it("rejects non-record holes in orders", () => {
     expect(isValidPayload({ shifts: [], jobs: [], orders: [null] })).toBe(false);
     expect(isValidPayload({ shifts: [], jobs: [], orders: "x" })).toBe(false);
+  });
+});
+
+
+describe("order start/end → hoursWorked + same-day orders", () => {
+  beforeEach(() => {
+    replaceAll({
+      shifts: [],
+      jobs: [],
+      customers: [],
+      projects: [],
+      payments: [],
+      goals: [],
+      orders: [],
+      settings: DEFAULT_SETTINGS,
+      timer: null,
+    });
+  });
+
+  it("persists start/end and derived hours; revenuePerHour from times", () => {
+    const hours = hoursFromInterval("09:00", "12:00");
+    expect(hours).toBe(3);
+    const order = baseOrder({
+      id: "ord-times",
+      title: "Mit Zeiten",
+      amount: 90,
+      start: "09:00",
+      end: "12:00",
+      hoursWorked: hours!,
+    });
+    saveOrder(order);
+    const stored = getData().orders[0]!;
+    expect(stored.start).toBe("09:00");
+    expect(stored.end).toBe("12:00");
+    expect(stored.hoursWorked).toBe(3);
+    expect(revenuePerHour(stored)).toBe(30);
+  });
+
+  it("keeps hoursWorked when order has no start/end (legacy)", () => {
+    saveOrder(baseOrder({ id: "legacy", title: "Alt", hoursWorked: 14.5, amount: 450 }));
+    const stored = getData().orders[0]!;
+    expect(stored.start).toBeUndefined();
+    expect(stored.end).toBeUndefined();
+    expect(stored.hoursWorked).toBe(14.5);
+    expect(revenuePerHour(stored)!).toBeCloseTo(31.0344827586, 5);
+  });
+
+  it("allows 2–3 orders on the same dateFrom", () => {
+    saveOrder(baseOrder({ id: "a", title: "A", dateFrom: "2026-09-15", amount: 50 }));
+    saveOrder(baseOrder({ id: "b", title: "B", dateFrom: "2026-09-15", amount: 60, start: "09:00", end: "11:00", hoursWorked: 2 }));
+    saveOrder(baseOrder({ id: "c", title: "C", dateFrom: "2026-09-15", amount: 70 }));
+    expect(getData().orders).toHaveLength(3);
+    expect(getData().orders.filter((o) => o.dateFrom === "2026-09-15")).toHaveLength(3);
   });
 });
