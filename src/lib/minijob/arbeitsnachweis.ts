@@ -176,6 +176,7 @@ type AutoTableCellHookData = {
     width: number;
     height: number;
     padding: (side: "left" | "top" | "right" | "bottom") => number;
+    styles: { minCellHeight?: number };
   };
   doc: jsPDF;
 };
@@ -195,7 +196,22 @@ export function proofNoteFontHooks(baseFontSize: number, line2ByRow: string[]) {
       (data.cell as { _proofNote?: string })._proofNote = raw;
       const line2 = line2ByRow[data.row.index] ?? "";
       (data.cell as { _proofNoteLine2?: string })._proofNoteLine2 = line2;
-      if (raw) data.cell.text = raw.split("\n");
+
+      // Sole painter is didDrawCell — clear text so autoTable does not emit duplicates.
+      data.cell.text = [""];
+
+      const lines = raw.split("\n").filter((l) => l.length > 0);
+      if (lines.length === 0) return;
+
+      const line2Trim = line2.trim();
+      // Match didDrawCell vertical rhythm so row height stays correct without painted text.
+      let contentMm = baseFontSize * 0.35;
+      for (const line of lines) {
+        const size = line2Trim && line.trim() === line2Trim ? line2Size : baseFontSize;
+        contentMm += size * 0.45;
+      }
+      const minH = data.cell.padding("top") + data.cell.padding("bottom") + contentMm;
+      data.cell.styles.minCellHeight = Math.max(data.cell.styles.minCellHeight ?? 0, minH);
     },
     didDrawCell(data: AutoTableCellHookData) {
       if (data.section !== "body" || data.column.index !== NOTE_COL_INDEX) return;
@@ -205,6 +221,7 @@ export function proofNoteFontHooks(baseFontSize: number, line2ByRow: string[]) {
       if (lines.length === 0) return;
 
       const line2 = (data.cell as { _proofNoteLine2?: string })._proofNoteLine2 ?? "";
+      const line2Trim = line2.trim();
       const doc = data.doc;
       const padL = data.cell.padding("left");
       const padT = data.cell.padding("top");
@@ -224,7 +241,7 @@ export function proofNoteFontHooks(baseFontSize: number, line2ByRow: string[]) {
 
       let y = data.cell.y + padT + baseFontSize * 0.35;
       for (const line of lines) {
-        const size = line2 && line === line2 ? line2Size : baseFontSize;
+        const size = line2Trim && line.trim() === line2Trim ? line2Size : baseFontSize;
         doc.setFontSize(size);
         const wrapped = doc.splitTextToSize(line, maxW) as string[];
         for (const w of wrapped) {
