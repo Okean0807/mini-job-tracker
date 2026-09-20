@@ -3,7 +3,7 @@ import autoTable from "jspdf-autotable";
 
 import { td, DOCUMENT_LOCALE } from "./document-i18n";
 
-import { monthNames, shiftHours, sumHours } from "./calc";
+import { formatHours, monthNames, shiftHours, sumHours } from "./calc";
 import { saveAndRegisterBytes } from "./generated-docs";
 import type { Job, Shift } from "./types";
 
@@ -19,15 +19,12 @@ export const WORK_CODE_LABELS: Record<WorkCode, string> = {
   SR: "Sonderreinigung",
 };
 
-function de(date: string | undefined): string {
+/** ISO-Datum → DD.MM.YYYY für PDF-Dokumente. */
+export function formatProofDate(date: string | undefined): string {
   if (!date) return "";
   const [y, m, d] = date.slice(0, 10).split("-");
   if (!y || !m || !d) return "";
   return `${d}.${m}.${y}`;
-}
-
-function num(value: number, digits = 2): string {
-  return value.toFixed(digits).replace(".", ",");
 }
 
 /** Kompakte Adresszeile: „Musterstraße 15, 12345 Berlin, 3. OG, links“. */
@@ -69,6 +66,46 @@ export function noteCell(shift: Shift): string {
   const street = streetHouseLine(shift);
   const note = (shift.note ?? "").trim();
   return [street, note].filter(Boolean).join("\n");
+}
+
+/** PDF-Tabellenkopf (7 Spalten, §7). */
+export function proofTableHead(): string[] {
+  return [
+    td("label.date"),
+    td("worklog.workplace"),
+    td("label.start"),
+    td("label.end"),
+    td("label.hours"),
+    td("worklog.workCode"),
+    td("label.note"),
+  ];
+}
+
+/**
+ * Gemeinsame PDF-Zeilen für Arbeitsnachweis / Leistungsnachweis.
+ * Spalten: Datum | Einsatzort/Objekt | Beginn | Ende | Stunden | Leistungsart | Notiz
+ * Leistungsart leer → "—"; Notiz leer wenn keine Adresse/Notiz.
+ */
+export function buildProofTableRows(shifts: Shift[], jobs: Job[] = []): string[][] {
+  return shifts.map((s) => {
+    const jobName = jobs.find((j) => j.id === s.jobId)?.name;
+    const einsatzort = (s.workplace ?? jobName ?? "").trim() || "—";
+    const leistungsart = leistungsartCell(s) || "—";
+    return [
+      formatProofDate(s.date),
+      einsatzort,
+      s.start,
+      s.end,
+      formatHours(shiftHours(s), DOCUMENT_LOCALE),
+      leistungsart,
+      noteCell(s),
+    ];
+  });
+}
+
+/** Export-Zeitstempel für Header „Ausgefüllt am“. */
+export function filledAtLabel(now = new Date()): string {
+  return formatProofDate(now.toISOString());
 }
 
 /** Leistungszeile: „UR“ oder „SR: Wasserschaden“. */
@@ -131,7 +168,7 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
   const totalHours = sumHours(list);
   const L = arbeitsnachweisLabels();
   // Export time for header — not shift.date / createdAt
-  const filledAtLabel = de(new Date().toISOString());
+  const filledAt = filledAtLabel();
 
   const header = () => {
     doc.setTextColor(0, 0, 0);
@@ -157,7 +194,7 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.setTextColor(80, 80, 80);
-    doc.text(`${L.filledAt}: ${filledAtLabel}`, margin, 30);
+    doc.text(`${L.filledAt}: ${filledAt}`, margin, 30);
     doc.setTextColor(0, 0, 0);
 
     doc.setDrawColor(0, 0, 0);
@@ -169,20 +206,12 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
     startY: 37,
     margin: { left: margin, right: margin, top: 37, bottom: 14 },
     theme: "grid",
-    head: [[L.date, L.start, L.break, L.end, L.workHours, L.workCode, L.note]],
-    body: list.map((s) => [
-      de(s.date),
-      s.start,
-      `${s.breakMinutes} ${L.minutes}`,
-      s.end,
-      num(shiftHours(s)),
-      leistungsartCell(s),
-      noteCell(s),
-    ]),
+    head: [proofTableHead()],
+    body: buildProofTableRows(list, ctx.jobs),
     foot: [
       [
         { content: `${L.totalHours}:`, colSpan: 4, styles: { halign: "right" as const } },
-        { content: `${num(totalHours)} h`, styles: { halign: "right" as const } },
+        { content: formatHours(totalHours, DOCUMENT_LOCALE), styles: { halign: "right" as const } },
         "",
         "",
       ],
@@ -215,10 +244,10 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
     },
     columnStyles: {
       0: { cellWidth: 17 },
-      1: { cellWidth: 12, halign: "center" },
+      1: { cellWidth: 28 },
       2: { cellWidth: 12, halign: "center" },
       3: { cellWidth: 12, halign: "center" },
-      4: { cellWidth: 19, halign: "right" },
+      4: { cellWidth: 16, halign: "right" },
       5: { cellWidth: 17 },
       6: { cellWidth: "auto" },
     },
