@@ -8,6 +8,10 @@ import { withConsistentPinSettings } from "./pin";
 import { KNOWN_LEGAL_MONTHLY_LIMITS } from "./legal";
 import { applyAppearance } from "./theme";
 import {
+  ensureCustomTasksFromShifts,
+  ensureWorkCodesFromShifts,
+} from "./catalog";
+import {
   clearObjectIdFromShifts,
   ensureObjectsFromShifts,
   linkShiftToObject,
@@ -28,6 +32,7 @@ import {
   type RunningTimer,
   type Settings,
   type Shift,
+  type WorkCodeDef,
   type WorkObject,
 } from "./types";
 
@@ -132,6 +137,22 @@ export function normalize(input: Partial<AppData>): AppData {
   }
   // pinEnabled ohne gültige PIN wäre nur UI-Kosmetik (Root sperrt nicht).
   settings = withConsistentPinSettings(settings);
+  if (Array.isArray(settings.customTasks)) {
+    settings.customTasks = settings.customTasks.filter(
+      (item): item is string => typeof item === "string" && item.trim().length > 0,
+    );
+  }
+  if (Array.isArray(settings.workCodes)) {
+    settings.workCodes = settings.workCodes.filter(
+      (item): item is WorkCodeDef =>
+        Boolean(
+          item &&
+            typeof item === "object" &&
+            typeof (item as { code?: unknown }).code === "string" &&
+            typeof (item as { label?: unknown }).label === "string",
+        ),
+    );
+  }
   // Drop null/primitive/"array" holes so property access (s.kind, j.rate) never
   // throws — a throw in loadFromStorage would wipe local data via its catch.
   const shiftRows = (Array.isArray(raw.shifts) ? raw.shifts : []).filter(isPlainRecord);
@@ -182,8 +203,10 @@ export function loadFromStorage() {
         newId,
         now: todayIso(),
       });
-      if (objects !== state.objects) {
-        state = { ...state, objects };
+      let next = objects !== state.objects ? { ...state, objects } : state;
+      next = withEnsuredCatalogs(next);
+      if (next !== state) {
+        state = next;
         persist();
       }
       emit(false);
@@ -214,6 +237,23 @@ export function getData(): AppData {
   return state;
 }
 
+
+/** Kataloge ADD-only aus Schichten nachziehen — analog ensureObjectsFromShifts. */
+function withEnsuredCatalogs(data: AppData): AppData {
+  const prevCodes = data.settings.workCodes ?? [];
+  const prevTasks = data.settings.customTasks ?? [];
+  const workCodes = ensureWorkCodesFromShifts(prevCodes, data.shifts);
+  const customTasks = ensureCustomTasksFromShifts(prevTasks, data.shifts);
+  if (workCodes === prevCodes && customTasks === prevTasks) return data;
+  return {
+    ...data,
+    settings: {
+      ...data.settings,
+      ...(workCodes !== prevCodes ? { workCodes } : {}),
+      ...(customTasks !== prevTasks ? { customTasks } : {}),
+    },
+  };
+}
 
 function todayIso(): string {
   const d = new Date();
@@ -460,6 +500,7 @@ export function replaceAll(data: Partial<AppData>) {
     now: todayIso(),
   });
   if (objects !== next.objects) next = { ...next, objects };
+  next = withEnsuredCatalogs(next);
   commit(next, false);
   applyAppearance(next.settings);
 }

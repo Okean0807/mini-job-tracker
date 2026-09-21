@@ -39,7 +39,12 @@ import {
   resolveEntryDate,
   withEntryDate,
 } from "@/lib/minijob/work-objects";
-import { WORK_CODES, WORK_CODE_LABELS } from "@/lib/minijob/arbeitsnachweis";
+import {
+  addCustomTaskToCatalog,
+  addWorkCodeToCatalog,
+  mergeWorkCodeCatalog,
+  snapshotWorkCodeLabel,
+} from "@/lib/minijob/catalog";
 import { listenOnce, parseVoice, voiceSupported } from "@/lib/minijob/voice";
 import {
   applyReverseOrKeep,
@@ -115,29 +120,42 @@ export function ShiftDialog({
   const [objectId, setObjectId] = useState<string | undefined>(undefined);
   const [objectDialogOpen, setObjectDialogOpen] = useState(false);
   const customCodes = settings.workCodes ?? [];
+  const customTasksCatalog = settings.customTasks ?? [];
+  const predefinedTaskLabels = CLEANING_TASKS.map((key) => ({
+    key,
+    label: t(`task.${key}`),
+  }));
 
-  const allCodes = [
-    ...WORK_CODES.map((code) => ({ code: code as string, label: WORK_CODE_LABELS[code] })),
-    ...customCodes,
-  ];
+  const allCodes = mergeWorkCodeCatalog(customCodes);
 
   function addCustomCode() {
-    const code = newCode.trim().toUpperCase();
-    const label = newCodeLabel.trim();
-    if (!code || !label) return;
-    if (allCodes.some((c) => c.code === code)) {
+    const result = addWorkCodeToCatalog(customCodes, newCode, newCodeLabel);
+    if (result.status === "empty") return;
+    if (result.status === "conflict") {
       toast.error(t("worklog.codeExists"));
       return;
     }
-    updateSettings({ workCodes: [...customCodes, { code, label }] });
-    setWorkCode(code);
+    if (result.status === "added") {
+      updateSettings({ workCodes: result.catalog });
+    }
+    setWorkCode(result.item.code);
     setNewCode("");
     setNewCodeLabel("");
   }
 
-  function removeCustomCode(code: string) {
-    updateSettings({ workCodes: customCodes.filter((c) => c.code !== code) });
-    if (workCode === code) setWorkCode("");
+  function addCustomTaskToEntry() {
+    const result = addCustomTaskToCatalog(customTasksCatalog, customTask, predefinedTaskLabels);
+    if (result.status === "empty") return;
+    if (result.status === "predefined") {
+      if (!tasks.includes(result.value)) setTasks([...tasks, result.value]);
+      setCustomTask("");
+      return;
+    }
+    if (result.status === "added") {
+      updateSettings({ customTasks: result.catalog });
+    }
+    if (!tasks.includes(result.value)) setTasks([...tasks, result.value]);
+    setCustomTask("");
   }
 
   useEffect(() => {
@@ -353,7 +371,16 @@ export function ShiftDialog({
     if (city.trim()) next.city = city.trim();
     if (floor.trim()) next.floor = floor.trim();
     if (doorSide.trim()) next.doorSide = doorSide.trim();
-    if (workCode) next.workCode = workCode;
+    if (workCode) {
+      next.workCode = workCode;
+      const label = snapshotWorkCodeLabel({
+        selectedCode: workCode,
+        catalog: customCodes,
+        previousCode: shift?.workCode,
+        previousLabel: shift?.workCodeLabel,
+      });
+      if (label) next.workCodeLabel = label;
+    }
     if (workCode && workCodeNote.trim()) next.workCodeNote = workCodeNote.trim();
     next.createdAt = shift?.createdAt ?? isoDate(new Date());
     if (shift) {
@@ -729,21 +756,6 @@ export function ShiftDialog({
                   {t("worklog.addTask")}
                 </Button>
               </div>
-              {customCodes.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {customCodes.map((c) => (
-                    <button
-                      key={c.code}
-                      type="button"
-                      onClick={() => removeCustomCode(c.code)}
-                      className="flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] text-muted-foreground"
-                    >
-                      {c.code}
-                      <X className="size-3" />
-                    </button>
-                  ))}
-                </div>
-              ) : null}
             </div>
 
             <div className="grid gap-1.5">
@@ -770,11 +782,29 @@ export function ShiftDialog({
                     </button>
                   );
                 })}
+                {customTasksCatalog.map((label) => {
+                  const active = tasks.includes(label);
+                  return (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() =>
+                        setTasks(active ? tasks.filter((x) => x !== label) : [...tasks, label])
+                      }
+                      className={cn(
+                        "rounded-full border px-2.5 py-1 text-xs font-medium",
+                        active ? "border-primary bg-primary/10" : "bg-card",
+                      )}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
-              {tasks.some((x) => !x.startsWith("#")) ? (
+              {tasks.some((x) => !x.startsWith("#") && !customTasksCatalog.includes(x)) ? (
                 <div className="flex flex-wrap gap-1.5">
                   {tasks
-                    .filter((x) => !x.startsWith("#"))
+                    .filter((x) => !x.startsWith("#") && !customTasksCatalog.includes(x))
                     .map((x) => (
                       <button
                         key={x}
@@ -794,16 +824,7 @@ export function ShiftDialog({
                   placeholder={t("worklog.customTask")}
                   onChange={(e) => setCustomTask(e.target.value)}
                 />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    const value = customTask.trim();
-                    if (!value || tasks.includes(value)) return;
-                    setTasks([...tasks, value]);
-                    setCustomTask("");
-                  }}
-                >
+                <Button type="button" variant="outline" onClick={addCustomTaskToEntry}>
                   {t("worklog.addTask")}
                 </Button>
               </div>

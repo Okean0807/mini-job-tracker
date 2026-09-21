@@ -421,11 +421,19 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
     },
   });
 
-  // Legende der verwendeten Leistungsarten + Unterschriftsbereich
+  // Legende: Schicht-Snapshot vor aktuellem Katalog, vor Builtin.
   const labels = new Map<string, string>(Object.entries(WORK_CODE_LABELS));
   (ctx.customCodes ?? []).forEach((c) => labels.set(c.code, c.label));
   const used = [...new Set(list.map((s) => (s.workCode ?? "").trim()).filter(Boolean))].sort();
-  const legend = used.map((c) => `${c} = ${labels.get(c) ?? c}`).join("   ·   ");
+  const legend = used
+    .map((c) => {
+      const snapshot = list.find(
+        (s) => (s.workCode ?? "").trim() === c && (s.workCodeLabel ?? "").trim(),
+      );
+      const label = (snapshot?.workCodeLabel ?? "").trim() || labels.get(c) || c;
+      return `${c} = ${label}`;
+    })
+    .join("   ·   ");
 
   const last = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable;
   let y = (last?.finalY ?? 60) + 8;
