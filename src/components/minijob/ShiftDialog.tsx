@@ -1,4 +1,16 @@
-import { CalendarDays, Camera, ChevronDown, ChevronLeft, ChevronRight, MapPin, Mic, Minus, Plus, Trash2, X } from "lucide-react";
+import {
+  CalendarDays,
+  Camera,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  MapPin,
+  Mic,
+  Minus,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { toast } from "sonner";
@@ -220,9 +232,7 @@ export function ShiftDialog({
     setBreakMinutes(String(source?.breakMinutes ?? 30));
     setRate(
       formatRateInput(
-        source
-          ? source.rate
-          : suggestedRate({ jobId: fallbackJob?.id }, { jobs, settings }),
+        source ? source.rate : suggestedRate({ jobId: fallbackJob?.id }, { jobs, settings }),
       ),
     );
     setNote(source?.note ?? "");
@@ -247,12 +257,12 @@ export function ShiftDialog({
     setAdvanced(
       Boolean(
         source &&
-          (source.note ||
-            source.overtime ||
-            source.customerId ||
-            source.projectId ||
-            (source.photos?.length ?? 0) > 0 ||
-            source.gps),
+        (source.note ||
+          source.overtime ||
+          source.customerId ||
+          source.projectId ||
+          (source.photos?.length ?? 0) > 0 ||
+          source.gps),
       ),
     );
     setObjectDetailsOpen(false);
@@ -260,8 +270,16 @@ export function ShiftDialog({
     setNewCodeOpen(false);
     setNewTaskOpen(false);
     setFieldError({});
-  }, [open, shiftId, shift?.id, jobs, settings.activeJobId, settings.defaultRate, settings.bundesland, date]);
-
+  }, [
+    open,
+    shiftId,
+    shift?.id,
+    jobs,
+    settings.activeJobId,
+    settings.defaultRate,
+    settings.bundesland,
+    date,
+  ]);
 
   const job = jobs.find((j) => j.id === jobId);
   const holiday = holidayName(entryDate, settings.bundesland);
@@ -472,7 +490,6 @@ export function ShiftDialog({
     onOpenChange(false);
   }
 
-
   const selfEmployed = job?.mode === "selbststaendig";
   const isWork = kind === "arbeit";
   const hourlyPay = isWork && job?.payType !== "monthly" && !selfEmployed;
@@ -612,7 +629,9 @@ export function ShiftDialog({
                       aria-pressed={jobId === j.id}
                       onClick={() => {
                         setJobId(j.id);
-                        setRate(formatRateInput(suggestedRate({ jobId: j.id }, { jobs, settings })));
+                        setRate(
+                          formatRateInput(suggestedRate({ jobId: j.id }, { jobs, settings })),
+                        );
                       }}
                       className={cn(
                         "inline-flex h-11 max-w-full items-center gap-2 rounded-full px-3.5 text-sm font-medium",
@@ -632,7 +651,10 @@ export function ShiftDialog({
                 </div>
               ) : (
                 <p className="px-1 text-sm text-muted-foreground">
-                  {t("label.job")}: <span className="font-medium text-foreground">{job?.name ?? t("timer.noJob")}</span>
+                  {t("label.job")}:{" "}
+                  <span className="font-medium text-foreground">
+                    {job?.name ?? t("timer.noJob")}
+                  </span>
                 </p>
               )}
             </div>
@@ -1100,7 +1122,12 @@ export function ShiftDialog({
                   >
                     <Plus className="size-4" /> {t("worklog.newWorkCode")}
                   </Button>
-                  <div className={cn("mt-2 grid grid-cols-[5.5rem_1fr] gap-2", !newCodeOpen && "hidden")}>
+                  <div
+                    className={cn(
+                      "mt-2 grid grid-cols-[5.5rem_1fr] gap-2",
+                      !newCodeOpen && "hidden",
+                    )}
+                  >
                     <div className="grid gap-1">
                       <Label htmlFor="leistungsart-code" className="text-xs">
                         {t("worklog.codeShort")}
@@ -1161,7 +1188,10 @@ export function ShiftDialog({
                     <p className="flex-1 pr-6 text-[15px] font-semibold text-muted-foreground">
                       {t("entry.addTask")}
                     </p>
-                    <ChevronRight className="absolute right-3 size-4 text-muted-foreground" aria-hidden />
+                    <ChevronRight
+                      className="absolute right-3 size-4 text-muted-foreground"
+                      aria-hidden
+                    />
                     <Label htmlFor="taetigkeit-auswahl" className="sr-only">
                       {t("worklog.tasks")}
                     </Label>
@@ -1233,7 +1263,12 @@ export function ShiftDialog({
                       className="h-11"
                       aria-label={t("worklog.customTask")}
                     />
-                    <Button type="button" variant="outline" className="h-11 shrink-0" onClick={addTaskToEntry}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11 shrink-0"
+                      onClick={addTaskToEntry}
+                    >
                       {t("worklog.addTask")}
                     </Button>
                   </div>
@@ -1259,9 +1294,7 @@ export function ShiftDialog({
                     className="block truncate text-xs text-muted-foreground"
                     data-testid="entry-more-summary"
                   >
-                    {extrasSummary.length > 0
-                      ? extrasSummary.join(" · ")
-                      : t("entry.extrasEmpty")}
+                    {extrasSummary.length > 0 ? extrasSummary.join(" · ") : t("entry.extrasEmpty")}
                   </span>
                 </span>
                 <ChevronDown
@@ -1416,7 +1449,10 @@ export function ShiftDialog({
                         ) : null}
                       </div>
                       {gps && (street || zip || city) ? (
-                        <p className="text-xs text-muted-foreground" data-testid="worklog-geo-address">
+                        <p
+                          className="text-xs text-muted-foreground"
+                          data-testid="worklog-geo-address"
+                        >
                           {formatGermanAddress({ street, houseNo, zip, city })}
                         </p>
                       ) : null}

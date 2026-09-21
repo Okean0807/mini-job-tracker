@@ -54,11 +54,11 @@ describe("extrasSummaryParts", () => {
     expect(
       extrasSummaryParts({ photos: 2, gps: true, note: true, overtime: false }, labels),
     ).toEqual(["Fotos 2", "Standort gespeichert", "Notiz vorhanden"]);
-    expect(extrasSummaryParts({ photos: 0, gps: false, note: false, overtime: true }, labels)).toEqual([
-      "Überstunden",
-    ]);
-    expect(extrasSummaryParts({ photos: 0, gps: false, note: false, overtime: false }, labels)).toEqual(
-      [],
-    );
+    expect(
+      extrasSummaryParts({ photos: 0, gps: false, note: false, overtime: true }, labels),
+    ).toEqual(["Überstunden"]);
+    expect(
+      extrasSummaryParts({ photos: 0, gps: false, note: false, overtime: false }, labels),
+    ).toEqual([]);
   });
 });
