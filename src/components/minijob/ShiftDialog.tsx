@@ -427,7 +427,11 @@ export function ShiftDialog({
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-md">
+      <DialogContent
+        className="max-h-[88vh] overflow-y-auto sm:max-w-md"
+        data-testid="shift-dialog"
+        data-mode={shift ? "edit" : "new"}
+      >
         <DialogHeader>
           <DialogTitle>{shift ? t("shift.editTitle") : t("shift.newTitle")}</DialogTitle>
           <DialogDescription>
@@ -440,6 +444,7 @@ export function ShiftDialog({
             <Label htmlFor="eintrag-datum">{t("label.date")}</Label>
             <Input
               id="eintrag-datum"
+              data-testid="entry-date"
               type="date"
               value={entryDate}
               onChange={(e) => setEntryDate(e.target.value)}
@@ -1051,7 +1056,7 @@ export function ShiftDialog({
           ) : (
             <span />
           )}
-          <Button onClick={save}>{t("action.save")}</Button>
+          <Button data-testid="entry-save" onClick={save}>{t("action.save")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

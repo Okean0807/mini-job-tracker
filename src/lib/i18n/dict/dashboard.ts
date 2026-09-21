@@ -57,7 +57,8 @@ export const dashboard: Bundle = {
     "absence.deleteRange": "Zeitraum löschen",
     "dash.absence": "Urlaub/Krank",
 
-    "list.empty": "Noch keine Einträge in diesem Zeitraum. Tippe auf einen Tag im Kalender.",
+    "list.empty": "Keine Einträge an diesem Tag.",
+    "list.taskLine": "Tätigkeit: {tasks}",
     "list.breakMinutes": "· {minutes} Min. Pause",
     "list.perHour": "· {amount}/Std.",
     "list.supplement": "Zuschlag: {labels}",
@@ -126,7 +127,8 @@ export const dashboard: Bundle = {
     "absence.deleteRange": "Delete range",
     "dash.absence": "Leave/Sick",
 
-    "list.empty": "No entries in this period yet. Tap a day in the calendar.",
+    "list.empty": "No entries on this day.",
+    "list.taskLine": "Task: {tasks}",
     "list.breakMinutes": "· {minutes} min break",
     "list.perHour": "· {amount}/hr",
     "list.supplement": "Supplement: {labels}",
@@ -195,7 +197,8 @@ export const dashboard: Bundle = {
     "absence.deleteRange": "Удалить период",
     "dash.absence": "Отпуск/больничный",
 
-    "list.empty": "В этом периоде пока нет записей. Нажмите на день в календаре.",
+    "list.empty": "В этот день пока нет записей.",
+    "list.taskLine": "Работа: {tasks}",
     "list.breakMinutes": "· перерыв {minutes} мин.",
     "list.perHour": "· {amount}/час",
     "list.supplement": "Надбавка: {labels}",
@@ -264,7 +267,8 @@ export const dashboard: Bundle = {
     "absence.deleteRange": "Aralığı sil",
     "dash.absence": "İzin/Hastalık",
 
-    "list.empty": "Bu dönemde henüz kayıt yok. Takvimde bir güne dokun.",
+    "list.empty": "Bu günde henüz kayıt yok.",
+    "list.taskLine": "Görev: {tasks}",
     "list.breakMinutes": "· {minutes} dk. mola",
     "list.perHour": "· {amount}/saat",
     "list.supplement": "Ek ödeme: {labels}",
@@ -333,7 +337,8 @@ export const dashboard: Bundle = {
     "absence.deleteRange": "Usuń zakres",
     "dash.absence": "Urlop/Choroba",
 
-    "list.empty": "Brak jeszcze wpisów w tym okresie. Dotknij dnia w kalendarzu.",
+    "list.empty": "Brak wpisów w tym dniu.",
+    "list.taskLine": "Czynność: {tasks}",
     "list.breakMinutes": "· przerwa {minutes} min",
     "list.perHour": "· {amount}/godz.",
     "list.supplement": "Dodatek: {labels}",

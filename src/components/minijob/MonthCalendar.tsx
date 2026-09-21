@@ -43,6 +43,8 @@ interface MonthCalendarProps {
   resolve: (shift: Shift) => ResolveOptions;
   onChangeMonth: (year: number, month: number) => void;
   onSelectDay: (date: string) => void;
+  /** ISO date currently shown in the day list below the calendar. */
+  selectedDate?: string;
 }
 
 /** Primary kind for day cell styling — first in KIND_ORDER that appears. */
@@ -132,6 +134,7 @@ export function MonthCalendar({
   resolve,
   onChangeMonth,
   onSelectDay,
+  selectedDate,
 }: MonthCalendarProps) {
   const { t } = useT();
   const weekdays = weekdayNames(undefined, "short");
@@ -223,6 +226,9 @@ export function MonthCalendar({
               key={iso}
               type="button"
               title={title || undefined}
+              data-date={iso}
+              data-selected={iso === selectedDate ? "1" : undefined}
+              aria-pressed={iso === selectedDate}
               data-kind={kind ?? (feiertag ? "feiertag-cal" : undefined)}
               data-holiday={feiertag ? "1" : undefined}
               data-holiday-work={holidayAndWork ? "1" : undefined}
@@ -244,7 +250,8 @@ export function MonthCalendar({
                   feiertag &&
                   "border-violet-500/40 bg-violet-500/10 text-violet-800 dark:text-violet-200",
                 holidayAndWork && "border-violet-500/50 ring-1 ring-violet-500/30",
-                iso === today && !dayShifts.length && "border-primary text-primary",
+                iso === today && !dayShifts.length && iso !== selectedDate && "border-primary text-primary",
+                iso === selectedDate && "ring-2 ring-primary ring-offset-1 ring-offset-background",
               )}
             >
               <span className="flex items-center gap-0.5">

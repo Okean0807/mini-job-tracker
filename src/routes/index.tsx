@@ -31,7 +31,8 @@ import { activeWidgets, spanClass, widgetSize } from "@/lib/minijob/dashboard";
 import { goalsProgress } from "@/lib/minijob/goals";
 import { buildInsights } from "@/lib/minijob/insights";
 import { monthUsage, yearUsage } from "@/lib/minijob/limits";
-import { isAbsenceKind, type AbsenceKind } from "@/lib/minijob/absence-range";
+import { type AbsenceKind } from "@/lib/minijob/absence-range";
+import { shiftsOnDate } from "@/lib/minijob/day-shifts";
 import { monthTimeAccount } from "@/lib/minijob/fest-time-account";
 import { jobsApplyMinijobLimit, primaryWorkMode } from "@/lib/minijob/work-mode";
 import { payPeriods } from "@/lib/minijob/payday";
@@ -74,6 +75,7 @@ function DashboardPage() {
 
   const resolve = useMemo(() => makeResolver(jobs, settings), [jobs, settings]);
   const monthShifts = useMemo(() => sortProofShifts(shiftsInMonth(shifts, year, month)), [shifts, year, month]);
+  const dayShifts = useMemo(() => shiftsOnDate(shifts, selectedDate), [shifts, selectedDate]);
   const yearShifts = useMemo(() => shiftsInYear(shifts, year), [shifts, year]);
   const insights = useMemo(
     () => buildInsights(shifts, year, month, resolve),
@@ -146,6 +148,18 @@ function DashboardPage() {
 
   const dash = settings.dashboard;
   const widgets = activeWidgets(dash, ui);
+  const calendarVisible = widgets.includes("calendar");
+  const displayWidgets = widgets.filter((id) => !(id === "shifts" && calendarVisible));
+
+  const dayList = (
+    <ShiftList
+      date={selectedDate}
+      shifts={dayShifts}
+      jobs={jobs}
+      onSelect={openEdit}
+      onAdd={() => openNew(selectedDate)}
+    />
+  );
 
   const widgetNodes: Record<WidgetId, React.ReactNode> = {
     timer: <WorkTimer timer={timer} jobs={jobs} settings={settings} />,
@@ -208,46 +222,25 @@ function DashboardPage() {
     goals: <GoalsCard goals={goalList} jobs={jobs} />,
     insights: <InsightsCard insights={insights} month={month} year={year} />,
     calendar: (
-      <MonthCalendar
-        year={year}
-        month={month}
-        shifts={shifts}
-        jobs={jobs}
-        bundesland={settings.bundesland}
-        resolve={resolve}
-        onChangeMonth={(y, m) => {
-          setYear(y);
-          setMonth(m);
-        }}
-        onSelectDay={(date) => {
-          const dayShifts = shifts.filter((s) => s.date === date);
-          if (dayShifts.length === 0) {
-            openNew(date);
-            return;
-          }
-          // Nur Abwesenheit(en): bestehendes Absence-Edit. Arbeit oder Mix → neuer Eintrag
-          // (mehrere Intervalle am selben Tag). Bearbeiten bleibt über ShiftList.
-          const hasArbeitOrOther = dayShifts.some((s) => !isAbsenceKind(s.kind));
-          if (!hasArbeitOrOther) {
-            const absence = dayShifts.find((s) => isAbsenceKind(s.kind));
-            if (absence) {
-              setAbsenceSeed(absence);
-              setAbsenceOpen(true);
-              return;
-            }
-          }
-          openNew(date);
-        }}
-      />
+      <div className="space-y-3">
+        <MonthCalendar
+          year={year}
+          month={month}
+          shifts={shifts}
+          jobs={jobs}
+          bundesland={settings.bundesland}
+          resolve={resolve}
+          selectedDate={selectedDate}
+          onChangeMonth={(y, m) => {
+            setYear(y);
+            setMonth(m);
+          }}
+          onSelectDay={setSelectedDate}
+        />
+        {dayList}
+      </div>
     ),
-    shifts: (
-      <section>
-        <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
-          {t("dash.entriesInMonth", { month: monthLabel })}
-        </h2>
-        <ShiftList shifts={monthShifts} jobs={jobs} resolve={resolve} onSelect={openEdit} />
-      </section>
-    ),
+    shifts: dayList,
   };
 
   return (
@@ -307,7 +300,7 @@ function DashboardPage() {
       ) : null}
 
       <div className="mt-4 grid grid-cols-2 items-start gap-3">
-        {widgets.map((id) => (
+        {displayWidgets.map((id) => (
           <div key={id} className={spanClass(widgetSize(dash, id))}>
             {widgetNodes[id]}
           </div>
@@ -317,7 +310,7 @@ function DashboardPage() {
       <div className="dash-fab fixed bottom-20 right-4 z-40 flex flex-col items-end gap-2">
         <Button
           size="lg"
-          onClick={() => openNew(isoDate(new Date()))}
+          onClick={() => openNew(selectedDate)}
           className="h-14 rounded-full px-5 shadow-float"
         >
           <Plus className="size-5" /> {t("dash.newEntry")}

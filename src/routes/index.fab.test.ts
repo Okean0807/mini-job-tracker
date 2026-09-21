@@ -14,14 +14,14 @@ describe("Dashboard FAB (pre-release)", () => {
   it("removes floating Urlaub/Krank AbsenceDialog trigger", () => {
     expect(src).not.toMatch(/t\("dash\.absence"\)/);
     expect(src).not.toMatch(/Palmtree/);
-    // Single FAB only — no second floating button for absence
     expect(src).toMatch(/dash-fab fixed/);
     expect(src.match(/dash\.newEntry/g)?.length ?? 0).toBeGreaterThanOrEqual(1);
   });
 
-  it("keeps + Eintrag / Neuer Eintrag FAB and ShiftDialog", () => {
+  it("keeps + Eintrag FAB and ShiftDialog for the selected calendar date", () => {
     expect(src).toMatch(/t\("dash\.newEntry"\)/);
-    expect(src).toMatch(/openNew\(isoDate\(new Date\(\)\)\)/);
+    expect(src).toMatch(/openNew\(selectedDate\)/);
+    expect(src).not.toMatch(/openNew\(isoDate\(new Date\(\)\)\)/);
     expect(src).toMatch(/ShiftDialog/);
   });
 
@@ -36,17 +36,32 @@ describe("Dashboard FAB (pre-release)", () => {
     expect(src).toMatch(/onRequestAbsence=\{requestAbsence\}/);
   });
 
-  it("AbsenceDialog remains for calendar edit of existing absences", () => {
+  it("AbsenceDialog remains for new range absences from the kind picker", () => {
     expect(src).toMatch(/AbsenceDialog/);
-    expect(src).toMatch(/isAbsenceKind/);
+  });
+});
+
+describe("Dashboard selected-day grouping", () => {
+  it("calendar click only selects the date — does not auto-open a Shift", () => {
+    expect(src).toMatch(/onSelectDay=\{setSelectedDate\}/);
+    expect(src).not.toMatch(/hasArbeitOrOther/);
+    expect(src).not.toMatch(/shifts\.filter\(\(s\) => s\.date === date\)/);
   });
 
-  it("calendar day with arbeit opens new entry (multi-interval), not openEdit first", () => {
-    expect(src).not.toMatch(/else if \(existing\) openEdit\(existing\)/);
-    expect(src).toMatch(/shifts\.filter\(\(s\) => s\.date === date\)/);
-    expect(src).toMatch(/hasArbeitOrOther/);
-    expect(src).toMatch(/openNew\(date\)/);
-    // Editing remains via ShiftList onSelect={openEdit}
+  it("day list edits the exact Shift; + Eintrag opens a new Shift for the selected date", () => {
     expect(src).toMatch(/onSelect=\{openEdit\}/);
+    expect(src).toMatch(/onAdd=\{\(\) => openNew\(selectedDate\)\}/);
+    expect(src).toMatch(/shiftsOnDate\(shifts, selectedDate\)/);
+    expect(src).toMatch(/selectedDate=\{selectedDate\}/);
+  });
+
+  it("does not render a second competing month list when the calendar is visible", () => {
+    expect(src).toMatch(/id === "shifts" && calendarVisible/);
+    expect(src).not.toMatch(/dash\.entriesInMonth/);
+  });
+
+  it("ShiftDialog distinguishes edit vs new mode", () => {
+    expect(shiftDialog).toMatch(/data-mode=\{shift \? "edit" : "new"\}/);
+    expect(shiftDialog).toMatch(/data-testid="shift-dialog"/);
   });
 });

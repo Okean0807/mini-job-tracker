@@ -79,6 +79,16 @@ describe("MonthCalendar holiday + work dual display (Batch B)", () => {
   });
 });
 
+describe("MonthCalendar selected date (daily entry UX)", () => {
+  it("highlights the selected calendar day without opening a dialog", () => {
+    expect(src).toMatch(/selectedDate\?: string/);
+    expect(src).toMatch(/data-date=\{iso\}/);
+    expect(src).toMatch(/data-selected=\{iso === selectedDate \? "1" : undefined\}/);
+    expect(src).toMatch(/onSelectDay\(iso\)/);
+    expect(src).not.toMatch(/openNew|openEdit|ShiftDialog/);
+  });
+});
+
 describe("MonthCalendar KIND_STYLE dark contrast (pre-release)", () => {
   it("uses brighter saturated tokens aligned with semantic ShiftKind colors", () => {
     expect(KIND_STYLE.arbeit.cell).toMatch(/emerald/);
