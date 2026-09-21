@@ -5,14 +5,16 @@ import { workFingerprint } from "./cloud";
 import {
   addCustomTaskToCatalog,
   addWorkCodeToCatalog,
+  applyWorkCodeToFormFields,
   ensureCustomTasksFromShifts,
   ensureWorkCodesFromShifts,
+  findWorkCodeDef,
   learnSavedValuesFromShift,
   legendLabelForWorkCode,
   mergeWorkCodeCatalog,
   snapshotWorkCodeLabel,
 } from "./catalog";
-import { EMPTY_DATA, getData, replaceAll, saveShift, updateSettings } from "./store";
+import { EMPTY_DATA, getData, replaceAll, saveShift, updateSettings, upsertWorkCodeDef } from "./store";
 import type { Shift } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
 
@@ -88,6 +90,17 @@ describe("Leistungsart catalog", () => {
     expect(merged.some((c) => c.code === "SN" && c.label === "Schlüssel nehmen")).toBe(true);
     expect(merged.map((c) => c.code).slice(0, WORK_CODES.length)).toEqual([...WORK_CODES]);
     expect(merged[0]?.label).toBe(WORK_CODE_LABELS.UR);
+  });
+
+  it("applyWorkCodeToFormFields copies code + Bezeichnung like an object", () => {
+    expect(applyWorkCodeToFormFields({ code: "gl", label: "  Glasreinigung  " })).toEqual({
+      workCode: "GL",
+      workCodeLabel: "Glasreinigung",
+    });
+    expect(findWorkCodeDef([{ code: "GL", label: "Glasreinigung" }], "gl")).toEqual({
+      code: "GL",
+      label: "Glasreinigung",
+    });
   });
 });
 
@@ -323,6 +336,29 @@ describe("store persistence (settings catalogs)", () => {
     expect(historical?.workCodeLabel).toBe("Spezialreinigung");
     expect(historical?.tasks).toEqual(["Dachfenster reinigen"]);
     expect(getData().settings.workCodes?.[0]?.label).toBe("Sonderobjekt");
+  });
+
+  it("upsertWorkCodeDef edits the saved list without rewriting historical shifts", () => {
+    replaceAll({
+      ...EMPTY_DATA,
+      jobs: [{ id: "j1", name: "Reinigung", color: "#0d9488", mode: "flex" }],
+      shifts: [
+        shift({
+          id: "hist",
+          jobId: "j1",
+          workCode: "GL",
+          workCodeLabel: "Glasreinigung",
+        }),
+      ],
+      settings: {
+        ...DEFAULT_SETTINGS,
+        workCodes: [{ code: "GL", label: "Glasreinigung" }],
+      },
+    });
+    upsertWorkCodeDef({ code: "GL", label: "Geändert" });
+    const historical = getData().shifts.find((s) => s.id === "hist");
+    expect(historical?.workCodeLabel).toBe("Glasreinigung");
+    expect(getData().settings.workCodes).toEqual([{ code: "GL", label: "Geändert" }]);
   });
 
   it("replaceAll hydrates catalogs from legacy shifts (ADD-only)", () => {

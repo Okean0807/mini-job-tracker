@@ -59,6 +59,28 @@ export function mergeWorkCodeCatalog(custom: readonly WorkCodeDef[]): WorkCodeDe
   return [...builtins, ...extras];
 }
 
+/** Wie applyObjectToFormFields: gespeicherte Leistungsart → Eintragsfelder. */
+export interface WorkCodeFormFields {
+  workCode: string;
+  workCodeLabel: string;
+}
+
+export function applyWorkCodeToFormFields(item: WorkCodeDef): WorkCodeFormFields {
+  return {
+    workCode: normalizeWorkCode(item.code),
+    workCodeLabel: normalizeCatalogText(item.label),
+  };
+}
+
+export function findWorkCodeDef(
+  catalog: readonly WorkCodeDef[],
+  codeRaw: string,
+): WorkCodeDef | undefined {
+  const code = normalizeWorkCode(codeRaw);
+  if (!code) return undefined;
+  return mergeWorkCodeCatalog(catalog).find((c) => normalizeWorkCode(c.code) === code);
+}
+
 export type AddWorkCodeResult =
   | { status: "empty" }
   | { status: "conflict"; existing: WorkCodeDef }

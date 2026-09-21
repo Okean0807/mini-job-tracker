@@ -40,8 +40,10 @@ import {
   withEntryDate,
 } from "@/lib/minijob/work-objects";
 import {
+  applyWorkCodeToFormFields,
   builtinWorkCodes,
   findPredefinedTaskValue,
+  findWorkCodeDef,
   normalizeCatalogText,
   normalizeWorkCode,
   snapshotWorkCodeLabel,
@@ -128,23 +130,36 @@ export function ShiftDialog({
 
   const builtinCodes = builtinWorkCodes();
   const activeWorkCode = normalizeWorkCode(newCode || workCode);
-  const visibleCustomTasks = [
-    ...customTasksCatalog,
-    ...tasks.filter(
-      (item) => !item.startsWith("#") && !customTasksCatalog.some((saved) => saved === item),
-    ),
-  ];
+  const selectedWork = findWorkCodeDef(customCodes, activeWorkCode);
 
-  function selectWorkDef(code: string, label: string) {
-    if (normalizeWorkCode(newCode || workCode) === normalizeWorkCode(code)) {
+  function applyWorkCodeSelection(code: string) {
+    if (!code) {
       setWorkCode("");
       setNewCode("");
       setNewCodeLabel("");
       return;
     }
-    setWorkCode(code);
-    setNewCode(code);
-    setNewCodeLabel(label);
+    const item = findWorkCodeDef(customCodes, code);
+    if (!item) {
+      setWorkCode("");
+      setNewCode("");
+      setNewCodeLabel("");
+      return;
+    }
+    const fields = applyWorkCodeToFormFields(item);
+    setWorkCode(fields.workCode);
+    setNewCode(fields.workCode);
+    setNewCodeLabel(fields.workCodeLabel);
+  }
+
+  function applyTaskSelection(value: string) {
+    if (!value) return;
+    if (!tasks.includes(value)) setTasks([...tasks, value]);
+  }
+
+  function taskEntryLabel(value: string) {
+    if (value.startsWith("#")) return t(`task.${value.slice(1)}`);
+    return value;
   }
 
   function addTaskToEntry() {
@@ -728,41 +743,40 @@ export function ShiftDialog({
               </div>
             </div>
 
-            <div className="grid gap-2">
+            <div className="grid gap-1.5">
               <Label className="text-xs">{t("worklog.workCode")}</Label>
-              <div className="flex flex-wrap gap-1.5">
-                {builtinCodes.map(({ code, label }) => (
-                  <button
-                    key={code}
-                    type="button"
-                    data-testid={`work-code-${code}`}
-                    onClick={() => selectWorkDef(code, label)}
-                    className={cn(
-                      "rounded-full border px-3 py-1.5 text-xs font-medium",
-                      activeWorkCode === code ? "border-primary bg-primary/10" : "bg-card",
-                    )}
-                  >
-                    {code} · {label}
-                  </button>
-                ))}
-                {customCodes.map(({ code, label }) => (
-                  <button
-                    key={`saved-${code}`}
-                    type="button"
-                    data-testid={`work-code-${code}`}
-                    onClick={() => selectWorkDef(code, label)}
-                    className={cn(
-                      "rounded-full border px-3 py-1.5 text-xs font-medium",
-                      activeWorkCode === code ? "border-primary bg-primary/10" : "bg-card",
-                    )}
-                  >
-                    {code} · {label}
-                  </button>
-                ))}
-              </div>
+              <select
+                data-testid="work-code-select"
+                value={selectedWork?.code ?? ""}
+                onChange={(e) => applyWorkCodeSelection(e.target.value)}
+                className="h-9 rounded-md border bg-background px-2 text-sm"
+              >
+                <option value="">{t("worklog.none")}</option>
+                <optgroup label={t("worklog.standard")}>
+                  {builtinCodes.map(({ code, label }) => (
+                    <option key={code} value={code}>
+                      {code} · {label}
+                    </option>
+                  ))}
+                </optgroup>
+                {customCodes.length > 0 ? (
+                  <optgroup label={t("worklog.saved")}>
+                    {customCodes.map(({ code, label }) => (
+                      <option key={`saved-${code}`} value={code}>
+                        {code} · {label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
+              </select>
+              {selectedWork ? (
+                <p className="text-xs text-muted-foreground">
+                  {selectedWork.code} · {selectedWork.label}
+                </p>
+              ) : null}
               <div className="grid grid-cols-[4.5rem_1fr] gap-1.5">
-                <div className="grid gap-1">
-                  <Label htmlFor="leistungsart-code" className="text-[11px]">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="leistungsart-code" className="text-xs">
                     {t("worklog.codeShort")}
                   </Label>
                   <Input
@@ -778,8 +792,8 @@ export function ShiftDialog({
                     }}
                   />
                 </div>
-                <div className="grid gap-1">
-                  <Label htmlFor="leistungsart-label" className="text-[11px]">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="leistungsart-label" className="text-xs">
                     {t("worklog.codeLabel")}
                   </Label>
                   <Input
@@ -793,54 +807,53 @@ export function ShiftDialog({
               </div>
             </div>
 
-            <div className="grid gap-2">
+            <div className="grid gap-1.5">
               <Label className="text-xs">{t("worklog.tasks")}</Label>
-              <div className="flex flex-wrap gap-1.5">
-                {CLEANING_TASKS.map((key) => {
-                  const value = templateValue(key);
-                  const active = tasks.includes(value);
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      data-testid={`task-${key}`}
-                      onClick={() =>
-                        setTasks(active ? tasks.filter((x) => x !== value) : [...tasks, value])
-                      }
-                      className={cn(
-                        "rounded-full border px-2.5 py-1 text-xs font-medium",
-                        active ? "border-primary bg-primary/10" : "bg-card",
-                      )}
-                    >
+              <select
+                data-testid="task-select"
+                value=""
+                onChange={(e) => applyTaskSelection(e.target.value)}
+                className="h-9 rounded-md border bg-background px-2 text-sm"
+              >
+                <option value="">{t("worklog.chooseTask")}</option>
+                <optgroup label={t("worklog.standard")}>
+                  {CLEANING_TASKS.map((key) => (
+                    <option key={key} value={templateValue(key)}>
                       {t(`task.${key}`)}
-                    </button>
-                  );
-                })}
-                {visibleCustomTasks.map((label) => {
-                  const active = tasks.includes(label);
-                  return (
+                    </option>
+                  ))}
+                </optgroup>
+                {customTasksCatalog.length > 0 ? (
+                  <optgroup label={t("worklog.saved")}>
+                    {customTasksCatalog.map((label) => (
+                      <option key={label} value={label}>
+                        {label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
+              </select>
+              {tasks.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {tasks.map((value) => (
                     <button
-                      key={label}
+                      key={value}
                       type="button"
-                      data-testid={`task-custom-${label}`}
-                      onClick={() =>
-                        setTasks(active ? tasks.filter((x) => x !== label) : [...tasks, label])
-                      }
-                      className={cn(
-                        "rounded-full border px-2.5 py-1 text-xs font-medium",
-                        active ? "border-primary bg-primary/10" : "bg-card",
-                      )}
+                      onClick={() => setTasks(tasks.filter((x) => x !== value))}
+                      aria-label={t("worklog.removeFromEntry")}
+                      className="inline-flex max-w-full items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium"
                     >
-                      {label}
+                      <span className="truncate">{taskEntryLabel(value)}</span>
+                      <X className="size-3 shrink-0" />
                     </button>
-                  );
-                })}
-              </div>
-              <div className="flex gap-2">
-                <div className="grid min-w-0 flex-1 gap-1">
-                  <Label htmlFor="eigene-taetigkeit" className="text-[11px]">
-                    {t("worklog.customTask")}
-                  </Label>
+                  ))}
+                </div>
+              ) : null}
+              <div className="grid gap-1.5">
+                <Label htmlFor="eigene-taetigkeit" className="text-xs">
+                  {t("worklog.customTask")}
+                </Label>
+                <div className="flex gap-2">
                   <Input
                     id="eigene-taetigkeit"
                     data-testid="custom-task-input"
@@ -854,16 +867,16 @@ export function ShiftDialog({
                       }
                     }}
                   />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={addTaskToEntry}
+                  >
+                    <Plus className="size-4" /> {t("worklog.addTask")}
+                  </Button>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="mt-5 shrink-0"
-                  onClick={addTaskToEntry}
-                >
-                  <Plus className="size-4" /> {t("worklog.addTask")}
-                </Button>
               </div>
             </div>
 

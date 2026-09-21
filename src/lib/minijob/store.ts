@@ -10,7 +10,11 @@ import { applyAppearance } from "./theme";
 import {
   ensureCustomTasksFromShifts,
   ensureWorkCodesFromShifts,
+  isBuiltinWorkCode,
   learnSavedValuesFromShift,
+  normalizeCatalogText,
+  normalizeTaskCompare,
+  normalizeWorkCode,
 } from "./catalog";
 import {
   clearObjectIdFromShifts,
@@ -462,6 +466,56 @@ export function upsertObject(obj: WorkObject) {
 
 export function removeObject(id: string) {
   deleteObject(id);
+}
+
+/** Gespeicherte Leistungsart anlegen/umbenennen. Schichten werden nicht geändert. */
+export function upsertWorkCodeDef(item: WorkCodeDef, previousCode?: string) {
+  const code = normalizeWorkCode(item.code);
+  const label = normalizeCatalogText(item.label);
+  if (!code || !label || isBuiltinWorkCode(code)) return;
+  const prev = state.settings.workCodes ?? [];
+  let next = previousCode
+    ? prev.filter((c) => normalizeWorkCode(c.code) !== normalizeWorkCode(previousCode))
+    : [...prev];
+  const idx = next.findIndex((c) => normalizeWorkCode(c.code) === code);
+  if (idx >= 0) {
+    next = next.map((c, i) => (i === idx ? { code, label } : c));
+  } else {
+    next = [...next, { code, label }];
+  }
+  updateSettings({ workCodes: next });
+}
+
+export function deleteWorkCodeDef(codeRaw: string) {
+  const code = normalizeWorkCode(codeRaw);
+  if (!code) return;
+  const prev = state.settings.workCodes ?? [];
+  const workCodes = prev.filter((c) => normalizeWorkCode(c.code) !== code);
+  if (workCodes.length === prev.length) return;
+  updateSettings({ workCodes });
+}
+
+/** Gespeicherte Tätigkeit anlegen/umbenennen. Schichten werden nicht geändert. */
+export function upsertCustomTask(valueRaw: string, previous?: string) {
+  const value = normalizeCatalogText(valueRaw);
+  if (!value) return;
+  let next = [...(state.settings.customTasks ?? [])];
+  if (previous) {
+    next = next.filter((item) => normalizeTaskCompare(item) !== normalizeTaskCompare(previous));
+  }
+  if (!next.some((item) => normalizeTaskCompare(item) === normalizeTaskCompare(value))) {
+    next = [...next, value];
+  }
+  updateSettings({ customTasks: next });
+}
+
+export function deleteCustomTask(valueRaw: string) {
+  const compare = normalizeTaskCompare(valueRaw);
+  if (!compare) return;
+  const prev = state.settings.customTasks ?? [];
+  const customTasks = prev.filter((item) => normalizeTaskCompare(item) !== compare);
+  if (customTasks.length === prev.length) return;
+  updateSettings({ customTasks });
 }
 
 /* ---------- Einstellungen ---------- */
