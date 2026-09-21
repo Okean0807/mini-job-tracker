@@ -28,7 +28,8 @@ describe("ShiftList selected-day work blocks", () => {
   });
 
   it("opens the existing Shift on block click and creates a new one via onAdd", () => {
-    expect(src).toMatch(/onClick=\{\(\) => onSelect\(s\)\}/);
+    expect(src).toMatch(/onSelect\(s\)/);
+    expect(src).toMatch(/stopPropagation/);
     expect(src).toMatch(/onClick=\{onAdd\}/);
   });
 });

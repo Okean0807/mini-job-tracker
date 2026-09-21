@@ -1,5 +1,5 @@
 import { Camera, ChevronDown, MapPin, Mic, Plus, Trash2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { toast } from "sonner";
 
@@ -22,8 +22,7 @@ import { shiftPayroll } from "@/lib/minijob/payroll";
 import { holidayName } from "@/lib/minijob/holidays";
 import { parseRateInput, suggestedRate } from "@/lib/minijob/rate";
 import { ObjectDialog } from "@/components/minijob/ObjectDialog";
-import { addShift, removeShift, upsertShift } from "@/lib/minijob/service";
-import { newId } from "@/lib/minijob/store";
+import { persistDialogShift, removeShift, getShift } from "@/lib/minijob/service";
 import {
   type Customer,
   type Job,
@@ -68,6 +67,8 @@ interface ShiftDialogProps {
   onOpenChange: (open: boolean) => void;
   date: string;
   shift?: Shift | null;
+  /** Stable Shift.id when editing; empty/null means CREATE. */
+  shiftId?: string | null;
   jobs: Job[];
   customers: Customer[];
   projects: Project[];
@@ -84,6 +85,7 @@ export function ShiftDialog({
   onOpenChange,
   date,
   shift,
+  shiftId,
   jobs,
   customers,
   projects,
@@ -121,6 +123,9 @@ export function ShiftDialog({
   const [entryDate, setEntryDate] = useState(date);
   const [objectId, setObjectId] = useState<string | undefined>(undefined);
   const [objectDialogOpen, setObjectDialogOpen] = useState(false);
+  const editingIdRef = useRef<string | undefined>(undefined);
+  const resolvedShiftId = (shiftId ?? shift?.id ?? "").trim() || undefined;
+  const isEditing = Boolean(resolvedShiftId);
   const customCodes = settings.workCodes ?? [];
   const customTasksCatalog = settings.customTasks ?? [];
   const predefinedTaskLabels = CLEANING_TASKS.map((key) => ({
@@ -173,65 +178,68 @@ export function ShiftDialog({
 
   useEffect(() => {
     if (!open) return;
+    const id = (shiftId ?? shift?.id ?? "").trim() || undefined;
+    editingIdRef.current = id;
+    const source = id ? (getShift(id) ?? shift ?? null) : null;
     const fallbackJob = jobs.find((j) => j.id === settings.activeJobId) ?? jobs[0];
-    const initialDate = resolveEntryDate(shift, date);
+    const initialDate = resolveEntryDate(source ?? undefined, date);
     setEntryDate(initialDate);
-    setObjectId(shift?.objectId);
-    setJobId(shift?.jobId ?? fallbackJob?.id);
+    setObjectId(source?.objectId);
+    setJobId(source?.jobId ?? fallbackJob?.id);
     // Existing entries keep their kind (incl. Feiertag). New entries on a
     // public holiday default to feiertag so the type matches the calendar day.
     const holidayDefault =
-      !shift && holidayName(initialDate, settings.bundesland) ? "feiertag" : "arbeit";
-    setKind(shift?.kind ?? holidayDefault);
-    setStart(shift?.start ?? "09:00");
-    setEnd(shift?.end ?? "17:00");
-    setBreakMinutes(String(shift?.breakMinutes ?? 30));
+      !source && holidayName(initialDate, settings.bundesland) ? "feiertag" : "arbeit";
+    setKind(source?.kind ?? holidayDefault);
+    setStart(source?.start ?? "09:00");
+    setEnd(source?.end ?? "17:00");
+    setBreakMinutes(String(source?.breakMinutes ?? 30));
     setRate(
-      shift
-        ? typeof shift.rate === "number"
-          ? String(shift.rate)
+      source
+        ? typeof source.rate === "number"
+          ? String(source.rate)
           : ""
         : String(suggestedRate({ jobId: fallbackJob?.id }, { jobs, settings })),
     );
-    setNote(shift?.note ?? "");
-    setOvertime(shift?.overtime ?? false);
-    setCustomerId(shift?.customerId);
-    setProjectId(shift?.projectId);
-    setWorkplace(shift?.workplace ?? "");
-    setTasks(shift?.tasks ?? []);
-    setPhotos(shift?.photos ?? []);
-    setGps(shift?.gps);
+    setNote(source?.note ?? "");
+    setOvertime(source?.overtime ?? false);
+    setCustomerId(source?.customerId);
+    setProjectId(source?.projectId);
+    setWorkplace(source?.workplace ?? "");
+    setTasks(source?.tasks ?? []);
+    setPhotos(source?.photos ?? []);
+    setGps(source?.gps);
     setCustomTask("");
-    setStreet(shift?.street ?? "");
-    setHouseNo(shift?.houseNo ?? "");
-    setZip(shift?.zip ?? "");
-    setCity(shift?.city ?? "");
+    setStreet(source?.street ?? "");
+    setHouseNo(source?.houseNo ?? "");
+    setZip(source?.zip ?? "");
+    setCity(source?.city ?? "");
     setGpsBusy(false);
-    setFloor(shift?.floor ?? "");
-    setDoorSide(shift?.doorSide ?? "");
-    setWorkCode(shift?.workCode ?? "");
-    setNewCode(shift?.workCode ?? "");
-    setNewCodeLabel(shift?.workCodeLabel ?? "");
+    setFloor(source?.floor ?? "");
+    setDoorSide(source?.doorSide ?? "");
+    setWorkCode(source?.workCode ?? "");
+    setNewCode(source?.workCode ?? "");
+    setNewCodeLabel(source?.workCodeLabel ?? "");
     setAdvanced(
       Boolean(
-        shift &&
-          (shift.workplace ||
-            shift.street ||
-            shift.zip ||
-            shift.city ||
-            shift.floor ||
-            shift.doorSide ||
-            shift.workCode ||
-            shift.note ||
-            shift.overtime ||
-            shift.customerId ||
-            (shift.tasks?.length ?? 0) > 0 ||
-            (shift.photos?.length ?? 0) > 0 ||
-            shift.gps ||
-            shift.objectId),
+        source &&
+          (source.workplace ||
+            source.street ||
+            source.zip ||
+            source.city ||
+            source.floor ||
+            source.doorSide ||
+            source.workCode ||
+            source.note ||
+            source.overtime ||
+            source.customerId ||
+            (source.tasks?.length ?? 0) > 0 ||
+            (source.photos?.length ?? 0) > 0 ||
+            source.gps ||
+            source.objectId),
       ),
     );
-  }, [open, shift, jobs, settings.activeJobId, settings.defaultRate, settings.bundesland, date]);
+  }, [open, shiftId, shift?.id, jobs, settings.activeJobId, settings.defaultRate, settings.bundesland, date]);
 
 
   const job = jobs.find((j) => j.id === jobId);
@@ -283,7 +291,7 @@ export function ShiftDialog({
     if (
       (next === "urlaub" || next === "krank" || next === "frei" || next === "sonstige") &&
       onRequestAbsence &&
-      !shift
+      !isEditing
     ) {
       onRequestAbsence(next, entryDate);
       onOpenChange(false);
@@ -356,9 +364,11 @@ export function ShiftDialog({
   }
 
   function save() {
+    const editingId = editingIdRef.current;
+    const existing = editingId ? getShift(editingId) : undefined;
     const next: Shift = withEntryDate(
       {
-        id: shift?.id ?? newId(),
+        id: editingId || existing?.id || "new",
         kind,
         date: entryDate,
         start,
@@ -402,22 +412,17 @@ export function ShiftDialog({
         const snapshot = snapshotWorkCodeLabel({
           selectedCode: code,
           catalog: customCodes,
-          previousCode: shift?.workCode,
-          previousLabel: shift?.workCodeLabel,
+          previousCode: existing?.workCode ?? shift?.workCode,
+          previousLabel: existing?.workCodeLabel ?? shift?.workCodeLabel,
         });
         if (snapshot) next.workCodeLabel = snapshot;
       }
     }
-    if (shift?.workCodeNote?.trim()) next.workCodeNote = shift.workCodeNote.trim();
-    next.createdAt = shift?.createdAt ?? isoDate(new Date());
-    if (shift) {
-      // vollständiger Datensatz -> id-erhaltendes Überschreiben (identisch zum bisherigen saveShift)
-      upsertShift(next);
-    } else {
-      const { id: _id, ...input } = next;
-      addShift(input);
-    }
-    toast.success(shift ? t("shift.updated") : t("shift.saved"));
+    const noteSource = existing ?? shift;
+    if (noteSource?.workCodeNote?.trim()) next.workCodeNote = noteSource.workCodeNote.trim();
+    next.createdAt = noteSource?.createdAt ?? isoDate(new Date());
+    persistDialogShift(next, editingId);
+    toast.success(editingId ? t("shift.updated") : t("shift.saved"));
     onOpenChange(false);
   }
 
@@ -430,10 +435,11 @@ export function ShiftDialog({
       <DialogContent
         className="max-h-[88vh] overflow-y-auto sm:max-w-md"
         data-testid="shift-dialog"
-        data-mode={shift ? "edit" : "new"}
+        data-mode={isEditing ? "edit" : "new"}
+        data-shift-id={resolvedShiftId || undefined}
       >
         <DialogHeader>
-          <DialogTitle>{shift ? t("shift.editTitle") : t("shift.newTitle")}</DialogTitle>
+          <DialogTitle>{isEditing ? t("shift.editTitle") : t("shift.newTitle")}</DialogTitle>
           <DialogDescription>
             {holiday ? holiday : t("label.date")}
           </DialogDescription>
@@ -534,7 +540,7 @@ export function ShiftDialog({
             </div>
           </div>
 
-          {!shift && kind === "arbeit" ? (
+          {!isEditing && kind === "arbeit" ? (
             <p className="text-xs text-muted-foreground">{t("shift.multiSameDayHint")}</p>
           ) : null}
 
@@ -1041,12 +1047,14 @@ export function ShiftDialog({
         </div>
 
         <DialogFooter className="mt-2 gap-2 sm:justify-between">
-          {shift ? (
+          {isEditing ? (
             <Button
               variant="ghost"
               className="text-destructive"
+              data-testid="entry-delete"
               onClick={() => {
-                removeShift(shift.id);
+                const id = editingIdRef.current ?? resolvedShiftId;
+                if (id) removeShift(id);
                 toast.success(t("shift.deleted"));
                 onOpenChange(false);
               }}

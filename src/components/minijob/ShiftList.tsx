@@ -55,7 +55,11 @@ export function ShiftList({ date, shifts, jobs, onSelect, onAdd }: ShiftListProp
                   type="button"
                   data-testid="day-shift-block"
                   data-shift-id={s.id}
-                  onClick={() => onSelect(s)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onSelect(s);
+                  }}
                   className="flex w-full gap-2.5 rounded-xl border bg-card px-3 py-2.5 text-left shadow-card transition-colors hover:bg-muted/60"
                 >
                   <span

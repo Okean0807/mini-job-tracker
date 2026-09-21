@@ -10,7 +10,7 @@ describe("ShiftDialog Feiertag default (CAL-P2)", () => {
   it("preserves existing shift.kind and defaults new holiday days to feiertag", () => {
     expect(src).toMatch(/resolveEntryDate/);
     expect(src).toMatch(/entryDate/);
-    expect(src).toMatch(/shift\?\.kind/);
+    expect(src).toMatch(/source\?\.kind/);
     expect(src).toMatch(/holidayDefault/);
     expect(src).toMatch(/holidayName\((?:entryDate|initialDate),\s*settings\.bundesland\)\s*\?\s*"feiertag"/);
   });

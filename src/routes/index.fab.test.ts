@@ -53,6 +53,9 @@ describe("Dashboard selected-day grouping", () => {
     expect(src).toMatch(/onAdd=\{\(\) => openNew\(selectedDate\)\}/);
     expect(src).toMatch(/shiftsOnDate\(shifts, selectedDate\)/);
     expect(src).toMatch(/selectedDate=\{selectedDate\}/);
+    expect(src).toMatch(/setEditingId\(shift\.id\)/);
+    expect(src).toMatch(/setEditingId\(null\)/);
+    expect(src).toMatch(/shiftId=\{editingId\}/);
   });
 
   it("does not render a second competing month list when the calendar is visible", () => {
@@ -60,8 +63,12 @@ describe("Dashboard selected-day grouping", () => {
     expect(src).not.toMatch(/dash\.entriesInMonth/);
   });
 
-  it("ShiftDialog distinguishes edit vs new mode", () => {
-    expect(shiftDialog).toMatch(/data-mode=\{shift \? "edit" : "new"\}/);
+  it("ShiftDialog distinguishes edit vs new mode by Shift ID and updates via persistDialogShift", () => {
+    expect(shiftDialog).toMatch(/data-mode=\{isEditing \? "edit" : "new"\}/);
     expect(shiftDialog).toMatch(/data-testid="shift-dialog"/);
+    expect(shiftDialog).toMatch(/persistDialogShift\(next, editingId\)/);
+    expect(shiftDialog).toMatch(/editingIdRef/);
+    expect(shiftDialog).not.toMatch(/\baddShift\(/);
+    expect(shiftDialog).not.toMatch(/\bupsertShift\(/);
   });
 });
