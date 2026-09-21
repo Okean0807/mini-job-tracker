@@ -15,7 +15,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/lib/i18n";
-import { formatEuro, formatHours, isoDate, shiftBreakdown } from "@/lib/minijob/calc";
+import { formatEuro, isoDate, shiftBreakdown } from "@/lib/minijob/calc";
+import {
+  extrasSummaryParts,
+  formatRateInput,
+  formatWorkDuration,
+  sanitizeRateInput,
+} from "@/lib/minijob/entry-format";
 import { shiftPayroll } from "@/lib/minijob/payroll";
 import { holidayName } from "@/lib/minijob/holidays";
 import { parseRateInput, suggestedRate } from "@/lib/minijob/rate";
@@ -139,6 +145,8 @@ export function ShiftDialog({
   const [entryDate, setEntryDate] = useState(date);
   const [objectId, setObjectId] = useState<string | undefined>(undefined);
   const [objectDialogOpen, setObjectDialogOpen] = useState(false);
+  // Gesetzt = gespeichertes Objekt bearbeiten, null = neues Objekt anlegen.
+  const [objectDialogTarget, setObjectDialogTarget] = useState<WorkObject | null>(null);
   const editingIdRef = useRef<string | undefined>(undefined);
   const resolvedShiftId = (shiftId ?? shift?.id ?? "").trim() || undefined;
   const isEditing = Boolean(resolvedShiftId);
@@ -211,11 +219,11 @@ export function ShiftDialog({
     setEnd(source?.end ?? "17:00");
     setBreakMinutes(String(source?.breakMinutes ?? 30));
     setRate(
-      source
-        ? typeof source.rate === "number"
-          ? String(source.rate)
-          : ""
-        : String(suggestedRate({ jobId: fallbackJob?.id }, { jobs, settings })),
+      formatRateInput(
+        source
+          ? source.rate
+          : suggestedRate({ jobId: fallbackJob?.id }, { jobs, settings }),
+      ),
     );
     setNote(source?.note ?? "");
     setOvertime(source?.overtime ?? false);
@@ -248,6 +256,7 @@ export function ShiftDialog({
       ),
     );
     setObjectDetailsOpen(false);
+    setObjectDialogTarget(null);
     setNewCodeOpen(false);
     setNewTaskOpen(false);
     setFieldError({});
@@ -341,14 +350,26 @@ export function ShiftDialog({
     }
   }
 
+  /** Adresse dieses Eintrags leeren; das Katalogobjekt bleibt bestehen. */
+  function clearObjectFields() {
+    setObjectId(undefined);
+    setWorkplace("");
+    setStreet("");
+    setHouseNo("");
+    setFloor("");
+    setDoorSide("");
+    setZip("");
+    setCity("");
+  }
+
   function applyObjectSelection(id: string) {
     if (!id) {
-      setObjectId(undefined);
+      clearObjectFields();
       return;
     }
     const obj = objects.find((o) => o.id === id);
     if (!obj) {
-      setObjectId(undefined);
+      clearObjectFields();
       return;
     }
     const fields = applyObjectToFormFields(obj);
@@ -360,6 +381,11 @@ export function ShiftDialog({
     setDoorSide(fields.doorSide);
     setZip(fields.zip);
     setCity(fields.city);
+  }
+
+  function openObjectDialog(target: WorkObject | null) {
+    setObjectDialogTarget(target);
+    setObjectDialogOpen(true);
   }
 
   function onObjectSaved(obj: WorkObject) {
@@ -459,15 +485,43 @@ export function ShiftDialog({
     .map((part) => part.trim())
     .filter(Boolean)
     .join(" ");
+  const extraLine = [floor.trim(), doorSide.trim()].filter(Boolean).join(" · ");
+  // Der Eintrag zählt als "Objekt vergeben", sobald er eine Adresse trägt – auch
+  // bei Altdaten ohne objectId. Danach richtet sich, welche Aktionen sichtbar sind.
+  const hasObjectData = Boolean(selectedObject || workplace.trim() || placeLine || cityLine);
   const objectTitle =
     selectedObject?.name || workplace.trim() || placeLine || t("entry.chooseObject");
-  const objectMeta =
-    (selectedObject ? objectAddressPreview(selectedObject) : "") ||
-    [placeLine, cityLine].filter(Boolean).join(" · ");
+  // Angezeigt werden die Werte DIESES Eintrags, nicht die des Katalogobjekts:
+  // ein alter Eintrag behält seine gespeicherte Adresse, auch wenn das Objekt
+  // später umgezogen ist.
+  const objectAddressLines = [
+    placeLine === objectTitle ? "" : placeLine,
+    cityLine,
+    extraLine,
+  ].filter(Boolean);
+  const durationText = formatWorkDuration(preview.hours, {
+    hour: t("entry.hoursShort"),
+    minute: t("entry.minutesShort"),
+  });
+  const breakValue = Math.max(0, Number(breakMinutes) || 0);
+  const rateValue = parseRateInput(rate);
+  const extrasSummary = extrasSummaryParts(
+    {
+      photos: photos.length,
+      gps: Boolean(gps),
+      note: Boolean(note.trim()),
+      overtime: isWork && overtime,
+    },
+    {
+      photos: (count) => t("entry.photoCount", { count }),
+      gps: t("entry.gpsSaved"),
+      note: t("entry.noteSaved"),
+      overtime: t("entry.overtimeSummary"),
+    },
+  );
 
   function bumpBreak(delta: number) {
-    const next = Math.max(0, (Number(breakMinutes) || 0) + delta);
-    setBreakMinutes(String(next));
+    setBreakMinutes(String(Math.max(0, breakValue + delta)));
   }
 
   const noteField = (
@@ -503,21 +557,22 @@ export function ShiftDialog({
         >
           <header
             data-testid="entry-header"
-            className="shrink-0 border-b bg-background px-2 pt-[max(0.25rem,env(safe-area-inset-top))]"
+            className="flex shrink-0 items-center gap-1 border-b bg-background px-1 pb-1.5 pt-[max(0.125rem,env(safe-area-inset-top))]"
           >
             <button
               type="button"
-              className="inline-flex h-11 items-center gap-1 px-2 text-sm font-medium"
+              className="inline-flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground"
+              aria-label={t("action.back")}
               onClick={() => onOpenChange(false)}
             >
-              <ChevronLeft className="size-5" />
-              {t("action.back")}
+              <ChevronLeft className="size-6" aria-hidden />
+              <span className="sr-only">{t("action.back")}</span>
             </button>
-            <DialogHeader className="space-y-0.5 px-3 pb-3 text-left">
-              <DialogTitle className="text-left text-lg">
+            <DialogHeader className="min-w-0 flex-1 space-y-0 text-left">
+              <DialogTitle className="truncate text-left text-base font-semibold leading-tight">
                 {isEditing ? t("shift.editTitle") : t("shift.newTitle")}
               </DialogTitle>
-              <DialogDescription className="text-left text-sm font-medium text-foreground">
+              <DialogDescription className="truncate text-left text-xs text-muted-foreground">
                 {longDate}
                 {holiday ? ` · ${holiday}` : ""}
               </DialogDescription>
@@ -526,71 +581,79 @@ export function ShiftDialog({
 
           <div
             data-testid="entry-editor-scroll"
-            className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-4"
+            className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-4 pb-4 pt-3"
           >
-            <label className="relative flex min-h-11 items-center gap-3 rounded-2xl border bg-card px-3 py-2.5">
-              <CalendarDays className="size-5 shrink-0 text-primary" aria-hidden />
-              <span className="min-w-0 flex-1">
-                <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  {t("label.date")}
+            <div className="space-y-3">
+              <label className="relative flex min-h-11 items-center gap-3 rounded-xl bg-card px-3 py-2">
+                <CalendarDays className="size-5 shrink-0 text-primary" aria-hidden />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs text-muted-foreground">{t("label.date")}</span>
+                  <span className="block truncate text-[15px] font-semibold">{longDate}</span>
                 </span>
-                <span className="block truncate text-sm font-semibold">{longDate}</span>
-              </span>
-              <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-              <input
-                id="eintrag-datum"
-                data-testid="entry-date"
-                type="date"
-                value={entryDate}
-                onChange={(e) => setEntryDate(e.target.value)}
-                onFocus={keepFieldVisible}
-                className="absolute inset-0 cursor-pointer opacity-0"
-              />
-            </label>
+                <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                <input
+                  id="eintrag-datum"
+                  data-testid="entry-date"
+                  type="date"
+                  aria-label={t("label.date")}
+                  value={entryDate}
+                  onChange={(e) => setEntryDate(e.target.value)}
+                  onFocus={keepFieldVisible}
+                  className="absolute inset-0 cursor-pointer opacity-0"
+                />
+              </label>
 
-            <section>
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                {t("label.job")}
-              </p>
               {jobs.length > 1 ? (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2" role="group" aria-label={t("label.job")}>
                   {jobs.map((j) => (
                     <button
                       key={j.id}
                       type="button"
+                      aria-pressed={jobId === j.id}
                       onClick={() => {
                         setJobId(j.id);
-                        setRate(String(suggestedRate({ jobId: j.id }, { jobs, settings })));
+                        setRate(formatRateInput(suggestedRate({ jobId: j.id }, { jobs, settings })));
                       }}
                       className={cn(
-                        "inline-flex h-11 items-center gap-2 rounded-full border px-3 text-sm font-medium",
-                        jobId === j.id ? "border-primary bg-primary/15 text-foreground" : "bg-card",
+                        "inline-flex h-11 max-w-full items-center gap-2 rounded-full px-3.5 text-sm font-medium",
+                        jobId === j.id
+                          ? "bg-primary/20 text-foreground ring-1 ring-primary"
+                          : "bg-card text-muted-foreground",
                       )}
                     >
-                      <span className="size-2.5 rounded-full" style={{ backgroundColor: j.color }} />
-                      {j.name}
+                      <span
+                        className="size-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: j.color }}
+                        aria-hidden
+                      />
+                      <span className="truncate">{j.name}</span>
                     </button>
                   ))}
                 </div>
               ) : (
-                <p className="text-sm font-medium">{job?.name ?? t("timer.noJob")}</p>
+                <p className="px-1 text-sm text-muted-foreground">
+                  {t("label.job")}: <span className="font-medium text-foreground">{job?.name ?? t("timer.noJob")}</span>
+                </p>
               )}
-            </section>
+            </div>
 
             <section>
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {t("label.kind")}
               </p>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2" role="group" aria-label={t("label.kind")}>
                 {KINDS.map((k) => (
                   <button
                     key={k}
                     type="button"
                     data-kind={k}
+                    aria-pressed={kind === k}
                     onClick={() => selectKind(k)}
                     className={cn(
-                      "h-11 rounded-xl border px-2 text-sm font-medium",
-                      kind === k ? "border-primary bg-primary/15" : "bg-card",
+                      "h-11 rounded-xl px-2 text-sm font-medium",
+                      kind === k
+                        ? "bg-primary/20 text-foreground ring-1 ring-primary"
+                        : "bg-card text-muted-foreground",
                     )}
                   >
                     {t("kind." + k)}
@@ -630,136 +693,185 @@ export function ShiftDialog({
             {isWork ? (
               <>
                 <section>
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     {t("entry.workTime")}
                   </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="grid gap-1">
-                      <Label htmlFor="von">{t("label.start")}</Label>
-                      <Input
-                        id="von"
-                        type="time"
-                        value={start}
-                        onChange={(e) => {
-                          setFieldError((prev) => {
-                            const next = { ...prev };
-                            delete next.start;
-                            return next;
-                          });
-                          onStartChange(e.target.value);
-                        }}
-                        onFocus={keepFieldVisible}
-                        className="h-11"
-                      />
-                      {fieldError.start ? (
-                        <p className="text-xs text-destructive">{fieldError.start}</p>
-                      ) : null}
+                  <div className="overflow-hidden rounded-2xl bg-card">
+                    <div className="grid grid-cols-2 divide-x divide-border/70">
+                      <div className="px-3 pb-1.5 pt-2">
+                        <Label htmlFor="von" className="text-xs text-muted-foreground">
+                          {t("label.start")}
+                        </Label>
+                        <Input
+                          id="von"
+                          type="time"
+                          value={start}
+                          onChange={(e) => {
+                            setFieldError((prev) => {
+                              const next = { ...prev };
+                              delete next.start;
+                              return next;
+                            });
+                            onStartChange(e.target.value);
+                          }}
+                          onFocus={keepFieldVisible}
+                          className="h-11 border-0 bg-transparent px-0 text-lg font-semibold tabular-nums shadow-none focus-visible:ring-0"
+                        />
+                      </div>
+                      <div className="px-3 pb-1.5 pt-2">
+                        <Label htmlFor="bis" className="text-xs text-muted-foreground">
+                          {t("label.end")}
+                        </Label>
+                        <Input
+                          id="bis"
+                          type="time"
+                          value={end}
+                          onChange={(e) => {
+                            setFieldError((prev) => {
+                              const next = { ...prev };
+                              delete next.end;
+                              return next;
+                            });
+                            onEndChange(e.target.value);
+                          }}
+                          onFocus={keepFieldVisible}
+                          className="h-11 border-0 bg-transparent px-0 text-lg font-semibold tabular-nums shadow-none focus-visible:ring-0"
+                        />
+                      </div>
                     </div>
-                    <div className="grid gap-1">
-                      <Label htmlFor="bis">{t("label.end")}</Label>
+
+                    <div className="flex items-center gap-2 border-t border-border/70 px-3 py-2">
+                      <Label htmlFor="pause" className="flex-1 text-sm">
+                        {t("entry.break")}
+                      </Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="size-11 shrink-0 rounded-full bg-muted/60"
+                        aria-label={`${t("entry.break")} −15 ${t("entry.minutesShort")}`}
+                        onClick={() => bumpBreak(-15)}
+                      >
+                        <Minus className="size-4" />
+                      </Button>
                       <Input
-                        id="bis"
-                        type="time"
-                        value={end}
-                        onChange={(e) => {
-                          setFieldError((prev) => {
-                            const next = { ...prev };
-                            delete next.end;
-                            return next;
-                          });
-                          onEndChange(e.target.value);
-                        }}
+                        id="pause"
+                        type="number"
+                        min="0"
+                        inputMode="numeric"
+                        value={breakMinutes}
+                        onChange={(e) => setBreakMinutes(e.target.value)}
                         onFocus={keepFieldVisible}
-                        className="h-11"
+                        aria-label={t("label.breakMinutes")}
+                        className="h-11 w-14 shrink-0 border-0 bg-transparent px-0 text-center text-base font-semibold tabular-nums shadow-none focus-visible:ring-0"
                       />
-                      {fieldError.end ? (
-                        <p className="text-xs text-destructive">{fieldError.end}</p>
-                      ) : null}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="size-11 shrink-0 rounded-full bg-muted/60"
+                        aria-label={`${t("entry.break")} +15 ${t("entry.minutesShort")}`}
+                        onClick={() => bumpBreak(15)}
+                      >
+                        <Plus className="size-4" />
+                      </Button>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {t("entry.minutesShort")}
+                      </span>
+                    </div>
+
+                    <div className="flex items-baseline justify-between gap-2 border-t border-border/70 bg-primary/5 px-3 py-2.5">
+                      <span className="text-sm text-muted-foreground">{t("entry.workTime")}</span>
+                      <span className="text-right">
+                        <span
+                          className="block text-base font-semibold tabular-nums"
+                          data-testid="entry-duration"
+                        >
+                          {durationText}
+                        </span>
+                        {breakValue > 0 ? (
+                          <span className="block text-xs text-muted-foreground">
+                            {t("entry.afterBreak", { minutes: breakValue })}
+                          </span>
+                        ) : null}
+                      </span>
                     </div>
                   </div>
-                  <div className="mt-3 flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-11 w-11 shrink-0"
-                      aria-label="-"
-                      onClick={() => bumpBreak(-15)}
-                    >
-                      <Minus className="size-4" />
-                    </Button>
-                    <Input
-                      id="pause"
-                      type="number"
-                      min="0"
-                      inputMode="numeric"
-                      value={breakMinutes}
-                      onChange={(e) => setBreakMinutes(e.target.value)}
-                      onFocus={keepFieldVisible}
-                      aria-label={t("label.breakMinutes")}
-                      className="h-11 w-20 text-center"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-11 w-11 shrink-0"
-                      aria-label="+"
-                      onClick={() => bumpBreak(15)}
-                    >
-                      <Plus className="size-4" />
-                    </Button>
-                    <span className="text-sm text-muted-foreground">{t("entry.minutes")}</span>
-                  </div>
-                  <p className="mt-2 text-sm font-semibold tabular-nums">
-                    {formatHours(preview.hours, locale)} {t("shift.duration").toLowerCase()}
-                  </p>
+
+                  {fieldError.start || fieldError.end ? (
+                    <p className="mt-1.5 text-sm text-destructive">
+                      {[fieldError.start, fieldError.end].filter(Boolean).join(" · ")}
+                    </p>
+                  ) : null}
                   {preview.bonus > 0 ? (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="mt-1.5 text-xs text-muted-foreground">
                       {t("shift.bonusLabel", { labels: preview.labels.join(", ") })} ·{" "}
                       {formatEuro(preview.bonus, locale)}
                     </p>
                   ) : null}
                   {hourlyPay ? (
-                    <div className="mt-3 grid gap-1">
-                      <Label htmlFor="lohn">{t("label.rateEuro")}</Label>
+                    <div className="mt-3 flex items-center gap-3 rounded-xl bg-card px-3 py-2">
+                      <Label htmlFor="lohn" className="flex-1 text-sm">
+                        {t("label.rate")}
+                      </Label>
                       <Input
                         id="lohn"
-                        type="number"
-                        step="0.5"
-                        min="0"
+                        type="text"
                         inputMode="decimal"
                         value={rate}
-                        onChange={(e) => setRate(e.target.value)}
+                        onChange={(e) => setRate(sanitizeRateInput(e.target.value))}
+                        onBlur={() => setRate(formatRateInput(parseRateInput(rate)))}
                         onFocus={keepFieldVisible}
-                        className="h-11"
+                        className="h-11 w-24 border-0 bg-transparent px-0 text-right text-base font-semibold tabular-nums shadow-none focus-visible:ring-0"
                       />
+                      <span className="text-base font-semibold text-muted-foreground">€</span>
                     </div>
                   ) : null}
+                  {rateValue !== undefined && preview.total > 0 ? (
+                    <p className="mt-1.5 px-1 text-xs text-muted-foreground">
+                      {t("label.earnings")}: {formatEuro(preview.total, locale)}
+                    </p>
+                  ) : null}
                   {!isEditing ? (
-                    <p className="mt-2 text-xs text-muted-foreground">{t("shift.multiSameDayHint")}</p>
+                    <p className="mt-2 px-1 text-xs text-muted-foreground">
+                      {t("shift.multiSameDayHint")}
+                    </p>
                   ) : null}
                 </section>
 
-                <section>
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <section data-testid="entry-object" data-object={hasObjectData ? "set" : "empty"}>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     {t("worklog.workplace")}
                   </p>
-                  <div className="relative rounded-2xl border bg-card px-3 py-3">
-                    <p className="pr-6 text-sm font-semibold">{objectTitle}</p>
-                    {objectMeta ? (
-                      <p className="mt-0.5 text-xs text-muted-foreground">{objectMeta}</p>
-                    ) : null}
+                  <div className="relative rounded-2xl bg-card px-3 py-3">
+                    <p
+                      className={cn(
+                        "pr-6 text-[15px] font-semibold",
+                        hasObjectData ? "" : "text-muted-foreground",
+                      )}
+                    >
+                      {objectTitle}
+                    </p>
+                    {objectAddressLines.map((line) => (
+                      <p key={line} className="mt-0.5 pr-6 text-sm text-muted-foreground">
+                        {line}
+                      </p>
+                    ))}
                     <ChevronRight
-                      className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                      className="absolute right-3 top-4 size-4 text-muted-foreground"
                       aria-hidden
                     />
-                    <Label className="sr-only">{t("object.select")}</Label>
+                    <Label htmlFor="objekt-auswahl" className="sr-only">
+                      {t("object.select")}
+                    </Label>
                     <select
+                      id="objekt-auswahl"
                       data-testid="object-select"
                       value={objectId ?? ""}
                       onChange={(e) => applyObjectSelection(e.target.value)}
                       className="absolute inset-0 cursor-pointer opacity-0"
                     >
-                      <option value="">{t("object.none")}</option>
+                      <option value="">
+                        {hasObjectData ? t("object.none") : t("entry.chooseObject")}
+                      </option>
                       {objects.map((o) => (
                         <option key={o.id} value={o.id}>
                           {o.name}
@@ -767,24 +879,42 @@ export function ShiftDialog({
                       ))}
                     </select>
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-11"
-                      onClick={() => setObjectDialogOpen(true)}
-                    >
-                      <Plus className="size-4" /> {t("object.new")}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="h-11"
-                      aria-expanded={objectDetailsOpen}
-                      onClick={() => setObjectDetailsOpen((v) => !v)}
-                    >
-                      {t("entry.changeObject")}
-                    </Button>
+                  {/* Nur die Aktionen des aktuellen Zustands: ohne Objekt anlegen/wählen,
+                      mit Objekt bearbeiten/entfernen. */}
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {selectedObject ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-11 px-3 text-primary"
+                        data-testid="object-edit"
+                        onClick={() => openObjectDialog(selectedObject)}
+                      >
+                        {t("object.edit")}
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-11 px-3 text-primary"
+                        data-testid="object-create"
+                        onClick={() => openObjectDialog(null)}
+                      >
+                        {t("object.new")}
+                      </Button>
+                    )}
+                    {hasObjectData ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-11 px-3 text-muted-foreground"
+                        data-testid="object-address-toggle"
+                        aria-expanded={objectDetailsOpen}
+                        onClick={() => setObjectDetailsOpen((v) => !v)}
+                      >
+                        {t("entry.entryAddress")}
+                      </Button>
+                    ) : null}
                   </div>
                   {objectDetailsOpen ? (
                     <div className="mt-3 space-y-3">
@@ -890,68 +1020,81 @@ export function ShiftDialog({
                   ) : null}
                 </section>
 
-                <section>
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <section data-testid="entry-work-code" data-code={selectedWork ? "set" : "empty"}>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     {t("worklog.workCode")}
                   </p>
-                  <select
-                    data-testid="work-code-select"
-                    value={selectedWork?.code ?? ""}
-                    onChange={(e) => applyWorkCodeSelection(e.target.value)}
-                    className="h-11 w-full rounded-xl border bg-card px-3 text-sm"
-                  >
-                    <option value="">{t("worklog.none")}</option>
-                    <optgroup label={t("worklog.standard")}>
-                      {builtinCodes.map(({ code, label }) => (
-                        <option key={code} value={code}>
-                          {code} · {label}
-                        </option>
-                      ))}
-                    </optgroup>
-                    {customCodes.length > 0 ? (
-                      <optgroup label={t("worklog.saved")}>
-                        {customCodes.map(({ code, label }) => (
-                          <option key={`saved-${code}`} value={code}>
+                  <div className="relative rounded-2xl bg-card px-3 py-3">
+                    {selectedWork ? (
+                      <p className="pr-6 text-[15px] font-semibold">
+                        <span className="text-primary">{selectedWork.code}</span>
+                        <span className="text-muted-foreground"> · </span>
+                        {selectedWork.label}
+                      </p>
+                    ) : (
+                      <p className="pr-6 text-[15px] font-semibold text-muted-foreground">
+                        {t("entry.chooseWorkCode")}
+                      </p>
+                    )}
+                    <ChevronRight
+                      className="absolute right-3 top-4 size-4 text-muted-foreground"
+                      aria-hidden
+                    />
+                    <Label htmlFor="leistungsart-auswahl" className="sr-only">
+                      {t("worklog.workCode")}
+                    </Label>
+                    <select
+                      id="leistungsart-auswahl"
+                      data-testid="work-code-select"
+                      value={selectedWork?.code ?? ""}
+                      onChange={(e) => applyWorkCodeSelection(e.target.value)}
+                      className="absolute inset-0 cursor-pointer opacity-0"
+                    >
+                      <option value="">
+                        {selectedWork ? t("worklog.none") : t("entry.chooseWorkCode")}
+                      </option>
+                      <optgroup label={t("worklog.standard")}>
+                        {builtinCodes.map(({ code, label }) => (
+                          <option key={code} value={code}>
                             {code} · {label}
                           </option>
                         ))}
                       </optgroup>
-                    ) : null}
-                  </select>
-                  {selectedWork ? (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {selectedWork.code}
-                      <span className="mt-0.5 block text-sm font-medium text-foreground">
-                        {selectedWork.label}
-                      </span>
-                    </p>
-                  ) : null}
+                      {customCodes.length > 0 ? (
+                        <optgroup label={t("worklog.saved")}>
+                          {customCodes.map(({ code, label }) => (
+                            <option key={`saved-${code}`} value={code}>
+                              {code} · {label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null}
+                    </select>
+                  </div>
                   {customCodes.length > 0 ? (
-                    <div className="mt-3">
-                      <p className="mb-1.5 text-xs text-muted-foreground">{t("worklog.myWorkCodes")}</p>
-                      <div className="flex flex-wrap gap-2">
-                        {customCodes.map((item) => (
-                          <button
-                            key={item.code}
-                            type="button"
-                            onClick={() => applyWorkCodeSelection(item.code)}
-                            className={cn(
-                              "h-11 rounded-full border px-3 text-sm",
-                              normalizeWorkCode(item.code) === activeWorkCode
-                                ? "border-primary bg-primary/15"
-                                : "bg-card",
-                            )}
-                          >
-                            {item.code} · {item.label}
-                          </button>
-                        ))}
-                      </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {customCodes.map((item) => (
+                        <button
+                          key={item.code}
+                          type="button"
+                          aria-pressed={normalizeWorkCode(item.code) === activeWorkCode}
+                          onClick={() => applyWorkCodeSelection(item.code)}
+                          className={cn(
+                            "h-11 max-w-full truncate rounded-full px-3.5 text-sm",
+                            normalizeWorkCode(item.code) === activeWorkCode
+                              ? "bg-primary/20 text-foreground ring-1 ring-primary"
+                              : "bg-card text-muted-foreground",
+                          )}
+                        >
+                          {item.code} · {item.label}
+                        </button>
+                      ))}
                     </div>
                   ) : null}
                   <Button
                     type="button"
                     variant="ghost"
-                    className="mt-2 h-11 px-0"
+                    className="mt-1 h-11 px-3 text-primary"
                     aria-expanded={newCodeOpen}
                     onClick={() => setNewCodeOpen((v) => !v)}
                   >
@@ -994,71 +1137,80 @@ export function ShiftDialog({
                   </div>
                 </section>
 
-                <section>
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <section data-testid="entry-tasks" data-task-count={tasks.length}>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     {t("worklog.tasks")}
                   </p>
-                  <select
-                    data-testid="task-select"
-                    value=""
-                    onChange={(e) => applyTaskSelection(e.target.value)}
-                    className="h-11 w-full rounded-xl border bg-card px-3 text-sm"
-                  >
-                    <option value="">{t("worklog.chooseTask")}</option>
-                    <optgroup label={t("worklog.standard")}>
-                      {CLEANING_TASKS.map((key) => (
-                        <option key={key} value={templateValue(key)}>
-                          {t(`task.${key}`)}
-                        </option>
-                      ))}
-                    </optgroup>
-                    {customTasksCatalog.length > 0 ? (
-                      <optgroup label={t("worklog.saved")}>
-                        {customTasksCatalog.map((label) => (
-                          <option key={label} value={label}>
-                            {label}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ) : null}
-                  </select>
                   {tasks.length > 0 ? (
-                    <div className="mt-2 flex flex-wrap gap-2">
+                    <div className="mb-2 flex flex-wrap gap-2">
                       {tasks.map((value) => (
                         <button
                           key={value}
                           type="button"
                           onClick={() => setTasks(tasks.filter((x) => x !== value))}
-                          aria-label={t("worklog.removeFromEntry")}
-                          className="inline-flex h-11 max-w-full items-center gap-1 rounded-full border bg-primary/10 px-3 text-sm font-medium"
+                          aria-label={`${taskEntryLabel(value)} – ${t("worklog.removeFromEntry")}`}
+                          className="inline-flex h-11 max-w-full items-center gap-1.5 rounded-full bg-primary/20 px-3.5 text-sm font-medium ring-1 ring-primary"
                         >
                           <span className="truncate">{taskEntryLabel(value)}</span>
-                          <X className="size-3.5 shrink-0" />
+                          <X className="size-3.5 shrink-0" aria-hidden />
                         </button>
                       ))}
                     </div>
                   ) : null}
-                  {customTasksCatalog.length > 0 ? (
-                    <div className="mt-3">
-                      <p className="mb-1.5 text-xs text-muted-foreground">{t("worklog.myTasks")}</p>
-                      <div className="flex flex-wrap gap-2">
-                        {customTasksCatalog.map((label) => (
+                  <div className="relative flex min-h-11 items-center rounded-2xl bg-card px-3 py-3">
+                    <p className="flex-1 pr-6 text-[15px] font-semibold text-muted-foreground">
+                      {t("entry.addTask")}
+                    </p>
+                    <ChevronRight className="absolute right-3 size-4 text-muted-foreground" aria-hidden />
+                    <Label htmlFor="taetigkeit-auswahl" className="sr-only">
+                      {t("worklog.tasks")}
+                    </Label>
+                    <select
+                      id="taetigkeit-auswahl"
+                      data-testid="task-select"
+                      value=""
+                      onChange={(e) => applyTaskSelection(e.target.value)}
+                      className="absolute inset-0 cursor-pointer opacity-0"
+                    >
+                      <option value="">{t("worklog.chooseTask")}</option>
+                      <optgroup label={t("worklog.standard")}>
+                        {CLEANING_TASKS.map((key) => (
+                          <option key={key} value={templateValue(key)}>
+                            {t(`task.${key}`)}
+                          </option>
+                        ))}
+                      </optgroup>
+                      {customTasksCatalog.length > 0 ? (
+                        <optgroup label={t("worklog.saved")}>
+                          {customTasksCatalog.map((label) => (
+                            <option key={label} value={label}>
+                              {label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null}
+                    </select>
+                  </div>
+                  {customTasksCatalog.filter((label) => !tasks.includes(label)).length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {customTasksCatalog
+                        .filter((label) => !tasks.includes(label))
+                        .map((label) => (
                           <button
                             key={label}
                             type="button"
                             onClick={() => applyTaskSelection(label)}
-                            className="h-11 rounded-full border bg-card px-3 text-sm"
+                            className="h-11 max-w-full truncate rounded-full bg-card px-3.5 text-sm text-muted-foreground"
                           >
                             {label}
                           </button>
                         ))}
-                      </div>
                     </div>
                   ) : null}
                   <Button
                     type="button"
                     variant="ghost"
-                    className="mt-2 h-11 px-0"
+                    className="mt-1 h-11 px-3 text-primary"
                     aria-expanded={newTaskOpen}
                     onClick={() => setNewTaskOpen((v) => !v)}
                   >
@@ -1094,12 +1246,28 @@ export function ShiftDialog({
             <section>
               <button
                 type="button"
-                className="flex h-11 w-full items-center justify-between text-sm font-semibold"
+                data-testid="entry-more-toggle"
+                className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl text-left"
                 aria-expanded={advanced}
                 onClick={() => setAdvanced((v) => !v)}
               >
-                {advanced ? t("entry.less") : t("entry.more")}
-                <ChevronDown className={cn("size-4 transition-transform", advanced && "rotate-180")} />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold">
+                    {advanced ? t("entry.less") : t("entry.more")}
+                  </span>
+                  <span
+                    className="block truncate text-xs text-muted-foreground"
+                    data-testid="entry-more-summary"
+                  >
+                    {extrasSummary.length > 0
+                      ? extrasSummary.join(" · ")
+                      : t("entry.extrasEmpty")}
+                  </span>
+                </span>
+                <ChevronDown
+                  className={cn("size-5 shrink-0 transition-transform", advanced && "rotate-180")}
+                  aria-hidden
+                />
               </button>
               {advanced ? (
                 <div className="space-y-4 pt-1">
@@ -1141,19 +1309,21 @@ export function ShiftDialog({
                   ) : null}
 
                   {isWork && !hourlyPay ? (
-                    <div className="grid gap-1">
-                      <Label htmlFor="lohn">{t("label.rateEuro")}</Label>
+                    <div className="flex items-center gap-3 rounded-xl bg-card px-3 py-2">
+                      <Label htmlFor="lohn" className="flex-1 text-sm">
+                        {t("label.rate")}
+                      </Label>
                       <Input
                         id="lohn"
-                        type="number"
-                        step="0.5"
-                        min="0"
+                        type="text"
                         inputMode="decimal"
                         value={rate}
-                        onChange={(e) => setRate(e.target.value)}
+                        onChange={(e) => setRate(sanitizeRateInput(e.target.value))}
+                        onBlur={() => setRate(formatRateInput(parseRateInput(rate)))}
                         onFocus={keepFieldVisible}
-                        className="h-11"
+                        className="h-11 w-24 border-0 bg-transparent px-0 text-right text-base font-semibold tabular-nums shadow-none focus-visible:ring-0"
                       />
+                      <span className="text-base font-semibold text-muted-foreground">€</span>
                     </div>
                   ) : null}
 
@@ -1186,9 +1356,14 @@ export function ShiftDialog({
 
                   {isWork ? (
                     <div className="grid gap-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        {t("worklog.photos")}
-                      </p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium">{t("worklog.photos")}</p>
+                        {photos.length > 0 ? (
+                          <p className="text-xs text-muted-foreground">
+                            {t("entry.photoCount", { count: photos.length })}
+                          </p>
+                        ) : null}
+                      </div>
                       {photos.length > 0 ? (
                         <div className="flex flex-wrap gap-2">
                           {photos.map((src, i) => (
@@ -1198,22 +1373,23 @@ export function ShiftDialog({
                                 type="button"
                                 aria-label={t("worklog.remove")}
                                 onClick={() => setPhotos(photos.filter((_, idx) => idx !== i))}
-                                className="absolute -right-1.5 -top-1.5 flex size-6 items-center justify-center rounded-full bg-destructive text-destructive-foreground"
+                                className="absolute -right-2 -top-2 flex size-7 items-center justify-center rounded-full bg-destructive text-destructive-foreground"
                               >
-                                <X className="size-3" />
+                                <X className="size-3.5" aria-hidden />
                               </button>
                             </div>
                           ))}
                         </div>
                       ) : null}
-                      <label className="inline-flex h-11 w-fit cursor-pointer items-center gap-2 rounded-xl border px-3 text-sm font-medium">
-                        <Camera className="size-4" />
+                      <label className="inline-flex h-11 w-fit cursor-pointer items-center gap-2 rounded-xl bg-card px-3.5 text-sm font-medium">
+                        <Camera className="size-4" aria-hidden />
                         {t("worklog.addPhoto")}
                         <input
                           type="file"
                           accept="image/*"
                           multiple
                           className="hidden"
+                          aria-label={t("worklog.addPhoto")}
                           onChange={async (e) => {
                             const files = [...(e.target.files ?? [])];
                             e.target.value = "";
@@ -1231,13 +1407,15 @@ export function ShiftDialog({
 
                   {isWork ? (
                     <div className="grid gap-2" data-testid="worklog-geo-controls">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        {t("worklog.gps")}
-                      </p>
-                      <p className="text-sm">
-                        {gps ? formatGps(gps) : "–"}
-                      </p>
-                      {street || zip || city ? (
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium">{t("worklog.gps")}</p>
+                        {gps ? (
+                          <p className="text-xs text-muted-foreground tabular-nums">
+                            {formatGps(gps)}
+                          </p>
+                        ) : null}
+                      </div>
+                      {gps && (street || zip || city) ? (
                         <p className="text-xs text-muted-foreground" data-testid="worklog-geo-address">
                           {formatGermanAddress({ street, houseNo, zip, city })}
                         </p>
@@ -1245,8 +1423,8 @@ export function ShiftDialog({
                       <div className="flex gap-2">
                         <Button
                           type="button"
-                          variant="outline"
-                          className="h-11"
+                          variant="ghost"
+                          className="h-11 bg-card px-3.5"
                           disabled={gpsBusy}
                           onClick={async () => {
                             setGpsBusy(true);
@@ -1279,10 +1457,11 @@ export function ShiftDialog({
                           <Button
                             type="button"
                             variant="ghost"
-                            className="h-11"
+                            className="h-11 px-3.5"
+                            aria-label={t("worklog.remove")}
                             onClick={() => setGps(undefined)}
                           >
-                            <X className="size-4" />
+                            <X className="size-4" aria-hidden />
                           </Button>
                         ) : null}
                       </div>
@@ -1331,6 +1510,7 @@ export function ShiftDialog({
       <ObjectDialog
         open={objectDialogOpen}
         onOpenChange={setObjectDialogOpen}
+        object={objectDialogTarget}
         onSaved={onObjectSaved}
       />
     </>
