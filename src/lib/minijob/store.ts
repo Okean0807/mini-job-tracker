@@ -10,6 +10,7 @@ import { applyAppearance } from "./theme";
 import {
   ensureCustomTasksFromShifts,
   ensureWorkCodesFromShifts,
+  learnSavedValuesFromShift,
 } from "./catalog";
 import {
   clearObjectIdFromShifts,
@@ -272,6 +273,18 @@ function learnObjectsFromShift(shift: Shift, objects: WorkObject[]): { shift: Sh
   };
 }
 
+function withLearnedCatalogs(settings: Settings, shift: Shift): Settings {
+  const prevCodes = settings.workCodes ?? [];
+  const prevTasks = settings.customTasks ?? [];
+  const learned = learnSavedValuesFromShift(prevCodes, prevTasks, shift);
+  if (learned.workCodes === prevCodes && learned.customTasks === prevTasks) return settings;
+  return {
+    ...settings,
+    ...(learned.workCodes !== prevCodes ? { workCodes: learned.workCodes } : {}),
+    ...(learned.customTasks !== prevTasks ? { customTasks: learned.customTasks } : {}),
+  };
+}
+
 function learnObjectsFromShifts(list: Shift[], objects: WorkObject[]): { shifts: Shift[]; objects: WorkObject[] } {
   let objs = objects;
   const shifts = list.map((s) => {
@@ -291,7 +304,8 @@ export function saveShift(shift: Shift) {
     ? state.shifts.map((s) => (s.id === learned.shift.id ? learned.shift : s))
     : [...state.shifts, learned.shift];
   shifts.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-  commit({ ...state, shifts, objects: learned.objects });
+  const settings = withLearnedCatalogs(state.settings, learned.shift);
+  commit({ ...state, shifts, objects: learned.objects, settings });
 }
 
 export function saveShifts(list: Shift[]) {
@@ -299,7 +313,11 @@ export function saveShifts(list: Shift[]) {
   const map = new Map(state.shifts.map((s) => [s.id, s]));
   for (const s of learned.shifts) map.set(s.id, s);
   const shifts = [...map.values()].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-  commit({ ...state, shifts, objects: learned.objects });
+  let settings = state.settings;
+  for (const s of learned.shifts) {
+    settings = withLearnedCatalogs(settings, s);
+  }
+  commit({ ...state, shifts, objects: learned.objects, settings });
 }
 
 export function deleteShift(id: string) {

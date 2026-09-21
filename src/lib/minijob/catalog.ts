@@ -200,6 +200,7 @@ export function legendLabelForWorkCode(
 /**
  * ADD-only: Custom-Leistungsarten aus bestehenden Schichten nachziehen.
  * Schichten werden nicht mutiert; vorhandene Katalog-Labels nicht überschrieben.
+ * Duplikat = Code + Bezeichnung (normalisiert); gleicher Code andere Bezeichnung → kein zweites Item.
  */
 export function ensureWorkCodesFromShifts(
   catalog: readonly WorkCodeDef[],
@@ -208,12 +209,13 @@ export function ensureWorkCodesFromShifts(
   let next = catalog as WorkCodeDef[];
   let changed = false;
   for (const shift of shifts) {
-    const code = normalizeWorkCode(shift.workCode);
-    if (!code || isBuiltinWorkCode(code)) continue;
-    if (next.some((c) => normalizeWorkCode(c.code) === code)) continue;
-    const label = normalizeCatalogText(shift.workCodeLabel) || code;
-    next = [...next, { code, label }];
-    changed = true;
+    const code = shift.workCode ?? "";
+    const label = normalizeCatalogText(shift.workCodeLabel) || normalizeWorkCode(code);
+    const result = addWorkCodeToCatalog(next, code, label);
+    if (result.status === "added") {
+      next = result.catalog;
+      changed = true;
+    }
   }
   return changed ? next : (catalog as WorkCodeDef[]);
 }
@@ -240,4 +242,18 @@ export function ensureCustomTasksFromShifts(
     }
   }
   return changed ? next : (catalog as string[]);
+}
+
+/**
+ * Wie Adresse → WorkObject: Werte der gespeicherten Schicht ADD-only in die
+ * wiederverwendbare Liste übernehmen. Schichten und vorhandene Labels bleiben.
+ */
+export function learnSavedValuesFromShift(
+  workCodes: readonly WorkCodeDef[],
+  customTasks: readonly string[],
+  shift: Pick<Shift, "workCode" | "workCodeLabel" | "tasks">,
+): { workCodes: WorkCodeDef[]; customTasks: string[] } {
+  const nextCodes = ensureWorkCodesFromShifts(workCodes, [shift]);
+  const nextTasks = ensureCustomTasksFromShifts(customTasks, [shift]);
+  return { workCodes: nextCodes, customTasks: nextTasks };
 }

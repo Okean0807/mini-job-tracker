@@ -7,6 +7,7 @@ import {
   addWorkCodeToCatalog,
   ensureCustomTasksFromShifts,
   ensureWorkCodesFromShifts,
+  learnSavedValuesFromShift,
   legendLabelForWorkCode,
   mergeWorkCodeCatalog,
   snapshotWorkCodeLabel,
@@ -220,6 +221,57 @@ describe("store persistence (settings catalogs)", () => {
     });
   });
 
+  it("saveShift auto-learns Leistungsart and Tätigkeit like objects", () => {
+    saveShift(
+      shift({
+        id: "learn-1",
+        jobId: "j1",
+        workCode: "GL",
+        workCodeLabel: "Glasreinigung",
+        tasks: ["Dachfenster reinigen"],
+      }),
+    );
+    expect(getData().settings.workCodes).toEqual([{ code: "GL", label: "Glasreinigung" }]);
+    expect(getData().settings.customTasks).toEqual(["Dachfenster reinigen"]);
+    expect(getData().shifts.find((s) => s.id === "learn-1")?.workCodeLabel).toBe("Glasreinigung");
+
+    saveShift(
+      shift({
+        id: "learn-2",
+        jobId: "j1",
+        workCode: "gl",
+        workCodeLabel: "  Glasreinigung ",
+        tasks: ["dachfenster  reinigen"],
+      }),
+    );
+    expect(getData().settings.workCodes).toEqual([{ code: "GL", label: "Glasreinigung" }]);
+    expect(getData().settings.customTasks).toEqual(["Dachfenster reinigen"]);
+
+    saveShift(shift({ id: "learn-3", jobId: "j1" }));
+    expect(getData().settings.workCodes).toEqual([{ code: "GL", label: "Glasreinigung" }]);
+    expect(getData().settings.customTasks).toEqual(["Dachfenster reinigen"]);
+    expect(getData().shifts.find((s) => s.id === "learn-3")?.workCode).toBeUndefined();
+  });
+
+  it("learnSavedValuesFromShift is ADD-only and does not mutate the shift", () => {
+    const entry = shift({
+      workCode: "GL",
+      workCodeLabel: "Glasreinigung",
+      tasks: ["Dachfenster reinigen"],
+    });
+    const first = learnSavedValuesFromShift([], [], entry);
+    expect(first.workCodes).toEqual([{ code: "GL", label: "Glasreinigung" }]);
+    expect(first.customTasks).toEqual(["Dachfenster reinigen"]);
+    const second = learnSavedValuesFromShift(first.workCodes, first.customTasks, {
+      ...entry,
+      workCodeLabel: "Andere Bezeichnung",
+      tasks: ["Dachfenster reinigen", "Noch eine"],
+    });
+    expect(second.workCodes).toEqual([{ code: "GL", label: "Glasreinigung" }]);
+    expect(second.customTasks).toEqual(["Dachfenster reinigen", "Noch eine"]);
+    expect(entry.workCodeLabel).toBe("Glasreinigung");
+  });
+
   it("keeps catalogs when an entry is saved without that selection", () => {
     updateSettings({
       workCodes: [{ code: "XYZ", label: "Spezialreinigung" }],
@@ -319,6 +371,40 @@ describe("localStorage refresh", () => {
   beforeEach(() => {
     window.localStorage.clear();
     vi.resetModules();
+  });
+
+  it("survives browser refresh after saveShift auto-learn", async () => {
+    const store = await import("./store");
+    store.replaceAll({
+      ...store.EMPTY_DATA,
+      jobs: [{ id: "j1", name: "Reinigung", color: "#0d9488", mode: "flex" }],
+      settings: { ...DEFAULT_SETTINGS, localDemoMode: true },
+    });
+    store.saveShift({
+      id: "gl-1",
+      kind: "arbeit",
+      date: "2026-09-20",
+      start: "08:00",
+      end: "12:00",
+      breakMinutes: 0,
+      jobId: "j1",
+      workCode: "GL",
+      workCodeLabel: "Glasreinigung",
+      tasks: ["Dachfenster reinigen"],
+    });
+    const raw = window.localStorage.getItem("minijob-tracker-v1");
+    expect(raw).toContain("GL");
+    expect(raw).toContain("Glasreinigung");
+    expect(raw).toContain("Dachfenster reinigen");
+
+    vi.resetModules();
+    const reloaded = await import("./store");
+    reloaded.loadFromStorage();
+    expect(reloaded.getData().settings.workCodes).toEqual([{ code: "GL", label: "Glasreinigung" }]);
+    expect(reloaded.getData().settings.customTasks).toEqual(["Dachfenster reinigen"]);
+    expect(reloaded.getData().shifts.find((s) => s.id === "gl-1")?.workCodeLabel).toBe(
+      "Glasreinigung",
+    );
   });
 
   it("survives browser refresh for both catalogs", async () => {

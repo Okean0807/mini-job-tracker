@@ -1,4 +1,4 @@
-import { Camera, Check, ChevronDown, ChevronRight, MapPin, Mic, Plus, Trash2, X } from "lucide-react";
+import { Camera, ChevronDown, MapPin, Mic, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { toast } from "sonner";
@@ -23,7 +23,7 @@ import { holidayName } from "@/lib/minijob/holidays";
 import { parseRateInput, suggestedRate } from "@/lib/minijob/rate";
 import { ObjectDialog } from "@/components/minijob/ObjectDialog";
 import { addShift, removeShift, upsertShift } from "@/lib/minijob/service";
-import { newId, updateSettings } from "@/lib/minijob/store";
+import { newId } from "@/lib/minijob/store";
 import {
   type Customer,
   type Job,
@@ -40,10 +40,10 @@ import {
   withEntryDate,
 } from "@/lib/minijob/work-objects";
 import {
-  addCustomTaskToCatalog,
-  addWorkCodeToCatalog,
   builtinWorkCodes,
-  mergeWorkCodeCatalog,
+  findPredefinedTaskValue,
+  normalizeCatalogText,
+  normalizeWorkCode,
   snapshotWorkCodeLabel,
 } from "@/lib/minijob/catalog";
 import { listenOnce, parseVoice, voiceSupported } from "@/lib/minijob/voice";
@@ -76,58 +76,6 @@ interface ShiftDialogProps {
 }
 
 const KINDS: ShiftKind[] = ["arbeit", "urlaub", "krank", "feiertag", "frei", "sonstige"];
-
-const SECTION_LABEL = "text-xs font-medium uppercase tracking-wide text-muted-foreground";
-
-/** Saved custom items — same card/list language as ObjectsCard. Always visible. */
-function SavedCatalogPanel({
-  title,
-  empty,
-  items,
-  isSelected,
-  onSelect,
-}: {
-  title: string;
-  empty: string;
-  items: { key: string; title: string }[];
-  isSelected: (key: string) => boolean;
-  onSelect: (key: string) => void;
-}) {
-  return (
-    <section className="rounded-2xl border bg-card p-3 shadow-card" aria-label={title}>
-      <p className={SECTION_LABEL}>{title}</p>
-      {items.length === 0 ? (
-        <p className="mt-3 text-sm text-muted-foreground">{empty}</p>
-      ) : (
-        <ul className="mt-3 max-h-40 space-y-2 overflow-y-auto">
-          {items.map((item) => {
-            const active = isSelected(item.key);
-            return (
-              <li key={item.key}>
-                <button
-                  type="button"
-                  onClick={() => onSelect(item.key)}
-                  className={cn(
-                    "flex w-full min-w-0 items-center gap-2 rounded-xl border bg-background px-3 py-2 text-left hover:bg-muted/50",
-                    active && "border-primary bg-primary/10",
-                  )}
-                >
-                  {active ? (
-                    <Check className="size-4 shrink-0 text-primary" aria-hidden />
-                  ) : (
-                    <span className="size-4 shrink-0 rounded-full border border-muted-foreground/40" aria-hidden />
-                  )}
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{item.title}</span>
-                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
-  );
-}
 
 export function ShiftDialog({
   open,
@@ -165,7 +113,6 @@ export function ShiftDialog({
   const [floor, setFloor] = useState("");
   const [doorSide, setDoorSide] = useState("");
   const [workCode, setWorkCode] = useState("");
-  const [workCodeNote, setWorkCodeNote] = useState("");
   const [newCode, setNewCode] = useState("");
   const [newCodeLabel, setNewCodeLabel] = useState("");
   const [advanced, setAdvanced] = useState(false);
@@ -179,37 +126,33 @@ export function ShiftDialog({
     label: t(`task.${key}`),
   }));
 
-  const allCodes = mergeWorkCodeCatalog(customCodes);
   const builtinCodes = builtinWorkCodes();
-  const selectedWorkLabel = allCodes.find((c) => c.code === workCode)?.label ?? workCode;
+  const activeWorkCode = normalizeWorkCode(newCode || workCode);
+  const visibleCustomTasks = [
+    ...customTasksCatalog,
+    ...tasks.filter(
+      (item) => !item.startsWith("#") && !customTasksCatalog.some((saved) => saved === item),
+    ),
+  ];
 
-  function addCustomCode() {
-    const result = addWorkCodeToCatalog(customCodes, newCode, newCodeLabel);
-    if (result.status === "empty") return;
-    if (result.status === "conflict") {
-      toast.error(t("worklog.codeExists"));
+  function selectWorkDef(code: string, label: string) {
+    if (normalizeWorkCode(newCode || workCode) === normalizeWorkCode(code)) {
+      setWorkCode("");
+      setNewCode("");
+      setNewCodeLabel("");
       return;
     }
-    if (result.status === "added") {
-      updateSettings({ workCodes: result.catalog });
-    }
-    setWorkCode(result.item.code);
-    setNewCode("");
-    setNewCodeLabel("");
+    setWorkCode(code);
+    setNewCode(code);
+    setNewCodeLabel(label);
   }
 
-  function addCustomTaskToEntry() {
-    const result = addCustomTaskToCatalog(customTasksCatalog, customTask, predefinedTaskLabels);
-    if (result.status === "empty") return;
-    if (result.status === "predefined") {
-      if (!tasks.includes(result.value)) setTasks([...tasks, result.value]);
-      setCustomTask("");
-      return;
-    }
-    if (result.status === "added") {
-      updateSettings({ customTasks: result.catalog });
-    }
-    if (!tasks.includes(result.value)) setTasks([...tasks, result.value]);
+  function addTaskToEntry() {
+    const raw = normalizeCatalogText(customTask);
+    if (!raw) return;
+    const predefined = findPredefinedTaskValue(raw, predefinedTaskLabels);
+    const value = predefined ?? raw;
+    if (!tasks.includes(value)) setTasks([...tasks, value]);
     setCustomTask("");
   }
 
@@ -252,7 +195,8 @@ export function ShiftDialog({
     setFloor(shift?.floor ?? "");
     setDoorSide(shift?.doorSide ?? "");
     setWorkCode(shift?.workCode ?? "");
-    setWorkCodeNote(shift?.workCodeNote ?? "");
+    setNewCode(shift?.workCode ?? "");
+    setNewCodeLabel(shift?.workCodeLabel ?? "");
     setAdvanced(
       Boolean(
         shift &&
@@ -417,7 +361,14 @@ export function ShiftDialog({
     if (projectId) next.projectId = projectId;
     if (objectId) next.objectId = objectId;
     if (workplace.trim()) next.workplace = workplace.trim();
-    if (tasks.length > 0) next.tasks = tasks;
+    const pendingTask = normalizeCatalogText(customTask);
+    const entryTasks = [...tasks];
+    if (pendingTask) {
+      const predefined = findPredefinedTaskValue(pendingTask, predefinedTaskLabels);
+      const value = predefined ?? pendingTask;
+      if (!entryTasks.includes(value)) entryTasks.push(value);
+    }
+    if (entryTasks.length > 0) next.tasks = entryTasks;
     if (photos.length > 0) next.photos = photos;
     if (gps) next.gps = gps;
     if (street.trim()) next.street = street.trim();
@@ -426,17 +377,23 @@ export function ShiftDialog({
     if (city.trim()) next.city = city.trim();
     if (floor.trim()) next.floor = floor.trim();
     if (doorSide.trim()) next.doorSide = doorSide.trim();
-    if (workCode) {
-      next.workCode = workCode;
-      const label = snapshotWorkCodeLabel({
-        selectedCode: workCode,
-        catalog: customCodes,
-        previousCode: shift?.workCode,
-        previousLabel: shift?.workCodeLabel,
-      });
-      if (label) next.workCodeLabel = label;
+    const code = normalizeWorkCode(newCode || workCode);
+    const label = normalizeCatalogText(newCodeLabel);
+    if (code) {
+      next.workCode = code;
+      if (label) {
+        next.workCodeLabel = label;
+      } else {
+        const snapshot = snapshotWorkCodeLabel({
+          selectedCode: code,
+          catalog: customCodes,
+          previousCode: shift?.workCode,
+          previousLabel: shift?.workCodeLabel,
+        });
+        if (snapshot) next.workCodeLabel = snapshot;
+      }
     }
-    if (workCode && workCodeNote.trim()) next.workCodeNote = workCodeNote.trim();
+    if (shift?.workCodeNote?.trim()) next.workCodeNote = shift.workCodeNote.trim();
     next.createdAt = shift?.createdAt ?? isoDate(new Date());
     if (shift) {
       // vollständiger Datensatz -> id-erhaltendes Überschreiben (identisch zum bisherigen saveShift)
@@ -773,102 +730,71 @@ export function ShiftDialog({
 
             <div className="grid gap-2">
               <Label className="text-xs">{t("worklog.workCode")}</Label>
-              {workCode ? (
-                <div className="flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setWorkCode("")}
-                    aria-label={t("worklog.removeFromEntry")}
-                    className="inline-flex max-w-full items-center gap-1 rounded-full border border-primary bg-primary/10 px-2.5 py-1 text-xs font-medium"
-                  >
-                    <span className="truncate">
-                      {workCode} · {selectedWorkLabel}
-                    </span>
-                    <X className="size-3 shrink-0" />
-                  </button>
-                </div>
-              ) : null}
-              <p className={SECTION_LABEL}>{t("worklog.standard")}</p>
               <div className="flex flex-wrap gap-1.5">
                 {builtinCodes.map(({ code, label }) => (
                   <button
                     key={code}
                     type="button"
-                    onClick={() => setWorkCode(workCode === code ? "" : code)}
+                    data-testid={`work-code-${code}`}
+                    onClick={() => selectWorkDef(code, label)}
                     className={cn(
                       "rounded-full border px-3 py-1.5 text-xs font-medium",
-                      workCode === code ? "border-primary bg-primary/10" : "bg-card",
+                      activeWorkCode === code ? "border-primary bg-primary/10" : "bg-card",
+                    )}
+                  >
+                    {code} · {label}
+                  </button>
+                ))}
+                {customCodes.map(({ code, label }) => (
+                  <button
+                    key={`saved-${code}`}
+                    type="button"
+                    data-testid={`work-code-${code}`}
+                    onClick={() => selectWorkDef(code, label)}
+                    className={cn(
+                      "rounded-full border px-3 py-1.5 text-xs font-medium",
+                      activeWorkCode === code ? "border-primary bg-primary/10" : "bg-card",
                     )}
                   >
                     {code} · {label}
                   </button>
                 ))}
               </div>
-              {workCode ? (
-                <Input
-                  value={workCodeNote}
-                  placeholder={t("worklog.workCodeNotePlaceholder")}
-                  onChange={(e) => setWorkCodeNote(e.target.value)}
-                />
-              ) : null}
-              <SavedCatalogPanel
-                title={t("worklog.myWorkCodes")}
-                empty={t("worklog.myWorkCodesEmpty")}
-                items={customCodes.map((c) => ({
-                  key: c.code,
-                  title: `${c.code} · ${c.label}`,
-                }))}
-                isSelected={(code) => workCode === code}
-                onSelect={(code) => setWorkCode(workCode === code ? "" : code)}
-              />
-              <div className="grid gap-1.5">
-                <p className={SECTION_LABEL}>{t("worklog.newWorkCode")}</p>
-                <div className="grid grid-cols-[4.5rem_1fr] gap-1.5">
-                  <div className="grid gap-1">
-                    <Label className="text-[11px]">{t("worklog.codeShort")}</Label>
-                    <Input
-                      value={newCode}
-                      maxLength={4}
-                      placeholder={t("worklog.codeShort")}
-                      onChange={(e) => setNewCode(e.target.value.toUpperCase())}
-                    />
-                  </div>
-                  <div className="grid gap-1">
-                    <Label className="text-[11px]">{t("worklog.codeLabel")}</Label>
-                    <Input
-                      value={newCodeLabel}
-                      placeholder={t("worklog.codeLabel")}
-                      onChange={(e) => setNewCodeLabel(e.target.value)}
-                    />
-                  </div>
+              <div className="grid grid-cols-[4.5rem_1fr] gap-1.5">
+                <div className="grid gap-1">
+                  <Label htmlFor="leistungsart-code" className="text-[11px]">
+                    {t("worklog.codeShort")}
+                  </Label>
+                  <Input
+                    id="leistungsart-code"
+                    data-testid="work-code-input"
+                    value={newCode}
+                    maxLength={4}
+                    placeholder={t("worklog.codeShort")}
+                    onChange={(e) => {
+                      const v = e.target.value.toUpperCase();
+                      setNewCode(v);
+                      setWorkCode(normalizeWorkCode(v));
+                    }}
+                  />
                 </div>
-                <Button type="button" variant="outline" size="sm" className="w-full" onClick={addCustomCode}>
-                  <Plus className="size-4" /> {t("worklog.addTask")}
-                </Button>
+                <div className="grid gap-1">
+                  <Label htmlFor="leistungsart-label" className="text-[11px]">
+                    {t("worklog.codeLabel")}
+                  </Label>
+                  <Input
+                    id="leistungsart-label"
+                    data-testid="work-code-label-input"
+                    value={newCodeLabel}
+                    placeholder={t("worklog.codeLabel")}
+                    onChange={(e) => setNewCodeLabel(e.target.value)}
+                  />
+                </div>
               </div>
             </div>
 
             <div className="grid gap-2">
               <Label className="text-xs">{t("worklog.tasks")}</Label>
-              {tasks.some((x) => !x.startsWith("#")) ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {tasks
-                    .filter((x) => !x.startsWith("#"))
-                    .map((x) => (
-                      <button
-                        key={x}
-                        type="button"
-                        onClick={() => setTasks(tasks.filter((y) => y !== x))}
-                        aria-label={t("worklog.removeFromEntry")}
-                        className="inline-flex max-w-full items-center gap-1 rounded-full border border-primary bg-primary/10 px-2.5 py-1 text-xs font-medium"
-                      >
-                        <span className="truncate">{x}</span>
-                        <X className="size-3 shrink-0" />
-                      </button>
-                    ))}
-                </div>
-              ) : null}
-              <p className={SECTION_LABEL}>{t("worklog.standard")}</p>
               <div className="flex flex-wrap gap-1.5">
                 {CLEANING_TASKS.map((key) => {
                   const value = templateValue(key);
@@ -877,10 +803,9 @@ export function ShiftDialog({
                     <button
                       key={key}
                       type="button"
+                      data-testid={`task-${key}`}
                       onClick={() =>
-                        setTasks(
-                          active ? tasks.filter((x) => x !== value) : [...tasks, value],
-                        )
+                        setTasks(active ? tasks.filter((x) => x !== value) : [...tasks, value])
                       }
                       className={cn(
                         "rounded-full border px-2.5 py-1 text-xs font-medium",
@@ -891,38 +816,54 @@ export function ShiftDialog({
                     </button>
                   );
                 })}
+                {visibleCustomTasks.map((label) => {
+                  const active = tasks.includes(label);
+                  return (
+                    <button
+                      key={label}
+                      type="button"
+                      data-testid={`task-custom-${label}`}
+                      onClick={() =>
+                        setTasks(active ? tasks.filter((x) => x !== label) : [...tasks, label])
+                      }
+                      className={cn(
+                        "rounded-full border px-2.5 py-1 text-xs font-medium",
+                        active ? "border-primary bg-primary/10" : "bg-card",
+                      )}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
-              <SavedCatalogPanel
-                title={t("worklog.myTasks")}
-                empty={t("worklog.myTasksEmpty")}
-                items={customTasksCatalog.map((label) => ({ key: label, title: label }))}
-                isSelected={(label) => tasks.includes(label)}
-                onSelect={(label) =>
-                  setTasks(
-                    tasks.includes(label)
-                      ? tasks.filter((x) => x !== label)
-                      : [...tasks, label],
-                  )
-                }
-              />
-              <div className="grid gap-1.5">
-                <p className={SECTION_LABEL}>{t("worklog.newTask")}</p>
-                <div className="flex gap-2">
+              <div className="flex gap-2">
+                <div className="grid min-w-0 flex-1 gap-1">
+                  <Label htmlFor="eigene-taetigkeit" className="text-[11px]">
+                    {t("worklog.customTask")}
+                  </Label>
                   <Input
+                    id="eigene-taetigkeit"
+                    data-testid="custom-task-input"
                     value={customTask}
                     placeholder={t("worklog.customTask")}
                     onChange={(e) => setCustomTask(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addTaskToEntry();
+                      }
+                    }}
                   />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="shrink-0"
-                    onClick={addCustomTaskToEntry}
-                  >
-                    <Plus className="size-4" /> {t("worklog.addTask")}
-                  </Button>
                 </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-5 shrink-0"
+                  onClick={addTaskToEntry}
+                >
+                  <Plus className="size-4" /> {t("worklog.addTask")}
+                </Button>
               </div>
             </div>
 
