@@ -1,4 +1,4 @@
-import { Camera, ChevronDown, MapPin, Mic, Plus, Trash2, X } from "lucide-react";
+import { CalendarDays, Camera, ChevronDown, ChevronLeft, ChevronRight, MapPin, Mic, Minus, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { toast } from "sonner";
@@ -8,13 +8,11 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/lib/i18n";
 import { formatEuro, formatHours, isoDate, shiftBreakdown } from "@/lib/minijob/calc";
@@ -80,6 +78,20 @@ interface ShiftDialogProps {
 
 const KINDS: ShiftKind[] = ["arbeit", "urlaub", "krank", "feiertag", "frei", "sonstige"];
 
+function formatEntryDate(iso: string, locale: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  return new Intl.DateTimeFormat(locale, {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(y, m - 1, d));
+}
+
+function keepFieldVisible(event: { currentTarget: HTMLElement }) {
+  event.currentTarget.scrollIntoView({ block: "center", inline: "nearest" });
+}
+
 export function ShiftDialog({
   open,
   onOpenChange,
@@ -120,6 +132,10 @@ export function ShiftDialog({
   const [newCode, setNewCode] = useState("");
   const [newCodeLabel, setNewCodeLabel] = useState("");
   const [advanced, setAdvanced] = useState(false);
+  const [objectDetailsOpen, setObjectDetailsOpen] = useState(false);
+  const [newCodeOpen, setNewCodeOpen] = useState(false);
+  const [newTaskOpen, setNewTaskOpen] = useState(false);
+  const [fieldError, setFieldError] = useState<{ start?: string; end?: string }>({});
   const [entryDate, setEntryDate] = useState(date);
   const [objectId, setObjectId] = useState<string | undefined>(undefined);
   const [objectDialogOpen, setObjectDialogOpen] = useState(false);
@@ -223,22 +239,18 @@ export function ShiftDialog({
     setAdvanced(
       Boolean(
         source &&
-          (source.workplace ||
-            source.street ||
-            source.zip ||
-            source.city ||
-            source.floor ||
-            source.doorSide ||
-            source.workCode ||
-            source.note ||
+          (source.note ||
             source.overtime ||
             source.customerId ||
-            (source.tasks?.length ?? 0) > 0 ||
+            source.projectId ||
             (source.photos?.length ?? 0) > 0 ||
-            source.gps ||
-            source.objectId),
+            source.gps),
       ),
     );
+    setObjectDetailsOpen(false);
+    setNewCodeOpen(false);
+    setNewTaskOpen(false);
+    setFieldError({});
   }, [open, shiftId, shift?.id, jobs, settings.activeJobId, settings.defaultRate, settings.bundesland, date]);
 
 
@@ -360,10 +372,18 @@ export function ShiftDialog({
     setDoorSide(fields.doorSide);
     setZip(fields.zip);
     setCity(fields.city);
-    setAdvanced(true);
+    setObjectDetailsOpen(true);
   }
 
   function save() {
+    if (kind === "arbeit" && (!start || !end)) {
+      setFieldError({
+        ...(start ? {} : { start: t("entry.requiredStart") }),
+        ...(end ? {} : { end: t("entry.requiredEnd") }),
+      });
+      return;
+    }
+    setFieldError({});
     const editingId = editingIdRef.current;
     const existing = editingId ? getShift(editingId) : undefined;
     const next: Shift = withEntryDate(
@@ -428,652 +448,891 @@ export function ShiftDialog({
 
 
   const selfEmployed = job?.mode === "selbststaendig";
+  const isWork = kind === "arbeit";
+  const hourlyPay = isWork && job?.payType !== "monthly" && !selfEmployed;
+  const longDate = formatEntryDate(entryDate, locale);
+  const placeLine = [street, houseNo]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(" ");
+  const cityLine = [zip, city]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(" ");
+  const objectTitle =
+    selectedObject?.name || workplace.trim() || placeLine || t("entry.chooseObject");
+  const objectMeta =
+    (selectedObject ? objectAddressPreview(selectedObject) : "") ||
+    [placeLine, cityLine].filter(Boolean).join(" · ");
+
+  function bumpBreak(delta: number) {
+    const next = Math.max(0, (Number(breakMinutes) || 0) + delta);
+    setBreakMinutes(String(next));
+  }
+
+  const noteField = (
+    <div className="grid gap-1">
+      <div className="flex items-center justify-between">
+        <Label htmlFor="notiz">{t("label.note")}</Label>
+        {voiceSupported() ? (
+          <Button type="button" variant="ghost" className="h-11" onClick={voice}>
+            <Mic className="size-4" /> {t("shift.voice")}
+          </Button>
+        ) : null}
+      </div>
+      <Textarea
+        id="notiz"
+        rows={2}
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        onFocus={keepFieldVisible}
+        placeholder={t("shift.notePlaceholder")}
+      />
+    </div>
+  );
 
   return (
     <>
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="max-h-[88vh] overflow-y-auto sm:max-w-md"
-        data-testid="shift-dialog"
-        data-mode={isEditing ? "edit" : "new"}
-        data-shift-id={resolvedShiftId || undefined}
-      >
-        <DialogHeader>
-          <DialogTitle>{isEditing ? t("shift.editTitle") : t("shift.newTitle")}</DialogTitle>
-          <DialogDescription>
-            {holiday ? holiday : t("label.date")}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          <div className="grid gap-2">
-            <Label htmlFor="eintrag-datum">{t("label.date")}</Label>
-            <Input
-              id="eintrag-datum"
-              data-testid="entry-date"
-              type="date"
-              value={entryDate}
-              onChange={(e) => setEntryDate(e.target.value)}
-            />
-          </div>
-          {jobs.length > 1 ? (
-            <div className="grid gap-2">
-              <Label>{t("label.job")}</Label>
-              <div className="flex flex-wrap gap-2">
-                {jobs.map((j) => (
-                  <button
-                    key={j.id}
-                    type="button"
-                    onClick={() => {
-                      setJobId(j.id);
-                      setRate(String(suggestedRate({ jobId: j.id }, { jobs, settings })));
-                    }}
-                    className={cn(
-                      "flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium",
-                      jobId === j.id ? "border-primary bg-primary/10" : "bg-card",
-                    )}
-                  >
-                    <span className="size-2.5 rounded-full" style={{ backgroundColor: j.color }} />
-                    {j.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          <div className="grid gap-2">
-            <Label>{t("label.kind")}</Label>
-            <div className="grid grid-cols-4 gap-1.5">
-              {KINDS.map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => selectKind(k)}
-                  className={cn(
-                    "rounded-lg border px-2 py-1.5 text-xs font-medium",
-                    kind === k ? "border-primary bg-primary/10" : "bg-card",
-                  )}
-                >
-                  {t("kind." + k)}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {holiday ? (
-            <div
-              className="rounded-xl border border-violet-500/30 bg-violet-500/10 p-3 text-xs text-violet-900 dark:text-violet-100"
-              data-testid="holiday-pay-hint"
-            >
-              <p className="font-medium">{t("shift.holidayBannerTitle", { name: holiday })}</p>
-              <p className="mt-1 text-muted-foreground dark:text-violet-200/80">
-                {kind === "arbeit"
-                  ? t(
-                      (job?.supplements ?? settings.supplements).holiday.enabled
-                        ? "shift.holidayWorkWithBonus"
-                        : "shift.holidayWorkNoBonus",
-                    )
-                  : t("shift.holidayNoWork")}
-              </p>
-              {kind === "feiertag" ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="mt-2"
-                  onClick={() => selectKind("arbeit")}
-                >
-                  {t("shift.markAsWorked")}
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-2">
-              <Label htmlFor="von">{t("label.start")}</Label>
-              <Input id="von" type="time" value={start} onChange={(e) => onStartChange(e.target.value)} />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="bis">{t("label.end")}</Label>
-              <Input id="bis" type="time" value={end} onChange={(e) => onEndChange(e.target.value)} />
-            </div>
-          </div>
-
-          {!isEditing && kind === "arbeit" ? (
-            <p className="text-xs text-muted-foreground">{t("shift.multiSameDayHint")}</p>
-          ) : null}
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-2">
-              <Label htmlFor="pause">{t("label.breakMinutes")}</Label>
-              <Input
-                id="pause"
-                type="number"
-                min="0"
-                inputMode="numeric"
-                value={breakMinutes}
-                onChange={(e) => setBreakMinutes(e.target.value)}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="lohn">{t("label.rateEuro")}</Label>
-              <Input
-                id="lohn"
-                type="number"
-                step="0.5"
-                min="0"
-                inputMode="decimal"
-                value={rate}
-                onChange={(e) => setRate(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {!advanced ? (
-            <p className="text-xs text-muted-foreground">{t("entry.quickHint")}</p>
-          ) : null}
-
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full justify-between"
-            onClick={() => setAdvanced((v) => !v)}
-            aria-expanded={advanced}
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent
+          className="left-0 top-0 flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:left-[50%] sm:top-[50%] sm:h-[min(92dvh,840px)] sm:max-w-md sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-2xl [&>button]:hidden"
+          data-testid="shift-dialog"
+          data-mode={isEditing ? "edit" : "new"}
+          data-shift-id={resolvedShiftId || undefined}
+          data-work={isWork ? "1" : "0"}
+        >
+          <header
+            data-testid="entry-header"
+            className="shrink-0 border-b bg-background px-2 pt-[max(0.25rem,env(safe-area-inset-top))]"
           >
-            {advanced ? t("entry.less") : t("entry.more")}
-            <ChevronDown className={cn("size-4 transition-transform", advanced && "rotate-180")} />
-          </Button>
+            <button
+              type="button"
+              className="inline-flex h-11 items-center gap-1 px-2 text-sm font-medium"
+              onClick={() => onOpenChange(false)}
+            >
+              <ChevronLeft className="size-5" />
+              {t("action.back")}
+            </button>
+            <DialogHeader className="space-y-0.5 px-3 pb-3 text-left">
+              <DialogTitle className="text-left text-lg">
+                {isEditing ? t("shift.editTitle") : t("shift.newTitle")}
+              </DialogTitle>
+              <DialogDescription className="text-left text-sm font-medium text-foreground">
+                {longDate}
+                {holiday ? ` · ${holiday}` : ""}
+              </DialogDescription>
+            </DialogHeader>
+          </header>
 
-          {advanced ? (
-            <div className="space-y-4">
-          {selfEmployed ? (
-
-            <div className="grid gap-3 rounded-xl border p-3">
-              <div className="grid gap-1.5">
-                <Label className="text-xs">{t("label.customer")}</Label>
-                <select
-                  value={customerId ?? ""}
-                  onChange={(e) => setCustomerId(e.target.value || undefined)}
-                  className="h-9 rounded-md border bg-background px-2 text-sm"
-                >
-                  <option value="">{t("shift.noCustomer")}</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="grid gap-1.5">
-                <Label className="text-xs">{t("label.project")}</Label>
-                <select
-                  value={projectId ?? ""}
-                  onChange={(e) => setProjectId(e.target.value || undefined)}
-                  className="h-9 rounded-md border bg-background px-2 text-sm"
-                >
-                  <option value="">{t("shift.noProject")}</option>
-                  {projects
-                    .filter((p) => !customerId || p.customerId === customerId)
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                </select>
-              </div>
-            </div>
-          ) : null}
-
-          <div className="flex items-center justify-between rounded-xl border p-3">
-            <div>
-              <p className="text-sm font-medium">{t("shift.overtimeTitle")}</p>
-              <p className="text-xs text-muted-foreground">{t("shift.overtimeDesc")}</p>
-            </div>
-            <Switch checked={overtime} onCheckedChange={setOvertime} aria-label={t("shift.overtimeAria")} />
-          </div>
-
-          <div className="grid gap-3 rounded-xl border p-3">
-            <p className="text-sm font-semibold">{t("worklog.section")}</p>
-
-            <div className="grid gap-1.5">
-              <Label className="text-xs">{t("object.select")}</Label>
-              <select
-                value={objectId ?? ""}
-                onChange={(e) => applyObjectSelection(e.target.value)}
-                className="h-9 rounded-md border bg-background px-2 text-sm"
-              >
-                <option value="">{t("object.none")}</option>
-                {objects.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
-              {selectedObject ? (
-                <p className="text-xs text-muted-foreground">
-                  {objectAddressPreview(selectedObject) || selectedObject.name}
-                </p>
-              ) : null}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="justify-start"
-                onClick={() => setObjectDialogOpen(true)}
-              >
-                {t("object.new")}
-              </Button>
-            </div>
-
-            <div className="grid gap-1.5">
-              <Label htmlFor="einsatzort" className="text-xs">
-                {t("worklog.workplace")}
-              </Label>
-              <Input
-                id="einsatzort"
-                value={workplace}
-                placeholder={t("worklog.workplacePlaceholder")}
-                onChange={(e) => setWorkplace(e.target.value)}
+          <div
+            data-testid="entry-editor-scroll"
+            className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-4"
+          >
+            <label className="relative flex min-h-11 items-center gap-3 rounded-2xl border bg-card px-3 py-2.5">
+              <CalendarDays className="size-5 shrink-0 text-primary" aria-hidden />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {t("label.date")}
+                </span>
+                <span className="block truncate text-sm font-semibold">{longDate}</span>
+              </span>
+              <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+              <input
+                id="eintrag-datum"
+                data-testid="entry-date"
+                type="date"
+                value={entryDate}
+                onChange={(e) => setEntryDate(e.target.value)}
+                onFocus={keepFieldVisible}
+                className="absolute inset-0 cursor-pointer opacity-0"
               />
-            </div>
+            </label>
 
-            <div className="grid grid-cols-[2fr_1fr] gap-2">
-              <div className="grid gap-1.5">
-                <Label htmlFor="strasse" className="text-xs">
-                  {t("worklog.street")}
-                </Label>
-                <Input
-                  id="strasse"
-                  value={street}
-                  placeholder={t("worklog.streetPlaceholder")}
-                  onChange={(e) => setStreet(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="hausnr" className="text-xs">
-                  {t("worklog.houseNo")}
-                </Label>
-                <Input
-                  id="hausnr"
-                  value={houseNo}
-                  placeholder="15"
-                  onChange={(e) => setHouseNo(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-[1fr_2fr] gap-2">
-              <div className="grid gap-1.5">
-                <Label htmlFor="plz" className="text-xs">
-                  {t("worklog.zip")}
-                </Label>
-                <Input
-                  id="plz"
-                  value={zip}
-                  inputMode="numeric"
-                  placeholder={t("worklog.zipPlaceholder")}
-                  onChange={(e) => setZip(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="ort" className="text-xs">
-                  {t("worklog.city")}
-                </Label>
-                <Input
-                  id="ort"
-                  value={city}
-                  placeholder={t("worklog.cityPlaceholder")}
-                  onChange={(e) => setCity(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div className="grid gap-1.5">
-                <Label htmlFor="etage" className="text-xs">
-                  {t("worklog.floor")}
-                </Label>
-                <Input
-                  id="etage"
-                  value={floor}
-                  placeholder={t("worklog.floorPlaceholder")}
-                  onChange={(e) => setFloor(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="tuerseite" className="text-xs">
-                  {t("worklog.doorSide")}
-                </Label>
-                <Input
-                  id="tuerseite"
-                  value={doorSide}
-                  placeholder={t("worklog.doorSidePlaceholder")}
-                  onChange={(e) => setDoorSide(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-1.5">
-              <Label className="text-xs">{t("worklog.workCode")}</Label>
-              <select
-                data-testid="work-code-select"
-                value={selectedWork?.code ?? ""}
-                onChange={(e) => applyWorkCodeSelection(e.target.value)}
-                className="h-9 rounded-md border bg-background px-2 text-sm"
-              >
-                <option value="">{t("worklog.none")}</option>
-                <optgroup label={t("worklog.standard")}>
-                  {builtinCodes.map(({ code, label }) => (
-                    <option key={code} value={code}>
-                      {code} · {label}
-                    </option>
-                  ))}
-                </optgroup>
-                {customCodes.length > 0 ? (
-                  <optgroup label={t("worklog.saved")}>
-                    {customCodes.map(({ code, label }) => (
-                      <option key={`saved-${code}`} value={code}>
-                        {code} · {label}
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : null}
-              </select>
-              {selectedWork ? (
-                <p className="text-xs text-muted-foreground">
-                  {selectedWork.code} · {selectedWork.label}
-                </p>
-              ) : null}
-              <div className="grid grid-cols-[4.5rem_1fr] gap-1.5">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="leistungsart-code" className="text-xs">
-                    {t("worklog.codeShort")}
-                  </Label>
-                  <Input
-                    id="leistungsart-code"
-                    data-testid="work-code-input"
-                    value={newCode}
-                    maxLength={4}
-                    placeholder={t("worklog.codeShort")}
-                    onChange={(e) => {
-                      const v = e.target.value.toUpperCase();
-                      setNewCode(v);
-                      setWorkCode(normalizeWorkCode(v));
-                    }}
-                  />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="leistungsart-label" className="text-xs">
-                    {t("worklog.codeLabel")}
-                  </Label>
-                  <Input
-                    id="leistungsart-label"
-                    data-testid="work-code-label-input"
-                    value={newCodeLabel}
-                    placeholder={t("worklog.codeLabel")}
-                    onChange={(e) => setNewCodeLabel(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-1.5">
-              <Label className="text-xs">{t("worklog.tasks")}</Label>
-              <select
-                data-testid="task-select"
-                value=""
-                onChange={(e) => applyTaskSelection(e.target.value)}
-                className="h-9 rounded-md border bg-background px-2 text-sm"
-              >
-                <option value="">{t("worklog.chooseTask")}</option>
-                <optgroup label={t("worklog.standard")}>
-                  {CLEANING_TASKS.map((key) => (
-                    <option key={key} value={templateValue(key)}>
-                      {t(`task.${key}`)}
-                    </option>
-                  ))}
-                </optgroup>
-                {customTasksCatalog.length > 0 ? (
-                  <optgroup label={t("worklog.saved")}>
-                    {customTasksCatalog.map((label) => (
-                      <option key={label} value={label}>
-                        {label}
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : null}
-              </select>
-              {tasks.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {tasks.map((value) => (
+            <section>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {t("label.job")}
+              </p>
+              {jobs.length > 1 ? (
+                <div className="flex flex-wrap gap-2">
+                  {jobs.map((j) => (
                     <button
-                      key={value}
+                      key={j.id}
                       type="button"
-                      onClick={() => setTasks(tasks.filter((x) => x !== value))}
-                      aria-label={t("worklog.removeFromEntry")}
-                      className="inline-flex max-w-full items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium"
+                      onClick={() => {
+                        setJobId(j.id);
+                        setRate(String(suggestedRate({ jobId: j.id }, { jobs, settings })));
+                      }}
+                      className={cn(
+                        "inline-flex h-11 items-center gap-2 rounded-full border px-3 text-sm font-medium",
+                        jobId === j.id ? "border-primary bg-primary/15 text-foreground" : "bg-card",
+                      )}
                     >
-                      <span className="truncate">{taskEntryLabel(value)}</span>
-                      <X className="size-3 shrink-0" />
+                      <span className="size-2.5 rounded-full" style={{ backgroundColor: j.color }} />
+                      {j.name}
                     </button>
                   ))}
                 </div>
-              ) : null}
-              <div className="grid gap-1.5">
-                <Label htmlFor="eigene-taetigkeit" className="text-xs">
-                  {t("worklog.customTask")}
-                </Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="eigene-taetigkeit"
-                    data-testid="custom-task-input"
-                    value={customTask}
-                    placeholder={t("worklog.customTask")}
-                    onChange={(e) => setCustomTask(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        addTaskToEntry();
-                      }
-                    }}
-                  />
+              ) : (
+                <p className="text-sm font-medium">{job?.name ?? t("timer.noJob")}</p>
+              )}
+            </section>
+
+            <section>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {t("label.kind")}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {KINDS.map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    data-kind={k}
+                    onClick={() => selectKind(k)}
+                    className={cn(
+                      "h-11 rounded-xl border px-2 text-sm font-medium",
+                      kind === k ? "border-primary bg-primary/15" : "bg-card",
+                    )}
+                  >
+                    {t("kind." + k)}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {holiday ? (
+              <div
+                className="rounded-2xl border border-violet-500/30 bg-violet-500/10 p-3 text-sm text-violet-950 dark:text-violet-100"
+                data-testid="holiday-pay-hint"
+              >
+                <p className="font-medium">{t("shift.holidayBannerTitle", { name: holiday })}</p>
+                <p className="mt-1 text-xs text-muted-foreground dark:text-violet-200/80">
+                  {kind === "arbeit"
+                    ? t(
+                        (job?.supplements ?? settings.supplements).holiday.enabled
+                          ? "shift.holidayWorkWithBonus"
+                          : "shift.holidayWorkNoBonus",
+                      )
+                    : t("shift.holidayNoWork")}
+                </p>
+                {kind === "feiertag" ? (
                   <Button
                     type="button"
                     variant="outline"
-                    size="sm"
-                    className="shrink-0"
-                    onClick={addTaskToEntry}
+                    className="mt-2 h-11"
+                    onClick={() => selectKind("arbeit")}
                   >
-                    <Plus className="size-4" /> {t("worklog.addTask")}
+                    {t("shift.markAsWorked")}
                   </Button>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-1.5">
-              <Label className="text-xs">{t("worklog.photos")}</Label>
-              {photos.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {photos.map((src, i) => (
-                    <div key={src.slice(-24) + i} className="relative">
-                      <img
-                        src={src}
-                        alt={t("worklog.photos")}
-                        className="size-16 rounded-lg object-cover"
-                      />
-                      <button
-                        type="button"
-                        aria-label={t("worklog.remove")}
-                        onClick={() => setPhotos(photos.filter((_, idx) => idx !== i))}
-                        className="absolute -right-1.5 -top-1.5 rounded-full bg-destructive p-0.5 text-destructive-foreground"
-                      >
-                        <X className="size-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              <label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium">
-                <Camera className="size-4" />
-                {t("worklog.addPhoto")}
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  onChange={async (e) => {
-                    const files = [...(e.target.files ?? [])];
-                    e.target.value = "";
-                    try {
-                      const next = await Promise.all(files.map((f) => compressPhoto(f)));
-                      setPhotos((prev) => [...prev, ...next]);
-                    } catch {
-                      toast.error(t("worklog.photoError"));
-                    }
-                  }}
-                />
-              </label>
-            </div>
-
-            <div
-              className="flex flex-col gap-2"
-              data-testid="worklog-geo-controls"
-              style={{
-                paddingBottom: "max(0.25rem, env(safe-area-inset-bottom, 0px))",
-              }}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0 text-xs">
-                  <p className="font-medium">{t("worklog.gps")}</p>
-                  <p className="truncate text-muted-foreground">
-                    {gps ? formatGps(gps) : "–"}
-                  </p>
-                  {(street || zip || city) ? (
-                    <p className="mt-0.5 truncate text-muted-foreground" data-testid="worklog-geo-address">
-                      {formatGermanAddress({ street, houseNo, zip, city })}
-                    </p>
-                  ) : null}
-                </div>
-                <div className="flex shrink-0 gap-1">
-                  {gps ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="min-h-11"
-                      onClick={() => setGps(undefined)}
-                    >
-                      <X className="size-4" />
-                    </Button>
-                  ) : null}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="min-h-11"
-                    disabled={gpsBusy}
-                    onClick={async () => {
-                      setGpsBusy(true);
-                      try {
-                        const pos = await currentPosition();
-                        // Always keep coords separate — never copy into address fields.
-                        setGps(pos);
-                        const previous = { street, houseNo, zip, city };
-                        const reverse = await reverseGeocodeGerman(pos.lat, pos.lng);
-                        if (reverse) {
-                          const next = applyReverseOrKeep(previous, reverse);
-                          setStreet(next.street ?? "");
-                          setHouseNo(next.houseNo ?? "");
-                          setZip(next.zip ?? "");
-                          setCity(next.city ?? "");
-                          toast.success(t("worklog.gpsAddressOk"));
-                        } else {
-                          // Failure: leave editable address untouched; gps already set.
-                          toast.message(t("worklog.gpsAddressFail"));
-                        }
-                      } catch {
-                        toast.error(t("worklog.gpsError"));
-                      } finally {
-                        setGpsBusy(false);
-                      }
-                    }}
-                  >
-                    <MapPin className="size-4" />{" "}
-                    {gpsBusy ? t("worklog.gpsLookingUp") : t("worklog.gpsAdd")}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="notiz">{t("label.note")}</Label>
-              {voiceSupported() ? (
-                <Button variant="ghost" size="sm" onClick={voice}>
-                  <Mic className="size-4" /> {t("shift.voice")}
-                </Button>
-              ) : null}
-            </div>
-            <Textarea
-              id="notiz"
-              rows={2}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder={t("shift.notePlaceholder")}
-            />
-          </div>
-            </div>
-          ) : null}
-
-
-          <div className="rounded-xl bg-muted p-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">{t("shift.duration")}</span>
-              <span className="font-semibold tabular-nums">{formatHours(preview.hours, locale)}</span>
-            </div>
-            {preview.bonus > 0 ? (
-              <div className="mt-1 flex justify-between">
-                <span className="text-muted-foreground">
-                  {t("shift.bonusLabel", { labels: preview.labels.join(", ") })}
-                </span>
-                <span className="font-semibold tabular-nums">{formatEuro(preview.bonus, locale)}</span>
+                ) : null}
               </div>
             ) : null}
-            <div className="mt-1 flex justify-between">
-              <span className="text-muted-foreground">{t("label.earnings")}</span>
-              <span className="font-semibold tabular-nums">{formatEuro(preview.total, locale)}</span>
-            </div>
+
+            {isWork ? (
+              <>
+                <section>
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {t("entry.workTime")}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="grid gap-1">
+                      <Label htmlFor="von">{t("label.start")}</Label>
+                      <Input
+                        id="von"
+                        type="time"
+                        value={start}
+                        onChange={(e) => {
+                          setFieldError((prev) => {
+                            const next = { ...prev };
+                            delete next.start;
+                            return next;
+                          });
+                          onStartChange(e.target.value);
+                        }}
+                        onFocus={keepFieldVisible}
+                        className="h-11"
+                      />
+                      {fieldError.start ? (
+                        <p className="text-xs text-destructive">{fieldError.start}</p>
+                      ) : null}
+                    </div>
+                    <div className="grid gap-1">
+                      <Label htmlFor="bis">{t("label.end")}</Label>
+                      <Input
+                        id="bis"
+                        type="time"
+                        value={end}
+                        onChange={(e) => {
+                          setFieldError((prev) => {
+                            const next = { ...prev };
+                            delete next.end;
+                            return next;
+                          });
+                          onEndChange(e.target.value);
+                        }}
+                        onFocus={keepFieldVisible}
+                        className="h-11"
+                      />
+                      {fieldError.end ? (
+                        <p className="text-xs text-destructive">{fieldError.end}</p>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11 w-11 shrink-0"
+                      aria-label="-"
+                      onClick={() => bumpBreak(-15)}
+                    >
+                      <Minus className="size-4" />
+                    </Button>
+                    <Input
+                      id="pause"
+                      type="number"
+                      min="0"
+                      inputMode="numeric"
+                      value={breakMinutes}
+                      onChange={(e) => setBreakMinutes(e.target.value)}
+                      onFocus={keepFieldVisible}
+                      aria-label={t("label.breakMinutes")}
+                      className="h-11 w-20 text-center"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11 w-11 shrink-0"
+                      aria-label="+"
+                      onClick={() => bumpBreak(15)}
+                    >
+                      <Plus className="size-4" />
+                    </Button>
+                    <span className="text-sm text-muted-foreground">{t("entry.minutes")}</span>
+                  </div>
+                  <p className="mt-2 text-sm font-semibold tabular-nums">
+                    {formatHours(preview.hours, locale)} {t("shift.duration").toLowerCase()}
+                  </p>
+                  {preview.bonus > 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      {t("shift.bonusLabel", { labels: preview.labels.join(", ") })} ·{" "}
+                      {formatEuro(preview.bonus, locale)}
+                    </p>
+                  ) : null}
+                  {hourlyPay ? (
+                    <div className="mt-3 grid gap-1">
+                      <Label htmlFor="lohn">{t("label.rateEuro")}</Label>
+                      <Input
+                        id="lohn"
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        inputMode="decimal"
+                        value={rate}
+                        onChange={(e) => setRate(e.target.value)}
+                        onFocus={keepFieldVisible}
+                        className="h-11"
+                      />
+                    </div>
+                  ) : null}
+                  {!isEditing ? (
+                    <p className="mt-2 text-xs text-muted-foreground">{t("shift.multiSameDayHint")}</p>
+                  ) : null}
+                </section>
+
+                <section>
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {t("worklog.workplace")}
+                  </p>
+                  <div className="relative rounded-2xl border bg-card px-3 py-3">
+                    <p className="pr-6 text-sm font-semibold">{objectTitle}</p>
+                    {objectMeta ? (
+                      <p className="mt-0.5 text-xs text-muted-foreground">{objectMeta}</p>
+                    ) : null}
+                    <ChevronRight
+                      className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                      aria-hidden
+                    />
+                    <Label className="sr-only">{t("object.select")}</Label>
+                    <select
+                      data-testid="object-select"
+                      value={objectId ?? ""}
+                      onChange={(e) => applyObjectSelection(e.target.value)}
+                      className="absolute inset-0 cursor-pointer opacity-0"
+                    >
+                      <option value="">{t("object.none")}</option>
+                      {objects.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11"
+                      onClick={() => setObjectDialogOpen(true)}
+                    >
+                      <Plus className="size-4" /> {t("object.new")}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-11"
+                      aria-expanded={objectDetailsOpen}
+                      onClick={() => setObjectDetailsOpen((v) => !v)}
+                    >
+                      {t("entry.changeObject")}
+                    </Button>
+                  </div>
+                  {objectDetailsOpen ? (
+                    <div className="mt-3 space-y-3">
+                      <div className="grid gap-1">
+                        <Label htmlFor="einsatzort" className="text-xs">
+                          {t("worklog.workplace")}
+                        </Label>
+                        <Input
+                          id="einsatzort"
+                          value={workplace}
+                          placeholder={t("worklog.workplacePlaceholder")}
+                          onChange={(e) => setWorkplace(e.target.value)}
+                          onFocus={keepFieldVisible}
+                          className="h-11"
+                        />
+                      </div>
+                      <div className="grid grid-cols-[2fr_1fr] gap-2">
+                        <div className="grid gap-1">
+                          <Label htmlFor="strasse" className="text-xs">
+                            {t("worklog.street")}
+                          </Label>
+                          <Input
+                            id="strasse"
+                            value={street}
+                            placeholder={t("worklog.streetPlaceholder")}
+                            onChange={(e) => setStreet(e.target.value)}
+                            onFocus={keepFieldVisible}
+                            className="h-11"
+                          />
+                        </div>
+                        <div className="grid gap-1">
+                          <Label htmlFor="hausnr" className="text-xs">
+                            {t("worklog.houseNo")}
+                          </Label>
+                          <Input
+                            id="hausnr"
+                            value={houseNo}
+                            placeholder="15"
+                            onChange={(e) => setHouseNo(e.target.value)}
+                            onFocus={keepFieldVisible}
+                            className="h-11"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-[1fr_2fr] gap-2">
+                        <div className="grid gap-1">
+                          <Label htmlFor="plz" className="text-xs">
+                            {t("worklog.zip")}
+                          </Label>
+                          <Input
+                            id="plz"
+                            value={zip}
+                            inputMode="numeric"
+                            placeholder={t("worklog.zipPlaceholder")}
+                            onChange={(e) => setZip(e.target.value)}
+                            onFocus={keepFieldVisible}
+                            className="h-11"
+                          />
+                        </div>
+                        <div className="grid gap-1">
+                          <Label htmlFor="ort" className="text-xs">
+                            {t("worklog.city")}
+                          </Label>
+                          <Input
+                            id="ort"
+                            value={city}
+                            placeholder={t("worklog.cityPlaceholder")}
+                            onChange={(e) => setCity(e.target.value)}
+                            onFocus={keepFieldVisible}
+                            className="h-11"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="grid gap-1">
+                          <Label htmlFor="etage" className="text-xs">
+                            {t("worklog.floor")}
+                          </Label>
+                          <Input
+                            id="etage"
+                            value={floor}
+                            placeholder={t("worklog.floorPlaceholder")}
+                            onChange={(e) => setFloor(e.target.value)}
+                            onFocus={keepFieldVisible}
+                            className="h-11"
+                          />
+                        </div>
+                        <div className="grid gap-1">
+                          <Label htmlFor="tuerseite" className="text-xs">
+                            {t("worklog.doorSide")}
+                          </Label>
+                          <Input
+                            id="tuerseite"
+                            value={doorSide}
+                            placeholder={t("worklog.doorSidePlaceholder")}
+                            onChange={(e) => setDoorSide(e.target.value)}
+                            onFocus={keepFieldVisible}
+                            className="h-11"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </section>
+
+                <section>
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {t("worklog.workCode")}
+                  </p>
+                  <select
+                    data-testid="work-code-select"
+                    value={selectedWork?.code ?? ""}
+                    onChange={(e) => applyWorkCodeSelection(e.target.value)}
+                    className="h-11 w-full rounded-xl border bg-card px-3 text-sm"
+                  >
+                    <option value="">{t("worklog.none")}</option>
+                    <optgroup label={t("worklog.standard")}>
+                      {builtinCodes.map(({ code, label }) => (
+                        <option key={code} value={code}>
+                          {code} · {label}
+                        </option>
+                      ))}
+                    </optgroup>
+                    {customCodes.length > 0 ? (
+                      <optgroup label={t("worklog.saved")}>
+                        {customCodes.map(({ code, label }) => (
+                          <option key={`saved-${code}`} value={code}>
+                            {code} · {label}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : null}
+                  </select>
+                  {selectedWork ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {selectedWork.code}
+                      <span className="mt-0.5 block text-sm font-medium text-foreground">
+                        {selectedWork.label}
+                      </span>
+                    </p>
+                  ) : null}
+                  {customCodes.length > 0 ? (
+                    <div className="mt-3">
+                      <p className="mb-1.5 text-xs text-muted-foreground">{t("worklog.myWorkCodes")}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {customCodes.map((item) => (
+                          <button
+                            key={item.code}
+                            type="button"
+                            onClick={() => applyWorkCodeSelection(item.code)}
+                            className={cn(
+                              "h-11 rounded-full border px-3 text-sm",
+                              normalizeWorkCode(item.code) === activeWorkCode
+                                ? "border-primary bg-primary/15"
+                                : "bg-card",
+                            )}
+                          >
+                            {item.code} · {item.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="mt-2 h-11 px-0"
+                    aria-expanded={newCodeOpen}
+                    onClick={() => setNewCodeOpen((v) => !v)}
+                  >
+                    <Plus className="size-4" /> {t("worklog.newWorkCode")}
+                  </Button>
+                  <div className={cn("mt-2 grid grid-cols-[5.5rem_1fr] gap-2", !newCodeOpen && "hidden")}>
+                    <div className="grid gap-1">
+                      <Label htmlFor="leistungsart-code" className="text-xs">
+                        {t("worklog.codeShort")}
+                      </Label>
+                      <Input
+                        id="leistungsart-code"
+                        data-testid="work-code-input"
+                        value={newCode}
+                        maxLength={4}
+                        placeholder={t("worklog.codeShort")}
+                        onChange={(e) => {
+                          const v = e.target.value.toUpperCase();
+                          setNewCode(v);
+                          setWorkCode(normalizeWorkCode(v));
+                        }}
+                        onFocus={keepFieldVisible}
+                        className="h-11"
+                      />
+                    </div>
+                    <div className="grid gap-1">
+                      <Label htmlFor="leistungsart-label" className="text-xs">
+                        {t("worklog.codeLabel")}
+                      </Label>
+                      <Input
+                        id="leistungsart-label"
+                        data-testid="work-code-label-input"
+                        value={newCodeLabel}
+                        placeholder={t("worklog.codeLabel")}
+                        onChange={(e) => setNewCodeLabel(e.target.value)}
+                        onFocus={keepFieldVisible}
+                        className="h-11"
+                      />
+                    </div>
+                  </div>
+                </section>
+
+                <section>
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {t("worklog.tasks")}
+                  </p>
+                  <select
+                    data-testid="task-select"
+                    value=""
+                    onChange={(e) => applyTaskSelection(e.target.value)}
+                    className="h-11 w-full rounded-xl border bg-card px-3 text-sm"
+                  >
+                    <option value="">{t("worklog.chooseTask")}</option>
+                    <optgroup label={t("worklog.standard")}>
+                      {CLEANING_TASKS.map((key) => (
+                        <option key={key} value={templateValue(key)}>
+                          {t(`task.${key}`)}
+                        </option>
+                      ))}
+                    </optgroup>
+                    {customTasksCatalog.length > 0 ? (
+                      <optgroup label={t("worklog.saved")}>
+                        {customTasksCatalog.map((label) => (
+                          <option key={label} value={label}>
+                            {label}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : null}
+                  </select>
+                  {tasks.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {tasks.map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setTasks(tasks.filter((x) => x !== value))}
+                          aria-label={t("worklog.removeFromEntry")}
+                          className="inline-flex h-11 max-w-full items-center gap-1 rounded-full border bg-primary/10 px-3 text-sm font-medium"
+                        >
+                          <span className="truncate">{taskEntryLabel(value)}</span>
+                          <X className="size-3.5 shrink-0" />
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  {customTasksCatalog.length > 0 ? (
+                    <div className="mt-3">
+                      <p className="mb-1.5 text-xs text-muted-foreground">{t("worklog.myTasks")}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {customTasksCatalog.map((label) => (
+                          <button
+                            key={label}
+                            type="button"
+                            onClick={() => applyTaskSelection(label)}
+                            className="h-11 rounded-full border bg-card px-3 text-sm"
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="mt-2 h-11 px-0"
+                    aria-expanded={newTaskOpen}
+                    onClick={() => setNewTaskOpen((v) => !v)}
+                  >
+                    <Plus className="size-4" /> {t("worklog.newTask")}
+                  </Button>
+                  <div className={cn("mt-2 flex gap-2", !newTaskOpen && "hidden")}>
+                    <Input
+                      id="eigene-taetigkeit"
+                      data-testid="custom-task-input"
+                      value={customTask}
+                      placeholder={t("worklog.customTask")}
+                      onChange={(e) => setCustomTask(e.target.value)}
+                      onFocus={keepFieldVisible}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          addTaskToEntry();
+                        }
+                      }}
+                      className="h-11"
+                      aria-label={t("worklog.customTask")}
+                    />
+                    <Button type="button" variant="outline" className="h-11 shrink-0" onClick={addTaskToEntry}>
+                      {t("worklog.addTask")}
+                    </Button>
+                  </div>
+                </section>
+              </>
+            ) : null}
+
+            {!isWork ? <section>{noteField}</section> : null}
+
+            <section>
+              <button
+                type="button"
+                className="flex h-11 w-full items-center justify-between text-sm font-semibold"
+                aria-expanded={advanced}
+                onClick={() => setAdvanced((v) => !v)}
+              >
+                {advanced ? t("entry.less") : t("entry.more")}
+                <ChevronDown className={cn("size-4 transition-transform", advanced && "rotate-180")} />
+              </button>
+              {advanced ? (
+                <div className="space-y-4 pt-1">
+                  {selfEmployed ? (
+                    <div className="grid gap-3">
+                      <div className="grid gap-1">
+                        <Label className="text-xs">{t("label.customer")}</Label>
+                        <select
+                          value={customerId ?? ""}
+                          onChange={(e) => setCustomerId(e.target.value || undefined)}
+                          className="h-11 rounded-xl border bg-card px-3 text-sm"
+                        >
+                          <option value="">{t("shift.noCustomer")}</option>
+                          {customers.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="grid gap-1">
+                        <Label className="text-xs">{t("label.project")}</Label>
+                        <select
+                          value={projectId ?? ""}
+                          onChange={(e) => setProjectId(e.target.value || undefined)}
+                          className="h-11 rounded-xl border bg-card px-3 text-sm"
+                        >
+                          <option value="">{t("shift.noProject")}</option>
+                          {projects
+                            .filter((p) => !customerId || p.customerId === customerId)
+                            .map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {isWork && !hourlyPay ? (
+                    <div className="grid gap-1">
+                      <Label htmlFor="lohn">{t("label.rateEuro")}</Label>
+                      <Input
+                        id="lohn"
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        inputMode="decimal"
+                        value={rate}
+                        onChange={(e) => setRate(e.target.value)}
+                        onFocus={keepFieldVisible}
+                        className="h-11"
+                      />
+                    </div>
+                  ) : null}
+
+                  {isWork ? (
+                    <div className="flex min-h-11 items-center justify-between gap-3 rounded-2xl border bg-card px-3 py-2">
+                      <div>
+                        <p className="text-sm font-medium">{t("shift.overtimeTitle")}</p>
+                        <p className="text-xs text-muted-foreground">{t("shift.overtimeDesc")}</p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={overtime}
+                        aria-label={t("shift.overtimeAria")}
+                        onClick={() => setOvertime((value) => !value)}
+                        className={cn(
+                          "relative h-11 w-16 shrink-0 rounded-full border transition-colors",
+                          overtime ? "border-primary bg-primary" : "border-border bg-muted",
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "absolute top-1 size-8 rounded-full bg-background shadow",
+                            overtime ? "right-1" : "left-1",
+                          )}
+                        />
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {isWork ? (
+                    <div className="grid gap-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {t("worklog.photos")}
+                      </p>
+                      {photos.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {photos.map((src, i) => (
+                            <div key={src.slice(-24) + i} className="relative">
+                              <img src={src} alt="" className="size-16 rounded-lg object-cover" />
+                              <button
+                                type="button"
+                                aria-label={t("worklog.remove")}
+                                onClick={() => setPhotos(photos.filter((_, idx) => idx !== i))}
+                                className="absolute -right-1.5 -top-1.5 flex size-6 items-center justify-center rounded-full bg-destructive text-destructive-foreground"
+                              >
+                                <X className="size-3" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                      <label className="inline-flex h-11 w-fit cursor-pointer items-center gap-2 rounded-xl border px-3 text-sm font-medium">
+                        <Camera className="size-4" />
+                        {t("worklog.addPhoto")}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={async (e) => {
+                            const files = [...(e.target.files ?? [])];
+                            e.target.value = "";
+                            try {
+                              const next = await Promise.all(files.map((f) => compressPhoto(f)));
+                              setPhotos((prev) => [...prev, ...next]);
+                            } catch {
+                              toast.error(t("worklog.photoError"));
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                  ) : null}
+
+                  {isWork ? (
+                    <div className="grid gap-2" data-testid="worklog-geo-controls">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {t("worklog.gps")}
+                      </p>
+                      <p className="text-sm">
+                        {gps ? formatGps(gps) : "–"}
+                      </p>
+                      {street || zip || city ? (
+                        <p className="text-xs text-muted-foreground" data-testid="worklog-geo-address">
+                          {formatGermanAddress({ street, houseNo, zip, city })}
+                        </p>
+                      ) : null}
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-11"
+                          disabled={gpsBusy}
+                          onClick={async () => {
+                            setGpsBusy(true);
+                            try {
+                              const pos = await currentPosition();
+                              setGps(pos);
+                              const previous = { street, houseNo, zip, city };
+                              const reverse = await reverseGeocodeGerman(pos.lat, pos.lng);
+                              if (reverse) {
+                                const next = applyReverseOrKeep(previous, reverse);
+                                setStreet(next.street ?? "");
+                                setHouseNo(next.houseNo ?? "");
+                                setZip(next.zip ?? "");
+                                setCity(next.city ?? "");
+                                toast.success(t("worklog.gpsAddressOk"));
+                              } else {
+                                toast.message(t("worklog.gpsAddressFail"));
+                              }
+                            } catch {
+                              toast.error(t("worklog.gpsError"));
+                            } finally {
+                              setGpsBusy(false);
+                            }
+                          }}
+                        >
+                          <MapPin className="size-4" />
+                          {gpsBusy ? t("worklog.gpsLookingUp") : t("worklog.gpsAdd")}
+                        </Button>
+                        {gps ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="h-11"
+                            onClick={() => setGps(undefined)}
+                          >
+                            <X className="size-4" />
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {isWork ? noteField : null}
+                </div>
+              ) : null}
+            </section>
+
+            {isEditing ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-11 w-full text-destructive"
+                data-testid="entry-delete"
+                onClick={() => {
+                  const id = editingIdRef.current ?? resolvedShiftId;
+                  if (id) removeShift(id);
+                  toast.success(t("shift.deleted"));
+                  onOpenChange(false);
+                }}
+              >
+                <Trash2 className="size-4" /> {t("entry.deleteEntry")}
+              </Button>
+            ) : null}
           </div>
-        </div>
 
-        <DialogFooter className="mt-2 gap-2 sm:justify-between">
-          {isEditing ? (
+          <div className="shrink-0 flex gap-2 border-t bg-background px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             <Button
-              variant="ghost"
-              className="text-destructive"
-              data-testid="entry-delete"
-              onClick={() => {
-                const id = editingIdRef.current ?? resolvedShiftId;
-                if (id) removeShift(id);
-                toast.success(t("shift.deleted"));
-                onOpenChange(false);
-              }}
+              type="button"
+              variant="outline"
+              className="h-11 flex-1"
+              onClick={() => onOpenChange(false)}
             >
-              <Trash2 className="size-4" /> {t("action.delete")}
+              {t("action.cancel")}
             </Button>
-          ) : (
-            <span />
-          )}
-          <Button data-testid="entry-save" onClick={save}>{t("action.save")}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            <Button type="button" data-testid="entry-save" className="h-11 flex-1" onClick={save}>
+              {t("action.save")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
-    <ObjectDialog
-      open={objectDialogOpen}
-      onOpenChange={setObjectDialogOpen}
-      onSaved={onObjectSaved}
-    />
+      <ObjectDialog
+        open={objectDialogOpen}
+        onOpenChange={setObjectDialogOpen}
+        onSaved={onObjectSaved}
+      />
     </>
   );
 }
