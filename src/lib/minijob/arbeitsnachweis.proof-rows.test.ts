@@ -25,6 +25,7 @@ import {
   buildProofTableRows,
   exportArbeitsnachweisPdf,
   filledAtLabel,
+  proofKindSummary,
   proofTableHead,
 } from "./arbeitsnachweis";
 import { exportWorkReportPdf } from "./worklog";
@@ -292,5 +293,97 @@ describe("PDF export regression (real jspdf, no pdftotext)", () => {
     expect(raw).toContain("Musterstraße 10, 3. OG, linke Tür");
     // Keep #102 markers
     assertProofPdfMarkers(raw);
+  });
+});
+
+describe("Leistungsnachweis kind subtitle (not Job.name)", () => {
+  const job = makeJob({ name: "Reinigung" });
+
+  function exportLeistungsnachweis(list: Shift[]) {
+    exportWorkReportPdf(list, {
+      jobs: [job],
+      month: "September 2026",
+      includePhotos: false,
+    });
+    return pdfLatin1FromLastSave();
+  }
+
+  it("work-only PDF uses Arbeit, not Reinigung as the kind line", () => {
+    const raw = exportLeistungsnachweis([makeShift({ kind: "arbeit", workCode: "ER" })]);
+    expect(proofKindSummary([makeShift({ kind: "arbeit" })])).toBe("Arbeit");
+    expect(raw).toContain("Arbeit");
+    expect(raw).toContain("ER");
+  });
+
+  it("Urlaub-only PDF describes Urlaub and does not use Reinigung as the row", () => {
+    const rows = buildProofTableRows([makeShift({ kind: "urlaub", jobId: "j1" })], [job]);
+    expect(rows[0]![1]).toBe("Urlaub");
+    expect(rows[0]![5]).toBe("Urlaub");
+    const raw = exportLeistungsnachweis([makeShift({ kind: "urlaub", jobId: "j1" })]);
+    expect(raw).toContain("Urlaub");
+    expect(raw).not.toContain("Reinigung");
+  });
+
+  it("Krank-only PDF", () => {
+    expect(exportLeistungsnachweis([makeShift({ kind: "krank" })])).toContain("Krank");
+  });
+
+  it("Feiertag-only PDF", () => {
+    expect(exportLeistungsnachweis([makeShift({ kind: "feiertag" })])).toContain("Feiertag");
+  });
+
+  it("Frei-only PDF", () => {
+    expect(exportLeistungsnachweis([makeShift({ kind: "frei" })])).toContain("Frei");
+  });
+
+  it("mixed Arbeit + absences: all kinds, Job.name is not the sole description", () => {
+    const list = [
+      makeShift({ id: "w", date: "2026-09-19", kind: "arbeit", start: "08:00", workCode: "ER" }),
+      makeShift({ id: "u", date: "2026-09-21", kind: "urlaub", start: "00:00" }),
+      makeShift({ id: "f", date: "2026-09-23", kind: "frei", start: "00:00" }),
+      makeShift({ id: "h", date: "2026-09-25", kind: "feiertag", start: "00:00" }),
+    ];
+    expect(proofKindSummary(list)).toBe("Arbeit · Urlaub · Frei · Feiertag");
+    const raw = exportLeistungsnachweis(list);
+    expect(raw).toContain("Arbeit");
+    expect(raw).toContain("Urlaub");
+    expect(raw).toContain("Frei");
+    expect(raw).toContain("Feiertag");
+    expect(raw).toContain("ER");
+    const rows = buildProofTableRows(list, [job]);
+    expect(rows.map((r) => r[5])).toEqual(["ER", "Urlaub", "Frei", "Feiertag"]);
+    expect(rows[0]![1]).toBe("Reinigung");
+    expect(rows[1]![1]).not.toBe("Reinigung");
+  });
+
+  it("Arbeitsnachweis PDF keeps Leistungsart/address/order and absence labels", () => {
+    const list = [
+      makeShift({
+        id: "w",
+        date: "2026-09-19",
+        kind: "arbeit",
+        start: "08:00",
+        workCode: "FR",
+        street: "Musterstraße",
+        houseNo: "10",
+      }),
+      makeShift({ id: "u", date: "2026-09-21", kind: "urlaub", start: "00:00" }),
+    ];
+    exportArbeitsnachweisPdf(list, {
+      jobs: [job],
+      month: 8,
+      year: 2026,
+      employeeName: "Max Mustermann",
+    });
+    const raw = pdfLatin1FromLastSave();
+    expect(raw).toContain("Leistungsart");
+    expect(raw).toContain("FR");
+    expect(raw).toContain("Musterstra");
+    expect(raw).toContain("Urlaub");
+    const rows = buildProofTableRows(list, [job]);
+    expect(rows.map((r) => [r[0], r[2], r[5]])).toEqual([
+      ["19.09.2026", "08:00", "FR"],
+      ["21.09.2026", "00:00", "Urlaub"],
+    ]);
   });
 });

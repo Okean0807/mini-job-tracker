@@ -5,7 +5,7 @@ import { td, DOCUMENT_LOCALE } from "./document-i18n";
 
 import { formatHours, monthNames, shiftHours, sumHours } from "./calc";
 import { saveAndRegisterBytes } from "./generated-docs";
-import type { Job, Shift } from "./types";
+import { SHIFT_KIND_LABEL, type Job, type Shift, type ShiftKind } from "./types";
 
 /** Leistungsarten (DATEV-Stil Kürzel) für den Arbeitsnachweis. */
 export const WORK_CODES = ["UR", "FR", "ER", "BR", "SR"] as const;
@@ -83,6 +83,46 @@ export function leistungsartCell(shift: Shift): string {
   return (shift.workCode ?? "").trim();
 }
 
+/** Canonical German label for Shift.kind (same strings as UI `kind.*` in de). */
+export function shiftKindLabel(kind: ShiftKind): string {
+  return SHIFT_KIND_LABEL[kind];
+}
+
+/**
+ * PDF subtitle: unique entry reasons in chronological first-seen order.
+ * Uses Shift.kind — never Job.name.
+ */
+export function proofKindSummary(shifts: readonly Shift[]): string {
+  const seen = new Set<ShiftKind>();
+  const labels: string[] = [];
+  for (const shift of sortProofShifts(shifts as Shift[])) {
+    if (seen.has(shift.kind)) continue;
+    seen.add(shift.kind);
+    labels.push(shiftKindLabel(shift.kind));
+  }
+  return labels.join(" · ");
+}
+
+/** Einsatzort column: workplace, else kind label for absences, else job name for Arbeit. */
+export function proofEinsatzortCell(shift: Shift, jobs: Job[] = []): string {
+  const workplace = (shift.workplace ?? "").trim();
+  if (workplace) return workplace;
+  if (shift.kind !== "arbeit") return shiftKindLabel(shift.kind);
+  const jobName = (jobs.find((j) => j.id === shift.jobId)?.name ?? "").trim();
+  return jobName || "—";
+}
+
+/**
+ * Leistungsart column: existing workCode for Arbeit; absence falls back to kind label
+ * so rows are not blank/"Reinigung".
+ */
+export function proofLeistungsartCell(shift: Shift): string {
+  const code = leistungsartCell(shift);
+  if (code) return code;
+  if (shift.kind !== "arbeit") return shiftKindLabel(shift.kind);
+  return "—";
+}
+
 /**
  * Notiz-Zelle: Zeile1 Adresse, Zeile2 PLZ/Ort (kleiner im PDF), dann optionale Notiz.
  * Alte Schichten ohne floor/door/zip/city → nur Straße+Nr, keine Leerzeilen.
@@ -124,16 +164,13 @@ export function sortProofShifts(shifts: Shift[]): Shift[] {
  */
 export function buildProofTableRows(shifts: Shift[], jobs: Job[] = []): string[][] {
   return sortProofShifts(shifts).map((s) => {
-    const jobName = jobs.find((j) => j.id === s.jobId)?.name;
-    const einsatzort = (s.workplace ?? jobName ?? "").trim() || "—";
-    const leistungsart = leistungsartCell(s) || "—";
     return [
       formatProofDate(s.date),
-      einsatzort,
+      proofEinsatzortCell(s, jobs),
       s.start,
       s.end,
       formatHours(shiftHours(s), DOCUMENT_LOCALE),
-      leistungsart,
+      proofLeistungsartCell(s),
       noteCell(s),
     ];
   });
@@ -154,7 +191,7 @@ export function computeLeistungsartColWidth(
   const minMm = opts?.minMm ?? 12;
   const maxMm = opts?.maxMm ?? 28;
   const padMm = opts?.padMm ?? 2;
-  const values = [header, ...shifts.map((s) => leistungsartCell(s) || "—")];
+  const values = [header, ...shifts.map((s) => proofLeistungsartCell(s))];
   let maxW = 0;
   for (const value of values) {
     maxW = Math.max(maxW, doc.getTextWidth(value));

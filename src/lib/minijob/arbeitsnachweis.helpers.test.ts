@@ -6,9 +6,12 @@ import {
   addressLine2,
   leistungsartCell,
   noteCell,
+  proofEinsatzortCell,
+  proofKindSummary,
+  proofLeistungsartCell,
   streetHouseLine,
 } from "./arbeitsnachweis";
-import type { Shift } from "./types";
+import type { Job, Shift } from "./types";
 
 function makeShift(patch: Partial<Shift> = {}): Shift {
   return {
@@ -108,6 +111,58 @@ describe("leistungsartCell", () => {
 
   it("empty when workCode missing", () => {
     expect(leistungsartCell(makeShift())).toBe("");
+  });
+});
+
+describe("proofKindSummary / absence cells", () => {
+  const job = {
+    id: "j1",
+    name: "Reinigung",
+    color: "#000",
+    mode: "flex",
+    rate: 15,
+  } as Job;
+
+  it("work-only → Arbeit, not Job.name", () => {
+    expect(proofKindSummary([makeShift({ kind: "arbeit", jobId: "j1" })])).toBe("Arbeit");
+  });
+
+  it("Urlaub-only → Urlaub", () => {
+    expect(proofKindSummary([makeShift({ kind: "urlaub", jobId: "j1" })])).toBe("Urlaub");
+  });
+
+  it("Krank-only → Krank", () => {
+    expect(proofKindSummary([makeShift({ kind: "krank", jobId: "j1" })])).toBe("Krank");
+  });
+
+  it("Feiertag-only → Feiertag", () => {
+    expect(proofKindSummary([makeShift({ kind: "feiertag", jobId: "j1" })])).toBe("Feiertag");
+  });
+
+  it("Frei-only → Frei", () => {
+    expect(proofKindSummary([makeShift({ kind: "frei", jobId: "j1" })])).toBe("Frei");
+  });
+
+  it("mixed kinds in chronological first-seen order", () => {
+    const shifts: Shift[] = [
+      makeShift({ id: "a", date: "2026-09-19", kind: "arbeit", start: "08:00" }),
+      makeShift({ id: "u1", date: "2026-09-21", kind: "urlaub", start: "00:00" }),
+      makeShift({ id: "u2", date: "2026-09-22", kind: "urlaub", start: "00:00" }),
+      makeShift({ id: "f1", date: "2026-09-23", kind: "frei", start: "00:00" }),
+      makeShift({ id: "h", date: "2026-09-25", kind: "feiertag", start: "00:00" }),
+    ];
+    expect(proofKindSummary(shifts)).toBe("Arbeit · Urlaub · Frei · Feiertag");
+  });
+
+  it("absence Einsatzort is kind label, not Job.name Reinigung", () => {
+    expect(proofEinsatzortCell(makeShift({ kind: "urlaub", jobId: "j1" }), [job])).toBe("Urlaub");
+    expect(proofEinsatzortCell(makeShift({ kind: "arbeit", jobId: "j1" }), [job])).toBe("Reinigung");
+  });
+
+  it("absence Leistungsart uses kind when workCode empty; Arbeit keeps workCode", () => {
+    expect(proofLeistungsartCell(makeShift({ kind: "krank" }))).toBe("Krank");
+    expect(proofLeistungsartCell(makeShift({ kind: "arbeit", workCode: "ER" }))).toBe("ER");
+    expect(proofLeistungsartCell(makeShift({ kind: "arbeit" }))).toBe("—");
   });
 });
 

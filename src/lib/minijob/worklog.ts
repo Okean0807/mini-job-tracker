@@ -10,6 +10,7 @@ import {
   buildProofTableRows,
   computeLeistungsartColWidth,
   filledAtLabel,
+  proofKindSummary,
   proofNoteFontHooks,
   proofTableHead,
   sortProofShifts,
@@ -105,10 +106,8 @@ export function exportWorkReportPdf(shifts: Shift[], ctx: WorkReportContext) {
   doc.text(ctx.month, 14, 26);
   doc.setFontSize(8);
   doc.setTextColor(...GREY);
-  const jobNames = [...new Set(list.map((s) => ctx.jobs.find((j) => j.id === s.jobId)?.name))]
-    .filter(Boolean)
-    .join(", ");
-  doc.text([ctx.employeeName, jobNames].filter(Boolean).join(" · ") || td("app.name"), 14, 31);
+  const kindLine = proofKindSummary(list);
+  doc.text([ctx.employeeName, kindLine].filter(Boolean).join(" · ") || td("app.name"), 14, 31);
   doc.text(`${td("proof.filledAt")}: ${filledAtLabel()}`, 14, 36);
 
   const head = proofTableHead();
