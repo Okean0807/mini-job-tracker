@@ -1,4 +1,4 @@
-import { Camera, ChevronDown, MapPin, Mic, Trash2, X } from "lucide-react";
+import { Camera, ChevronDown, ChevronRight, MapPin, Mic, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { toast } from "sonner";
@@ -42,6 +42,7 @@ import {
 import {
   addCustomTaskToCatalog,
   addWorkCodeToCatalog,
+  builtinWorkCodes,
   mergeWorkCodeCatalog,
   snapshotWorkCodeLabel,
 } from "@/lib/minijob/catalog";
@@ -75,6 +76,41 @@ interface ShiftDialogProps {
 }
 
 const KINDS: ShiftKind[] = ["arbeit", "urlaub", "krank", "feiertag", "frei", "sonstige"];
+
+const SECTION_LABEL = "text-xs font-medium uppercase tracking-wide text-muted-foreground";
+
+function SavedCatalogRows({
+  items,
+  isSelected,
+  onSelect,
+}: {
+  items: { key: string; title: string }[];
+  isSelected: (key: string) => boolean;
+  onSelect: (key: string) => void;
+}) {
+  return (
+    <ul className="overflow-hidden rounded-xl border bg-card">
+      {items.map((item, index) => {
+        const active = isSelected(item.key);
+        return (
+          <li key={item.key} className={index > 0 ? "border-t" : undefined}>
+            <button
+              type="button"
+              onClick={() => onSelect(item.key)}
+              className={cn(
+                "flex w-full min-w-0 items-center gap-2 px-3 py-2.5 text-left",
+                active ? "bg-primary/10" : "bg-background hover:bg-muted/50",
+              )}
+            >
+              <span className="min-w-0 flex-1 truncate text-sm font-medium">{item.title}</span>
+              <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 export function ShiftDialog({
   open,
@@ -127,6 +163,8 @@ export function ShiftDialog({
   }));
 
   const allCodes = mergeWorkCodeCatalog(customCodes);
+  const builtinCodes = builtinWorkCodes();
+  const selectedWorkLabel = allCodes.find((c) => c.code === workCode)?.label ?? workCode;
 
   function addCustomCode() {
     const result = addWorkCodeToCatalog(customCodes, newCode, newCodeLabel);
@@ -716,10 +754,26 @@ export function ShiftDialog({
               </div>
             </div>
 
-            <div className="grid gap-1.5">
+            <div className="grid gap-2">
               <Label className="text-xs">{t("worklog.workCode")}</Label>
+              {workCode ? (
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setWorkCode("")}
+                    aria-label={t("worklog.removeFromEntry")}
+                    className="inline-flex max-w-full items-center gap-1 rounded-full border border-primary bg-primary/10 px-2.5 py-1 text-xs font-medium"
+                  >
+                    <span className="truncate">
+                      {workCode} · {selectedWorkLabel}
+                    </span>
+                    <X className="size-3 shrink-0" />
+                  </button>
+                </div>
+              ) : null}
+              <p className={SECTION_LABEL}>{t("worklog.standard")}</p>
               <div className="flex flex-wrap gap-1.5">
-                {allCodes.map(({ code, label }) => (
+                {builtinCodes.map(({ code, label }) => (
                   <button
                     key={code}
                     type="button"
@@ -740,26 +794,67 @@ export function ShiftDialog({
                   onChange={(e) => setWorkCodeNote(e.target.value)}
                 />
               ) : null}
-              <div className="grid grid-cols-[70px_1fr_auto] gap-1.5">
-                <Input
-                  value={newCode}
-                  maxLength={4}
-                  placeholder={t("worklog.codeShort")}
-                  onChange={(e) => setNewCode(e.target.value.toUpperCase())}
-                />
-                <Input
-                  value={newCodeLabel}
-                  placeholder={t("worklog.codeLabel")}
-                  onChange={(e) => setNewCodeLabel(e.target.value)}
-                />
-                <Button type="button" variant="secondary" size="sm" onClick={addCustomCode}>
-                  {t("worklog.addTask")}
+              {customCodes.length > 0 ? (
+                <div className="grid gap-1.5">
+                  <p className={SECTION_LABEL}>{t("worklog.myWorkCodes")}</p>
+                  <SavedCatalogRows
+                    items={customCodes.map((c) => ({
+                      key: c.code,
+                      title: `${c.code} · ${c.label}`,
+                    }))}
+                    isSelected={(code) => workCode === code}
+                    onSelect={(code) => setWorkCode(workCode === code ? "" : code)}
+                  />
+                </div>
+              ) : null}
+              <div className="grid gap-1.5">
+                <p className={SECTION_LABEL}>{t("worklog.newWorkCode")}</p>
+                <div className="grid grid-cols-[4.5rem_1fr] gap-1.5">
+                  <div className="grid gap-1">
+                    <Label className="text-[11px]">{t("worklog.codeShort")}</Label>
+                    <Input
+                      value={newCode}
+                      maxLength={4}
+                      placeholder={t("worklog.codeShort")}
+                      onChange={(e) => setNewCode(e.target.value.toUpperCase())}
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <Label className="text-[11px]">{t("worklog.codeLabel")}</Label>
+                    <Input
+                      value={newCodeLabel}
+                      placeholder={t("worklog.codeLabel")}
+                      onChange={(e) => setNewCodeLabel(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <Button type="button" variant="outline" size="sm" className="w-full" onClick={addCustomCode}>
+                  <Plus className="size-4" /> {t("worklog.addTask")}
                 </Button>
               </div>
             </div>
 
-            <div className="grid gap-1.5">
+            <div className="grid gap-2">
               <Label className="text-xs">{t("worklog.tasks")}</Label>
+              {tasks.some((x) => !x.startsWith("#")) ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {tasks
+                    .filter((x) => !x.startsWith("#"))
+                    .map((x) => (
+                      <button
+                        key={x}
+                        type="button"
+                        onClick={() => setTasks(tasks.filter((y) => y !== x))}
+                        aria-label={t("worklog.removeFromEntry")}
+                        className="inline-flex max-w-full items-center gap-1 rounded-full border border-primary bg-primary/10 px-2.5 py-1 text-xs font-medium"
+                      >
+                        <span className="truncate">{x}</span>
+                        <X className="size-3 shrink-0" />
+                      </button>
+                    ))}
+                </div>
+              ) : null}
+              <p className={SECTION_LABEL}>{t("worklog.standard")}</p>
               <div className="flex flex-wrap gap-1.5">
                 {CLEANING_TASKS.map((key) => {
                   const value = templateValue(key);
@@ -782,51 +877,41 @@ export function ShiftDialog({
                     </button>
                   );
                 })}
-                {customTasksCatalog.map((label) => {
-                  const active = tasks.includes(label);
-                  return (
-                    <button
-                      key={label}
-                      type="button"
-                      onClick={() =>
-                        setTasks(active ? tasks.filter((x) => x !== label) : [...tasks, label])
-                      }
-                      className={cn(
-                        "rounded-full border px-2.5 py-1 text-xs font-medium",
-                        active ? "border-primary bg-primary/10" : "bg-card",
-                      )}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
               </div>
-              {tasks.some((x) => !x.startsWith("#") && !customTasksCatalog.includes(x)) ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {tasks
-                    .filter((x) => !x.startsWith("#") && !customTasksCatalog.includes(x))
-                    .map((x) => (
-                      <button
-                        key={x}
-                        type="button"
-                        onClick={() => setTasks(tasks.filter((y) => y !== x))}
-                        className="flex items-center gap-1 rounded-full border border-primary bg-primary/10 px-2.5 py-1 text-xs"
-                      >
-                        {x}
-                        <X className="size-3" />
-                      </button>
-                    ))}
+              {customTasksCatalog.length > 0 ? (
+                <div className="grid gap-1.5">
+                  <p className={SECTION_LABEL}>{t("worklog.myTasks")}</p>
+                  <SavedCatalogRows
+                    items={customTasksCatalog.map((label) => ({ key: label, title: label }))}
+                    isSelected={(label) => tasks.includes(label)}
+                    onSelect={(label) =>
+                      setTasks(
+                        tasks.includes(label)
+                          ? tasks.filter((x) => x !== label)
+                          : [...tasks, label],
+                      )
+                    }
+                  />
                 </div>
               ) : null}
-              <div className="flex gap-2">
-                <Input
-                  value={customTask}
-                  placeholder={t("worklog.customTask")}
-                  onChange={(e) => setCustomTask(e.target.value)}
-                />
-                <Button type="button" variant="outline" onClick={addCustomTaskToEntry}>
-                  {t("worklog.addTask")}
-                </Button>
+              <div className="grid gap-1.5">
+                <p className={SECTION_LABEL}>{t("worklog.newTask")}</p>
+                <div className="flex gap-2">
+                  <Input
+                    value={customTask}
+                    placeholder={t("worklog.customTask")}
+                    onChange={(e) => setCustomTask(e.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={addCustomTaskToEntry}
+                  >
+                    <Plus className="size-4" /> {t("worklog.addTask")}
+                  </Button>
+                </div>
               </div>
             </div>
 
