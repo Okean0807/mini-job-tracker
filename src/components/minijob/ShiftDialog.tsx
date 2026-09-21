@@ -1,4 +1,4 @@
-import { Camera, ChevronDown, ChevronRight, MapPin, Mic, Plus, Trash2, X } from "lucide-react";
+import { Camera, Check, ChevronDown, ChevronRight, MapPin, Mic, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { toast } from "sonner";
@@ -79,36 +79,53 @@ const KINDS: ShiftKind[] = ["arbeit", "urlaub", "krank", "feiertag", "frei", "so
 
 const SECTION_LABEL = "text-xs font-medium uppercase tracking-wide text-muted-foreground";
 
-function SavedCatalogRows({
+/** Saved custom items — same card/list language as ObjectsCard. Always visible. */
+function SavedCatalogPanel({
+  title,
+  empty,
   items,
   isSelected,
   onSelect,
 }: {
+  title: string;
+  empty: string;
   items: { key: string; title: string }[];
   isSelected: (key: string) => boolean;
   onSelect: (key: string) => void;
 }) {
   return (
-    <ul className="overflow-hidden rounded-xl border bg-card">
-      {items.map((item, index) => {
-        const active = isSelected(item.key);
-        return (
-          <li key={item.key} className={index > 0 ? "border-t" : undefined}>
-            <button
-              type="button"
-              onClick={() => onSelect(item.key)}
-              className={cn(
-                "flex w-full min-w-0 items-center gap-2 px-3 py-2.5 text-left",
-                active ? "bg-primary/10" : "bg-background hover:bg-muted/50",
-              )}
-            >
-              <span className="min-w-0 flex-1 truncate text-sm font-medium">{item.title}</span>
-              <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-            </button>
-          </li>
-        );
-      })}
-    </ul>
+    <section className="rounded-2xl border bg-card p-3 shadow-card" aria-label={title}>
+      <p className={SECTION_LABEL}>{title}</p>
+      {items.length === 0 ? (
+        <p className="mt-3 text-sm text-muted-foreground">{empty}</p>
+      ) : (
+        <ul className="mt-3 max-h-40 space-y-2 overflow-y-auto">
+          {items.map((item) => {
+            const active = isSelected(item.key);
+            return (
+              <li key={item.key}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(item.key)}
+                  className={cn(
+                    "flex w-full min-w-0 items-center gap-2 rounded-xl border bg-background px-3 py-2 text-left hover:bg-muted/50",
+                    active && "border-primary bg-primary/10",
+                  )}
+                >
+                  {active ? (
+                    <Check className="size-4 shrink-0 text-primary" aria-hidden />
+                  ) : (
+                    <span className="size-4 shrink-0 rounded-full border border-muted-foreground/40" aria-hidden />
+                  )}
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{item.title}</span>
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -794,19 +811,16 @@ export function ShiftDialog({
                   onChange={(e) => setWorkCodeNote(e.target.value)}
                 />
               ) : null}
-              {customCodes.length > 0 ? (
-                <div className="grid gap-1.5">
-                  <p className={SECTION_LABEL}>{t("worklog.myWorkCodes")}</p>
-                  <SavedCatalogRows
-                    items={customCodes.map((c) => ({
-                      key: c.code,
-                      title: `${c.code} · ${c.label}`,
-                    }))}
-                    isSelected={(code) => workCode === code}
-                    onSelect={(code) => setWorkCode(workCode === code ? "" : code)}
-                  />
-                </div>
-              ) : null}
+              <SavedCatalogPanel
+                title={t("worklog.myWorkCodes")}
+                empty={t("worklog.myWorkCodesEmpty")}
+                items={customCodes.map((c) => ({
+                  key: c.code,
+                  title: `${c.code} · ${c.label}`,
+                }))}
+                isSelected={(code) => workCode === code}
+                onSelect={(code) => setWorkCode(workCode === code ? "" : code)}
+              />
               <div className="grid gap-1.5">
                 <p className={SECTION_LABEL}>{t("worklog.newWorkCode")}</p>
                 <div className="grid grid-cols-[4.5rem_1fr] gap-1.5">
@@ -878,22 +892,19 @@ export function ShiftDialog({
                   );
                 })}
               </div>
-              {customTasksCatalog.length > 0 ? (
-                <div className="grid gap-1.5">
-                  <p className={SECTION_LABEL}>{t("worklog.myTasks")}</p>
-                  <SavedCatalogRows
-                    items={customTasksCatalog.map((label) => ({ key: label, title: label }))}
-                    isSelected={(label) => tasks.includes(label)}
-                    onSelect={(label) =>
-                      setTasks(
-                        tasks.includes(label)
-                          ? tasks.filter((x) => x !== label)
-                          : [...tasks, label],
-                      )
-                    }
-                  />
-                </div>
-              ) : null}
+              <SavedCatalogPanel
+                title={t("worklog.myTasks")}
+                empty={t("worklog.myTasksEmpty")}
+                items={customTasksCatalog.map((label) => ({ key: label, title: label }))}
+                isSelected={(label) => tasks.includes(label)}
+                onSelect={(label) =>
+                  setTasks(
+                    tasks.includes(label)
+                      ? tasks.filter((x) => x !== label)
+                      : [...tasks, label],
+                  )
+                }
+              />
               <div className="grid gap-1.5">
                 <p className={SECTION_LABEL}>{t("worklog.newTask")}</p>
                 <div className="flex gap-2">

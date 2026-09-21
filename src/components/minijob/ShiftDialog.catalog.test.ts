@@ -39,17 +39,24 @@ describe("ShiftDialog catalog vs entry selection", () => {
 });
 
 describe("ShiftDialog catalog looks like saved Objects", () => {
-  it("separates Standard chips from Meine Leistungsarten / Meine Tätigkeiten", () => {
+  it("always shows Meine Leistungsarten / Meine Tätigkeiten as Object-style lists", () => {
     expect(src).toMatch(/worklog\.standard/);
     expect(src).toMatch(/worklog\.myWorkCodes/);
     expect(src).toMatch(/worklog\.myTasks/);
+    expect(src).toMatch(/worklog\.myWorkCodesEmpty/);
+    expect(src).toMatch(/worklog\.myTasksEmpty/);
     expect(src).toMatch(/worklog\.newWorkCode/);
     expect(src).toMatch(/worklog\.newTask/);
     expect(src).toMatch(/builtinWorkCodes/);
-    expect(src).toMatch(/SavedCatalogRows/);
+    expect(src).toMatch(/SavedCatalogPanel/);
+    expect(src).toMatch(/rounded-2xl border bg-card p-3 shadow-card/);
     expect(src).toMatch(/ChevronRight/);
+    expect(src).not.toMatch(/customCodes\.length > 0 \?/);
+    expect(src).not.toMatch(/customTasksCatalog\.length > 0 \?/);
     expect(dict).toMatch(/"Meine Leistungsarten"/);
     expect(dict).toMatch(/"Meine Tätigkeiten"/);
+    expect(dict).toMatch(/Noch keine eigenen Leistungsarten gespeichert/);
+    expect(dict).toMatch(/Noch keine eigenen Tätigkeiten gespeichert/);
   });
 
   it("does not mix custom catalog items into the Standard chip row", () => {
