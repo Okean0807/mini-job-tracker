@@ -23,9 +23,11 @@ vi.mock("./generated-docs", async () => {
 
 import {
   buildProofTableRows,
+  entryKindCell,
   exportArbeitsnachweisPdf,
   filledAtLabel,
   proofTableHead,
+  sumProofHours,
 } from "./arbeitsnachweis";
 import { exportWorkReportPdf } from "./worklog";
 import type { Job, Shift } from "./types";
@@ -70,23 +72,25 @@ beforeEach(() => {
 });
 
 describe("proofTableHead", () => {
-  it("uses §7 columns without Tätigkeiten", () => {
+  it("uses Eintragsart instead of Einsatzort / Objekt", () => {
     expect(proofTableHead()).toEqual([
       "Datum",
-      "Einsatzort / Objekt",
+      "Eintragsart",
       "Beginn",
       "Ende",
       "Stunden",
       "Leistungsart",
       "Notiz",
     ]);
-    expect(proofTableHead().join("|")).not.toContain("Tätigkeiten");
+    const joined = proofTableHead().join("|");
+    expect(joined).not.toContain("Tätigkeiten");
+    expect(joined).not.toContain("Einsatzort");
+    expect(joined).not.toContain("Objekt");
   });
 });
 
 describe("buildProofTableRows", () => {
-  it("maps street/houseNo/workCode and job name into §7 row", () => {
-    const job = makeJob({ name: "Reinigung" });
+  it("maps kind, street/houseNo and workCode into the row (Test A)", () => {
     const shift = makeShift({
       street: "Musterstraße",
       houseNo: "10",
@@ -95,10 +99,10 @@ describe("buildProofTableRows", () => {
       end: "07:00",
       date: "2026-09-20",
     });
-    const [row] = buildProofTableRows([shift], [job]);
+    const [row] = buildProofTableRows([shift]);
     expect(row).toEqual([
       "20.09.2026",
-      "Reinigung",
+      "Arbeit",
       "06:00",
       "07:00",
       "1,00 h",
@@ -108,8 +112,7 @@ describe("buildProofTableRows", () => {
     expect(row![6]).toBe("Musterstraße 10");
   });
 
-  it("keeps two same-day shifts with distinct Leistungsart and Notiz", () => {
-    const job = makeJob({ name: "Reinigung" });
+  it("keeps two same-day shifts with distinct Leistungsart and Notiz (Test K)", () => {
     const a = makeShift({
       id: "a",
       street: "Musterstraße",
@@ -126,11 +129,11 @@ describe("buildProofTableRows", () => {
       start: "08:00",
       end: "09:30",
     });
-    const rows = buildProofTableRows([a, b], [job]);
+    const rows = buildProofTableRows([a, b]);
     expect(rows).toHaveLength(2);
     expect(rows[0]).toEqual([
       "20.09.2026",
-      "Reinigung",
+      "Arbeit",
       "06:00",
       "07:00",
       "1,00 h",
@@ -139,7 +142,7 @@ describe("buildProofTableRows", () => {
     ]);
     expect(rows[1]).toEqual([
       "20.09.2026",
-      "Reinigung",
+      "Arbeit",
       "08:00",
       "09:30",
       "1,50 h",
@@ -151,7 +154,7 @@ describe("buildProofTableRows", () => {
   it("sorts same-day entries by start time", () => {
     const sa = makeShift({ id: "sa", start: "06:00", end: "07:00", workCode: "SA" });
     const er = makeShift({ id: "er", start: "06:15", end: "07:15", workCode: "ER" });
-    const rows = buildProofTableRows([er, sa], [makeJob()]);
+    const rows = buildProofTableRows([er, sa]);
 
     expect(rows.map((row) => [row[2], row[5]])).toEqual([
       ["06:00", "SA"],
@@ -160,9 +163,7 @@ describe("buildProofTableRows", () => {
   });
 
   it("keeps three same-day work blocks as three independent rows", () => {
-    const job = makeJob({ name: "Reinigung" });
-    const rows = buildProofTableRows(
-      [
+    const rows = buildProofTableRows([
         makeShift({
           id: "c",
           date: "2026-09-19",
@@ -189,21 +190,18 @@ describe("buildProofTableRows", () => {
           houseNo: "16",
           workplace: "Fehrenwinkel 16",
         }),
-      ],
-      [job],
-    );
+    ]);
     expect(rows).toHaveLength(3);
     expect(rows.map((row) => [row[0], row[1], row[2], row[3], row[4], row[5]])).toEqual([
-      ["19.09.2026", "Büro", "06:00", "06:15", "0,25 h", "SA"],
-      ["19.09.2026", "Fehrenwinkel 16", "06:15", "16:30", "10,25 h", "ER"],
-      ["19.09.2026", "Fenster", "17:00", "18:00", "1,00 h", "FR"],
+      ["19.09.2026", "Arbeit", "06:00", "06:15", "0,25 h", "SA"],
+      ["19.09.2026", "Arbeit", "06:15", "16:30", "10,25 h", "ER"],
+      ["19.09.2026", "Arbeit", "17:00", "18:00", "1,00 h", "FR"],
     ]);
     expect(rows[1]![6]).toContain("Fehrenwinkel 16");
   });
 
-  it("keeps four same-day work blocks as four PDF rows", () => {
-    const rows = buildProofTableRows(
-      [
+  it("keeps four same-day work blocks as four PDF rows (Test N)", () => {
+    const rows = buildProofTableRows([
         makeShift({ id: "a", date: "2026-09-19", start: "06:00", end: "06:15", workCode: "SA", workplace: "Büro" }),
         makeShift({
           id: "b",
@@ -215,9 +213,7 @@ describe("buildProofTableRows", () => {
         }),
         makeShift({ id: "c", date: "2026-09-19", start: "17:00", end: "18:00", workCode: "FR", workplace: "Fenster" }),
         makeShift({ id: "d", date: "2026-09-19", start: "18:15", end: "19:00", workCode: "UR", workplace: "Nachgang" }),
-      ],
-      [makeJob()],
-    );
+    ]);
     expect(rows).toHaveLength(4);
     expect(rows.map((row) => row[2])).toEqual(["06:00", "06:15", "17:00", "18:15"]);
     expect(new Set(rows.map((row) => row[5])).size).toBe(4);
@@ -226,20 +222,17 @@ describe("buildProofTableRows", () => {
   it("uses stable id secondary when date and start match", () => {
     const b = makeShift({ id: "b-id", start: "06:00", end: "07:00", workCode: "UR" });
     const a = makeShift({ id: "a-id", start: "06:00", end: "07:00", workCode: "FR" });
-    const rows = buildProofTableRows([b, a], [makeJob()]);
+    const rows = buildProofTableRows([b, a]);
     expect(rows.map((row) => row[5])).toEqual(["FR", "UR"]);
   });
 
   it("sorts multiple days by date and then start time", () => {
-    const rows = buildProofTableRows(
-      [
-        makeShift({ id: "d20-late", date: "2026-09-20", start: "08:00", workCode: "ER" }),
-        makeShift({ id: "d19-late", date: "2026-09-19", start: "06:15", workCode: "FR" }),
-        makeShift({ id: "d20-early", date: "2026-09-20", start: "05:30", workCode: "UR" }),
-        makeShift({ id: "d19-early", date: "2026-09-19", start: "06:00", workCode: "SA" }),
-      ],
-      [makeJob()],
-    );
+    const rows = buildProofTableRows([
+      makeShift({ id: "d20-late", date: "2026-09-20", start: "08:00", workCode: "ER" }),
+      makeShift({ id: "d19-late", date: "2026-09-19", start: "06:15", workCode: "FR" }),
+      makeShift({ id: "d20-early", date: "2026-09-20", start: "05:30", workCode: "UR" }),
+      makeShift({ id: "d19-early", date: "2026-09-19", start: "06:00", workCode: "SA" }),
+    ]);
 
     expect(rows.map((row) => [row[0], row[2], row[5]])).toEqual([
       ["19.09.2026", "06:00", "SA"],
@@ -249,14 +242,99 @@ describe("buildProofTableRows", () => {
     ]);
   });
 
-  it("prefers workplace over job name; empty workCode → —", () => {
-    const rows = buildProofTableRows(
-      [makeShift({ workplace: "Objekt Nord" })],
-      [makeJob()],
-    );
-    expect(rows[0]![1]).toBe("Objekt Nord");
+  it("never leaks workplace/job name into the row (Objekt-Spalte entfernt)", () => {
+    const rows = buildProofTableRows([
+      makeShift({ workplace: "Objekt Nord", street: "Musterstraße", houseNo: "10" }),
+    ]);
+    expect(rows[0]).not.toContain("Objekt Nord");
+    expect(rows[0]).not.toContain("Reinigung");
+    expect(rows[0]![1]).toBe("Arbeit");
+  });
+
+  it("Arbeit without Leistungsart shows — (Test B)", () => {
+    const rows = buildProofTableRows([makeShift()]);
+    expect(rows[0]![1]).toBe("Arbeit");
     expect(rows[0]![5]).toBe("—");
-    expect(rows[0]![6]).toBe("");
+    expect(rows[0]![6]).toBe("—");
+  });
+
+  it.each([
+    ["krank", "Krank"],
+    ["urlaub", "Urlaub"],
+    ["feiertag", "Feiertag"],
+    ["frei", "Frei"],
+    ["sonstige", "Sonstige"],
+  ] as const)(
+    "%s shows Eintragsart %s without artificial hours (Tests C–G)",
+    (kind, label) => {
+      const [row] = buildProofTableRows([
+        makeShift({ kind, start: "09:00", end: "17:00", workCode: "UR" }),
+      ]);
+      expect(row![1]).toBe(label);
+      expect(row![2]).toBe("—");
+      expect(row![3]).toBe("—");
+      expect(row![4]).toBe("—");
+      expect(row![5]).toBe("—");
+      expect(row!.join("|")).not.toContain("0,00 h");
+      expect(row!.join("|")).not.toContain("0,00");
+    },
+  );
+
+  it("puts street, floor, door side, zip and city into Notiz (Test H)", () => {
+    const [row] = buildProofTableRows([
+      makeShift({
+        street: "Blumhardtstraße",
+        houseNo: "19",
+        floor: "3. OG",
+        doorSide: "linke Tür",
+        zip: "30625",
+        city: "Hannover",
+      }),
+    ]);
+    expect(row![6]).toBe("Blumhardtstraße 19, 3. OG, linke Tür\n30625 Hannover");
+  });
+
+  it("appends the user note below the address (Test I)", () => {
+    const [row] = buildProofTableRows([
+      makeShift({
+        street: "Blumhardtstraße",
+        houseNo: "19",
+        floor: "3. OG",
+        doorSide: "linke Tür",
+        zip: "30625",
+        city: "Hannover",
+        note: "Spätschicht Filiale Nord",
+      }),
+    ]);
+    expect(row![6]).toBe(
+      "Blumhardtstraße 19, 3. OG, linke Tür\n30625 Hannover\nSpätschicht Filiale Nord",
+    );
+  });
+
+  it("one day with one shift yields exactly one row (Test J)", () => {
+    expect(buildProofTableRows([makeShift()])).toHaveLength(1);
+  });
+});
+
+describe("entryKindCell", () => {
+  it("derives the German label from Shift.kind only", () => {
+    expect(entryKindCell({ kind: "arbeit" })).toBe("Arbeit");
+    expect(entryKindCell({ kind: "krank" })).toBe("Krank");
+    expect(entryKindCell({ kind: "urlaub" })).toBe("Urlaub");
+    expect(entryKindCell({ kind: "feiertag" })).toBe("Feiertag");
+    expect(entryKindCell({ kind: "frei" })).toBe("Frei");
+    expect(entryKindCell({ kind: "sonstige" })).toBe("Sonstige");
+  });
+});
+
+describe("sumProofHours", () => {
+  it("counts work only — absences never add hours", () => {
+    const hours = sumProofHours([
+      makeShift({ id: "w", start: "09:00", end: "17:00", breakMinutes: 30 }),
+      makeShift({ id: "k", kind: "krank", start: "09:00", end: "17:00" }),
+      makeShift({ id: "u", kind: "urlaub", start: "09:00", end: "17:00" }),
+    ]);
+    expect(hours).toBe(7.5);
   });
 });
 
@@ -315,7 +393,9 @@ describe("PDF export regression (real jspdf, no pdftotext)", () => {
     });
     const raw = pdfLatin1FromLastSave();
     assertProofPdfMarkers(raw);
-    expect(raw).toContain("Reinigung");
+    expect(raw).toContain("Eintragsart");
+    expect(raw).toContain("Arbeit");
+    expect(raw).not.toContain("Einsatzort");
   });
 
   it("exportWorkReportPdf (Leistungsnachweis button) shares same markers", () => {

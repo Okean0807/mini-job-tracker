@@ -4,7 +4,7 @@ import autoTable from "jspdf-autotable";
 import { t, type TFunction } from "@/lib/i18n";
 import { td, DOCUMENT_LOCALE } from "./document-i18n";
 
-import { formatDate, formatHours, sumHours } from "./calc";
+import { formatDate, formatHours } from "./calc";
 import {
   addressLine2,
   buildProofTableRows,
@@ -13,6 +13,7 @@ import {
   proofNoteFontHooks,
   proofTableHead,
   sortProofShifts,
+  sumProofHours,
 } from "./arbeitsnachweis";
 import { saveAndRegisterBytes } from "./generated-docs";
 import type { Job, Shift } from "./types";
@@ -123,12 +124,13 @@ export function exportWorkReportPdf(shifts: Shift[], ctx: WorkReportContext) {
   autoTable(doc, {
     startY: 41,
     head: [head],
-    body: buildProofTableRows(list, ctx.jobs),
-    foot: [[td("label.total"), "", "", "", formatHours(sumHours(list), DOCUMENT_LOCALE), "", ""]],
+    body: buildProofTableRows(list),
+    foot: [[td("label.total"), "", "", "", formatHours(sumProofHours(list), DOCUMENT_LOCALE), "", ""]],
     styles: { fontSize: 8, cellPadding: 2, valign: "top", overflow: "linebreak" },
     columnStyles: {
       0: { cellWidth: 22 },
-      1: { cellWidth: 32 },
+      // Eintragsart statt Einsatzort: breit genug für „Feiertag“/„Sonstige“.
+      1: { cellWidth: 24 },
       2: { cellWidth: 14 },
       3: { cellWidth: 14 },
       4: { cellWidth: 18 },

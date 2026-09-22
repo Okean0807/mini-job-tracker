@@ -83,6 +83,19 @@ export function leistungsartCell(shift: Shift): string {
   return (shift.workCode ?? "").trim();
 }
 
+/** Platzhalter für Spalten ohne Wert (z. B. Krank/Urlaub ohne Zeiten). */
+export const PROOF_EMPTY = "—";
+
+/** Eintragsart-Zelle: abgeleitet aus Shift.kind, immer in Dokumentensprache. */
+export function entryKindCell(shift: Pick<Shift, "kind">): string {
+  return td(`kind.${shift.kind}`);
+}
+
+/** Nur Arbeitszeit zählt für die PDF-Summe — Abwesenheiten liefern keine Stunden. */
+export function sumProofHours(shifts: Shift[]): number {
+  return sumHours(shifts.filter((s) => s.kind === "arbeit"));
+}
+
 /**
  * Notiz-Zelle: Zeile1 Adresse, Zeile2 PLZ/Ort (kleiner im PDF), dann optionale Notiz.
  * Alte Schichten ohne floor/door/zip/city → nur Straße+Nr, keine Leerzeilen.
@@ -94,11 +107,11 @@ export function noteCell(shift: Shift): string {
   return lines.filter(Boolean).join("\n");
 }
 
-/** PDF-Tabellenkopf (7 Spalten, §7). */
+/** PDF-Tabellenkopf (7 Spalten): Einsatzort/Objekt ersetzt durch Eintragsart. */
 export function proofTableHead(): string[] {
   return [
     td("label.date"),
-    td("worklog.workplace"),
+    td("proof.entryKind"),
     td("label.start"),
     td("label.end"),
     td("label.hours"),
@@ -119,22 +132,22 @@ export function sortProofShifts(shifts: Shift[]): Shift[] {
 
 /**
  * Gemeinsame PDF-Zeilen für Arbeitsnachweis / Leistungsnachweis.
- * Spalten: Datum | Einsatzort/Objekt | Beginn | Ende | Stunden | Leistungsart | Notiz
- * Leistungsart leer → "—"; Notiz leer wenn keine Adresse/Notiz.
+ * Spalten: Datum | Eintragsart | Beginn | Ende | Stunden | Leistungsart | Notiz
+ * Nur „Arbeit“ zeigt Zeiten, Stunden und Leistungsart — sonst „—“,
+ * damit Krank/Urlaub/Frei/Feiertag keine Arbeitsleistung suggerieren.
+ * Adresse (und optional die Benutzer-Notiz) stehen in der Notiz-Spalte.
  */
-export function buildProofTableRows(shifts: Shift[], jobs: Job[] = []): string[][] {
+export function buildProofTableRows(shifts: Shift[]): string[][] {
   return sortProofShifts(shifts).map((s) => {
-    const jobName = jobs.find((j) => j.id === s.jobId)?.name;
-    const einsatzort = (s.workplace ?? jobName ?? "").trim() || "—";
-    const leistungsart = leistungsartCell(s) || "—";
+    const isWork = s.kind === "arbeit";
     return [
       formatProofDate(s.date),
-      einsatzort,
-      s.start,
-      s.end,
-      formatHours(shiftHours(s), DOCUMENT_LOCALE),
-      leistungsart,
-      noteCell(s),
+      entryKindCell(s),
+      isWork ? s.start : PROOF_EMPTY,
+      isWork ? s.end : PROOF_EMPTY,
+      isWork ? formatHours(shiftHours(s), DOCUMENT_LOCALE) : PROOF_EMPTY,
+      (isWork ? leistungsartCell(s) : "") || PROOF_EMPTY,
+      noteCell(s) || PROOF_EMPTY,
     ];
   });
 }
@@ -290,6 +303,7 @@ export function arbeitsnachweisLabels() {
     month: td("label.month"),
     employer: td("label.employer"),
     date: td("label.date"),
+    entryKind: td("proof.entryKind"),
     start: td("label.start"),
     break: td("label.break"),
     end: td("label.end"),
@@ -315,7 +329,7 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
   const monthName = months[ctx.month] ?? "";
   const monthLabel = `${monthName} ${ctx.year}`;
   const list = sortProofShifts(shifts);
-  const totalHours = sumHours(list);
+  const totalHours = sumProofHours(list);
   const L = arbeitsnachweisLabels();
   // Export time for header — not shift.date / createdAt
   const filledAt = filledAtLabel();
@@ -365,7 +379,7 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
     margin: { left: margin, right: margin, top: 37, bottom: 14 },
     theme: "grid",
     head: [head],
-    body: buildProofTableRows(list, ctx.jobs),
+    body: buildProofTableRows(list),
     foot: [
       [
         { content: `${L.totalHours}:`, colSpan: 4, styles: { halign: "right" as const } },
@@ -403,7 +417,8 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
     },
     columnStyles: {
       0: { cellWidth: 17 },
-      1: { cellWidth: 28 },
+      // Eintragsart: „Feiertag“/„Sonstige“ müssen ungekürzt passen.
+      1: { cellWidth: 20 },
       2: { cellWidth: 12, halign: "center" },
       3: { cellWidth: 12, halign: "center" },
       4: { cellWidth: 16, halign: "right" },
