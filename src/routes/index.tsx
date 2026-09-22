@@ -33,6 +33,8 @@ import { buildInsights } from "@/lib/minijob/insights";
 import { monthUsage, yearUsage } from "@/lib/minijob/limits";
 import { type AbsenceKind } from "@/lib/minijob/absence-range";
 import { shiftsOnDate } from "@/lib/minijob/day-shifts";
+import { formatWorkDuration } from "@/lib/minijob/entry-format";
+import { holidayName } from "@/lib/minijob/holidays";
 import { monthTimeAccount } from "@/lib/minijob/fest-time-account";
 import { jobsApplyMinijobLimit, primaryWorkMode } from "@/lib/minijob/work-mode";
 import { payPeriods } from "@/lib/minijob/payday";
@@ -85,6 +87,10 @@ function DashboardPage() {
   const monthTotals = useMemo(
     () => payrollTotals(monthShifts, resolve, shifts),
     [monthShifts, resolve, shifts],
+  );
+  const dayTotals = useMemo(
+    () => payrollTotals(dayShifts, resolve, shifts),
+    [dayShifts, resolve, shifts],
   );
   const yearTotals = useMemo(
     () => payrollTotals(yearShifts, resolve, shifts),
@@ -154,6 +160,29 @@ function DashboardPage() {
   const calendarVisible = widgets.includes("calendar");
   const displayWidgets = widgets.filter((id) => !(id === "shifts" && calendarVisible));
 
+  // Tagessumme: bewusst unter den Einträgen, nicht in der Kalenderzelle.
+  const daySummary =
+    dayTotals.workedHours > 0 ? (
+      <>
+        {t("label.total")}:{" "}
+        <span className="font-medium tabular-nums text-foreground">
+          {formatWorkDuration(dayTotals.workedHours, {
+            hour: t("entry.hoursShort"),
+            minute: t("entry.minutesShort"),
+          })}
+        </span>
+        {dayTotals.earnings > 0 ? (
+          <>
+            {" · "}
+            {t("label.earnings")}:{" "}
+            <span className="font-medium tabular-nums text-foreground">
+              {formatEuro(dayTotals.earnings)}
+            </span>
+          </>
+        ) : null}
+      </>
+    ) : null;
+
   const dayList = (
     <ShiftList
       date={selectedDate}
@@ -161,6 +190,8 @@ function DashboardPage() {
       jobs={jobs}
       onSelect={openEdit}
       onAdd={() => openNew(selectedDate)}
+      holiday={holidayName(selectedDate, settings.bundesland)}
+      summary={daySummary}
     />
   );
 

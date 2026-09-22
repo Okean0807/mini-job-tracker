@@ -1,4 +1,5 @@
 import { CalendarDays, Plus } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n";
@@ -19,9 +20,21 @@ interface ShiftListProps {
   jobs: Job[];
   onSelect: (shift: Shift) => void;
   onAdd: () => void;
+  /** Feiertagsname des Tages — steht nicht mehr in der Kalenderzelle. */
+  holiday?: string | undefined;
+  /** Optionale Tagessumme (Stunden/Verdienst), vom Dashboard berechnet. */
+  summary?: ReactNode;
 }
 
-export function ShiftList({ date, shifts, jobs, onSelect, onAdd }: ShiftListProps) {
+export function ShiftList({
+  date,
+  shifts,
+  jobs,
+  onSelect,
+  onAdd,
+  holiday,
+  summary,
+}: ShiftListProps) {
   const { t } = useT();
   const headingJob = dayHeadingJobName(shifts, jobs);
 
@@ -31,6 +44,14 @@ export function ShiftList({ date, shifts, jobs, onSelect, onAdd }: ShiftListProp
         {formatDate(date)}
         {headingJob ? ` · ${headingJob}` : ""}
       </h2>
+      {holiday ? (
+        <p
+          className="text-xs font-medium text-violet-700 dark:text-violet-300"
+          data-testid="day-holiday-name"
+        >
+          {holiday}
+        </p>
+      ) : null}
 
       {shifts.length === 0 ? (
         <div className="rounded-2xl border border-dashed bg-card/50 px-4 py-6 text-center">
@@ -99,6 +120,12 @@ export function ShiftList({ date, shifts, jobs, onSelect, onAdd }: ShiftListProp
           })}
         </ul>
       )}
+
+      {summary ? (
+        <div className="px-1 text-xs text-muted-foreground" data-testid="day-summary">
+          {summary}
+        </div>
+      ) : null}
 
       <Button
         type="button"

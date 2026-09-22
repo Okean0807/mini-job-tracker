@@ -33,3 +33,21 @@ describe("ShiftList selected-day work blocks", () => {
     expect(src).toMatch(/onClick=\{onAdd\}/);
   });
 });
+
+describe("ShiftList day details below the calendar", () => {
+  it("renders an optional day summary between the entries and + Eintrag", () => {
+    expect(src).toMatch(/summary\?: ReactNode/);
+    expect(src).toMatch(/data-testid="day-summary"/);
+    expect(src.indexOf('data-testid="day-summary"')).toBeLessThan(
+      src.indexOf('data-testid="add-day-entry"'),
+    );
+    // totals stay a dashboard concern — the list never recomputes payroll
+    expect(src).not.toMatch(/formatEuro/);
+    expect(src).not.toMatch(/shiftPayroll/);
+  });
+
+  it("shows the holiday name that left the calendar cell", () => {
+    expect(src).toMatch(/data-testid="day-holiday-name"/);
+    expect(src).toMatch(/holiday\?: string \| undefined/);
+  });
+});

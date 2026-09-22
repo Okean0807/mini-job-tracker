@@ -55,6 +55,15 @@ export function primaryDayKind(dayShifts: Shift[]): ShiftKind | null {
   return null;
 }
 
+/**
+ * Eintragsarten eines Tages in Legenden-Reihenfolge, ohne Duplikate.
+ * Basis für die kleinen Punkte in der Zelle (max. 3) — Details stehen
+ * in der Tagesliste unter dem Kalender, nicht in der Zelle.
+ */
+export function dayKinds(dayShifts: Shift[]): ShiftKind[] {
+  return KIND_ORDER.filter((kind) => dayShifts.some((s) => s.kind === kind));
+}
+
 /** Dual status: public holiday + recorded work on the same day. */
 export function isHolidayWorkDay(dayShifts: Shift[], holiday: string | undefined): boolean {
   return Boolean(holiday) && dayShifts.some((s) => s.kind === "arbeit");
@@ -171,7 +180,8 @@ export function MonthCalendar({
   }
 
   return (
-    <div className="rounded-2xl border bg-card p-4 shadow-card">
+    // p-3 lässt die Tageszellen bei 390px auf 44px Touch-Target wachsen.
+    <div className="rounded-2xl border bg-card p-3 shadow-card">
       <div className="mb-3 flex items-center justify-between">
         <Button variant="ghost" size="icon" aria-label={t("cal.prevMonth")} onClick={() => move(-1)}>
           <ChevronLeft className="size-5" />
@@ -202,7 +212,7 @@ export function MonthCalendar({
           const feiertag = holidayName(iso, bundesland);
           const kind = primaryDayKind(dayShifts);
           const kindMeta = kind ? KIND_STYLE[kind] : null;
-          const KindIcon = kind ? KIND_ICON[kind] : undefined;
+          const kinds = dayKinds(dayShifts);
           const holidayAndWork = isHolidayWorkDay(dayShifts, feiertag);
           const colors = dayShifts
             .map((s) => jobs.find((j) => j.id === s.jobId)?.color)
@@ -254,55 +264,35 @@ export function MonthCalendar({
                 iso === selectedDate && "ring-2 ring-primary ring-offset-1 ring-offset-background",
               )}
             >
-              <span className="flex items-center gap-0.5">
-                {feiertag ? (
-                  <PartyPopper
-                    className="size-2.5 text-violet-600 opacity-90 dark:text-violet-300"
-                    aria-hidden
-                  />
-                ) : null}
-                {KindIcon && kind === "arbeit" ? (
-                  <KindIcon className="size-2.5 opacity-90" aria-hidden />
-                ) : KindIcon && !feiertag ? (
-                  <KindIcon className="size-2.5 opacity-90" aria-hidden />
-                ) : null}
-                <span>{day}</span>
-              </span>
-              {hours > 0 ? (
-                <span className="text-[10px] opacity-90 tabular-nums">
-                  {hours.toFixed(1).replace(".", ",")} h
-                </span>
-              ) : plannedDates.has(iso) ? (
+              {/* Zelle = Navigation: Tageszahl + Indikatoren. Stunden, Verdienst,
+                  Objekt, Leistungsart und Tätigkeit stehen in der Tagesliste. */}
+              <span className="text-[15px] leading-none">{day}</span>
+              {kinds.length > 0 ? (
                 <span
-                  className="text-[9px] font-medium text-muted-foreground"
-                  title={t("cal.plannedHint")}
-                >
-                  {t("cal.planned")}
-                </span>
-              ) : feiertag && !dayShifts.length ? (
-                <span className="max-w-full truncate px-0.5 text-[8px] font-medium text-violet-700 dark:text-violet-300">
-                  {feiertag}
-                </span>
-              ) : null}
-              {earnings > 0 && hours > 0 ? (
-                <span className="text-[8px] tabular-nums opacity-80">{formatEuro(earnings)}</span>
-              ) : null}
-              {jobAccent ? (
-                <span
-                  className="absolute bottom-1 size-1.5 rounded-full ring-1 ring-background"
+                  className="absolute bottom-1 flex items-center gap-0.5"
+                  data-testid="day-kind-dots"
                   aria-hidden
-                />
-              ) : colors.length > 1 && kind === "arbeit" ? (
-                <span className="absolute bottom-1 flex gap-0.5">
-                  {colors.slice(0, 3).map((c, i) => (
-                    <span
-                      key={`${c}-${i}`}
-                      className="size-1.5 rounded-full"
-                      style={{ backgroundColor: c }}
-                    />
+                >
+                  {kinds.slice(0, 3).map((k) => (
+                    <span key={k} className={cn("size-1.5 rounded-full", KIND_STYLE[k].legend)} />
                   ))}
                 </span>
               ) : null}
+              {feiertag ? (
+                <PartyPopper
+                  className="absolute right-1 top-1 size-2.5 text-violet-600 dark:text-violet-300"
+                  aria-hidden
+                />
+              ) : null}
+              <span className="sr-only">
+                {[
+                  feiertag,
+                  ...kinds.map((k) => t(KIND_STYLE[k].labelKey)),
+                  !dayShifts.length && plannedDates.has(iso) ? t("cal.planned") : "",
+                ]
+                  .filter(Boolean)
+                  .join(", ")}
+              </span>
             </button>
           );
         })}

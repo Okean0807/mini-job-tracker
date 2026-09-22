@@ -4,7 +4,13 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { buildDayTitle, isHolidayWorkDay, KIND_STYLE, primaryDayKind } from "./MonthCalendar";
+import {
+  buildDayTitle,
+  dayKinds,
+  isHolidayWorkDay,
+  KIND_STYLE,
+  primaryDayKind,
+} from "./MonthCalendar";
 import type { Shift } from "@/lib/minijob/types";
 
 const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "MonthCalendar.tsx"), "utf8");
@@ -121,5 +127,42 @@ describe("MonthCalendar KIND_STYLE dark contrast (pre-release)", () => {
     ];
     expect(new Set(cells).size).toBe(6);
     expect(KIND_STYLE.arbeit.cell).not.toEqual(KIND_STYLE.krank.cell);
+  });
+});
+
+describe("MonthCalendar cell is navigation only (Kalender-Entlastung)", () => {
+  it("renders no hours, earnings, address, Leistungsart or Tätigkeit in the cell", () => {
+    const cellMarkup = src.slice(src.indexOf("{cells.map("));
+    expect(cellMarkup).not.toMatch(/toFixed\(1\)/);
+    expect(cellMarkup).not.toMatch(/formatEuro\(earnings\)/);
+    expect(cellMarkup).not.toMatch(/workCode|workplace|tasks|street/);
+    // hours/earnings survive only in the hover/a11y title
+    expect(src).toMatch(/buildDayTitle\(\{/);
+  });
+
+  it("shows the day number plus compact kind dots", () => {
+    expect(src).toMatch(/data-testid="day-kind-dots"/);
+    expect(src).toMatch(/kinds\.slice\(0, 3\)/);
+    expect(src).toMatch(/KIND_STYLE\[k\]\.legend/);
+    expect(src).toMatch(/className="text-\[15px\] leading-none">\{day\}/);
+  });
+
+  it("keeps a screen-reader summary instead of visual clutter", () => {
+    expect(src).toMatch(/className="sr-only"/);
+  });
+
+  it("dayKinds lists distinct kinds in legend order", () => {
+    expect(dayKinds([])).toEqual([]);
+    expect(
+      dayKinds([
+        shift({ kind: "urlaub" }),
+        shift({ kind: "arbeit", id: "s2" }),
+        shift({ kind: "arbeit", id: "s3" }),
+      ]),
+    ).toEqual(["arbeit", "urlaub"]);
+    expect(dayKinds([shift({ kind: "sonstige" }), shift({ kind: "krank", id: "s2" })])).toEqual([
+      "krank",
+      "sonstige",
+    ]);
   });
 });
