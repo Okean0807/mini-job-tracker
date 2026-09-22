@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { Skeleton } from "@/components/ui/skeleton";
 import { signInWithOAuthProvider } from "@/lib/minijob/oauth-sign-in";
+import { oauthRedirectTo } from "@/lib/minijob/auth-session";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDateDE, formatEuro, formatHours, isoDate } from "@/lib/minijob/calc";
 import { monthlyHoursLimit, monthlyLimitOf, yearlyLimitOf } from "@/lib/minijob/limits";
@@ -1058,8 +1059,17 @@ function CloudSync({
       updateSettings({ localDemoMode: false });
     }
     try {
-      const { error } = await signInWithOAuthProvider("google");
-      if (error) toast.error(t("error.signIn"));
+      // Sign-in started here returns here — the user keeps their place.
+      const { error, mode } = await signInWithOAuthProvider(
+        "google",
+        oauthRedirectTo("/einstellungen"),
+      );
+      if (error) {
+        toast.error(t("error.signIn"));
+        return;
+      }
+      if (mode === "new_tab") toast.info(t("wiz.cloud.newTab"));
+      if (mode === "blocked") toast.error(t("wiz.cloud.newTabBlocked"), { duration: 10000 });
     } catch {
       toast.error(t("error.signIn"));
     }

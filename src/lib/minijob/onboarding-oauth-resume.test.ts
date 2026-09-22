@@ -23,9 +23,18 @@ describe("OnboardingWizard OAuth resume wiring", () => {
     expect(src).toMatch(/loadOnboardingDraft/);
     expect(src).toMatch(/clearOnboardingDraft/);
     const checkpointAt = src.indexOf("checkpointOnboardingBeforeOAuth");
-    const signInAt = src.indexOf('signInWithOAuthProvider("google")');
+    const signInAt = src.search(/signInWithOAuthProvider\(\s*\n?\s*"google"/);
     expect(checkpointAt).toBeGreaterThan(-1);
     expect(signInAt).toBeGreaterThan(checkpointAt);
+  });
+
+  it("returns to the dashboard after Google and finishes there", () => {
+    const src = readFileSync(join(root, "components/minijob/OnboardingWizard.tsx"), "utf8");
+    // Callback target: Dashboard — the wizard resumes on top of it.
+    expect(src).toMatch(/oauthRedirectTo\("\/"\)/);
+    // finish() must leave the callback route behind.
+    expect(src).toMatch(/onDone\(\);\s*\n\s*goToDashboard\(\);/);
+    expect(src).toMatch(/router\.navigate\(\{ to: "\/" \}\)/);
   });
 });
 

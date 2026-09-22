@@ -40,10 +40,20 @@ export function bindAuthSession(
   return () => data.subscription.unsubscribe();
 }
 
-/** Prefer Account after OAuth so Settings remounts with callback params present. */
-export function oauthRedirectTo(origin: string = typeof window !== "undefined" ? window.location.origin : ""): string {
+/**
+ * Where the browser returns after OAuth.
+ *
+ * Default is the Dashboard: the wizard resumes on top of it (Work Mode) and
+ * `finish()` then ends on the Dashboard as the flow requires. Sign-in started
+ * inside Settings passes "/einstellungen" so the user stays where they were.
+ */
+export function oauthRedirectTo(
+  path: string = "/",
+  origin: string = typeof window !== "undefined" ? window.location.origin : "",
+): string {
   const base = origin.replace(/\/$/, "");
-  return `${base}/einstellungen`;
+  const target = path.startsWith("/") ? path : `/${path}`;
+  return target === "/" ? `${base}/` : `${base}${target}`;
 }
 
 /** UI auth phase: pending until first bindAuthSession callback. */

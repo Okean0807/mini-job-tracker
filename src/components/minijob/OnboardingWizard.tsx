@@ -1,7 +1,9 @@
+import { useRouter } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { useAuthSession } from "@/hooks/use-auth-session";
+import { oauthRedirectTo } from "@/lib/minijob/auth-session";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 
@@ -51,6 +53,7 @@ interface Props {
 
 export function OnboardingWizard({ settings, onDone }: Props) {
   const { t, locale } = useT();
+  const router = useRouter();
   // Step labels depend on workMode (SELF: Tätigkeit instead of Stundenlohn).
   const WORK_MODE_KEY: Record<WorkMode, string> = {
     flex: "mode.flex",
@@ -183,6 +186,16 @@ export function OnboardingWizard({ settings, onDone }: Props) {
     persistProgress(step, m);
   }
 
+  /**
+   * Abschluss gehört auf das Dashboard. Nach Google liegt der Wizard auf der
+   * Route, auf die der OAuth-Callback zurückkam — ohne diesen Sprung endet die
+   * Registrierung auf einer beliebigen Seite statt in der Übersicht.
+   */
+  function goToDashboard() {
+    if (router.state.location.pathname === "/") return;
+    void router.navigate({ to: "/" });
+  }
+
   function finish() {
     const name = jobName.trim();
     if (!name) {
@@ -231,6 +244,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
     }
     toast.success(t("wiz.toast.done"));
     onDone();
+    goToDashboard();
   }
 
   async function oauth() {
@@ -245,8 +259,17 @@ export function OnboardingWizard({ settings, onDone }: Props) {
       persistSettings: flushSettings,
     });
     try {
-      const { error } = await signInWithOAuthProvider("google");
-      if (error) toast.error(t("error.signIn"));
+      const { error, mode: startMode } = await signInWithOAuthProvider(
+        "google",
+        oauthRedirectTo("/"),
+      );
+      if (error) {
+        toast.error(t("error.signIn"));
+        return;
+      }
+      // Eingebettete Vorschau: Google verweigert das iframe, der Flow läuft im Tab.
+      if (startMode === "new_tab") toast.info(t("wiz.cloud.newTab"));
+      if (startMode === "blocked") toast.error(t("wiz.cloud.newTabBlocked"), { duration: 10000 });
     } catch {
       toast.error(t("error.signIn"));
     }

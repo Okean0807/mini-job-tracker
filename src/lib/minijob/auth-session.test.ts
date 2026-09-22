@@ -34,11 +34,20 @@ describe("sessionAfterAuthEvent", () => {
 });
 
 describe("oauthRedirectTo", () => {
-  it("targets /einstellungen on the app origin", () => {
-    expect(oauthRedirectTo("https://mini-job-tracker-blue.vercel.app")).toBe(
-      "https://mini-job-tracker-blue.vercel.app/einstellungen",
+  it("defaults to the dashboard so registration finishes there", () => {
+    expect(oauthRedirectTo("/", "https://mini-job-tracker-blue.vercel.app")).toBe(
+      "https://mini-job-tracker-blue.vercel.app/",
     );
-    expect(oauthRedirectTo("https://example.com/")).toBe("https://example.com/einstellungen");
+    expect(oauthRedirectTo("/", "https://example.com/")).toBe("https://example.com/");
+  });
+
+  it("keeps an explicit target (sign-in started in Settings returns there)", () => {
+    expect(oauthRedirectTo("/einstellungen", "https://example.com")).toBe(
+      "https://example.com/einstellungen",
+    );
+    expect(oauthRedirectTo("einstellungen", "https://example.com/")).toBe(
+      "https://example.com/einstellungen",
+    );
   });
 });
 

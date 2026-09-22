@@ -18,6 +18,18 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { PinLock } from "@/components/minijob/PinLock";
 import { OnboardingWizard } from "@/components/minijob/OnboardingWizard";
 import { shouldShowOnboardingWizard } from "@/lib/minijob/wizard-flow";
+import { useAuthSession } from "@/hooks/use-auth-session";
+import {
+  isFailedOAuthCallback,
+  OAUTH_EXCHANGE_GRACE_MS,
+  readOAuthCallback,
+  stripOAuthParams,
+} from "@/lib/minijob/oauth-callback";
+import {
+  OAUTH_HANDOFF_PARAM,
+  readOAuthHandoff,
+  signInWithOAuthProvider,
+} from "@/lib/minijob/oauth-sign-in";
 import { initCloudSync, useSyncState } from "../lib/minijob/cloud";
 import { initNotifications } from "../lib/minijob/notify";
 import {
@@ -210,6 +222,62 @@ function SyncAlerts() {
 }
 
 /**
+ * OAuth-Rückkehr sichtbar machen und den Embed-Handoff abschließen.
+ *
+ * Ohne das scheitert eine Registrierung still: supabase-js tauscht `?code=`
+ * selbst, meldet aber nichts, wenn der PKCE-Verifier fehlt — der Nutzer bleibt
+ * ohne Session und ohne Hinweis stehen.
+ */
+function AuthCallback() {
+  const { t } = useT();
+  const { status } = useAuthSession();
+  const statusRef = useRef(status);
+  const reported = useRef(false);
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
+  // Tab, den die eingebettete App geöffnet hat: hier läuft OAuth top-level.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (readOAuthHandoff(window.location.search) !== "google") return;
+    if (status === "loading") return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete(OAUTH_HANDOFF_PARAM);
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    if (status === "signed_out") void signInWithOAuthProvider("google");
+  }, [status]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const info = readOAuthCallback(window.location.search);
+    if (reported.current || (!info.hasCode && !info.error)) return;
+
+    const report = () => {
+      reported.current = true;
+      toast.error(t("error.oauthCallback"), { id: "oauth-callback", duration: 8000 });
+      window.history.replaceState(null, "", stripOAuthParams(window.location.href));
+    };
+
+    if (info.error) {
+      report();
+      return;
+    }
+    // Der Code-Tausch läuft asynchron; erst danach ist "keine Session" ein Fehler.
+    const timer = setTimeout(() => {
+      const current = readOAuthCallback(window.location.search);
+      if (isFailedOAuthCallback(current, statusRef.current)) report();
+    }, OAUTH_EXCHANGE_GRACE_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [status, t]);
+
+  return null;
+}
+
+/**
  * Lokales Speichern kann fehlschlagen (voller Speicher, Privatmodus). Ohne
  * Hinweis hielte der Nutzer die Eingabe für gesichert.
  */
@@ -290,6 +358,7 @@ function RootComponent() {
       ) : null}
       <SyncAlerts />
       <StorageAlert />
+      <AuthCallback />
       <Toaster position="top-center" />
     </QueryClientProvider>
   );
