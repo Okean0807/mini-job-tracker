@@ -68,7 +68,23 @@ export function onScopeChange(listener: (scope: StorageScope) => void): () => vo
   };
 }
 
+let scopeGeneration = 0;
+
+/**
+ * Zähler für Namensraum-Wechsel. Async-Schreibpfade (Datei lesen, WebAuthn …)
+ * halten ihn vor dem await fest und schreiben danach nur, wenn
+ * `isScopeCurrent(snapshot)` – sonst landete der Wert im falschen Konto.
+ */
+export function getScopeGeneration(): number {
+  return scopeGeneration;
+}
+
+export function isScopeCurrent(generation: number): boolean {
+  return generation === scopeGeneration;
+}
+
 function setActiveScopeInternal(scope: StorageScope): void {
+  scopeGeneration += 1;
   activeScope = scope;
   persistScopePointer(scope);
   scopeListeners.forEach((l) => l(scope));

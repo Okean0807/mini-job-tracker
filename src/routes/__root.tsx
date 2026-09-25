@@ -8,7 +8,7 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { BarChart3, Bot, Briefcase, CalendarDays, FileText, Settings } from "lucide-react";
-import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { toast } from "sonner";
 
@@ -18,17 +18,15 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { PinLock } from "@/components/minijob/PinLock";
 import { OnboardingWizard } from "@/components/minijob/OnboardingWizard";
 import { LocalDataImportPrompt } from "@/components/minijob/LocalDataImport";
-import { scopeSuffix } from "@/lib/minijob/storage-scope";
+import { ScopeBoundary, useActiveScopeKey } from "@/components/minijob/ScopeBoundary";
 import { shouldShowOnboardingWizard } from "@/lib/minijob/wizard-flow";
 import { initCloudSync, useSyncState } from "../lib/minijob/cloud";
 import { initNotifications } from "../lib/minijob/notify";
 import {
-  getActiveScope,
   getData,
   isPersistFailed,
   loadFromStorage,
   onPersistError,
-  onScopeChange,
   useAppData,
 } from "../lib/minijob/store";
 import { useT } from "@/lib/i18n";
@@ -263,11 +261,7 @@ function RootComponent() {
   const [ready, setReady] = useState(false);
   // PIN unlock gilt nur für den Namensraum, in dem entsperrt wurde: nach
   // Konto-/Scope-Wechsel greift die PIN des neuen Bestands sofort.
-  const scope = useSyncExternalStore(
-    (l) => onScopeChange(() => l()),
-    () => scopeSuffix(getActiveScope()),
-    () => "guest",
-  );
+  const scope = useActiveScopeKey();
   const [unlockedScope, setUnlockedScope] = useState<string | null>(null);
   useEffect(() => {
     if (!ready) return;
@@ -323,9 +317,9 @@ function RootComponent() {
         {ready ? (
           // key: Seiten samt offener Dialoge (Schicht, Job, Auftrag …) bei
           // Konto-/Scope-Wechsel verwerfen – nie in den neuen Namensraum speichern.
-          <Fragment key={scope}>
+          <ScopeBoundary>
             <Outlet />
-          </Fragment>
+          </ScopeBoundary>
         ) : null}
       </div>
 

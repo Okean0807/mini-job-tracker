@@ -664,7 +664,8 @@ export async function backupNow(): Promise<void> {
     if (!stillOwner(snap)) throw new StaleSyncError();
     setState({ status: "synced", pending: false, message: null, lastSyncedAt: meta.lastSyncedAt });
   } catch (error) {
-    abandonSyncEpoch(epoch, error);
+    if (error instanceof StaleSyncError) abandonStaleEpoch(epoch);
+    else abandonSyncEpoch(epoch, error);
     throw error;
   } finally {
     if (epoch === syncEpoch) {
@@ -696,7 +697,8 @@ export async function restoreNow(): Promise<boolean> {
     setState({ status: "synced", pending: false, message: null, lastSyncedAt: meta.lastSyncedAt });
     return true;
   } catch (error) {
-    abandonSyncEpoch(epoch, error);
+    if (error instanceof StaleSyncError) abandonStaleEpoch(epoch);
+    else abandonSyncEpoch(epoch, error);
     throw error;
   } finally {
     if (epoch === syncEpoch) {
@@ -750,6 +752,18 @@ function abandonSyncEpoch(epoch: number, error: unknown): void {
   syncing = false;
   syncEpoch += 1;
   failed(error);
+}
+
+/**
+ * Konto/Scope hat während eines manuellen Abgleichs gewechselt: Lauf still
+ * beenden – kein Fehlerstatus (der neue Namensraum hat seinen eigenen Stand).
+ */
+function abandonStaleEpoch(epoch: number): void {
+  if (epoch !== syncEpoch) return;
+  clearSyncWatchdog();
+  syncing = false;
+  syncEpoch += 1;
+  setState({ status: "idle", message: null });
 }
 
 /**
@@ -1003,6 +1017,25 @@ function switchLocalScope(scope: StorageScope): void {
   setState({ status: "idle", pending: false, message: null, lastSyncedAt: meta.lastSyncedAt });
 }
 
+/**
+ * Auth-Event ohne Session (nicht nur SIGNED_OUT): Konto-Bindung konsistent
+ * lösen – wie beim Logout per switchLocalScope (Epoch-Bump, Timer/laufende
+ * Abgleiche abbrechen). Ausnahme INITIAL_SESSION: auth-js meldet dort auch bei
+ * Netzfehlern (offline, Refresh nicht möglich) null – dann bleibt der
+ * Namensraum wie beim getSession-Fehlerpfad erhalten, laufende Abgleiche des
+ * bisherigen Kontos werden aber ebenfalls ungültig.
+ */
+function releaseSession(event: string): void {
+  const hadUser = userId !== null;
+  userId = null;
+  if (event !== "INITIAL_SESSION" && getActiveScope().kind === "user") {
+    leaveAccountScope();
+  } else if (hadUser) {
+    scopeEpoch += 1;
+    cancelPendingSync();
+  }
+}
+
 /** Nach Logout: Kontodaten aus dem Speicher nehmen, Gast-Namensraum laden. */
 export function leaveAccountScope(): void {
   if (getActiveScope().kind !== "user") return;
@@ -1186,7 +1219,11 @@ export function initCloudSync() {
     supabase.auth.onAuthStateChange((event, session) => {
       const nextId = session?.user.id ?? null;
       if (nextId) bindSession(nextId);
-      else userId = null;
+      else {
+        // Wie SIGNED_OUT: keinen Init-Abgleich des alten Kontos mehr koaleszieren.
+        initSyncQueued = false;
+        releaseSession(event);
+      }
       setState({ signedIn: userId !== null });
       if (event === "SIGNED_IN" && userId) {
         exitLocalDemoMode();

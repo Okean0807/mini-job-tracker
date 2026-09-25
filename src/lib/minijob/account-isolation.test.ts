@@ -27,12 +27,16 @@ let authCallback: ((event: string, s: unknown) => void) | null = null;
 let signOutMode: "ok" | "network" | "sessionError" = "ok";
 let selectGate: Promise<void> | null = null;
 let upsertGate: Promise<void> | null = null;
+let upsertError: { message: string } | null = null;
+let upsertAttempts = 0;
 
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     from: () => ({
       upsert: async (row: { user_id: string; payload: AppData; updated_at: string }) => {
+        upsertAttempts += 1;
         if (upsertGate) await upsertGate;
+        if (upsertError) return { error: upsertError };
         upserts.push({ user_id: row.user_id, payload: row.payload });
         backups.set(row.user_id, { payload: row.payload, updated_at: row.updated_at });
         return { error: null };
@@ -143,6 +147,8 @@ beforeEach(() => {
   signOutMode = "ok";
   selectGate = null;
   upsertGate = null;
+  upsertError = null;
+  upsertAttempts = 0;
   Object.defineProperty(window.navigator, "onLine", { value: true, configurable: true });
   vi.useFakeTimers();
 });
@@ -837,11 +843,280 @@ describe("Legacy: Übernahme verbraucht den Bestand global", () => {
   });
 });
 
+/* ---------- QA-Reste: manuelle Aktionen, Auth-Events, async-Schreibpfade ---------- */
+
+describe("Manuelles Sichern/Wiederherstellen bei Kontowechsel (StaleSyncError still)", () => {
+  it("backupNow: Namensraum wechselt während des Upserts → StaleSyncError, kein Fehlerstatus, kein Toast-Text", async () => {
+    window.localStorage.setItem(`minijob-tracker-v1:u:${A}`, JSON.stringify(payloadWith(["a-1"])));
+    session = { user: { id: A } };
+    const { store, cloud, scope } = await boot();
+    const { syncActionErrorMessage } = await import("./sync-action-error");
+    const gate = deferred();
+    upsertGate = gate.promise;
+    const run = cloud.backupNow().then(
+      () => null,
+      (e: unknown) => e,
+    );
+    store.activateScope(scope.GUEST_SCOPE); // Scope-Wechsel ohne Auth-Event (z. B. anderer Tab)
+    gate.release();
+    upsertGate = null;
+    const error = await run;
+    await settle();
+
+    expect(error).toBeInstanceOf(cloud.StaleSyncError);
+    expect(syncActionErrorMessage(error, "fallback")).toBeNull();
+    expect(cloud.getSyncState().status).toBe("idle");
+    expect(cloud.getSyncState().message).toBeNull();
+    const guestMeta = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1:guest") ?? "{}");
+    expect(guestMeta.lastSyncedAt ?? null).toBeNull();
+  });
+
+  it("restoreNow: Namensraum wechselt während des Fetch → StaleSyncError, kein Fehlerstatus", async () => {
+    session = { user: { id: A } };
+    const { store, cloud, scope } = await boot();
+    const { syncActionErrorMessage } = await import("./sync-action-error");
+    backups.set(A, { payload: payloadWith(["a-cloud"]), updated_at: new Date().toISOString() });
+    const gate = deferred();
+    selectGate = gate.promise;
+    const run = cloud.restoreNow().then(
+      () => null,
+      (e: unknown) => e,
+    );
+    store.activateScope(scope.GUEST_SCOPE);
+    gate.release();
+    selectGate = null;
+    const error = await run;
+    await settle();
+
+    expect(error).toBeInstanceOf(cloud.StaleSyncError);
+    expect(syncActionErrorMessage(error, "fallback")).toBeNull();
+    expect(cloud.getSyncState().status).toBe("idle");
+    expect(cloud.getSyncState().message).toBeNull();
+    expect(store.getData().shifts.some((s) => s.id === "a-cloud")).toBe(false);
+  });
+
+  it("andere Fehler unverändert: Upsert-Fehler → error-Status + Fehlertext", async () => {
+    window.localStorage.setItem(`minijob-tracker-v1:u:${A}`, JSON.stringify(payloadWith(["a-1"])));
+    session = { user: { id: A } };
+    const { cloud } = await boot();
+    const { syncActionErrorMessage } = await import("./sync-action-error");
+    upsertError = { message: "db down" };
+    const error = await cloud.backupNow().then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(error).not.toBeInstanceOf(cloud.StaleSyncError);
+    expect(cloud.getSyncState().status).toBe("error");
+    expect(syncActionErrorMessage(new Error("db down"), "fallback")).toBe("db down");
+    expect(syncActionErrorMessage("??", "fallback")).toBe("fallback");
+  });
+});
+
+describe("Race: backupNow A→B (Upsert erst nach Kontowechsel freigegeben)", () => {
+  it("(d) B's Meta und Backup bleiben unberührt, kein Schreiben in B, still beendet", async () => {
+    const T0 = Date.now() - 100_000;
+    const T1 = Date.now() - 50_000;
+    window.localStorage.setItem(
+      `minijob-tracker-v1:u:${B}`,
+      JSON.stringify(payloadWith(["b-unsynced"])),
+    );
+    window.localStorage.setItem(
+      metaKeyOf(B),
+      JSON.stringify({
+        userId: B,
+        lastSyncedAt: T0,
+        remoteSeenAt: T0,
+        localChangedAt: T1,
+        localWorkChangedAt: T1,
+        localWorkFingerprint: "fp-b",
+        wizardPendingFirstSync: false,
+      }),
+    );
+    const bBackup = { payload: payloadWith(["b-cloud"]), updated_at: new Date(T0).toISOString() };
+    backups.set(B, bBackup);
+    window.localStorage.setItem(`minijob-tracker-v1:u:${A}`, JSON.stringify(payloadWith(["a-1"])));
+
+    session = { user: { id: A } };
+    const { cloud, store } = await boot(); // Init-Sync von A läuft ungebremst durch
+    await vi.advanceTimersByTimeAsync(100);
+    await settle();
+    upserts.length = 0;
+
+    const gate = deferred();
+    upsertGate = gate.promise;
+    const run = cloud.backupNow().then(
+      () => null,
+      (e: unknown) => e,
+    );
+    await settle();
+
+    // Während des Upserts: Kontowechsel A → B (B offline, damit B selbst nicht synct).
+    setOnline(false);
+    authCallback?.("SIGNED_OUT", null);
+    session = { user: { id: B } };
+    authCallback?.("SIGNED_IN", session);
+    await settle();
+    const bMetaBefore = window.localStorage.getItem(metaKeyOf(B));
+    const bDataBefore = window.localStorage.getItem(`minijob-tracker-v1:u:${B}`);
+
+    gate.release();
+    upsertGate = null;
+    const error = await run;
+    await settle();
+    await vi.advanceTimersByTimeAsync(100);
+    await settle();
+
+    expect(error).toBeInstanceOf(cloud.StaleSyncError);
+    expect(upserts.map((u) => u.user_id)).toEqual([A]); // A's Upload ging an A
+    expect(backups.get(B)).toBe(bBackup); // B's Cloud-Backup unberührt
+    expect(window.localStorage.getItem(metaKeyOf(B))).toBe(bMetaBefore);
+    expect(window.localStorage.getItem(`minijob-tracker-v1:u:${B}`)).toBe(bDataBefore);
+    const bMeta = JSON.parse(bMetaBefore!);
+    expect(bMeta.lastSyncedAt).toBe(T0);
+    expect(bMeta.localWorkFingerprint).toBe("fp-b");
+    expect(store.getActiveScopeOwner()).toBe(B);
+    expect(cloud.getSyncState().status).not.toBe("error");
+    expect(cloud.getSyncState().status).not.toBe("synced");
+    expect(cloud.getSyncState().message).toBeNull();
+  });
+});
+
+describe("Auth-Event ohne Session (nicht SIGNED_OUT)", () => {
+  it("null-Session (z. B. TOKEN_REFRESHED/USER_UPDATED ohne Session) → Konto-Namensraum verlassen wie Logout, geplanter Push verworfen", async () => {
+    session = { user: { id: A } };
+    const { store, cloud } = await boot();
+    const scopeChanges: string[] = [];
+    store.onScopeChange((s) => scopeChanges.push(s.kind));
+    store.saveShift(shift("a-secret")); // plant debounceten Push
+    session = null;
+    authCallback?.("TOKEN_REFRESHED", null);
+    await settle();
+
+    expect(scopeChanges).toEqual(["guest"]);
+    expect(store.getActiveScope().kind).toBe("guest");
+    expect(store.getData().shifts.some((s) => s.id === "a-secret")).toBe(false);
+    expect(cloud.getSyncState().signedIn).toBe(false);
+    expect(cloud.getCloudUserId()).toBeNull();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await settle();
+    expect(upserts).toHaveLength(0);
+    // A behält seine Daten auf dem Gerät.
+    expect(window.localStorage.getItem(`minijob-tracker-v1:u:${A}`) ?? "").toContain("a-secret");
+  });
+
+  it("null-Session während laufendem Push → keine Meta in A, kein synced/error", async () => {
+    window.localStorage.setItem(`minijob-tracker-v1:u:${A}`, JSON.stringify(payloadWith(["a-1"])));
+    const gate = deferred();
+    upsertGate = gate.promise;
+    session = { user: { id: A } };
+    const { cloud, store } = await boot(); // Init-Push hängt
+
+    session = null;
+    authCallback?.("USER_UPDATED", null);
+    await settle();
+    gate.release();
+    upsertGate = null;
+    await settle();
+    await vi.advanceTimersByTimeAsync(100);
+    await settle();
+
+    expect(store.getActiveScope().kind).toBe("guest");
+    expect(cloud.getSyncState().status).toBe("idle");
+    const aMeta = JSON.parse(window.localStorage.getItem(metaKeyOf(A)) ?? "{}");
+    expect(aMeta.lastSyncedAt ?? null).toBeNull();
+  });
+
+  it("INITIAL_SESSION null (auth-js meldet so auch Netzfehler) → Namensraum bleibt (offline-fähig), laufender Abgleich wird ungültig", async () => {
+    window.localStorage.setItem(`minijob-tracker-v1:u:${A}`, JSON.stringify(payloadWith(["a-1"])));
+    const gate = deferred();
+    upsertGate = gate.promise;
+    session = { user: { id: A } };
+    const { cloud, store } = await boot();
+
+    expect(upsertAttempts).toBe(1);
+    authCallback?.("INITIAL_SESSION", null);
+    await settle();
+    expect(store.getActiveScopeOwner()).toBe(A);
+    expect(store.getData().shifts.map((s) => s.id)).toContain("a-1");
+    expect(cloud.getSyncState().signedIn).toBe(false);
+    // Session wieder da (online): neuer Abgleich startet sofort – der hängende
+    // Lauf des alten Bindings blockiert nicht mehr (Epoch-Bump/cancelPendingSync).
+    authCallback?.("SIGNED_IN", { user: { id: A } });
+    await settle();
+    expect(upsertAttempts).toBe(2);
+    authCallback?.("INITIAL_SESSION", null);
+    await settle();
+
+    gate.release();
+    upsertGate = null;
+    await settle();
+    await vi.advanceTimersByTimeAsync(100);
+    await settle();
+    const aMeta = JSON.parse(window.localStorage.getItem(metaKeyOf(A)) ?? "{}");
+    expect(aMeta.lastSyncedAt ?? null).toBeNull();
+    expect(cloud.getSyncState().status).not.toBe("synced");
+  });
+});
+
+describe("Async-Schreibpfade außerhalb des Sync (Epoch-Snapshot)", () => {
+  it("JSON-Sicherung: Konto wechselt während des Datei-Lesens → nichts in B geschrieben", async () => {
+    session = { user: { id: A } };
+    const { store } = await boot();
+    const { importJsonBackupFile } = await import("./json-backup-import");
+    const gate = deferred();
+    const file = {
+      text: async () => {
+        await gate.promise;
+        return JSON.stringify(payloadWith(["from-file"]));
+      },
+    };
+    const run = importJsonBackupFile(file);
+    authCallback?.("SIGNED_OUT", null);
+    await signIn(B);
+    const bBefore = window.localStorage.getItem(`minijob-tracker-v1:u:${B}`);
+    gate.release();
+
+    expect(await run).toBe("stale");
+    expect(store.getActiveScopeOwner()).toBe(B);
+    expect(store.getData().shifts.some((s) => s.id === "from-file")).toBe(false);
+    expect(window.localStorage.getItem(`minijob-tracker-v1:u:${B}`)).toBe(bBefore);
+    expect(window.localStorage.getItem(`minijob-tracker-v1:u:${A}`) ?? "").not.toContain(
+      "from-file",
+    );
+
+    // Ohne Wechsel: wie bisher importiert.
+    const ok = await importJsonBackupFile({
+      text: async () => JSON.stringify(payloadWith(["from-file"])),
+    });
+    expect(ok).toBe("imported");
+    expect(store.getData().shifts.map((s) => s.id)).toContain("from-file");
+  });
+
+  it("Export-Registrierung: Konto wechselt während blobToDataUrl → Dokument bleibt bei A, nie in B's Liste", async () => {
+    session = { user: { id: A } };
+    const { docs } = await boot();
+    const run = docs.saveAndRegisterExport({
+      blob: new Blob(["a-private"], { type: "application/pdf" }),
+      filename: "a-report.pdf",
+      category: "report_pdf",
+    });
+    authCallback?.("SIGNED_OUT", null);
+    await signIn(B);
+    vi.useRealTimers();
+    await run;
+
+    expect(docs.listGeneratedDocuments().some((d) => d.name === "a-report.pdf")).toBe(false);
+    const aDocs = window.localStorage.getItem(`minijob-generated-docs-v1:u:${A}`) ?? "";
+    expect(aDocs).toContain("a-report.pdf");
+  });
+});
+
 describe("Offene Dialoge bei Scope-Wechsel", () => {
-  it("Root mountet Seiten (inkl. offener Dialoge) pro Namensraum neu", async () => {
+  it("Root nutzt ScopeBoundary um die Seiten und key={scope} am Wizard (Render-Test: ScopeBoundary.test.ts)", async () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
     const src = readFileSync(join(process.cwd(), "src/routes/__root.tsx"), "utf8");
-    expect(src).toMatch(/<Fragment key=\{scope\}>\s*<Outlet \/>\s*<\/Fragment>/);
+    expect(src).toMatch(/<ScopeBoundary>\s*<Outlet \/>\s*<\/ScopeBoundary>/);
+    expect(src).toMatch(/<OnboardingWizard key=\{scope\}/);
   });
 });

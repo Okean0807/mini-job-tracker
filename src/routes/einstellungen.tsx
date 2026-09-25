@@ -42,11 +42,14 @@ import {
   type BiometricCapability,
 } from "@/lib/minijob/biometric";
 import { isValidPayload } from "@/lib/minijob/payload";
+import { syncActionErrorMessage } from "@/lib/minijob/sync-action-error";
 import { isValidPin, validatePinConfirm } from "@/lib/minijob/pin";
 import {
   disableBiometric,
   getActiveScope,
   getData,
+  getScopeGeneration,
+  isScopeCurrent,
   replaceAll,
   updateSettings,
   updateSupplements,
@@ -458,9 +461,13 @@ function SettingsPage() {
                   setPinSetupOpen(true);
                   return;
                 }
+                // WebAuthn-Dialog kann dauern: Namensraum-Snapshot, damit das
+                // Ergebnis nie in ein inzwischen aktives anderes Konto geschrieben wird.
+                const generation = getScopeGeneration();
                 const outcome = await registerBiometricCredentialId(
                   settings.pin ?? "minijob-local",
                 );
+                if (!isScopeCurrent(generation)) return;
                 if (!outcome.ok) {
                   toast.error(
                     outcome.result === "unavailable"
@@ -934,8 +941,11 @@ function LocalBackup({ shiftCount }: { shiftCount: number }) {
   }
 
   function upload(file: File) {
+    // Datei wird async gelesen: nur in den Namensraum schreiben, der beim Start aktiv war.
+    const generation = getScopeGeneration();
     const reader = new FileReader();
     reader.onload = () => {
+      if (!isScopeCurrent(generation)) return;
       try {
         const data: unknown = JSON.parse(String(reader.result));
         if (!isValidPayload(data)) {
@@ -1023,7 +1033,9 @@ function SyncStatusRow({ busy, setBusy }: { busy: boolean; setBusy: (value: bool
       await resolveConflict(keep);
       toast.success(t("set.account.cloud.sync.synced"));
     } catch (error) {
-      toast.error(error instanceof Error && error.message ? error.message : t("error.sync"));
+      // Kontowechsel während des Abgleichs (StaleSyncError): still, kein Fehler-Toast.
+      const message = syncActionErrorMessage(error, t("error.sync"));
+      if (message) toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -1088,7 +1100,9 @@ function CloudSync({
         );
       }
     } catch (error) {
-      toast.error(error instanceof Error && error.message ? error.message : t("error.sync"));
+      // Kontowechsel während des Abgleichs (StaleSyncError): still, kein Fehler-Toast.
+      const message = syncActionErrorMessage(error, t("error.sync"));
+      if (message) toast.error(message);
     } finally {
       setBusy(false);
     }

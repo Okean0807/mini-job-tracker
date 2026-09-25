@@ -101,14 +101,18 @@ export function isGeneratedDocCategory(value: string): value is GeneratedDocCate
   return (GENERATED_DOC_CATEGORIES as readonly string[]).includes(value);
 }
 
-export function registerGeneratedDocument(input: {
-  name: string;
-  category: GeneratedDocCategory;
-  mimeType: string;
-  size: number;
-  dataUrl?: string;
-  createdAt?: string;
-}): GeneratedDocument {
+export function registerGeneratedDocument(
+  input: {
+    name: string;
+    category: GeneratedDocCategory;
+    mimeType: string;
+    size: number;
+    dataUrl?: string;
+    createdAt?: string;
+  },
+  /** Ziel-Namensraum; Standard: aktiver Scope. */
+  key: string = generatedDocsStorageKey(),
+): GeneratedDocument {
   const dataUrl =
     typeof input.dataUrl === "string" && input.dataUrl.length <= MAX_DATA_URL_CHARS
       ? input.dataUrl
@@ -123,8 +127,8 @@ export function registerGeneratedDocument(input: {
     dataUrl,
     source: "generated",
   };
-  const next = [doc, ...readAll().filter((d) => d.id !== doc.id)].slice(0, MAX_ENTRIES);
-  writeAll(next);
+  const next = [doc, ...readAll(key).filter((d) => d.id !== doc.id)].slice(0, MAX_ENTRIES);
+  writeAll(next, key);
   return doc;
 }
 
@@ -227,6 +231,9 @@ export async function saveAndRegisterExport(opts: {
   mimeType?: string;
 }): Promise<GeneratedDocument> {
   const mimeType = opts.mimeType ?? (opts.blob.type || "application/octet-stream");
+  // Vor dem await festhalten: das Dokument gehört dem Namensraum, in dem es
+  // erzeugt wurde – auch wenn während des Lesens das Konto wechselt.
+  const key = generatedDocsStorageKey();
   triggerBlobDownload(opts.blob, opts.filename);
   let dataUrl = "";
   try {
@@ -234,13 +241,16 @@ export async function saveAndRegisterExport(opts: {
   } catch {
     dataUrl = "";
   }
-  return registerGeneratedDocument({
-    name: opts.filename,
-    category: opts.category,
-    mimeType,
-    size: opts.blob.size,
-    dataUrl,
-  });
+  return registerGeneratedDocument(
+    {
+      name: opts.filename,
+      category: opts.category,
+      mimeType,
+      size: opts.blob.size,
+      dataUrl,
+    },
+    key,
+  );
 }
 
 /** Sync base64 data URL from bytes (for PDF/XLSX exporters). */
