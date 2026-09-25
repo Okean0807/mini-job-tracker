@@ -149,6 +149,7 @@ export function ShiftDialog({
   const [workCode, setWorkCode] = useState("");
   const [newCode, setNewCode] = useState("");
   const [newCodeLabel, setNewCodeLabel] = useState("");
+  const [workCodeNote, setWorkCodeNote] = useState("");
   const [advanced, setAdvanced] = useState(false);
   const [objectDetailsOpen, setObjectDetailsOpen] = useState(false);
   const [newCodeOpen, setNewCodeOpen] = useState(false);
@@ -178,6 +179,7 @@ export function ShiftDialog({
       setWorkCode("");
       setNewCode("");
       setNewCodeLabel("");
+      setWorkCodeNote("");
       return;
     }
     const item = findWorkCodeDef(customCodes, code);
@@ -254,6 +256,7 @@ export function ShiftDialog({
     setWorkCode(source?.workCode ?? "");
     setNewCode(source?.workCode ?? "");
     setNewCodeLabel(source?.workCodeLabel ?? "");
+    setWorkCodeNote(source?.workCodeNote ?? "");
     setAdvanced(
       Boolean(
         source &&
@@ -482,8 +485,10 @@ export function ShiftDialog({
         if (snapshot) next.workCodeLabel = snapshot;
       }
     }
+    // Ohne Leistungsart keine Leistungsart-Notiz: der sichtbare Feldwert ist
+    // maßgeblich, ein alter (unsichtbarer) Wert wird nie übernommen.
+    if (code && workCodeNote.trim()) next.workCodeNote = workCodeNote.trim();
     const noteSource = existing ?? shift;
-    if (noteSource?.workCodeNote?.trim()) next.workCodeNote = noteSource.workCodeNote.trim();
     next.createdAt = noteSource?.createdAt ?? isoDate(new Date());
     persistDialogShift(next, editingId);
     toast.success(editingId ? t("shift.updated") : t("shift.saved"));
@@ -1093,6 +1098,22 @@ export function ShiftDialog({
                       ) : null}
                     </select>
                   </div>
+                  {activeWorkCode ? (
+                    <div className="mt-2 grid gap-1">
+                      <Label htmlFor="leistungsart-notiz" className="text-xs">
+                        {t("entry.workCodeNote")}
+                      </Label>
+                      <Input
+                        id="leistungsart-notiz"
+                        data-testid="work-code-note-input"
+                        value={workCodeNote}
+                        placeholder={t("worklog.workCodeNotePlaceholder")}
+                        onChange={(e) => setWorkCodeNote(e.target.value)}
+                        onFocus={keepFieldVisible}
+                        className="h-11"
+                      />
+                    </div>
+                  ) : null}
                   {customCodes.length > 0 ? (
                     <div className="mt-2 flex flex-wrap gap-2">
                       {customCodes.map((item) => (

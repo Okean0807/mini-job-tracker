@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ShiftDialog } from "./ShiftDialog";
 import { DEMO_SCOPE } from "@/lib/minijob/storage-scope";
+import { buildProofTableRows, codeLine } from "@/lib/minijob/arbeitsnachweis";
 import {
   activateScope,
   EMPTY_DATA,
@@ -243,5 +244,95 @@ describe("Eintrags-Editor (Render)", () => {
     expect(window.localStorage.getItem("minijob-tracker-v1:guest") ?? "").not.toContain(
       "Fassadenschutz",
     );
+  });
+});
+
+describe("Eintrags-Editor – Notiz zur Leistungsart (workCodeNote)", () => {
+  const withNote: Shift = {
+    id: "shift-n",
+    kind: "arbeit",
+    date: DAY,
+    start: "13:00",
+    end: "15:00",
+    breakMinutes: 0,
+    jobId: "j1",
+    workCode: "SR",
+    workCodeNote: "Wasserschaden",
+    note: "Schlüssel beim Hausmeister",
+    createdAt: "2026-09-21",
+  };
+
+  beforeEach(() => {
+    act(() => {
+      replaceAll({ ...getData(), shifts: [existing, withNote] });
+    });
+  });
+
+  const noteInput = () =>
+    document.querySelector<HTMLInputElement>('[data-testid="work-code-note-input"]');
+  const saved = () => getData().shifts.find((s) => s.id === "shift-n")!;
+
+  it("wird beim Öffnen angezeigt und bleibt beim unveränderten Speichern erhalten", () => {
+    open("shift-n");
+    expect(noteInput()?.value).toBe("Wasserschaden");
+    save();
+    expect(saved().workCodeNote).toBe("Wasserschaden");
+    expect(saved().workCode).toBe("SR");
+    expect(getData().shifts).toHaveLength(2);
+  });
+
+  it("ist editierbar: der Arbeitsnachweis zeigt danach den neuen, nicht den alten Text", () => {
+    open("shift-n");
+    setValue(noteInput()!, "Grundreinigung Keller");
+    save();
+    expect(saved().workCodeNote).toBe("Grundreinigung Keller");
+    expect(codeLine(saved())).toBe("SR: Grundreinigung Keller");
+    const pdfCells = buildProofTableRows(getData().shifts).flat().join("\n");
+    expect(pdfCells).not.toContain("Wasserschaden");
+  });
+
+  it("ist löschbar: leeres Feld speichert keine workCodeNote, alter Text taucht nicht mehr auf", () => {
+    open("shift-n");
+    setValue(noteInput()!, "");
+    save();
+    expect(saved().workCodeNote).toBeUndefined();
+    expect(saved().workCode).toBe("SR");
+    expect(codeLine(saved())).toBe("SR: Schlüssel beim Hausmeister");
+    expect(codeLine(saved())).not.toContain("Wasserschaden");
+  });
+
+  it("Leistungsart entfernen → Feld verschwindet, keine workCodeNote gespeichert", () => {
+    open("shift-n");
+    setValue(q<HTMLSelectElement>('[data-testid="work-code-select"]'), "");
+    expect(noteInput()).toBeNull();
+    save();
+    expect(saved().workCode).toBeUndefined();
+    expect(saved().workCodeNote).toBeUndefined();
+    expect(codeLine(saved())).not.toContain("Wasserschaden");
+  });
+
+  it("Altdaten mit workCodeNote ohne Leistungsart: kein Feld, beim Speichern verworfen", () => {
+    act(() => {
+      replaceAll({
+        ...getData(),
+        shifts: [existing, (({ workCode: _drop, ...rest }) => rest)(withNote)],
+      });
+    });
+    open("shift-n");
+    expect(noteInput()).toBeNull();
+    save();
+    expect(saved().workCodeNote).toBeUndefined();
+  });
+
+  it("Feld nur sichtbar, wenn eine Leistungsart gewählt ist (neuer Eintrag)", () => {
+    open(null);
+    expect(noteInput()).toBeNull();
+    setValue(q<HTMLSelectElement>('[data-testid="work-code-select"]'), "GL");
+    expect(noteInput()).not.toBeNull();
+    setValue(noteInput()!, "Nur Erdgeschoss");
+    save();
+    const added = getData().shifts.find((s) => s.id !== "shift-a" && s.id !== "shift-n")!;
+    expect(added.workCode).toBe("GL");
+    expect(added.workCodeNote).toBe("Nur Erdgeschoss");
   });
 });

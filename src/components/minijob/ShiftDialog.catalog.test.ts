@@ -29,7 +29,6 @@ describe("ShiftDialog follows Objects pattern for Leistungsart/Tätigkeiten", ()
     expect(src).not.toMatch(/SavedCatalogPanel/);
     expect(src).not.toMatch(/worklog\.myWorkCodesEmpty/);
     expect(src).not.toMatch(/worklog\.myTasksEmpty/);
-    expect(src).not.toMatch(/worklog\.workCodeNotePlaceholder/);
     expect(src).not.toMatch(/addWorkCodeToCatalog/);
     expect(src).not.toMatch(/addCustomTaskToCatalog/);
     expect(src).not.toMatch(/updateSettings/);

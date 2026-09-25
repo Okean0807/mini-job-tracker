@@ -424,3 +424,32 @@ describe("PDF export regression (real jspdf, no pdftotext)", () => {
     expect(raw).toContain("Ausgefüllt");
   });
 });
+
+describe("Arbeitsnachweis – Legende der Leistungsarten (Snapshot + Fallback)", () => {
+  const ctxBase = { jobs: [makeJob()], month: 8, year: 2026, employeeName: "Anna" };
+
+  it("bevorzugt die Bezeichnung aus dem Schicht-Snapshot vor dem aktuellen Katalog", () => {
+    exportArbeitsnachweisPdf([makeShift({ workCode: "XY", workCodeLabel: "Snapshotname" })], {
+      ...ctxBase,
+      customCodes: [{ code: "XY", label: "Katalogname" }],
+    });
+    const raw = pdfLatin1FromLastSave();
+    expect(raw).toContain("XY = Snapshotname");
+    expect(raw).not.toContain("XY = Katalogname");
+  });
+
+  it("fällt ohne Snapshot auf Katalog, dann Standard-Bezeichnung, dann Code zurück", () => {
+    exportArbeitsnachweisPdf(
+      [
+        makeShift({ id: "a", workCode: "XY" }),
+        makeShift({ id: "b", workCode: "UR", start: "08:00", end: "09:00" }),
+        makeShift({ id: "c", workCode: "ZQ", workCodeLabel: "  ", start: "10:00", end: "11:00" }),
+      ],
+      { ...ctxBase, customCodes: [{ code: "XY", label: "Katalogname" }] },
+    );
+    const raw = pdfLatin1FromLastSave();
+    expect(raw).toContain("XY = Katalogname");
+    expect(raw).toContain("UR = Unterhaltsreinigung");
+    expect(raw).toContain("ZQ = ZQ");
+  });
+});
