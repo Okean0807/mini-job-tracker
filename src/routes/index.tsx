@@ -69,7 +69,7 @@ function DashboardPage() {
   const [absenceSeed, setAbsenceSeed] = useState<Shift | null>(null);
   const [absenceKind, setAbsenceKind] = useState<AbsenceKind>("urlaub");
   const [selectedDate, setSelectedDate] = useState(isoDate(now));
-  const [editing, setEditing] = useState<Shift | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [customizeOpen, setCustomizeOpen] = useState(false);
 
   const resolve = useMemo(() => makeResolver(jobs, settings), [jobs, settings]);
@@ -126,7 +126,7 @@ function DashboardPage() {
 
   function openNew(date: string) {
     setSelectedDate(date);
-    setEditing(null);
+    setEditingId(null);
     setDialogOpen(true);
   }
 
@@ -139,10 +139,14 @@ function DashboardPage() {
   }
 
   function openEdit(shift: Shift) {
+    if (typeof shift?.id !== "string" || shift.id.length === 0) return;
     setSelectedDate(shift.date);
-    setEditing(shift);
+    setEditingId(shift.id);
     setDialogOpen(true);
   }
+
+  // Bearbeiten über die stabile Shift.id (aktueller Stand aus dem Store).
+  const editing = editingId ? (shifts.find((s) => s.id === editingId) ?? null) : null;
 
   const dash = settings.dashboard;
   const widgets = activeWidgets(dash, ui);
@@ -338,6 +342,7 @@ function DashboardPage() {
         onOpenChange={setDialogOpen}
         date={selectedDate}
         shift={editing}
+        shiftId={editingId}
         jobs={jobs}
         customers={customers}
         projects={projects}

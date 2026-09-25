@@ -163,8 +163,13 @@ export interface Shift {
   floor?: string;
   /** Arbeitsnachweis: Türseite / Eingang (z. B. "linke Tür") */
   doorSide?: string;
-  /** Arbeitsnachweis: Leistungsart (UR, FR, ER, BR, SR) */
+  /** Arbeitsnachweis: Leistungsart (UR, FR, ER, BR, SR oder Custom-Code) */
   workCode?: string;
+  /**
+   * Snapshot der Leistungsart-Bezeichnung zum Zeitpunkt des Speicherns.
+   * Historische Einträge behalten diesen Text, auch wenn der Katalog später ändert.
+   */
+  workCodeLabel?: string;
   /** Arbeitsnachweis: Freitext bei SR */
   workCodeNote?: string;
   /** Erfasst am (ISO date yyyy-MM-dd) */
@@ -353,8 +358,10 @@ export interface Settings {
 
   /** Name für Arbeitsnachweis / Berichte */
   employeeName?: string;
-  /** Eigene Leistungsarten (Code + Bezeichnung) */
+  /** Eigene Leistungsarten (Code + Bezeichnung) — wiederverwendbarer Katalog */
   workCodes?: WorkCodeDef[];
+  /** Eigene Tätigkeiten — wiederverwendbarer Katalog (nicht Eintragsauswahl) */
+  customTasks?: string[];
   notifications: NotificationSettings;
   dashboard: DashboardConfig;
 }

@@ -72,6 +72,22 @@ export function addShift(input: Omit<ShiftInput, "id">): Shift {
   return upsertShift(input);
 }
 
+/**
+ * Entry-dialog save: UPDATE when an editing Shift ID is present, otherwise CREATE.
+ * The ID is the only identity — never infer from date/time/address.
+ */
+export function persistDialogShift(
+  input: ShiftInput,
+  editingId?: string | null,
+): Shift {
+  const id = (editingId ?? "").trim();
+  if (id) {
+    return upsertShift({ ...input, id });
+  }
+  const { id: _ignored, ...rest } = input;
+  return addShift(rest);
+}
+
 /** Teil-Änderung einer vorhandenen Schicht. */
 export function updateShift(id: string, patch: Partial<Shift>): Shift | undefined {
   const current = getShift(id);
