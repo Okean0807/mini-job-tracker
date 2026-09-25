@@ -764,7 +764,10 @@ describe("Race: Kontowechsel während await", () => {
     backups.set(A, { payload: payloadWith(["a-cloud"]), updated_at: new Date().toISOString() });
     const gate = deferred();
     selectGate = gate.promise;
-    const restore = cloud.restoreNow().catch(() => false);
+    const restore = cloud.restoreNow().then(
+      (ok) => ok,
+      (e: unknown) => e,
+    );
 
     authCallback?.("SIGNED_OUT", null);
     session = { user: { id: B } };
@@ -773,7 +776,11 @@ describe("Race: Kontowechsel während await", () => {
     gate.release();
     selectGate = null;
     await settle();
-    expect(await restore).toBe(false);
+    // Stale statt false: UI bleibt still (kein „Keine Cloud-Sicherung gefunden.“).
+    const outcome = await restore;
+    expect(outcome).toBeInstanceOf(cloud.StaleSyncError);
+    const { syncActionErrorMessage } = await import("./sync-action-error");
+    expect(syncActionErrorMessage(outcome, "fallback")).toBeNull();
     await vi.advanceTimersByTimeAsync(100);
     await settle();
 
@@ -909,6 +916,54 @@ describe("Manuelles Sichern/Wiederherstellen bei Kontowechsel (StaleSyncError st
     expect(cloud.getSyncState().status).toBe("error");
     expect(syncActionErrorMessage(new Error("db down"), "fallback")).toBe("db down");
     expect(syncActionErrorMessage("??", "fallback")).toBe("fallback");
+  });
+});
+
+describe("restoreNow: stale vs. echt „nicht gefunden“", () => {
+  it("kein Cloud-Backup (ohne Wechsel) → false (UI zeigt „Keine Cloud-Sicherung gefunden.“), Status idle", async () => {
+    session = { user: { id: A } };
+    const { cloud } = await boot();
+    expect(backups.has(A)).toBe(false);
+    await expect(cloud.restoreNow()).resolves.toBe(false);
+    expect(cloud.getSyncState().status).toBe("idle");
+  });
+
+  it("A→B per Auth-Event während Restore ohne Backup → StaleSyncError statt false (kein „nicht gefunden“-Toast)", async () => {
+    session = { user: { id: A } };
+    const { cloud, store } = await boot();
+    const gate = deferred();
+    selectGate = gate.promise;
+    const restore = cloud.restoreNow().then(
+      (ok) => ok,
+      (e: unknown) => e,
+    );
+    authCallback?.("SIGNED_OUT", null);
+    await signIn(B);
+    gate.release();
+    selectGate = null;
+    const outcome = await restore;
+    expect(outcome).toBeInstanceOf(cloud.StaleSyncError);
+    expect(store.getActiveScopeOwner()).toBe(B);
+    expect(cloud.getSyncState().status).not.toBe("error");
+  });
+
+  it("backupNow abgebrochen (forceFailStuckSync) während Upsert → kein Erfolg (StaleSyncError statt resolve)", async () => {
+    window.localStorage.setItem(`minijob-tracker-v1:u:${A}`, JSON.stringify(payloadWith(["a-1"])));
+    session = { user: { id: A } };
+    const { cloud } = await boot();
+    await vi.advanceTimersByTimeAsync(100);
+    await settle();
+    const gate = deferred();
+    upsertGate = gate.promise;
+    const run = cloud.backupNow().then(
+      () => "resolved",
+      (e: unknown) => e,
+    );
+    await settle();
+    cloud.forceFailStuckSync();
+    gate.release();
+    upsertGate = null;
+    expect(await run).toBeInstanceOf(cloud.StaleSyncError);
   });
 });
 
@@ -1108,6 +1163,128 @@ describe("Async-Schreibpfade außerhalb des Sync (Epoch-Snapshot)", () => {
     expect(docs.listGeneratedDocuments().some((d) => d.name === "a-report.pdf")).toBe(false);
     const aDocs = window.localStorage.getItem(`minijob-generated-docs-v1:u:${A}`) ?? "";
     expect(aDocs).toContain("a-report.pdf");
+  });
+});
+
+describe("Einstellungen: Scope-Generation-Guards (lokale Sicherung, Biometrie)", () => {
+  it("lokale Sicherung: Scope-Wechsel während FileReader → nichts in den neuen Scope geschrieben", async () => {
+    session = { user: { id: A } };
+    const { store } = await boot();
+    const { restoreLocalBackupFile } = await import("./local-backup-restore");
+    const file = new Blob([JSON.stringify(payloadWith(["from-local-backup"]))]);
+    const run = restoreLocalBackupFile(file);
+    authCallback?.("SIGNED_OUT", null); // synchron: Gast-Scope aktiv, bevor onload feuert
+    const guestBefore = window.localStorage.getItem("minijob-tracker-v1:guest");
+    vi.useRealTimers();
+
+    expect(await run).toBe("stale");
+    expect(store.getActiveScope().kind).toBe("guest");
+    expect(store.getData().shifts.some((s) => s.id === "from-local-backup")).toBe(false);
+    expect(window.localStorage.getItem("minijob-tracker-v1:guest")).toBe(guestBefore);
+    expect(window.localStorage.getItem(`minijob-tracker-v1:u:${A}`) ?? "").not.toContain(
+      "from-local-backup",
+    );
+  });
+
+  it("lokale Sicherung ohne Wechsel → wie bisher übernommen; ungültig/kaputt unverändert gemeldet", async () => {
+    session = { user: { id: A } };
+    const { store } = await boot();
+    const { restoreLocalBackupFile } = await import("./local-backup-restore");
+    vi.useRealTimers();
+    const ok = await restoreLocalBackupFile(
+      new Blob([JSON.stringify(payloadWith(["from-local-backup"]))]),
+    );
+    expect(ok).toBe("restored");
+    expect(store.getData().shifts.map((s) => s.id)).toContain("from-local-backup");
+    expect(await restoreLocalBackupFile(new Blob([JSON.stringify({ foo: 1 })]))).toBe("invalid");
+    expect(await restoreLocalBackupFile(new Blob(["{kaputt"]))).toBe("read-error");
+  });
+
+  it("Biometrie: Scope-Wechsel während WebAuthn → keine Credential-Id/kein Abschalten im neuen Scope", async () => {
+    session = { user: { id: A } };
+    const { store } = await boot();
+    const { setupBiometricInScope } = await import("./biometric-setup");
+    const gate = deferred();
+    const register = async () => {
+      await gate.promise;
+      return { ok: true as const, credentialId: "cred-of-a" };
+    };
+    const run = setupBiometricInScope("1234", register);
+    authCallback?.("SIGNED_OUT", null);
+    await signIn(B);
+    const bBefore = window.localStorage.getItem(`minijob-tracker-v1:u:${B}`);
+    gate.release();
+
+    expect(await run).toBe("stale");
+    expect(store.getActiveScopeOwner()).toBe(B);
+    expect(store.getData().settings.biometricCredentialId).toBeUndefined();
+    expect(store.getData().settings.biometric ?? false).toBe(false);
+    expect(window.localStorage.getItem(`minijob-tracker-v1:u:${B}`)).toBe(bBefore);
+
+    // Fehlschlag nach Wechsel schaltet im neuen Scope auch nichts ab.
+    store.updateSettings({ biometric: true, biometricCredentialId: "cred-of-b" });
+    const gate2 = deferred();
+    const run2 = setupBiometricInScope("1234", async () => {
+      await gate2.promise;
+      return { ok: false as const, result: "cancelled" as never };
+    });
+    authCallback?.("SIGNED_OUT", null);
+    await signIn(B);
+    gate2.release();
+    expect(await run2).toBe("stale");
+    expect(store.getData().settings.biometricCredentialId).toBe("cred-of-b");
+  });
+
+  it("Biometrie ohne Wechsel → wie bisher: Erfolg speichert, Fehlschlag schaltet ab", async () => {
+    session = { user: { id: A } };
+    const { store } = await boot();
+    const { setupBiometricInScope } = await import("./biometric-setup");
+    const ok = await setupBiometricInScope("1234", async () => ({
+      ok: true as const,
+      credentialId: "cred-a",
+    }));
+    expect(ok).toEqual({ ok: true, credentialId: "cred-a" });
+    expect(store.getData().settings.biometric).toBe(true);
+    expect(store.getData().settings.biometricCredentialId).toBe("cred-a");
+
+    const fail = await setupBiometricInScope("1234", async () => ({
+      ok: false as const,
+      result: "unavailable" as const,
+    }));
+    expect(fail).toEqual({ ok: false, result: "unavailable" });
+    expect(store.getData().settings.biometric).toBe(false);
+    expect(store.getData().settings.biometricCredentialId).toBeUndefined();
+  });
+});
+
+describe("INITIAL_SESSION null: Epoch-Bump", () => {
+  it("laufender Push vor INITIAL_SESSION null, Session kommt zurück (offline) → alter Push schreibt keine Meta", async () => {
+    window.localStorage.setItem(`minijob-tracker-v1:u:${A}`, JSON.stringify(payloadWith(["a-1"])));
+    const gate = deferred();
+    upsertGate = gate.promise;
+    session = { user: { id: A } };
+    const { cloud, store } = await boot(); // Init-Push von A hängt
+
+    authCallback?.("INITIAL_SESSION", null);
+    await settle();
+    // Session wieder da (gleiches Konto, gleicher Scope); offline → kein neuer Abgleich.
+    setOnline(false);
+    authCallback?.("SIGNED_IN", { user: { id: A } });
+    await settle();
+    expect(store.getActiveScopeOwner()).toBe(A);
+    expect(cloud.getCloudUserId()).toBe(A);
+
+    gate.release();
+    upsertGate = null;
+    await settle();
+    await vi.advanceTimersByTimeAsync(100);
+    await settle();
+
+    // Ohne Epoch-Bump wäre der Snapshot des alten Laufs wieder „gültig“ (gleicher
+    // Key/Owner/Scope) und er schriebe lastSyncedAt/Fingerprint.
+    const aMeta = JSON.parse(window.localStorage.getItem(metaKeyOf(A)) ?? "{}");
+    expect(aMeta.lastSyncedAt ?? null).toBeNull();
+    expect(cloud.getSyncState().status).not.toBe("synced");
   });
 });
 

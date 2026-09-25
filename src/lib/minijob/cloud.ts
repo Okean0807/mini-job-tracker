@@ -660,7 +660,8 @@ export async function backupNow(): Promise<void> {
   const snap = snapshotOwner();
   try {
     await withSyncTimeout(push(getData()));
-    if (epoch !== syncEpoch) return;
+    // Lauf wurde abgebrochen (Kontowechsel/Timeout): nie als Erfolg melden.
+    if (epoch !== syncEpoch) throw new StaleSyncError();
     if (!stillOwner(snap)) throw new StaleSyncError();
     setState({ status: "synced", pending: false, message: null, lastSyncedAt: meta.lastSyncedAt });
   } catch (error) {
@@ -686,7 +687,9 @@ export async function restoreNow(): Promise<boolean> {
   armSyncWatchdog(epoch);
   try {
     const remote = await withSyncTimeout(fetchRemote());
-    if (epoch !== syncEpoch) return false;
+    // Abgebrochen (z. B. Kontowechsel per Auth-Event): still beenden statt
+    // „keine Cloud-Sicherung gefunden“ (false ist echtes „nicht gefunden“).
+    if (epoch !== syncEpoch) throw new StaleSyncError();
     // Post-await-Guard: kein applyRemote/saveMeta in einen anderen Namensraum.
     if (!stillOwner(snap)) throw new StaleSyncError();
     if (!remote) {

@@ -38,19 +38,16 @@ import {
 import {
   canOfferBiometricToggle,
   detectBiometricCapability,
-  registerBiometricCredentialId,
   type BiometricCapability,
 } from "@/lib/minijob/biometric";
-import { isValidPayload } from "@/lib/minijob/payload";
+import { setupBiometricInScope } from "@/lib/minijob/biometric-setup";
+import { restoreLocalBackupFile } from "@/lib/minijob/local-backup-restore";
 import { syncActionErrorMessage } from "@/lib/minijob/sync-action-error";
 import { isValidPin, validatePinConfirm } from "@/lib/minijob/pin";
 import {
   disableBiometric,
   getActiveScope,
   getData,
-  getScopeGeneration,
-  isScopeCurrent,
-  replaceAll,
   updateSettings,
   updateSupplements,
   useAppData,
@@ -461,23 +458,18 @@ function SettingsPage() {
                   setPinSetupOpen(true);
                   return;
                 }
-                // WebAuthn-Dialog kann dauern: Namensraum-Snapshot, damit das
-                // Ergebnis nie in ein inzwischen aktives anderes Konto geschrieben wird.
-                const generation = getScopeGeneration();
-                const outcome = await registerBiometricCredentialId(
-                  settings.pin ?? "minijob-local",
-                );
-                if (!isScopeCurrent(generation)) return;
+                // WebAuthn-Dialog kann dauern: schreibt nie in ein inzwischen
+                // aktives anderes Konto (Namensraum-Snapshot im Helfer).
+                const outcome = await setupBiometricInScope(settings.pin ?? "minijob-local");
+                if (outcome === "stale") return;
                 if (!outcome.ok) {
                   toast.error(
                     outcome.result === "unavailable"
                       ? t("set.security.biometricUnavailable")
                       : t("pin.biometricFailed"),
                   );
-                  disableBiometric();
                   return;
                 }
-                updateSettings({ biometric: true, biometricCredentialId: outcome.credentialId });
                 toast.success(t("pin.biometricReady"));
               }}
             />
@@ -942,23 +934,12 @@ function LocalBackup({ shiftCount }: { shiftCount: number }) {
 
   function upload(file: File) {
     // Datei wird async gelesen: nur in den Namensraum schreiben, der beim Start aktiv war.
-    const generation = getScopeGeneration();
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (!isScopeCurrent(generation)) return;
-      try {
-        const data: unknown = JSON.parse(String(reader.result));
-        if (!isValidPayload(data)) {
-          toast.error(t("set.localBackup.invalid"));
-          return;
-        }
-        replaceAll(data);
-        toast.success(t("set.localBackup.restored"));
-      } catch {
-        toast.error(t("error.fileRead"));
-      }
-    };
-    reader.readAsText(file);
+    void restoreLocalBackupFile(file).then((result) => {
+      if (result === "stale") return;
+      if (result === "invalid") toast.error(t("set.localBackup.invalid"));
+      else if (result === "read-error") toast.error(t("error.fileRead"));
+      else toast.success(t("set.localBackup.restored"));
+    });
   }
 
   return (
