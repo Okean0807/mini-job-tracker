@@ -4,8 +4,17 @@ import { LANGUAGES, detectLanguage } from "@/lib/i18n/core";
 
 import { normalizeDashboard } from "./dashboard";
 import { isPlainRecord } from "./payload";
-import { withConsistentPinSettings } from "./pin";
+import { isValidPin, withConsistentPinSettings } from "./pin";
 import { KNOWN_LEGAL_MONTHLY_LIMITS } from "./legal";
+import {
+  GUEST_SCOPE,
+  ownerOfScope,
+  persistScopePointer,
+  readScopePointer,
+  sameScope,
+  scopedKey,
+  type StorageScope,
+} from "./storage-scope";
 import { applyAppearance } from "./theme";
 import {
   clearObjectIdFromShifts,
@@ -31,7 +40,43 @@ import {
   type WorkObject,
 } from "./types";
 
-const STORAGE_KEY = "minijob-tracker-v1";
+/**
+ * Basis-Schlüssel. Gespeichert wird immer pro Scope (`<base>:u:<userId>`,
+ * `<base>:demo`, `<base>:guest`). Der alte globale Schlüssel ohne Suffix ist
+ * Legacy und wird hier weder gelesen noch beschrieben (siehe storage-scope.ts).
+ */
+export const STORAGE_KEY_BASE = "minijob-tracker-v1";
+
+/* ---------- Aktiver Namensraum (Konto / Testmodus / Gast) ---------- */
+
+let activeScope: StorageScope = GUEST_SCOPE;
+const scopeListeners = new Set<(scope: StorageScope) => void>();
+
+export function getActiveScope(): StorageScope {
+  return activeScope;
+}
+
+/** Besitzer (Supabase user.id) der aktuell geladenen Daten; null = Gast/Testmodus. */
+export function getActiveScopeOwner(): string | null {
+  return ownerOfScope(activeScope);
+}
+
+export function onScopeChange(listener: (scope: StorageScope) => void): () => void {
+  scopeListeners.add(listener);
+  return () => {
+    scopeListeners.delete(listener);
+  };
+}
+
+function setActiveScopeInternal(scope: StorageScope): void {
+  activeScope = scope;
+  persistScopePointer(scope);
+  scopeListeners.forEach((l) => l(scope));
+}
+
+export function dataStorageKey(scope: StorageScope = getActiveScope()): string {
+  return scopedKey(STORAGE_KEY_BASE, scope);
+}
 
 export const EMPTY_DATA: AppData = {
   shifts: [],
@@ -86,14 +131,13 @@ function setPersistFailed(failed: boolean) {
 function persist() {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    window.localStorage.setItem(dataStorageKey(), JSON.stringify(state));
     setPersistFailed(false);
   } catch {
     /* Speicher voll oder blockiert – sichtbar melden statt still verwerfen */
     setPersistFailed(true);
   }
 }
-
 
 function commit(next: AppData, sync = true) {
   state = next;
@@ -170,31 +214,106 @@ export function normalize(input: Partial<AppData>): AppData {
   };
 }
 
+/** Liest und normalisiert den gespeicherten Stand eines Scopes (null = nichts/ungültig). */
+export function readStoredData(key: string): AppData | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    return normalize(JSON.parse(raw) as Partial<AppData>);
+  } catch {
+    return null;
+  }
+}
+
+export function readScopeData(scope: StorageScope): AppData | null {
+  return readStoredData(dataStorageKey(scope));
+}
+
+/** Enthält der Stand echte Nutzerdaten (nicht nur Standard-Einstellungen)? */
+export function hasMeaningfulData(data: AppData | null | undefined): boolean {
+  if (!data) return false;
+  return (
+    data.shifts.length > 0 ||
+    data.jobs.length > 0 ||
+    data.orders.length > 0 ||
+    data.customers.length > 0 ||
+    data.projects.length > 0 ||
+    data.payments.length > 0 ||
+    data.goals.length > 0 ||
+    data.objects.length > 0 ||
+    data.timer != null ||
+    data.settings.onboarded === true
+  );
+}
+
+/**
+ * Stand für einen Scope laden (ohne Sync auszulösen). Unbekannter Scope →
+ * frischer Stand; nur die UI-Sprache wird aus dem bisherigen Stand übernommen
+ * (keine Nutzerdaten, kein onboarded/wizardCompletedAt, kein PIN).
+ */
+function loadScopeState(
+  scope: StorageScope,
+  languageSeed: Settings["language"],
+): { data: AppData; filled: boolean } {
+  const stored = readScopeData(scope);
+  if (stored) {
+    // Legacy: fehlende Objekte aus Schicht-Adressen nachziehen (nur ADD/Fill, keine Shift-Mutation)
+    const objects = ensureObjectsFromShifts(stored.objects, stored.shifts, {
+      newId,
+      now: todayIso(),
+    });
+    return objects !== stored.objects
+      ? { data: { ...stored, objects }, filled: true }
+      : { data: stored, filled: false };
+  }
+  return {
+    data: { ...EMPTY_DATA, settings: { ...EMPTY_DATA.settings, language: languageSeed } },
+    filled: false,
+  };
+}
+
 export function loadFromStorage() {
   if (loaded || typeof window === "undefined") return;
   loaded = true;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      state = normalize(JSON.parse(raw) as Partial<AppData>);
-      // Legacy: fehlende Objekte aus Schicht-Adressen nachziehen (nur ADD/Fill, keine Shift-Mutation)
-      const objects = ensureObjectsFromShifts(state.objects, state.shifts, {
-        newId,
-        now: todayIso(),
-      });
-      if (objects !== state.objects) {
-        state = { ...state, objects };
-        persist();
-      }
-      emit(false);
-      return;
-    }
-  } catch {
-    /* ungültige Daten ignorieren */
+  // Start im zuletzt aktiven Scope; Auth bestätigt/korrigiert ihn danach (cloud.ts).
+  const scope = readScopePointer();
+  setActiveScopeInternal(scope);
+  const stored = readScopeData(scope);
+  if (stored) {
+    const next = loadScopeState(scope, stored.settings.language);
+    state = next.data;
+    if (next.filled) persist();
+    emit(false);
+    return;
   }
   // Erststart: Sprache aus dem Browser übernehmen (später manuell änderbar)
-  state = { ...state, settings: { ...state.settings, language: detectLanguage() } };
+  state = { ...EMPTY_DATA, settings: { ...EMPTY_DATA.settings, language: detectLanguage() } };
   emit(false);
+}
+
+/**
+ * Namensraum wechseln (Login, Logout, Kontowechsel, Testmodus).
+ *
+ * Ersetzt die In-Memory-Daten vollständig durch den Stand des Ziel-Scopes,
+ * ohne `onDataChange` auszulösen (kein Sync, kein Überschreiben). Der bisherige
+ * Scope bleibt unverändert gespeichert. Liefert false, wenn der Scope schon aktiv war.
+ */
+export function activateScope(scope: StorageScope): boolean {
+  if (loaded && sameScope(scope, getActiveScope())) return false;
+  loaded = true;
+  const languageSeed = state.settings.language ?? detectLanguage();
+  const next = loadScopeState(scope, languageSeed);
+  state = next.data;
+  setActiveScopeInternal(scope);
+  if (next.filled) persist();
+  emit(false);
+  try {
+    applyAppearance(state.settings);
+  } catch {
+    /* DOM nicht verfügbar */
+  }
+  return true;
 }
 
 function subscribe(listener: () => void) {
@@ -214,7 +333,6 @@ export function getData(): AppData {
   return state;
 }
 
-
 function todayIso(): string {
   const d = new Date();
   const y = d.getFullYear();
@@ -224,7 +342,10 @@ function todayIso(): string {
 }
 
 /** Adresse aus Schicht lernen und objectId setzen; Objekte-Liste ggf. erweitern. */
-function learnObjectsFromShift(shift: Shift, objects: WorkObject[]): { shift: Shift; objects: WorkObject[] } {
+function learnObjectsFromShift(
+  shift: Shift,
+  objects: WorkObject[],
+): { shift: Shift; objects: WorkObject[] } {
   const result = upsertObjectFromShiftAddress(objects, shift, { newId, now: todayIso() });
   return {
     shift: linkShiftToObject(shift, result.objectId),
@@ -232,7 +353,10 @@ function learnObjectsFromShift(shift: Shift, objects: WorkObject[]): { shift: Sh
   };
 }
 
-function learnObjectsFromShifts(list: Shift[], objects: WorkObject[]): { shifts: Shift[]; objects: WorkObject[] } {
+function learnObjectsFromShifts(
+  list: Shift[],
+  objects: WorkObject[],
+): { shifts: Shift[]; objects: WorkObject[] } {
   let objs = objects;
   const shifts = list.map((s) => {
     const learned = learnObjectsFromShift(s, objs);
@@ -373,7 +497,6 @@ export function deleteOrder(id: string) {
   commit({ ...state, orders: state.orders.filter((o) => o.id !== id) });
 }
 
-
 /* ---------- Einsatzobjekte ---------- */
 
 export function saveObject(obj: WorkObject) {
@@ -412,6 +535,26 @@ export function updateSettings(patch: Partial<Settings>) {
   const settings = withConsistentPinSettings({ ...state.settings, ...patch });
   commit({ ...state, settings });
   applyAppearance(settings);
+}
+
+/**
+ * Gerätesperre (PIN/WebAuthn) in den aktiven Bestand übernehmen, OHNE Sync
+ * auszulösen – nur, wenn dort noch keine gültige PIN existiert. Wird genutzt,
+ * damit ein bisher PIN-geschütztes Gerät nach der Umstellung auf Konto-
+ * Namensräume nicht plötzlich ungesperrt ist. Überträgt keine Nutzerdaten.
+ */
+export function seedDeviceLock(source: Settings): boolean {
+  if (isValidPin(state.settings.pin) || !isValidPin(source.pin) || !source.pinEnabled) return false;
+  let settings: Settings = { ...state.settings, pin: source.pin, pinEnabled: true };
+  if (source.biometricCredentialId && !state.settings.biometricCredentialId) {
+    settings = {
+      ...settings,
+      biometric: source.biometric,
+      biometricCredentialId: source.biometricCredentialId,
+    };
+  }
+  commit({ ...state, settings: withConsistentPinSettings(settings) }, false);
+  return true;
 }
 
 /** Biometrie abschalten und Credential-Id entfernen (exactOptionalPropertyTypes-sicher). */

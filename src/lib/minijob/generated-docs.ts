@@ -1,3 +1,6 @@
+import { scopedKey, type StorageScope } from "./storage-scope";
+import { getActiveScope } from "./store";
+
 /**
  * Local registry of app-generated exports (PDF/XLSX/Arbeitsnachweis).
  * Keeps cloud upload schema untouched; stores blobs in localStorage when small enough.
@@ -25,7 +28,16 @@ export interface GeneratedDocument {
   source: "generated";
 }
 
-const STORAGE_KEY = "minijob-generated-docs-v1";
+/**
+ * Basis-Schlüssel; gespeichert wird pro Scope (Konto / Testmodus / Gast), da die
+ * data-URLs Namen und Adressen enthalten. Der globale Schlüssel ohne Suffix ist
+ * Legacy und wird nur über den expliziten Import gelesen.
+ */
+export const GENERATED_DOCS_KEY_BASE = "minijob-generated-docs-v1";
+
+export function generatedDocsStorageKey(scope: StorageScope = getActiveScope()): string {
+  return scopedKey(GENERATED_DOCS_KEY_BASE, scope);
+}
 const MAX_ENTRIES = 40;
 /** Skip persisting payload above this size (metadata still kept). */
 const MAX_DATA_URL_CHARS = 1_800_000;
@@ -34,10 +46,10 @@ function canUseStorage(): boolean {
   return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 }
 
-function readAll(): GeneratedDocument[] {
+function readAll(key: string = generatedDocsStorageKey()): GeneratedDocument[] {
   if (!canUseStorage()) return [];
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -62,15 +74,15 @@ function readAll(): GeneratedDocument[] {
   }
 }
 
-function writeAll(docs: GeneratedDocument[]): void {
+function writeAll(docs: GeneratedDocument[], key: string = generatedDocsStorageKey()): void {
   if (!canUseStorage()) return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(docs.slice(0, MAX_ENTRIES)));
+    window.localStorage.setItem(key, JSON.stringify(docs.slice(0, MAX_ENTRIES)));
   } catch {
     /* quota — drop payloads and retry metadata-only */
     try {
       const slim = docs.slice(0, MAX_ENTRIES).map((d) => ({ ...d, dataUrl: "" }));
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(slim));
+      window.localStorage.setItem(key, JSON.stringify(slim));
     } catch {
       /* ignore */
     }
@@ -120,10 +132,30 @@ export function deleteGeneratedDocument(id: string): void {
   writeAll(readAll().filter((d) => d.id !== id));
 }
 
-/** Clear registry (tests). */
+/** Clear registry of the active scope (tests). */
 export function clearGeneratedDocuments(): void {
   if (!canUseStorage()) return;
-  window.localStorage.removeItem(STORAGE_KEY);
+  window.localStorage.removeItem(generatedDocsStorageKey());
+}
+
+/** Dokumente unter einem beliebigen Schlüssel lesen (Legacy / anderer Scope, nur für Import). */
+export function readGeneratedDocumentsAt(key: string): GeneratedDocument[] {
+  return readAll(key);
+}
+
+/**
+ * Explizit übernommene Dokumente in den aktiven Scope mischen (Id-Duplikate
+ * werden übersprungen). Die Quelle bleibt unverändert.
+ */
+export function importGeneratedDocuments(docs: GeneratedDocument[]): number {
+  if (docs.length === 0) return 0;
+  const current = readAll();
+  const known = new Set(current.map((d) => d.id));
+  const added = docs.filter((d) => !known.has(d.id));
+  if (added.length === 0) return 0;
+  const merged = [...current, ...added].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  writeAll(merged);
+  return added.length;
 }
 
 export function dataUrlToBlob(dataUrl: string): Blob | null {

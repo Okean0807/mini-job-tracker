@@ -8,7 +8,7 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { BarChart3, Bot, Briefcase, CalendarDays, FileText, Settings } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { toast } from "sonner";
 
@@ -17,14 +17,18 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { PinLock } from "@/components/minijob/PinLock";
 import { OnboardingWizard } from "@/components/minijob/OnboardingWizard";
+import { LocalDataImportPrompt } from "@/components/minijob/LocalDataImport";
+import { scopeSuffix } from "@/lib/minijob/storage-scope";
 import { shouldShowOnboardingWizard } from "@/lib/minijob/wizard-flow";
 import { initCloudSync, useSyncState } from "../lib/minijob/cloud";
 import { initNotifications } from "../lib/minijob/notify";
 import {
+  getActiveScope,
   getData,
   isPersistFailed,
   loadFromStorage,
   onPersistError,
+  onScopeChange,
   useAppData,
 } from "../lib/minijob/store";
 import { useT } from "@/lib/i18n";
@@ -65,7 +69,9 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">{t("error.pageLoad")}</h1>
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">
+          {t("error.pageLoad")}
+        </h1>
         <p className="mt-2 text-sm text-muted-foreground">{t("error.pageLoadHint")}</p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
@@ -101,11 +107,31 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { title: "MiniJob Tracker – Arbeitszeiten & Verdienst erfassen" },
       { property: "og:title", content: "MiniJob Tracker – Arbeitszeiten & Verdienst erfassen" },
       { name: "twitter:title", content: "MiniJob Tracker – Arbeitszeiten & Verdienst erfassen" },
-      { name: "description", content: "Arbeitszeiten per Timer oder Kalender erfassen, Zuschläge und Verdienst automatisch berechnen – mit Jobs, Statistiken und Export." },
-      { property: "og:description", content: "Arbeitszeiten per Timer oder Kalender erfassen, Zuschläge und Verdienst automatisch berechnen – mit Jobs, Statistiken und Export." },
-      { name: "twitter:description", content: "Arbeitszeiten per Timer oder Kalender erfassen, Zuschläge und Verdienst automatisch berechnen – mit Jobs, Statistiken und Export." },
-      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/060d78ae-9232-45ed-bd88-7de649204a2e" },
-      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/060d78ae-9232-45ed-bd88-7de649204a2e" },
+      {
+        name: "description",
+        content:
+          "Arbeitszeiten per Timer oder Kalender erfassen, Zuschläge und Verdienst automatisch berechnen – mit Jobs, Statistiken und Export.",
+      },
+      {
+        property: "og:description",
+        content:
+          "Arbeitszeiten per Timer oder Kalender erfassen, Zuschläge und Verdienst automatisch berechnen – mit Jobs, Statistiken und Export.",
+      },
+      {
+        name: "twitter:description",
+        content:
+          "Arbeitszeiten per Timer oder Kalender erfassen, Zuschläge und Verdienst automatisch berechnen – mit Jobs, Statistiken und Export.",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/060d78ae-9232-45ed-bd88-7de649204a2e",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/060d78ae-9232-45ed-bd88-7de649204a2e",
+      },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
@@ -235,7 +261,21 @@ function RootComponent() {
 
   const { settings, jobs } = useAppData();
   const [ready, setReady] = useState(false);
-  const [unlocked, setUnlocked] = useState(false);
+  // PIN unlock gilt nur für den Namensraum, in dem entsperrt wurde: nach
+  // Konto-/Scope-Wechsel greift die PIN des neuen Bestands sofort.
+  const scope = useSyncExternalStore(
+    (l) => onScopeChange(() => l()),
+    () => scopeSuffix(getActiveScope()),
+    () => "guest",
+  );
+  const [unlockedScope, setUnlockedScope] = useState<string | null>(null);
+  useEffect(() => {
+    if (!ready) return;
+    // Bestand ohne PIN beim Betreten des Namensraums → entsperrt (wie bisher beim Start);
+    // eine später aktivierte PIN sperrt erst beim nächsten Start/Scope-Wechsel.
+    const current = getData().settings;
+    if (!(current.pinEnabled && current.pin)) setUnlockedScope(scope);
+  }, [scope, ready]);
   const [showWizard, setShowWizard] = useState(false);
 
   useEffect(() => {
@@ -247,7 +287,6 @@ function RootComponent() {
       initCloudSync();
       initNotifications();
       registerServiceWorker();
-      setUnlocked(!(loaded.pinEnabled && loaded.pin));
       setShowWizard(shouldShowOnboardingWizard(loaded, data.jobs));
     } catch (error) {
       console.error("[root] bootstrap failed", error);
@@ -276,7 +315,7 @@ function RootComponent() {
     settings.uiMode,
   ]);
 
-  const locked = ready && settings.pinEnabled && Boolean(settings.pin) && !unlocked;
+  const locked = ready && settings.pinEnabled && Boolean(settings.pin) && unlockedScope !== scope;
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -284,10 +323,12 @@ function RootComponent() {
 
       {/* Hide nav under wizard/PIN overlays (z-40 under z-60) and while bootstrapping */}
       {ready && !showWizard && !locked ? <BottomNav uiMode={settings.uiMode} /> : null}
-      {locked ? <PinLock settings={settings} onUnlock={() => setUnlocked(true)} /> : null}
+      {locked ? <PinLock settings={settings} onUnlock={() => setUnlockedScope(scope)} /> : null}
       {ready && showWizard && !locked ? (
-        <OnboardingWizard settings={settings} onDone={() => setShowWizard(false)} />
+        // key: Wizard-Eingaben (In-Memory) nie in einen anderen Namensraum mitnehmen.
+        <OnboardingWizard key={scope} settings={settings} onDone={() => setShowWizard(false)} />
       ) : null}
+      {ready && !locked ? <LocalDataImportPrompt /> : null}
       <SyncAlerts />
       <StorageAlert />
       <Toaster position="top-center" />

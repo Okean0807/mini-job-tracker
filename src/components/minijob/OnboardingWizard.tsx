@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { markWizardPendingFirstSync } from "@/lib/minijob/cloud";
+import { enterTestModeScope, markWizardPendingFirstSync } from "@/lib/minijob/cloud";
+import { markOAuthPending } from "@/lib/minijob/storage-scope";
 import { signInWithOAuthProvider } from "@/lib/minijob/oauth-sign-in";
 import {
   checkpointOnboardingBeforeOAuth,
@@ -21,7 +22,7 @@ import { LANGUAGES } from "@/lib/i18n/core";
 import { useT } from "@/lib/i18n";
 import { weekdayNames } from "@/lib/minijob/calc";
 import { weeklyPlanHours } from "@/lib/minijob/schedule";
-import { newId, nextJobColor, saveJob, updateSettings } from "@/lib/minijob/store";
+import { getActiveScope, newId, nextJobColor, saveJob, updateSettings } from "@/lib/minijob/store";
 import {
   BUNDESLAENDER,
   COUNTRIES,
@@ -61,9 +62,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
   // Resume after OAuth / incomplete wizard (draft in localStorage; settings from store).
   const { status: authStatus, session } = useAuthSession();
   const [draft] = useState(() => loadOnboardingDraft(WIZARD_STEP_COUNT));
-  const [step, setStep] = useState(() =>
-    resolveWizardResumeStep(draft?.step, "loading"),
-  );
+  const [step, setStep] = useState(() => resolveWizardResumeStep(draft?.step, "loading"));
   const [mode, setMode] = useState<WorkMode>(draft?.mode ?? "flex");
 
   const localDemoMode = settings.localDemoMode === true;
@@ -99,7 +98,9 @@ export function OnboardingWizard({ settings, onDone }: Props) {
   const [country, setCountry] = useState(settings.country);
   const [bundesland, setBundesland] = useState(settings.bundesland);
   const [rate, setRate] = useState(String(settings.defaultRate));
-  const [supplements, setSupplements] = useState<Supplements>(settings.supplements ?? DEFAULT_SUPPLEMENTS);
+  const [supplements, setSupplements] = useState<Supplements>(
+    settings.supplements ?? DEFAULT_SUPPLEMENTS,
+  );
   const [week, setWeek] = useState<FixedDay[]>(() => EMPTY_WEEK.map((d) => ({ ...d })));
   const [weeklyTarget, setWeeklyTarget] = useState("20");
   const [weeklyTargetTouched, setWeeklyTargetTouched] = useState(false);
@@ -146,10 +147,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
 
   function goNext() {
     // Google required before later steps — unless local demo mode.
-    if (
-      step === WIZARD_STEP_INDEX.cloud &&
-      !canAdvancePastCloud(authStatus, localDemoMode)
-    ) {
+    if (step === WIZARD_STEP_INDEX.cloud && !canAdvancePastCloud(authStatus, localDemoMode)) {
       toast.error(t("wiz.cloud.required"));
       return;
     }
@@ -160,6 +158,8 @@ export function OnboardingWizard({ settings, onDone }: Props) {
 
   /** Local demo: no Google, no fake session — on-device store only. */
   function startLocalDemo() {
+    // Eigener Namensraum `demo`: Testdaten landen nie im Gast-/Konto-Bestand.
+    enterTestModeScope();
     updateSettings({ localDemoMode: true });
     const next = WIZARD_STEP_INDEX.workMode;
     persistOnboardingProgress({
@@ -234,16 +234,16 @@ export function OnboardingWizard({ settings, onDone }: Props) {
   }
 
   async function oauth() {
-    // Choosing real Google exits demo — do not treat demo as a cloud account.
-    if (localDemoMode) {
-      updateSettings({ localDemoMode: false });
-    }
+    // Testmodus bleibt bis zur echten Anmeldung unverändert aktiv (Abbruch bei
+    // Google → weiter im Testmodus mit allen Daten). Erfolgreicher Login lädt den
+    // eigenen Konto-Namensraum; Testdaten werden nur auf ausdrücklichen Wunsch übernommen.
     // Persist language/region/rate/supplements + resume at Work Mode after Google returns.
     checkpointOnboardingBeforeOAuth({
       step: oauthResumeStep(),
       mode,
       persistSettings: flushSettings,
     });
+    markOAuthPending(getActiveScope());
     try {
       const { error } = await signInWithOAuthProvider("google");
       if (error) toast.error(t("error.signIn"));
@@ -509,7 +509,9 @@ export function OnboardingWizard({ settings, onDone }: Props) {
                               value={day.start}
                               onChange={(e) =>
                                 setWeek(
-                                  week.map((d, i) => (i === idx ? { ...d, start: e.target.value } : d)),
+                                  week.map((d, i) =>
+                                    i === idx ? { ...d, start: e.target.value } : d,
+                                  ),
                                 )
                               }
                             />
@@ -522,7 +524,9 @@ export function OnboardingWizard({ settings, onDone }: Props) {
                               value={day.end}
                               onChange={(e) =>
                                 setWeek(
-                                  week.map((d, i) => (i === idx ? { ...d, end: e.target.value } : d)),
+                                  week.map((d, i) =>
+                                    i === idx ? { ...d, end: e.target.value } : d,
+                                  ),
                                 )
                               }
                             />
@@ -579,7 +583,9 @@ export function OnboardingWizard({ settings, onDone }: Props) {
                 <p className="rounded-lg border border-dashed px-3 py-3 text-sm">
                   {t("wiz.personalized.self.noLimit")}
                 </p>
-                <p className="text-sm text-muted-foreground">{t("wiz.personalized.self.projects")}</p>
+                <p className="text-sm text-muted-foreground">
+                  {t("wiz.personalized.self.projects")}
+                </p>
                 <FieldHelp>{t("wiz.help.tax")}</FieldHelp>
               </Card>
             ) : (
@@ -617,7 +623,11 @@ export function OnboardingWizard({ settings, onDone }: Props) {
                         onChange={(e) =>
                           setSupplements((s) => ({
                             ...s,
-                            [key]: { ...value, mode: "prozent", value: Number(e.target.value) || 0 },
+                            [key]: {
+                              ...value,
+                              mode: "prozent",
+                              value: Number(e.target.value) || 0,
+                            },
                           }))
                         }
                       />
@@ -634,9 +644,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
               title={
                 mode === "selbststaendig" ? t("wiz.firstJob.selfTitle") : t("wiz.firstJob.title")
               }
-              hint={
-                mode === "selbststaendig" ? t("wiz.firstJob.selfHint") : t("wiz.firstJob.hint")
-              }
+              hint={mode === "selbststaendig" ? t("wiz.firstJob.selfHint") : t("wiz.firstJob.hint")}
             >
               <div className="grid gap-2">
                 <Label htmlFor="ob-job">
@@ -775,7 +783,9 @@ function Choice({
       )}
     >
       <span className="block">{label}</span>
-      {hint ? <span className="mt-1 block text-xs font-normal text-muted-foreground">{hint}</span> : null}
+      {hint ? (
+        <span className="mt-1 block text-xs font-normal text-muted-foreground">{hint}</span>
+      ) : null}
     </button>
   );
 }

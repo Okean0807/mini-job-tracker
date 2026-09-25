@@ -1,0 +1,599 @@
+/**
+ * P0/P1: Konto- und Testmodus-Isolation lokaler Daten.
+ *
+ * Integrationsnah mit ECHTEM Store (kein Store-Mock) und gemocktem Supabase:
+ * Namensraum-Wechsel bei Login/Logout/Kontowechsel, Owner-Guard vor Push,
+ * generierte Dokumente, Onboarding-Entwurf, Testmodus ↔ Google-OAuth und
+ * Legacy-Gerätedaten (nie automatisch einem Konto zugeordnet).
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { AppData, Shift } from "./types";
+
+/* ---------- Supabase-Mock (Backups pro user_id, Auth-Events) ---------- */
+
+type Row = { payload: unknown; updated_at: string };
+const backups = new Map<string, Row>();
+const upserts: { user_id: string; payload: AppData }[] = [];
+let session: { user: { id: string } } | null = null;
+let authCallback: ((event: string, s: unknown) => void) | null = null;
+let signOutError: { message: string } | null = null;
+let selectGate: Promise<void> | null = null;
+
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: {
+    from: () => ({
+      upsert: async (row: { user_id: string; payload: AppData; updated_at: string }) => {
+        upserts.push({ user_id: row.user_id, payload: row.payload });
+        backups.set(row.user_id, { payload: row.payload, updated_at: row.updated_at });
+        return { error: null };
+      },
+      select: () => ({
+        eq: (_col: string, uid: string) => ({
+          maybeSingle: async () => {
+            if (selectGate) await selectGate;
+            return { data: backups.get(uid) ?? null, error: null };
+          },
+        }),
+      }),
+    }),
+    auth: {
+      getSession: async () => ({ data: { session }, error: null }),
+      onAuthStateChange: (cb: (event: string, s: unknown) => void) => {
+        authCallback = cb;
+        return { data: { subscription: { unsubscribe() {} } } };
+      },
+      signOut: async () => {
+        if (signOutError) return { error: signOutError };
+        session = null;
+        authCallback?.("SIGNED_OUT", null);
+        return { error: null };
+      },
+    },
+  },
+}));
+
+vi.mock("./notify", () => ({ markBackup: vi.fn() }));
+
+/* ---------- Hilfen ---------- */
+
+const A = "user-a-uuid";
+const B = "user-b-uuid";
+const C = "user-c-uuid";
+
+function shift(id: string, date = "2026-09-01"): Shift {
+  return {
+    id,
+    date,
+    start: "09:00",
+    end: "12:00",
+    jobId: "j1",
+    kind: "arbeit",
+    breakMinutes: 0,
+  } as Shift;
+}
+
+function payloadWith(shiftIds: string[]): AppData {
+  return {
+    shifts: shiftIds.map((id) => shift(id)),
+    jobs: [{ id: "j1", name: "Cloud-Job", color: "#0d9488", mode: "flex" }],
+    customers: [],
+    projects: [],
+    payments: [],
+    goals: [],
+    orders: [],
+    objects: [],
+    settings: { onboarded: true, wizardCompletedAt: 1, autoBackup: true },
+    timer: null,
+  } as unknown as AppData;
+}
+
+async function settle() {
+  for (let i = 0; i < 12; i += 1) await Promise.resolve();
+}
+
+/** Simuliert einen (Neu-)Start der App: frische Module, gleicher localStorage. */
+async function boot() {
+  vi.resetModules();
+  const store = await import("./store");
+  const cloud = await import("./cloud");
+  const docs = await import("./generated-docs");
+  const draft = await import("./onboarding-draft");
+  const imp = await import("./local-data-import");
+  const scope = await import("./storage-scope");
+  store.loadFromStorage();
+  cloud.initCloudSync();
+  await settle();
+  return { store, cloud, docs, draft, imp, scope };
+}
+
+async function signIn(id: string) {
+  session = { user: { id } };
+  authCallback?.("SIGNED_IN", session);
+  await settle();
+}
+
+function upsertsContaining(shiftId: string) {
+  return upserts.filter((u) => (u.payload?.shifts ?? []).some((s) => s.id === shiftId));
+}
+
+/** Nur App-eigene Schlüssel entfernen (kein localStorage.clear()). */
+function clearAppKeys() {
+  for (let i = window.localStorage.length - 1; i >= 0; i -= 1) {
+    const key = window.localStorage.key(i);
+    if (key?.startsWith("minijob-")) window.localStorage.removeItem(key);
+  }
+}
+
+beforeEach(() => {
+  clearAppKeys();
+  backups.clear();
+  upserts.length = 0;
+  session = null;
+  authCallback = null;
+  signOutError = null;
+  selectGate = null;
+  Object.defineProperty(window.navigator, "onLine", { value: true, configurable: true });
+  vi.useFakeTimers();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+/* ---------- Konto A → Logout → Konto B ---------- */
+
+describe("Kontowechsel A → Logout → B", () => {
+  it("T1: B sieht A's lokale Daten nicht (A behält sie auf dem Gerät)", async () => {
+    session = { user: { id: A } };
+    const { store, cloud } = await boot();
+    expect(store.getActiveScopeOwner()).toBe(A);
+    store.saveShift(shift("a-secret"));
+    expect(store.getData().shifts.map((s) => s.id)).toEqual(["a-secret"]);
+
+    const res = await cloud.performSignOut();
+    expect(res.ok).toBe(true);
+    // Sofort nach Logout: Kontodaten nicht mehr im Speicher.
+    expect(store.getData().shifts).toHaveLength(0);
+    expect(store.getActiveScope().kind).toBe("guest");
+
+    await signIn(B);
+    expect(store.getActiveScopeOwner()).toBe(B);
+    expect(store.getData().shifts.some((s) => s.id === "a-secret")).toBe(false);
+
+    // A's Daten sind nicht gelöscht – A sieht sie beim nächsten Login wieder.
+    await cloud.performSignOut();
+    await signIn(A);
+    expect(store.getData().shifts.map((s) => s.id)).toContain("a-secret");
+  });
+
+  it("T2: B ohne Cloud-Backup → kein Push von A's Daten in B's Backup", async () => {
+    session = { user: { id: A } };
+    const { store, cloud } = await boot();
+    // A erfasst Daten und meldet sich ab, bevor der debouncete Push läuft.
+    store.saveShift(shift("a-unsynced"));
+    await cloud.performSignOut();
+
+    await signIn(B);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await settle();
+
+    expect(upserts.filter((u) => u.user_id === B)).toHaveLength(0);
+    expect(upsertsContaining("a-unsynced").filter((u) => u.user_id !== A)).toHaveLength(0);
+    expect(backups.has(B)).toBe(false);
+    expect(cloud.getSyncState().status).not.toBe("conflict");
+  });
+
+  it("T2b: laufender Abgleich von A landet nach Logout + Login B nicht in B's Backup", async () => {
+    session = { user: { id: A } };
+    const { store, cloud } = await boot();
+    await vi.advanceTimersByTimeAsync(1000);
+    let release: () => void = () => {};
+    selectGate = new Promise<void>((r) => {
+      release = r;
+    });
+    store.saveShift(shift("a-inflight"));
+    await vi.advanceTimersByTimeAsync(2600); // debounce → autoSync hängt im Fetch
+    await cloud.performSignOut();
+    await signIn(B);
+    release();
+    selectGate = null;
+    await settle();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await settle();
+
+    expect(upsertsContaining("a-inflight").filter((u) => u.user_id === B)).toHaveLength(0);
+  });
+
+  it("T3: generierte Dokumente von A sind für B unsichtbar", async () => {
+    session = { user: { id: A } };
+    const { docs, cloud } = await boot();
+    docs.registerGeneratedDocument({
+      name: "Arbeitsnachweis_Max_Mustermann_Musterstr_1.pdf",
+      category: "arbeitsnachweis",
+      mimeType: "application/pdf",
+      size: 10,
+      dataUrl: "data:application/pdf;base64,AAAA",
+    });
+    expect(docs.listGeneratedDocuments()).toHaveLength(1);
+
+    await cloud.performSignOut();
+    expect(docs.listGeneratedDocuments()).toHaveLength(0);
+    await signIn(B);
+    expect(docs.listGeneratedDocuments()).toHaveLength(0);
+    // Globaler Legacy-Schlüssel wird nicht beschrieben.
+    expect(window.localStorage.getItem("minijob-generated-docs-v1")).toBeNull();
+  });
+
+  it("T4: unvollständiger Onboarding-Entwurf von A erscheint nicht bei B", async () => {
+    session = { user: { id: A } };
+    const { draft, cloud } = await boot();
+    draft.saveOnboardingDraft({ step: 4, mode: "fest" });
+    expect(draft.loadOnboardingDraft()).toEqual({ step: 4, mode: "fest" });
+
+    await cloud.performSignOut();
+    expect(draft.loadOnboardingDraft()).toBeNull();
+    await signIn(B);
+    expect(draft.loadOnboardingDraft()).toBeNull();
+    expect(window.localStorage.getItem("minijob-onboarding-draft-v2")).toBeNull();
+  });
+
+  it("A → Logout → ohne Login (Neustart): Gast-Namensraum, keine Kontodaten", async () => {
+    session = { user: { id: A } };
+    const first = await boot();
+    first.store.saveShift(shift("a-1"));
+    await first.cloud.performSignOut();
+
+    const { store } = await boot(); // session === null
+    expect(store.getActiveScope().kind).toBe("guest");
+    expect(store.getData().shifts).toHaveLength(0);
+  });
+
+  it("A → Logout → Testmodus: Testmodus startet leer, ohne A's Daten", async () => {
+    session = { user: { id: A } };
+    const { store, cloud } = await boot();
+    store.saveShift(shift("a-1"));
+    await cloud.performSignOut();
+    expect(cloud.enterTestModeScope()).toBe(true);
+    expect(store.getActiveScope().kind).toBe("demo");
+    expect(store.getData().shifts).toHaveLength(0);
+  });
+
+  it("abgelaufene Session beim Start (kein Fehler) → Kontodaten werden nicht angezeigt", async () => {
+    session = { user: { id: A } };
+    const first = await boot();
+    first.store.saveShift(shift("a-1"));
+    session = null; // Session lokal weg, ohne SIGNED_OUT-Event
+    const { store } = await boot();
+    expect(store.getActiveScope().kind).toBe("guest");
+    expect(store.getData().shifts).toHaveLength(0);
+  });
+});
+
+/* ---------- Owner-Guard & Logout-Fehler ---------- */
+
+describe("Owner-Guard und Abmeldung", () => {
+  it("Owner-Guard: kein Push/Lokal-behalten/Restore, wenn geladene Daten nicht dem Session-Konto gehören", async () => {
+    session = { user: { id: A } };
+    const { store, cloud, scope } = await boot();
+    await vi.advanceTimersByTimeAsync(1000);
+    const before = upserts.length;
+
+    // Store künstlich auf fremden Namensraum (Gast) – Session bleibt A.
+    store.activateScope(scope.GUEST_SCOPE);
+    store.saveShift(shift("guest-data"));
+    await expect(cloud.backupNow()).rejects.toThrow();
+    await expect(cloud.resolveConflict("local")).rejects.toThrow();
+    await expect(cloud.restoreNow()).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await settle();
+    expect(upserts.length).toBe(before);
+    expect(upsertsContaining("guest-data")).toHaveLength(0);
+  });
+
+  it("signOut-Fehler: Konto-Namensraum bleibt aktiv, nichts wird umgeschaltet oder gelöscht", async () => {
+    session = { user: { id: A } };
+    const { store, cloud } = await boot();
+    store.saveShift(shift("a-keep"));
+    signOutError = { message: "network" };
+
+    const res = await cloud.performSignOut();
+    expect(res.ok).toBe(false);
+    expect(store.getActiveScopeOwner()).toBe(A);
+    expect(store.getData().shifts.map((s) => s.id)).toContain("a-keep");
+
+    signOutError = null;
+    const ok = await cloud.performSignOut();
+    expect(ok.ok).toBe(true);
+    expect(store.getData().shifts).toHaveLength(0);
+    // Daten von A bleiben unter A's Namensraum gespeichert.
+    expect(window.localStorage.getItem(`minijob-tracker-v1:u:${A}`)).toContain("a-keep");
+  });
+});
+
+/* ---------- Testmodus ↔ Google ---------- */
+
+async function setupDemoWithData() {
+  const ctx = await boot(); // abgemeldet
+  expect(ctx.cloud.enterTestModeScope()).toBe(true);
+  ctx.store.updateSettings({ localDemoMode: true, onboarded: true, wizardCompletedAt: 123 });
+  ctx.store.saveJob({ id: "demo-job", name: "Demo", color: "#000", mode: "flex" });
+  ctx.store.saveShift(shift("demo-shift"));
+  ctx.docs.registerGeneratedDocument({
+    name: "Demo-Bericht.pdf",
+    category: "report_pdf",
+    mimeType: "application/pdf",
+    size: 5,
+    dataUrl: "data:application/pdf;base64,AAAA",
+  });
+  // Google-Button: Testmodus bleibt aktiv, nur Marker für den Callback.
+  ctx.scope.markOAuthPending(ctx.store.getActiveScope());
+  expect(ctx.store.getData().settings.localDemoMode).toBe(true);
+  return ctx;
+}
+
+describe("Testmodus → Google", () => {
+  it("T5: OAuth abgebrochen → weiter im Testmodus, Daten vollständig", async () => {
+    await setupDemoWithData();
+    // Rückkehr ohne Session (Abbruch/Fehler bei Google) = Neustart ohne Session.
+    session = null;
+    const { store, scope } = await boot();
+    expect(store.getActiveScope().kind).toBe("demo");
+    expect(store.getData().settings.localDemoMode).toBe(true);
+    expect(store.getData().shifts.map((s) => s.id)).toEqual(["demo-shift"]);
+    expect(scope.readOAuthPending()).toBeNull();
+    expect(upserts).toHaveLength(0);
+  });
+
+  it("T6: OAuth erfolgreich → Konto startet eigenständig, kein Auto-Import, kein Push von Testdaten", async () => {
+    await setupDemoWithData();
+    session = { user: { id: C } };
+    const { store, imp, scope } = await boot();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await settle();
+
+    expect(store.getActiveScopeOwner()).toBe(C);
+    expect(store.getData().shifts).toHaveLength(0);
+    expect(store.getData().jobs).toHaveLength(0);
+    expect(store.getData().settings.localDemoMode).not.toBe(true);
+    // Neue, sichere Spezifikation: kein Übertrag von onboarded/wizardCompletedAt.
+    expect(store.getData().settings.onboarded).not.toBe(true);
+    expect(store.getData().settings.wizardCompletedAt).toBeUndefined();
+    expect(upsertsContaining("demo-shift")).toHaveLength(0);
+    expect(upserts.filter((u) => u.user_id === C)).toHaveLength(0);
+
+    // Testmodus-Namensraum bleibt unverändert erhalten.
+    const demo = store.readScopeData(scope.DEMO_SCOPE);
+    expect(demo?.shifts.map((s) => s.id)).toEqual(["demo-shift"]);
+    expect(demo?.settings.localDemoMode).toBe(true);
+    // Explizite Wahl wird angeboten.
+    expect(imp.pendingPromptSources()).toContain("demo");
+  });
+
+  it("T6b: „Mit leerem Konto starten“ → nichts importiert, Testdaten bleiben im Testmodus", async () => {
+    await setupDemoWithData();
+    session = { user: { id: C } };
+    const { store, imp, scope } = await boot();
+    imp.declineImport("demo");
+    expect(imp.pendingPromptSources()).not.toContain("demo");
+    expect(store.getData().shifts).toHaveLength(0);
+    expect(store.readScopeData(scope.DEMO_SCOPE)?.shifts).toHaveLength(1);
+  });
+
+  it("T6c: „Testdaten übernehmen“ ohne Backup → explizit übernommen und gesichert", async () => {
+    await setupDemoWithData();
+    session = { user: { id: C } };
+    const { store, imp } = await boot();
+    expect(imp.importLocalData("demo")).toBe("imported");
+    await settle();
+    expect(store.getData().shifts.map((s) => s.id)).toEqual(["demo-shift"]);
+    expect(store.getData().settings.localDemoMode).toBe(false);
+    expect(upsertsContaining("demo-shift").map((u) => u.user_id)).toEqual([C]);
+  });
+
+  it("T6d: „Testdaten übernehmen“ mit bestehendem Backup → Konflikt statt stillem Überschreiben", async () => {
+    await setupDemoWithData();
+    backups.set(C, { payload: payloadWith(["cloud-1"]), updated_at: new Date().toISOString() });
+    session = { user: { id: C } };
+    const { store, imp, cloud } = await boot();
+    // Erststart: Cloud wird wiederhergestellt.
+    expect(store.getData().shifts.map((s) => s.id)).toEqual(["cloud-1"]);
+    const before = upserts.length;
+
+    expect(imp.importLocalData("demo")).toBe("imported");
+    await settle();
+    expect(cloud.getSyncState().status).toBe("conflict");
+    expect(upserts.length).toBe(before);
+    expect((backups.get(C)?.payload as AppData).shifts.map((s) => s.id)).toEqual(["cloud-1"]);
+  });
+
+  it("T7: generiertes Testmodus-Dokument bleibt demo-gebunden, bis es explizit übernommen wird", async () => {
+    await setupDemoWithData();
+    session = { user: { id: C } };
+    const { docs, imp, scope } = await boot();
+    expect(docs.listGeneratedDocuments()).toHaveLength(0);
+    expect(
+      docs.readGeneratedDocumentsAt(docs.generatedDocsStorageKey(scope.DEMO_SCOPE)),
+    ).toHaveLength(1);
+
+    expect(imp.importLocalData("demo")).toBe("imported");
+    expect(docs.listGeneratedDocuments().map((d) => d.name)).toEqual(["Demo-Bericht.pdf"]);
+    // Quelle bleibt erhalten (nichts still gelöscht).
+    expect(
+      docs.readGeneratedDocumentsAt(docs.generatedDocsStorageKey(scope.DEMO_SCOPE)),
+    ).toHaveLength(1);
+  });
+
+  it("Wizard-Fortschritt (nur Schritt/Arbeitsart) übersteht den OAuth-Redirect", async () => {
+    const ctx = await boot();
+    ctx.draft.saveOnboardingDraft({ step: 2, mode: "selbststaendig" });
+    ctx.scope.markOAuthPending(ctx.store.getActiveScope());
+    session = { user: { id: C } };
+    const { draft } = await boot();
+    expect(draft.loadOnboardingDraft()).toEqual({ step: 2, mode: "selbststaendig" });
+  });
+});
+
+/* ---------- Legacy-Gerätedaten ---------- */
+
+function seedLegacy(opts: { owner: string | null; demo?: boolean }) {
+  window.localStorage.setItem(
+    "minijob-tracker-v1",
+    JSON.stringify({
+      ...payloadWith(["legacy-1", "legacy-2"]),
+      settings: { onboarded: true, wizardCompletedAt: 5, localDemoMode: opts.demo === true },
+    }),
+  );
+  if (opts.owner) {
+    window.localStorage.setItem(
+      "minijob-sync-meta-v1",
+      JSON.stringify({
+        userId: opts.owner,
+        lastSyncedAt: 1,
+        remoteSeenAt: 1,
+        localChangedAt: null,
+      }),
+    );
+  }
+  window.localStorage.setItem(
+    "minijob-generated-docs-v1",
+    JSON.stringify([
+      {
+        id: "gen-legacy",
+        name: "Alt.pdf",
+        category: "report_pdf",
+        mimeType: "application/pdf",
+        size: 3,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        dataUrl: "",
+        source: "generated",
+      },
+    ]),
+  );
+}
+
+describe("Legacy-Daten (globaler Schlüssel ohne Besitzer)", () => {
+  it("T8: Login A → Legacy wird nicht still A's; expliziter Import respektiert bestehendes Backup", async () => {
+    seedLegacy({ owner: A });
+    const legacyRaw = window.localStorage.getItem("minijob-tracker-v1");
+    backups.set(A, { payload: payloadWith(["cloud-a"]), updated_at: new Date().toISOString() });
+    session = { user: { id: A } };
+    const { store, imp, cloud, docs } = await boot();
+
+    // Nicht automatisch übernommen: A sieht seinen Cloud-Stand, nicht Legacy.
+    expect(store.getData().shifts.map((s) => s.id)).toEqual(["cloud-a"]);
+    expect(docs.listGeneratedDocuments()).toHaveLength(0);
+    expect(window.localStorage.getItem("minijob-tracker-v1")).toBe(legacyRaw);
+    expect(upsertsContaining("legacy-1")).toHaveLength(0);
+
+    const candidate = imp.findLegacyCandidate();
+    expect(candidate?.lastSyncedWithThisAccount).toBe(true);
+    expect(imp.pendingPromptSources()).toContain("legacy");
+
+    // Expliziter Import → Konflikt (Backup existiert), kein stilles Überschreiben.
+    const before = upserts.length;
+    expect(imp.importLocalData("legacy")).toBe("imported");
+    await settle();
+    expect(cloud.getSyncState().status).toBe("conflict");
+    expect(upserts.length).toBe(before);
+    expect(
+      store
+        .getData()
+        .shifts.map((s) => s.id)
+        .sort(),
+    ).toEqual(["legacy-1", "legacy-2"]);
+    expect(docs.listGeneratedDocuments().map((d) => d.id)).toEqual(["gen-legacy"]);
+    expect(window.localStorage.getItem("minijob-tracker-v1")).toBe(legacyRaw);
+
+    // Nutzer entscheidet bewusst „Lokal behalten“ → erst jetzt Upload.
+    await cloud.resolveConflict("local");
+    expect(upsertsContaining("legacy-1").map((u) => u.user_id)).toEqual([A]);
+  });
+
+  it("T8b: an Konto A gebundene Legacy-Daten werden B / Gast nie angeboten", async () => {
+    seedLegacy({ owner: A });
+    session = { user: { id: B } };
+    const { store, imp, cloud } = await boot();
+    expect(store.getData().shifts).toHaveLength(0);
+    expect(imp.findLegacyCandidate()).toBeNull();
+    expect(imp.importLocalData("legacy")).toBe("nothing");
+    await cloud.performSignOut();
+    expect(imp.findLegacyCandidate()).toBeNull();
+  });
+
+  it("T8c: Legacy ohne Backup → expliziter Import wird für das Konto gesichert", async () => {
+    seedLegacy({ owner: A });
+    session = { user: { id: A } };
+    const { store, imp } = await boot();
+    expect(store.getData().shifts).toHaveLength(0);
+    expect(upserts).toHaveLength(0);
+    expect(imp.importLocalData("legacy")).toBe("imported");
+    await settle();
+    expect(upsertsContaining("legacy-1").map((u) => u.user_id)).toEqual([A]);
+  });
+
+  it("T8d: Import verweigert, wenn das Konto ungesicherte eigene Daten hat", async () => {
+    seedLegacy({ owner: A });
+    session = { user: { id: A } };
+    const { store, imp } = await boot();
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    store.saveShift(shift("own-unsynced"));
+    expect(imp.importLocalData("legacy")).toBe("refused-unsynced");
+    expect(store.getData().shifts.map((s) => s.id)).toEqual(["own-unsynced"]);
+  });
+
+  it("T8e: ungebundene Testmodus-Legacy-Daten → nur explizit in den Testmodus übernehmbar", async () => {
+    seedLegacy({ owner: null, demo: true });
+    const { store, imp } = await boot();
+    expect(store.getActiveScope().kind).toBe("guest");
+    expect(store.getData().shifts).toHaveLength(0);
+    expect(imp.pendingPromptSources()).toContain("legacy");
+    expect(imp.importLocalData("legacy")).toBe("imported");
+    expect(store.getActiveScope().kind).toBe("demo");
+    expect(store.getData().settings.localDemoMode).toBe(true);
+    expect(store.getData().shifts).toHaveLength(2);
+    expect(upserts).toHaveLength(0);
+  });
+
+  it("Ignorieren/Verwerfen: Ignorieren blendet nur den Dialog aus; Löschen entfernt nur Legacy-Schlüssel", async () => {
+    seedLegacy({ owner: A });
+    session = { user: { id: A } };
+    const { imp } = await boot();
+    imp.declineImport("legacy");
+    expect(imp.pendingPromptSources()).not.toContain("legacy");
+    expect(window.localStorage.getItem("minijob-tracker-v1")).not.toBeNull();
+    imp.discardLegacyData();
+    expect(window.localStorage.getItem("minijob-tracker-v1")).toBeNull();
+    expect(window.localStorage.getItem("minijob-generated-docs-v1")).toBeNull();
+    expect(window.localStorage.getItem(`minijob-sync-meta-v1:u:${A}`)).not.toBeNull();
+  });
+});
+
+describe("Upgrade: Gerätesperre", () => {
+  it("PIN aus Legacy-Daten desselben Kontos schützt den neuen Konto-Namensraum (ohne Daten zu übernehmen)", async () => {
+    window.localStorage.setItem(
+      "minijob-tracker-v1",
+      JSON.stringify({
+        ...payloadWith(["legacy-1"]),
+        settings: { onboarded: true, wizardCompletedAt: 5, pin: "1234", pinEnabled: true },
+      }),
+    );
+    window.localStorage.setItem("minijob-sync-meta-v1", JSON.stringify({ userId: A }));
+    session = { user: { id: A } };
+    const { store } = await boot();
+    expect(store.getData().settings.pinEnabled).toBe(true);
+    expect(store.getData().shifts).toHaveLength(0);
+    expect(upserts).toHaveLength(0);
+  });
+
+  it("PIN wird einem fremden Konto nicht übertragen", async () => {
+    window.localStorage.setItem(
+      "minijob-tracker-v1",
+      JSON.stringify({ ...payloadWith(["x"]), settings: { pin: "1234", pinEnabled: true } }),
+    );
+    window.localStorage.setItem("minijob-sync-meta-v1", JSON.stringify({ userId: A }));
+    session = { user: { id: B } };
+    const { store } = await boot();
+    expect(store.getData().settings.pinEnabled).not.toBe(true);
+  });
+});
