@@ -33,12 +33,16 @@ import {
 } from "./generated-docs";
 import {
   clearDemoImportOffer,
+  clearLegacyConsumed,
   hasDemoImportOffer,
+  isLegacyConsumed,
+  legacyConsumedBy,
+  markLegacyConsumed,
   readImportDecision,
   writeImportDecision,
   type ImportSource,
 } from "./import-offers";
-import { DEMO_SCOPE, LEGACY_KEYS, type StorageScope } from "./storage-scope";
+import { DEMO_SCOPE, LEGACY_KEYS, scopeSuffix, type StorageScope } from "./storage-scope";
 import {
   getActiveScope,
   getActiveScopeOwner,
@@ -66,16 +70,34 @@ export type ImportCandidate = {
 export type ImportResult =
   "imported" | "nothing" | "not-eligible" | "refused-unsynced" | "refused-not-empty";
 
-function readLegacyOwner(): string | null {
-  if (typeof window === "undefined") return null;
+function readLegacyMeta(): { owner: string | null; synced: boolean } {
+  if (typeof window === "undefined") return { owner: null, synced: false };
   try {
     const raw = window.localStorage.getItem(LEGACY_KEYS.syncMeta);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { userId?: unknown };
-    return typeof parsed.userId === "string" && parsed.userId ? parsed.userId : null;
+    if (!raw) return { owner: null, synced: false };
+    const parsed = JSON.parse(raw) as { userId?: unknown; lastSyncedAt?: unknown };
+    const owner = typeof parsed.userId === "string" && parsed.userId ? parsed.userId : null;
+    return { owner, synced: typeof parsed.lastSyncedAt === "number" };
   } catch {
-    return null;
+    return { owner: null, synced: false };
   }
+}
+
+/**
+ * Darf im aktiven Namensraum „Endgültig löschen“ angeboten werden? Nur dort, wo
+ * der Bestand angeboten wird oder wohin er bereits übernommen wurde.
+ */
+export function canDiscardLegacy(scope: StorageScope = getActiveScope()): boolean {
+  if (!hasLegacyData()) return false;
+  return findLegacyCandidate(scope) !== null || legacyConsumedBy() === scopeSuffix(scope);
+}
+
+/** Liegt überhaupt noch ein Legacy-Bestand auf dem Gerät (für „Endgültig löschen“)? */
+export function hasLegacyData(): boolean {
+  return (
+    hasMeaningfulData(readStoredData(LEGACY_KEYS.data)) ||
+    readGeneratedDocumentsAt(LEGACY_KEYS.generatedDocs).length > 0
+  );
 }
 
 function toCandidate(
@@ -108,9 +130,11 @@ function toCandidate(
 export function findLegacyCandidate(
   scope: StorageScope = getActiveScope(),
 ): ImportCandidate | null {
+  // Schon einmal übernommen → keinem weiteren Konto/Scope mehr anbieten.
+  if (isLegacyConsumed()) return null;
   const data = readStoredData(LEGACY_KEYS.data);
   const docs = readGeneratedDocumentsAt(LEGACY_KEYS.generatedDocs);
-  const legacyOwner = readLegacyOwner();
+  const { owner: legacyOwner, synced: legacySynced } = readLegacyMeta();
   if (legacyOwner !== null) {
     if (scope.kind !== "user" || scope.userId !== legacyOwner) return null;
     if (getCloudUserId() !== legacyOwner) return null;
@@ -119,7 +143,9 @@ export function findLegacyCandidate(
     "legacy",
     data,
     docs,
-    legacyOwner !== null && scope.kind === "user" && scope.userId === legacyOwner,
+    // Nur mit echtem Sync-Stand (lastSyncedAt): ein Rest aus dem alten A→B-Bug
+    // (userId umgebogen, nie synchronisiert) gilt nicht als „mit diesem Konto synchronisiert“.
+    legacySynced && legacyOwner !== null && scope.kind === "user" && scope.userId === legacyOwner,
   );
 }
 
@@ -185,6 +211,7 @@ export function importLocalData(source: ImportSource): ImportResult {
     }
     importGeneratedDocuments(candidate.docs);
     writeImportDecision(scope, source, "imported");
+    if (source === "legacy") markLegacyConsumed(scope);
     if (source === "demo") clearDemoImportOffer(scope.userId);
     // Nur mit Arbeitsdaten die Sync-Baseline zurücksetzen (Konflikt statt Überschreiben).
     if (candidate.data) markExplicitImportForSync();
@@ -210,6 +237,7 @@ export function importLocalData(source: ImportSource): ImportResult {
   }
   importGeneratedDocuments(candidate.docs);
   writeImportDecision(scope, source, "imported");
+  markLegacyConsumed(scope);
   return "imported";
 }
 
@@ -226,4 +254,5 @@ export function discardLegacyData(): void {
       /* ignore */
     }
   }
+  clearLegacyConsumed();
 }

@@ -33,6 +33,8 @@ const de = {
   "local.section.legacy": "Daten aus früherer App-Version",
   "local.section.demo": "Testmodus-Daten",
   "local.section.discard": "Endgültig löschen",
+  "local.section.legacyImported":
+    "Bereits übernommen. Die alten Daten bleiben als Sicherung auf dem Gerät, bis du sie löschst.",
   "local.section.discardConfirm":
     "Die alten lokalen Daten (frühere App-Version) wirklich endgültig von diesem Gerät löschen? Dies kann nicht rückgängig gemacht werden.",
   "local.section.discarded": "Alte lokale Daten gelöscht.",
@@ -70,6 +72,8 @@ const en: typeof de = {
   "local.section.legacy": "Data from earlier app version",
   "local.section.demo": "Test mode data",
   "local.section.discard": "Delete permanently",
+  "local.section.legacyImported":
+    "Already imported. The old data stays on this device as a backup until you delete it.",
   "local.section.discardConfirm":
     "Really delete the old local data (earlier app version) from this device? This cannot be undone.",
   "local.section.discarded": "Old local data deleted.",

@@ -17,13 +17,22 @@ const backups = new Map<string, Row>();
 const upserts: { user_id: string; payload: AppData }[] = [];
 let session: { user: { id: string } } | null = null;
 let authCallback: ((event: string, s: unknown) => void) | null = null;
-let signOutError: { message: string } | null = null;
+/**
+ * signOut-Verhalten wie auth-js (_signOut):
+ * - "ok": Session entfernt, SIGNED_OUT
+ * - "network": Server-Aufruf scheitert, auth-js entfernt die LOKALE Session
+ *   trotzdem (feuert SIGNED_OUT) und liefert { error }
+ * - "sessionError": Session konnte nicht geladen werden → { error }, Session bleibt
+ */
+let signOutMode: "ok" | "network" | "sessionError" = "ok";
 let selectGate: Promise<void> | null = null;
+let upsertGate: Promise<void> | null = null;
 
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     from: () => ({
       upsert: async (row: { user_id: string; payload: AppData; updated_at: string }) => {
+        if (upsertGate) await upsertGate;
         upserts.push({ user_id: row.user_id, payload: row.payload });
         backups.set(row.user_id, { payload: row.payload, updated_at: row.updated_at });
         return { error: null };
@@ -44,10 +53,10 @@ vi.mock("@/integrations/supabase/client", () => ({
         return { data: { subscription: { unsubscribe() {} } } };
       },
       signOut: async () => {
-        if (signOutError) return { error: signOutError };
+        if (signOutMode === "sessionError") return { error: { message: "session load failed" } };
         session = null;
         authCallback?.("SIGNED_OUT", null);
-        return { error: null };
+        return { error: signOutMode === "network" ? { message: "Failed to fetch" } : null };
       },
     },
   },
@@ -131,8 +140,9 @@ beforeEach(() => {
   upserts.length = 0;
   session = null;
   authCallback = null;
-  signOutError = null;
+  signOutMode = "ok";
   selectGate = null;
+  upsertGate = null;
   Object.defineProperty(window.navigator, "onLine", { value: true, configurable: true });
   vi.useFakeTimers();
 });
@@ -182,27 +192,6 @@ describe("Kontowechsel A → Logout → B", () => {
     expect(upsertsContaining("a-unsynced").filter((u) => u.user_id !== A)).toHaveLength(0);
     expect(backups.has(B)).toBe(false);
     expect(cloud.getSyncState().status).not.toBe("conflict");
-  });
-
-  it("T2b: laufender Abgleich von A landet nach Logout + Login B nicht in B's Backup", async () => {
-    session = { user: { id: A } };
-    const { store, cloud } = await boot();
-    await vi.advanceTimersByTimeAsync(1000);
-    let release: () => void = () => {};
-    selectGate = new Promise<void>((r) => {
-      release = r;
-    });
-    store.saveShift(shift("a-inflight"));
-    await vi.advanceTimersByTimeAsync(2600); // debounce → autoSync hängt im Fetch
-    await cloud.performSignOut();
-    await signIn(B);
-    release();
-    selectGate = null;
-    await settle();
-    await vi.advanceTimersByTimeAsync(10_000);
-    await settle();
-
-    expect(upsertsContaining("a-inflight").filter((u) => u.user_id === B)).toHaveLength(0);
   });
 
   it("T3: generierte Dokumente von A sind für B unsichtbar", async () => {
@@ -291,23 +280,38 @@ describe("Owner-Guard und Abmeldung", () => {
     expect(upsertsContaining("guest-data")).toHaveLength(0);
   });
 
-  it("signOut-Fehler: Konto-Namensraum bleibt aktiv, nichts wird umgeschaltet oder gelöscht", async () => {
+  it("signOut-Fehler (Session bleibt): Konto-Namensraum bleibt aktiv, nichts wird umgeschaltet oder gelöscht", async () => {
     session = { user: { id: A } };
     const { store, cloud } = await boot();
     store.saveShift(shift("a-keep"));
-    signOutError = { message: "network" };
+    signOutMode = "sessionError";
 
     const res = await cloud.performSignOut();
     expect(res.ok).toBe(false);
     expect(store.getActiveScopeOwner()).toBe(A);
     expect(store.getData().shifts.map((s) => s.id)).toContain("a-keep");
 
-    signOutError = null;
+    signOutMode = "ok";
     const ok = await cloud.performSignOut();
     expect(ok.ok).toBe(true);
     expect(store.getData().shifts).toHaveLength(0);
     // Daten von A bleiben unter A's Namensraum gespeichert.
     expect(window.localStorage.getItem(`minijob-tracker-v1:u:${A}`)).toContain("a-keep");
+  });
+
+  it("signOut-Netzfehler: auth-js entfernt die lokale Session → Gast-Scope, kein „noch angemeldet“", async () => {
+    session = { user: { id: A } };
+    const { store, cloud } = await boot();
+    store.saveShift(shift("a-net"));
+    signOutMode = "network";
+
+    const res = await cloud.performSignOut();
+    expect(res.ok).toBe(true);
+    expect(res.localOnly).toBe(true);
+    expect(store.getActiveScope().kind).toBe("guest");
+    expect(store.getData().shifts).toHaveLength(0);
+    expect(cloud.getSyncState().signedIn).toBe(false);
+    expect(window.localStorage.getItem(`minijob-tracker-v1:u:${A}`)).toContain("a-net");
   });
 });
 
@@ -595,5 +599,249 @@ describe("Upgrade: Gerätesperre", () => {
     session = { user: { id: B } };
     const { store } = await boot();
     expect(store.getData().settings.pinEnabled).not.toBe(true);
+  });
+});
+
+/* ---------- Races: Kontowechsel WÄHREND eines laufenden Cloud-Zugriffs ---------- */
+
+function deferred() {
+  let release: () => void = () => {};
+  const promise = new Promise<void>((r) => {
+    release = r;
+  });
+  return { promise, release };
+}
+
+function setOnline(online: boolean) {
+  Object.defineProperty(window.navigator, "onLine", { value: online, configurable: true });
+}
+
+const metaKeyOf = (id: string) => `minijob-sync-meta-v1:u:${id}`;
+
+describe("Race: Kontowechsel während await", () => {
+  it("(a) Push-Race A→B: B's Meta unverändert, kein A-Fingerprint; Neustart mit neuerem B-Cloud-Stand → Konflikt statt Restore", async () => {
+    const T0 = Date.now() - 100_000;
+    const T1 = Date.now() - 50_000;
+    // B hat auf diesem Gerät eine ungesicherte Schicht (Änderung T1 nach Sync T0).
+    window.localStorage.setItem(
+      `minijob-tracker-v1:u:${B}`,
+      JSON.stringify(payloadWith(["b-unsynced"])),
+    );
+    const bMeta = {
+      userId: B,
+      lastSyncedAt: T0,
+      remoteSeenAt: T0,
+      localChangedAt: T1,
+      localWorkChangedAt: T1,
+      localWorkFingerprint: "fp-b",
+      wizardPendingFirstSync: false,
+    };
+    window.localStorage.setItem(metaKeyOf(B), JSON.stringify(bMeta));
+    backups.set(B, {
+      payload: payloadWith(["b-cloud-old"]),
+      updated_at: new Date(T0).toISOString(),
+    });
+    // A hat lokale Daten, noch kein Backup → Init-Sync pusht.
+    window.localStorage.setItem(`minijob-tracker-v1:u:${A}`, JSON.stringify(payloadWith(["a-1"])));
+
+    const gate = deferred();
+    upsertGate = gate.promise;
+    session = { user: { id: A } };
+    const { cloud } = await boot(); // A-Push hängt im Upsert
+
+    // Während des await: Kontowechsel A → B (B offline, damit B selbst nicht synct).
+    setOnline(false);
+    authCallback?.("SIGNED_OUT", null);
+    session = { user: { id: B } };
+    authCallback?.("SIGNED_IN", session);
+    await settle();
+    const bMetaBefore = window.localStorage.getItem(metaKeyOf(B));
+
+    gate.release();
+    upsertGate = null;
+    await settle();
+    await vi.advanceTimersByTimeAsync(100);
+    await settle();
+
+    // A's Upload ging korrekt an A – aber B's Meta ist unberührt.
+    expect(upserts.map((u) => u.user_id)).toEqual([A]);
+    expect(window.localStorage.getItem(metaKeyOf(B))).toBe(bMetaBefore);
+    const bMetaAfter = JSON.parse(window.localStorage.getItem(metaKeyOf(B))!);
+    expect(bMetaAfter.lastSyncedAt).toBe(T0);
+    expect(bMetaAfter.localWorkChangedAt).toBe(T1);
+    expect(bMetaAfter.localWorkFingerprint).toBe("fp-b");
+    expect(cloud.getSyncState().status).not.toBe("synced");
+
+    // Neustart: B's Cloud wurde inzwischen auf einem anderen Gerät aktualisiert.
+    backups.set(B, {
+      payload: payloadWith(["b-cloud-new"]),
+      updated_at: new Date(Date.now() + 60_000).toISOString(),
+    });
+    setOnline(true);
+    session = { user: { id: B } };
+    const restarted = await boot();
+    expect(restarted.cloud.getSyncState().status).toBe("conflict");
+    expect(restarted.store.getData().shifts.map((s) => s.id)).toContain("b-unsynced");
+  });
+
+  it("(a2) Logout während laufendem Push → kein Fehler-/Synced-Status, keine Meta im Gast-Scope", async () => {
+    window.localStorage.setItem(`minijob-tracker-v1:u:${A}`, JSON.stringify(payloadWith(["a-1"])));
+    const gate = deferred();
+    upsertGate = gate.promise;
+    session = { user: { id: A } };
+    const { cloud, store } = await boot();
+
+    session = null;
+    authCallback?.("SIGNED_OUT", null);
+    await settle();
+    gate.release();
+    upsertGate = null;
+    await settle();
+    await vi.advanceTimersByTimeAsync(100);
+    await settle();
+
+    expect(store.getActiveScope().kind).toBe("guest");
+    expect(cloud.getSyncState().status).toBe("idle");
+    expect(cloud.getSyncState().message).toBeNull();
+    const guestMeta = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1:guest") ?? "{}");
+    expect(guestMeta.lastSyncedAt ?? null).toBeNull();
+  });
+
+  it("(b) autoSync nach Fetch: A→B während des Fetch → kein Apply von A's Cloud, kein Push in B", async () => {
+    backups.set(A, { payload: payloadWith(["a-cloud"]), updated_at: new Date().toISOString() });
+    const gate = deferred();
+    selectGate = gate.promise;
+    session = { user: { id: A } };
+    const { store } = await boot(); // A-Fetch hängt
+
+    authCallback?.("SIGNED_OUT", null);
+    session = { user: { id: B } };
+    authCallback?.("SIGNED_IN", session);
+    await settle();
+    gate.release();
+    selectGate = null;
+    await settle();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await settle();
+
+    expect(store.getActiveScopeOwner()).toBe(B);
+    expect(store.getData().shifts.some((s) => s.id === "a-cloud")).toBe(false);
+    expect(window.localStorage.getItem(`minijob-tracker-v1:u:${B}`) ?? "").not.toContain("a-cloud");
+    expect(upserts.filter((u) => u.user_id === B)).toHaveLength(0);
+    const bMeta = JSON.parse(window.localStorage.getItem(metaKeyOf(B)) ?? "{}");
+    expect(bMeta.lastSyncedAt ?? null).toBeNull();
+  });
+
+  it("(b2) autoSync Mid-flight-Guard: Namensraum wechselt während des Fetch (ohne Auth-Event) → kein Apply/Push", async () => {
+    backups.set(A, { payload: payloadWith(["a-cloud"]), updated_at: new Date().toISOString() });
+    const gate = deferred();
+    selectGate = gate.promise;
+    session = { user: { id: A } };
+    const { store, cloud, scope } = await boot();
+
+    store.activateScope(scope.GUEST_SCOPE); // Scope-Wechsel ohne Epoch-Bump
+    gate.release();
+    selectGate = null;
+    await settle();
+    await vi.advanceTimersByTimeAsync(100);
+    await settle();
+
+    expect(store.getData().shifts.some((s) => s.id === "a-cloud")).toBe(false);
+    expect(window.localStorage.getItem("minijob-tracker-v1:guest") ?? "").not.toContain("a-cloud");
+    expect(upserts).toHaveLength(0);
+    expect(cloud.getSyncState().status).not.toBe("synced");
+  });
+
+  it("(c) restoreNow: A→B während des await → nichts in B's Scope geschrieben", async () => {
+    session = { user: { id: A } };
+    const { store, cloud } = await boot();
+    backups.set(A, { payload: payloadWith(["a-cloud"]), updated_at: new Date().toISOString() });
+    const gate = deferred();
+    selectGate = gate.promise;
+    const restore = cloud.restoreNow().catch(() => false);
+
+    authCallback?.("SIGNED_OUT", null);
+    session = { user: { id: B } };
+    authCallback?.("SIGNED_IN", session);
+    await settle();
+    gate.release();
+    selectGate = null;
+    await settle();
+    expect(await restore).toBe(false);
+    await vi.advanceTimersByTimeAsync(100);
+    await settle();
+
+    expect(store.getActiveScopeOwner()).toBe(B);
+    expect(store.getData().shifts.some((s) => s.id === "a-cloud")).toBe(false);
+    expect(window.localStorage.getItem(`minijob-tracker-v1:u:${B}`) ?? "").not.toContain("a-cloud");
+    const bMeta = JSON.parse(window.localStorage.getItem(metaKeyOf(B)) ?? "{}");
+    expect(bMeta.lastSyncedAt ?? null).toBeNull();
+  });
+
+  it("(c2) restoreNow Post-await-Guard: Namensraum wechselt während des await (ohne Auth-Event) → kein Restore", async () => {
+    session = { user: { id: A } };
+    const { store, cloud, scope } = await boot();
+    backups.set(A, { payload: payloadWith(["a-cloud"]), updated_at: new Date().toISOString() });
+    const gate = deferred();
+    selectGate = gate.promise;
+    const restore = cloud.restoreNow().then(
+      () => "resolved",
+      () => "rejected",
+    );
+
+    store.activateScope(scope.GUEST_SCOPE); // ohne Epoch-Bump
+    gate.release();
+    selectGate = null;
+    await settle();
+
+    expect(await restore).toBe("rejected");
+    expect(store.getData().shifts.some((s) => s.id === "a-cloud")).toBe(false);
+    expect(window.localStorage.getItem("minijob-tracker-v1:guest") ?? "").not.toContain("a-cloud");
+    expect(cloud.getSyncState().status).not.toBe("synced");
+  });
+});
+
+/* ---------- Legacy: global verbraucht ---------- */
+
+describe("Legacy: Übernahme verbraucht den Bestand global", () => {
+  it("ungebundene Legacy-Daten: nach Übernahme durch A wird B nichts mehr angeboten; Quelle bleibt", async () => {
+    seedLegacy({ owner: null });
+    const legacyRaw = window.localStorage.getItem("minijob-tracker-v1");
+    session = { user: { id: A } };
+    const { imp, cloud, store } = await boot();
+    expect(imp.importLocalData("legacy")).toBe("imported");
+    expect(imp.canDiscardLegacy()).toBe(true);
+    await settle();
+
+    await cloud.performSignOut();
+    expect(imp.findLegacyCandidate()).toBeNull(); // auch Gast nicht
+    await signIn(B);
+    expect(store.getActiveScopeOwner()).toBe(B);
+    expect(imp.findLegacyCandidate()).toBeNull();
+    expect(imp.pendingPromptSources()).not.toContain("legacy");
+    expect(imp.importLocalData("legacy")).toBe("nothing");
+    expect(imp.canDiscardLegacy()).toBe(false);
+    expect(store.getData().shifts).toHaveLength(0);
+    // Quelle bleibt als Sicherung erhalten.
+    expect(window.localStorage.getItem("minijob-tracker-v1")).toBe(legacyRaw);
+  });
+
+  it("lastSyncedWithThisAccount nur mit echtem lastSyncedAt (Rest aus altem A→B-Bug)", async () => {
+    seedLegacy({ owner: A });
+    window.localStorage.setItem("minijob-sync-meta-v1", JSON.stringify({ userId: A }));
+    session = { user: { id: A } };
+    const { imp } = await boot();
+    const candidate = imp.findLegacyCandidate();
+    expect(candidate).not.toBeNull();
+    expect(candidate?.lastSyncedWithThisAccount).toBe(false);
+  });
+});
+
+describe("Offene Dialoge bei Scope-Wechsel", () => {
+  it("Root mountet Seiten (inkl. offener Dialoge) pro Namensraum neu", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const src = readFileSync(join(process.cwd(), "src/routes/__root.tsx"), "utf8");
+    expect(src).toMatch(/<Fragment key=\{scope\}>\s*<Outlet \/>\s*<\/Fragment>/);
   });
 });

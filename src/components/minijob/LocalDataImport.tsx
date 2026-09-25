@@ -10,6 +10,7 @@ import {
   findCandidate,
   findDemoCandidate,
   findLegacyCandidate,
+  canDiscardLegacy,
   importLocalData,
   pendingPromptSources,
   type ImportCandidate,
@@ -148,35 +149,43 @@ export function LocalDataImportSection() {
   const [version, setVersion] = useState(0);
   const [legacy, setLegacy] = useState<ImportCandidate | null>(null);
   const [demo, setDemo] = useState<ImportCandidate | null>(null);
+  const [discardable, setDiscardable] = useState(false);
 
   useEffect(() => {
     setLegacy(findLegacyCandidate());
     setDemo(findDemoCandidate());
+    setDiscardable(canDiscardLegacy());
   }, [scope, signedIn, version, data]);
 
-  if (!legacy && !demo) return null;
+  if (!legacy && !demo && !discardable) return null;
   const inAccount = scope.startsWith("u:");
 
   return (
     <section className="space-y-3 rounded-2xl border bg-card p-4 shadow-card">
       <h2 className="text-sm font-semibold">{t("local.section.title")}</h2>
       <p className="text-xs text-muted-foreground">{t("local.section.desc")}</p>
-      {legacy ? (
+      {legacy || discardable ? (
         <div className="space-y-2">
           <p className="text-sm font-medium">{t("local.section.legacy")}</p>
-          <p className="text-xs text-muted-foreground">
-            {t("local.section.counts", countsOf(legacy))}
-          </p>
+          {legacy ? (
+            <p className="text-xs text-muted-foreground">
+              {t("local.section.counts", countsOf(legacy))}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">{t("local.section.legacyImported")}</p>
+          )}
           <div className="grid grid-cols-2 gap-2">
-            <Button
-              size="sm"
-              onClick={() => {
-                resultToast(t, importLocalData("legacy"));
-                setVersion((v) => v + 1);
-              }}
-            >
-              {t(inAccount ? "local.import.legacy.import" : "local.import.legacy.importLocal")}
-            </Button>
+            {legacy ? (
+              <Button
+                size="sm"
+                onClick={() => {
+                  resultToast(t, importLocalData("legacy"));
+                  setVersion((v) => v + 1);
+                }}
+              >
+                {t(inAccount ? "local.import.legacy.import" : "local.import.legacy.importLocal")}
+              </Button>
+            ) : null}
             <Button
               size="sm"
               variant="outline"

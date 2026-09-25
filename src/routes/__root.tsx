@@ -8,7 +8,7 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { BarChart3, Bot, Briefcase, CalendarDays, FileText, Settings } from "lucide-react";
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { toast } from "sonner";
 
@@ -319,7 +319,15 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="app-shell min-h-screen pb-28">{ready ? <Outlet /> : null}</div>
+      <div className="app-shell min-h-screen pb-28">
+        {ready ? (
+          // key: Seiten samt offener Dialoge (Schicht, Job, Auftrag …) bei
+          // Konto-/Scope-Wechsel verwerfen – nie in den neuen Namensraum speichern.
+          <Fragment key={scope}>
+            <Outlet />
+          </Fragment>
+        ) : null}
+      </div>
 
       {/* Hide nav under wizard/PIN overlays (z-40 under z-60) and while bootstrapping */}
       {ready && !showWizard && !locked ? <BottomNav uiMode={settings.uiMode} /> : null}
