@@ -12,12 +12,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { Skeleton } from "@/components/ui/skeleton";
 import { signInWithOAuthProvider } from "@/lib/minijob/oauth-sign-in";
-import { supabase } from "@/integrations/supabase/client";
+import { markOAuthPending } from "@/lib/minijob/storage-scope";
+import { LocalDataImportSection } from "@/components/minijob/LocalDataImport";
 import { formatDateDE, formatEuro, formatHours, isoDate } from "@/lib/minijob/calc";
 import { monthlyHoursLimit, monthlyLimitOf, yearlyLimitOf } from "@/lib/minijob/limits";
 import {
   backupNow,
   forceFailStuckSync,
+  performSignOut,
   restoreNow,
   resolveConflict,
   retryPending,
@@ -28,25 +30,32 @@ import {
 import { downloadText, shiftsToCsv } from "@/lib/minijob/csv";
 import { exportXlsx } from "@/lib/minijob/export";
 import { holidaysFor } from "@/lib/minijob/holidays";
-import { markBackup, notificationPermission, requestNotificationPermission } from "@/lib/minijob/notify";
+import {
+  markBackup,
+  notificationPermission,
+  requestNotificationPermission,
+} from "@/lib/minijob/notify";
 import {
   canOfferBiometricToggle,
   detectBiometricCapability,
-  registerBiometricCredentialId,
   type BiometricCapability,
 } from "@/lib/minijob/biometric";
-import { isValidPayload } from "@/lib/minijob/payload";
+import { setupBiometricInScope } from "@/lib/minijob/biometric-setup";
+import { restoreLocalBackupFile } from "@/lib/minijob/local-backup-restore";
+import { syncActionErrorMessage } from "@/lib/minijob/sync-action-error";
 import { isValidPin, validatePinConfirm } from "@/lib/minijob/pin";
-import { disableBiometric, getData, replaceAll, updateSettings, updateSupplements, useAppData } from "@/lib/minijob/store";
+import {
+  disableBiometric,
+  getActiveScope,
+  getData,
+  updateSettings,
+  updateSupplements,
+  useAppData,
+} from "@/lib/minijob/store";
 import { LANGUAGES, useT } from "@/lib/i18n";
 import type { Lang } from "@/lib/i18n";
 import { ACCENTS, THEME_MODES } from "@/lib/minijob/theme";
-import {
-  UI_MODES,
-  isPreviewPending,
-  previewVisibility,
-  type Feature,
-} from "@/lib/minijob/uimode";
+import { UI_MODES, isPreviewPending, previewVisibility, type Feature } from "@/lib/minijob/uimode";
 import {
   BUNDESLAENDER,
   COUNTRIES,
@@ -145,9 +154,7 @@ function SettingsPage() {
                   {t("set.limits.legalSource")}
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-2 text-sm">
-                  <span className="text-muted-foreground">
-                    {t("set.defaults.monthlyLimit")}
-                  </span>
+                  <span className="text-muted-foreground">{t("set.defaults.monthlyLimit")}</span>
                   <span className="font-semibold tabular-nums">
                     {formatEuro(monthlyLimitOf(settings))}
                   </span>
@@ -361,7 +368,11 @@ function SettingsPage() {
                   aria-invalid={Boolean(pinError)}
                 />
                 {pinError ? (
-                  <p className="text-xs text-destructive" role="alert" data-testid="pin-setup-error">
+                  <p
+                    className="text-xs text-destructive"
+                    role="alert"
+                    data-testid="pin-setup-error"
+                  >
                     {pinError}
                   </p>
                 ) : null}
@@ -447,19 +458,18 @@ function SettingsPage() {
                   setPinSetupOpen(true);
                   return;
                 }
-                const outcome = await registerBiometricCredentialId(
-                  settings.pin ?? "minijob-local",
-                );
+                // WebAuthn-Dialog kann dauern: schreibt nie in ein inzwischen
+                // aktives anderes Konto (Namensraum-Snapshot im Helfer).
+                const outcome = await setupBiometricInScope(settings.pin ?? "minijob-local");
+                if (outcome === "stale") return;
                 if (!outcome.ok) {
                   toast.error(
                     outcome.result === "unavailable"
                       ? t("set.security.biometricUnavailable")
                       : t("pin.biometricFailed"),
                   );
-                  disableBiometric();
                   return;
                 }
-                updateSettings({ biometric: true, biometricCredentialId: outcome.credentialId });
                 toast.success(t("pin.biometricReady"));
               }}
             />
@@ -513,7 +523,9 @@ function SettingsPage() {
                   onClick={() => updateSettings({ accent: a.id })}
                   className={cn(
                     "flex items-center gap-2 rounded-xl border px-3 py-2 text-sm",
-                    settings.accent === a.id ? "border-primary bg-primary/10 font-semibold" : "bg-card",
+                    settings.accent === a.id
+                      ? "border-primary bg-primary/10 font-semibold"
+                      : "bg-card",
                   )}
                 >
                   <span className="size-4 rounded-full" style={{ backgroundColor: a.swatch }} />
@@ -554,7 +566,9 @@ function SettingsPage() {
                         </span>
                       ) : null}
                     </span>
-                    <span className="block text-xs text-muted-foreground">{t(`ui.${mode}Desc`)}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {t(`ui.${mode}Desc`)}
+                    </span>
                   </button>
                 );
               })}
@@ -672,7 +686,6 @@ function SettingsPage() {
           </Section>
         </TabsContent>
 
-
         <TabsContent value="lohn" className="mt-4 space-y-3 pb-6">
           <p className="text-xs text-muted-foreground">{t("set.wage.hint")}</p>
           <SupplementRow
@@ -729,7 +742,11 @@ function SettingsPage() {
               onChange={(v) => updateSettings({ premium: v })}
             />
           </Section>
-          <CloudSync autoBackup={settings.autoBackup} localDemoMode={settings.localDemoMode === true} />
+          <CloudSync
+            autoBackup={settings.autoBackup}
+            localDemoMode={settings.localDemoMode === true}
+          />
+          <LocalDataImportSection />
         </TabsContent>
       </Tabs>
     </main>
@@ -744,7 +761,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     </section>
   );
 }
-
 
 const NAV_PREVIEW: Feature[] = ["nav.stats", "nav.jobs", "nav.docs", "nav.ai"];
 const WIDGET_PREVIEW: Feature[] = [
@@ -819,9 +835,7 @@ function UiModePreviewOverlay({
               <li className="flex justify-between gap-2">
                 <span>{t("ui.feature.settings.advanced")}</span>
                 <span
-                  className={
-                    vis["settings.advanced"] ? "text-primary" : "text-muted-foreground"
-                  }
+                  className={vis["settings.advanced"] ? "text-primary" : "text-muted-foreground"}
                 >
                   {vis["settings.advanced"] ? "✓" : "–"}
                 </span>
@@ -834,7 +848,12 @@ function UiModePreviewOverlay({
           <Button type="button" variant="outline" className="min-h-11 flex-1" onClick={onClose}>
             {t("action.cancel")}
           </Button>
-          <Button type="button" className="min-h-11 flex-1" data-testid="ui-mode-preview-apply" onClick={onApply}>
+          <Button
+            type="button"
+            className="min-h-11 flex-1"
+            data-testid="ui-mode-preview-apply"
+            onClick={onApply}
+          >
             {t("ui.apply")}
           </Button>
         </div>
@@ -862,12 +881,7 @@ function ToggleRow({
         <p className="text-sm font-medium">{title}</p>
         <p className="text-xs text-muted-foreground">{description}</p>
       </div>
-      <Switch
-        checked={checked}
-        onCheckedChange={onChange}
-        aria-label={title}
-        disabled={disabled}
-      />
+      <Switch checked={checked} onCheckedChange={onChange} aria-label={title} disabled={disabled} />
     </div>
   );
 }
@@ -919,26 +933,20 @@ function LocalBackup({ shiftCount }: { shiftCount: number }) {
   }
 
   function upload(file: File) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const data: unknown = JSON.parse(String(reader.result));
-        if (!isValidPayload(data)) {
-          toast.error(t("set.localBackup.invalid"));
-          return;
-        }
-        replaceAll(data);
-        toast.success(t("set.localBackup.restored"));
-      } catch {
-        toast.error(t("error.fileRead"));
-      }
-    };
-    reader.readAsText(file);
+    // Datei wird async gelesen: nur in den Namensraum schreiben, der beim Start aktiv war.
+    void restoreLocalBackupFile(file).then((result) => {
+      if (result === "stale") return;
+      if (result === "invalid") toast.error(t("set.localBackup.invalid"));
+      else if (result === "read-error") toast.error(t("error.fileRead"));
+      else toast.success(t("set.localBackup.restored"));
+    });
   }
 
   return (
     <Section title={t("set.localBackup.title")}>
-      <p className="text-xs text-muted-foreground">{t("set.localBackup.desc", { count: shiftCount })}</p>
+      <p className="text-xs text-muted-foreground">
+        {t("set.localBackup.desc", { count: shiftCount })}
+      </p>
       <div className="grid grid-cols-2 gap-3">
         <Button variant="outline" onClick={download}>
           {t("set.localBackup.export")}
@@ -963,13 +971,7 @@ function LocalBackup({ shiftCount }: { shiftCount: number }) {
   );
 }
 
-function SyncStatusRow({
-  busy,
-  setBusy,
-}: {
-  busy: boolean;
-  setBusy: (value: boolean) => void;
-}) {
+function SyncStatusRow({ busy, setBusy }: { busy: boolean; setBusy: (value: boolean) => void }) {
   const { t } = useT();
   const sync = useSyncState();
 
@@ -1012,7 +1014,9 @@ function SyncStatusRow({
       await resolveConflict(keep);
       toast.success(t("set.account.cloud.sync.synced"));
     } catch (error) {
-      toast.error(error instanceof Error && error.message ? error.message : t("error.sync"));
+      // Kontowechsel während des Abgleichs (StaleSyncError): still, kein Fehler-Toast.
+      const message = syncActionErrorMessage(error, t("error.sync"));
+      if (message) toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -1047,16 +1051,14 @@ function CloudSync({
   autoBackup: boolean;
   localDemoMode?: boolean;
 }) {
-
   const { t } = useT();
   const { status: authStatus, session } = useAuthSession();
   const [busy, setBusy] = useState(false);
 
   async function oauthGoogle() {
-    // Signing in exits local demo — real auth only; never invent cloud completion from demo.
-    if (localDemoMode) {
-      updateSettings({ localDemoMode: false });
-    }
+    // Testmodus NICHT vor dem Redirect beenden: Abbruch bei Google → weiter im
+    // Testmodus mit allen Daten. Nach Login gilt der eigene Konto-Namensraum.
+    markOAuthPending(getActiveScope());
     try {
       const { error } = await signInWithOAuthProvider("google");
       if (error) toast.error(t("error.signIn"));
@@ -1079,12 +1081,13 @@ function CloudSync({
         );
       }
     } catch (error) {
-      toast.error(error instanceof Error && error.message ? error.message : t("error.sync"));
+      // Kontowechsel während des Abgleichs (StaleSyncError): still, kein Fehler-Toast.
+      const message = syncActionErrorMessage(error, t("error.sync"));
+      if (message) toast.error(message);
     } finally {
       setBusy(false);
     }
   }
-
 
   if (authStatus === "loading") {
     return (
@@ -1141,7 +1144,13 @@ function CloudSync({
         variant="ghost"
         className="w-full text-muted-foreground"
         onClick={async () => {
-          await supabase.auth.signOut();
+          // Ergebnis prüfen; nur bei Erfolg Konto-Namensraum verlassen (Daten bleiben
+          // für dieses Konto gespeichert, sind aber nicht mehr geladen/sichtbar).
+          const { ok } = await performSignOut();
+          if (!ok) {
+            toast.error(t("set.account.cloud.signOutFailed"));
+            return;
+          }
           toast.success(t("set.account.cloud.signedOut"));
         }}
       >
@@ -1253,7 +1262,9 @@ function DataMigration({ shiftCount }: { shiftCount: number }) {
 
   return (
     <Section title={t("set.migration.title")}>
-      <p className="text-xs text-muted-foreground">{t("set.migration.desc", { count: shiftCount })}</p>
+      <p className="text-xs text-muted-foreground">
+        {t("set.migration.desc", { count: shiftCount })}
+      </p>
       <div className="grid grid-cols-2 gap-3">
         <Button
           variant="outline"

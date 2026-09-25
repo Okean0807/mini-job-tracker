@@ -34,17 +34,44 @@ import { markBackup } from "./notify";
 
 import { mergeDeviceAuthFromLocal, stripDeviceAuthForCloud } from "./device-auth";
 import { isValidPayload } from "./payload";
-import { getData, normalize, onDataChange, replaceAll, updateSettings } from "./store";
-import { clearOnboardingDraft } from "./onboarding-draft";
+import {
+  activateScope,
+  getActiveScope,
+  getActiveScopeOwner,
+  getData,
+  normalize,
+  onDataChange,
+  readStoredData,
+  replaceAll,
+  seedDeviceLock,
+  updateSettings,
+} from "./store";
+import { clearOnboardingDraft, handoffOnboardingDraft } from "./onboarding-draft";
+import {
+  DEMO_SCOPE,
+  GUEST_SCOPE,
+  LEGACY_KEYS,
+  clearOAuthPending,
+  readOAuthPending,
+  scopedKey,
+  userScope,
+  type StorageScope,
+} from "./storage-scope";
+import { flagDemoImportOffer } from "./import-offers";
 import { isWizardComplete } from "./wizard-flow";
 import type { AppData } from "./types";
 
 export { isValidPayload };
 
-/** Clear local demo flag when a real Google session starts. */
+/**
+ * Defense in depth: a real account scope must never carry the Testmodus flag.
+ * Runs AFTER the store switched to the account namespace, so it only touches
+ * the account's own data – the Testmodus namespace (`demo`) keeps its flag and
+ * data untouched (no carry-over of onboarded/wizardCompletedAt, no auto-import).
+ */
 function exitLocalDemoMode(): void {
   try {
-    if (getData().settings.localDemoMode === true) {
+    if (getActiveScope().kind === "user" && getData().settings.localDemoMode === true) {
       updateSettings({ localDemoMode: false });
     }
   } catch {
@@ -55,7 +82,18 @@ function exitLocalDemoMode(): void {
 
 /* ---------- Sync-Metadaten (pro Gerät, lokal) ---------- */
 
-const META_KEY = "minijob-sync-meta-v1";
+/**
+ * Basis-Schlüssel; Metadaten liegen pro Scope (`<base>:u:<userId>` …), genau wie
+ * die Daten selbst. Der globale Legacy-Schlüssel wird nicht mehr verwendet.
+ */
+export const META_KEY_BASE = "minijob-sync-meta-v1";
+
+function metaKeyFor(scope: StorageScope): string {
+  return scopedKey(META_KEY_BASE, scope);
+}
+
+/** Schlüssel, zu dem das In-Memory-`meta` gehört (folgt dem Store-Scope). */
+let metaKey: string = metaKeyFor(GUEST_SCOPE);
 
 /** Max wait for a single cloud fetch/push before surfacing error/offline (not stuck syncing). */
 export const SYNC_TIMEOUT_MS = 15_000;
@@ -154,7 +192,7 @@ let meta: SyncMeta = EMPTY_META;
 function loadMeta(): SyncMeta {
   if (typeof window === "undefined") return EMPTY_META;
   try {
-    const raw = window.localStorage.getItem(META_KEY);
+    const raw = window.localStorage.getItem(metaKey);
     if (!raw) return EMPTY_META;
     return { ...EMPTY_META, ...(JSON.parse(raw) as Partial<SyncMeta>) };
   } catch {
@@ -166,7 +204,7 @@ function saveMeta(patch: Partial<SyncMeta>) {
   meta = { ...meta, ...patch };
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(META_KEY, JSON.stringify(meta));
+    window.localStorage.setItem(metaKey, JSON.stringify(meta));
   } catch {
     /* Speicher blockiert – Sync funktioniert dann nur ohne Verlaufswissen */
   }
@@ -373,6 +411,56 @@ export function useSyncState(): SyncState {
 let userId: string | null = null;
 let timeout: ReturnType<typeof setTimeout> | null = null;
 
+/**
+ * Owner guard (defense in depth): the locally loaded data belongs to the
+ * signed-in account only if the store's namespace owner equals the session user.
+ * Without that, nothing may be pushed, kept ("Lokal behalten") or restored.
+ */
+function ownsLoadedData(): boolean {
+  return userId !== null && getActiveScopeOwner() === userId;
+}
+
+/**
+ * Scope-Epoche: wird bei JEDEM Namensraum-Wechsel erhöht. Jeder await-Pfad, der
+ * danach Meta/State schreibt, hält vorher {metaKey, Konto, Store-Besitzer,
+ * Epoche} fest und schreibt nur, wenn sich nichts davon geändert hat.
+ */
+let scopeEpoch = 0;
+
+type OwnerSnapshot = {
+  key: string;
+  owner: string | null;
+  storeOwner: string | null;
+  scope: number;
+};
+
+function snapshotOwner(): OwnerSnapshot {
+  return { key: metaKey, owner: userId, storeOwner: getActiveScopeOwner(), scope: scopeEpoch };
+}
+
+function stillOwner(snap: OwnerSnapshot): boolean {
+  return (
+    snap.key === metaKey &&
+    snap.owner === userId &&
+    snap.storeOwner === getActiveScopeOwner() &&
+    snap.scope === scopeEpoch &&
+    ownsLoadedData()
+  );
+}
+
+/** Konto/Scope hat während eines laufenden Cloud-Zugriffs gewechselt. */
+export class StaleSyncError extends Error {
+  constructor() {
+    super(t("error.accountMismatch"));
+    this.name = "StaleSyncError";
+  }
+}
+
+/** Angemeldete Konto-Id laut Sync-Schicht (null = abgemeldet). */
+export function getCloudUserId(): string | null {
+  return userId;
+}
+
 function isOffline(): boolean {
   return typeof navigator !== "undefined" && navigator.onLine === false;
 }
@@ -463,12 +551,18 @@ async function push(
   preserveIfNewerThan?: { local: number | null; work: number | null },
 ): Promise<void> {
   if (!userId) throw new Error(t("error.notSignedIn"));
+  // Owner guard: only ever upload data that was loaded from THIS account's namespace.
+  if (!ownsLoadedData()) throw new Error(t("error.accountMismatch"));
+  // Vor dem await festhalten: wohin die Metadaten gehören.
+  const snap = snapshotOwner();
   const updatedAt = new Date();
   const { error } = await supabase.from("backups").upsert({
     user_id: userId,
     payload: payloadOf(data) as never,
     updated_at: updatedAt.toISOString(),
   });
+  // Post-await-Guard: Konto/Scope gewechselt → keine Meta, kein markBackup, kein "synced".
+  if (!stillOwner(snap)) throw new StaleSyncError();
   if (error) throw error;
   const ts = updatedAt.getTime();
   let nextLocal: number | null = null;
@@ -556,18 +650,23 @@ function applyRemote(remote: { payload: AppData; updatedAt: number }) {
 
 export async function backupNow(): Promise<void> {
   if (!userId) throw new Error(t("error.notSignedIn"));
+  if (!ownsLoadedData()) throw new Error(t("error.accountMismatch"));
   // Mutex: do not overlap forever with autoSync / another manual sync.
   if (syncing) throw new Error(t("error.sync"));
   syncing = true;
   const epoch = ++syncEpoch;
   setState({ status: "syncing", message: null });
   armSyncWatchdog(epoch);
+  const snap = snapshotOwner();
   try {
     await withSyncTimeout(push(getData()));
-    if (epoch !== syncEpoch) return;
+    // Lauf wurde abgebrochen (Kontowechsel/Timeout): nie als Erfolg melden.
+    if (epoch !== syncEpoch) throw new StaleSyncError();
+    if (!stillOwner(snap)) throw new StaleSyncError();
     setState({ status: "synced", pending: false, message: null, lastSyncedAt: meta.lastSyncedAt });
   } catch (error) {
-    abandonSyncEpoch(epoch, error);
+    if (error instanceof StaleSyncError) abandonStaleEpoch(epoch);
+    else abandonSyncEpoch(epoch, error);
     throw error;
   } finally {
     if (epoch === syncEpoch) {
@@ -579,14 +678,20 @@ export async function backupNow(): Promise<void> {
 
 export async function restoreNow(): Promise<boolean> {
   if (!userId) throw new Error(t("error.notSignedIn"));
+  if (!ownsLoadedData()) throw new Error(t("error.accountMismatch"));
   if (syncing) throw new Error(t("error.sync"));
   syncing = true;
   const epoch = ++syncEpoch;
+  const snap = snapshotOwner();
   setState({ status: "syncing", message: null });
   armSyncWatchdog(epoch);
   try {
     const remote = await withSyncTimeout(fetchRemote());
-    if (epoch !== syncEpoch) return false;
+    // Abgebrochen (z. B. Kontowechsel per Auth-Event): still beenden statt
+    // „keine Cloud-Sicherung gefunden“ (false ist echtes „nicht gefunden“).
+    if (epoch !== syncEpoch) throw new StaleSyncError();
+    // Post-await-Guard: kein applyRemote/saveMeta in einen anderen Namensraum.
+    if (!stillOwner(snap)) throw new StaleSyncError();
     if (!remote) {
       setState({ status: "idle", message: null });
       return false;
@@ -595,7 +700,8 @@ export async function restoreNow(): Promise<boolean> {
     setState({ status: "synced", pending: false, message: null, lastSyncedAt: meta.lastSyncedAt });
     return true;
   } catch (error) {
-    abandonSyncEpoch(epoch, error);
+    if (error instanceof StaleSyncError) abandonStaleEpoch(epoch);
+    else abandonSyncEpoch(epoch, error);
     throw error;
   } finally {
     if (epoch === syncEpoch) {
@@ -652,6 +758,18 @@ function abandonSyncEpoch(epoch: number, error: unknown): void {
 }
 
 /**
+ * Konto/Scope hat während eines manuellen Abgleichs gewechselt: Lauf still
+ * beenden – kein Fehlerstatus (der neue Namensraum hat seinen eigenen Stand).
+ */
+function abandonStaleEpoch(epoch: number): void {
+  if (epoch !== syncEpoch) return;
+  clearSyncWatchdog();
+  syncing = false;
+  syncEpoch += 1;
+  setState({ status: "idle", message: null });
+}
+
+/**
  * Hard wall-clock failsafe: if status is still "syncing" after SYNC_TIMEOUT_MS for
  * this epoch, force error/offline. Independent of Promise.race (which alone left
  * prod UI stuck past 15s when I/O hung or sync restarted).
@@ -677,6 +795,8 @@ export function forceFailStuckSync(): void {
 
 async function autoSync(): Promise<void> {
   if (!userId) return;
+  // Owner guard: never sync data of another namespace (guest/demo/other account).
+  if (!ownsLoadedData()) return;
   if (isOffline()) {
     setState({ status: "offline", pending: true });
     return;
@@ -692,6 +812,7 @@ async function autoSync(): Promise<void> {
   // als "gesichert" gelten, sonst landen sie nie in der Cloud.
   const changedAtStart = meta.localChangedAt;
   const workChangedAtStart = meta.localWorkChangedAt ?? null;
+  const snap = snapshotOwner();
   setState({ status: "syncing", message: null });
   armSyncWatchdog(epoch);
   try {
@@ -701,6 +822,9 @@ async function autoSync(): Promise<void> {
       const remote = await fetchRemote();
       // After forceFail / watchdog / timeout abandon, late fetch must not mutate.
       if (epoch !== syncEpoch) return;
+      // Mid-flight-Guard: Namensraum/Konto während des Fetch gewechselt → weder
+      // Re-Baseline, Konfliktstatus, Restore noch Push (alles würde fremde Meta treffen).
+      if (!stillOwner(snap)) return;
       const hasLocalWorkData = local.shifts.length > 0;
       const hasLocalJobs = local.jobs.length > 0;
       const localFp = workFingerprint(local);
@@ -861,12 +985,18 @@ function adoptUser(id: string) {
   setState({ lastSyncedAt: meta.lastSyncedAt });
 }
 
-let initialized = false;
+/** Geplante/laufende Abgleiche verwerfen (Konto- oder Scope-Wechsel). */
+function cancelPendingSync(): void {
+  if (timeout) clearTimeout(timeout);
+  timeout = null;
+  clearSyncWatchdog();
+  syncing = false;
+  syncEpoch += 1;
+}
 
-export function initCloudSync() {
-  if (initialized || typeof window === "undefined") return;
-  initialized = true;
-
+/** Sync-Metadaten des aktiven Store-Scopes laden (nach jedem Scope-Wechsel). */
+function loadMetaForActiveScope(): void {
+  metaKey = metaKeyFor(getActiveScope());
   meta = loadMeta();
   // Seed work fingerprint once so settings-only writes after upgrade do not
   // look like first-ever work changes.
@@ -874,6 +1004,173 @@ export function initCloudSync() {
     meta = { ...meta, localWorkFingerprint: workFingerprint(getData()) };
     saveMeta({});
   }
+}
+
+/**
+ * Store + Sync-Metadaten gemeinsam auf einen Namensraum umschalten – immer
+ * BEVOR ein autoSync für das neue Konto laufen kann. Der bisherige Scope bleibt
+ * gespeichert (nichts wird gelöscht), ist aber nicht mehr im Speicher.
+ */
+function switchLocalScope(scope: StorageScope): void {
+  const changed = activateScope(scope);
+  if (!changed && metaKey === metaKeyFor(scope)) return;
+  scopeEpoch += 1;
+  cancelPendingSync();
+  loadMetaForActiveScope();
+  setState({ status: "idle", pending: false, message: null, lastSyncedAt: meta.lastSyncedAt });
+}
+
+/**
+ * Auth-Event ohne Session (nicht nur SIGNED_OUT): Konto-Bindung konsistent
+ * lösen – wie beim Logout per switchLocalScope (Epoch-Bump, Timer/laufende
+ * Abgleiche abbrechen). Ausnahme INITIAL_SESSION: auth-js meldet dort auch bei
+ * Netzfehlern (offline, Refresh nicht möglich) null – dann bleibt der
+ * Namensraum wie beim getSession-Fehlerpfad erhalten, laufende Abgleiche des
+ * bisherigen Kontos werden aber ebenfalls ungültig.
+ */
+function releaseSession(event: string): void {
+  const hadUser = userId !== null;
+  userId = null;
+  if (event !== "INITIAL_SESSION" && getActiveScope().kind === "user") {
+    leaveAccountScope();
+  } else if (hadUser) {
+    scopeEpoch += 1;
+    cancelPendingSync();
+  }
+}
+
+/** Nach Logout: Kontodaten aus dem Speicher nehmen, Gast-Namensraum laden. */
+export function leaveAccountScope(): void {
+  if (getActiveScope().kind !== "user") return;
+  switchLocalScope(GUEST_SCOPE);
+}
+
+/**
+ * Abmelden mit Ergebnisprüfung. Nur wenn Supabase die Abmeldung bestätigt,
+ * wird der Konto-Namensraum verlassen (Daten bleiben für dieses Konto auf dem
+ * Gerät gespeichert, sind aber nicht mehr geladen). Bei Fehler bleibt die
+ * Session – und damit der Konto-Namensraum – unverändert.
+ */
+export async function performSignOut(): Promise<{
+  ok: boolean;
+  error: unknown;
+  /** Server-Abmeldung fehlgeschlagen, lokale Session aber entfernt. */
+  localOnly?: boolean;
+}> {
+  let signOutError: unknown = null;
+  try {
+    const { error } = await supabase.auth.signOut();
+    signOutError = error ?? null;
+  } catch (error) {
+    signOutError = error;
+  }
+  if (signOutError) {
+    // auth-js entfernt die lokale Session auch bei Netzfehlern (und feuert
+    // SIGNED_OUT). Maßgeblich ist daher der tatsächliche Session-Stand.
+    let stillSignedIn = true;
+    try {
+      const { data } = await supabase.auth.getSession();
+      stillSignedIn = Boolean(data.session);
+    } catch {
+      stillSignedIn = true;
+    }
+    if (stillSignedIn) return { ok: false, error: signOutError };
+    userId = null;
+    leaveAccountScope();
+    setState({ signedIn: false });
+    return { ok: true, error: signOutError, localOnly: true };
+  }
+  leaveAccountScope();
+  return { ok: true, error: null };
+}
+
+/**
+ * Testmodus betreten (nur ohne Anmeldung): eigener Namensraum `demo`.
+ * Liefert false, wenn ein Konto angemeldet ist.
+ */
+export function enterTestModeScope(): boolean {
+  if (userId !== null) return false;
+  switchLocalScope(DEMO_SCOPE);
+  return true;
+}
+
+/**
+ * Nach explizitem Import (Legacy-/Testdaten → Konto): Baseline verwerfen und
+ * lokale Arbeit als geändert markieren. `decideSync` entscheidet dann wie immer:
+ * kein Cloud-Stand → push; Cloud-Stand vorhanden → Konflikt (bzw. stiller
+ * Re-Baseline bei identischer Arbeit). Ein bestehendes Backup wird so nie still
+ * überschrieben.
+ */
+export function markExplicitImportForSync(): void {
+  if (!ownsLoadedData()) throw new Error(t("error.accountMismatch"));
+  cancelPendingSync();
+  const now = Date.now();
+  saveMeta({
+    userId,
+    lastSyncedAt: null,
+    remoteSeenAt: null,
+    localChangedAt: now,
+    localWorkChangedAt: now,
+    localWorkFingerprint: workFingerprint(getData()),
+    wizardPendingFirstSync: false,
+  });
+  setState({ status: "idle", pending: true, message: null, lastSyncedAt: null });
+  void autoSync();
+}
+
+/** Liegen lokale, noch nicht gesicherte Änderungen im aktiven Konto-Scope vor? */
+export function hasUnsyncedLocalChanges(): boolean {
+  return (
+    meta.lastSyncedAt == null || meta.localChangedAt != null || meta.localWorkChangedAt != null
+  );
+}
+
+/** OAuth-Rückkehr: Marker verbrauchen; aus dem Testmodus → Import nur anbieten. */
+function consumeOAuthPending(id: string): void {
+  const marker = readOAuthPending();
+  clearOAuthPending();
+  if (marker?.from === "demo") flagDemoImportOffer(id);
+}
+
+/**
+ * Upgrade-Schutz: War das Gerät vor der Namensraum-Umstellung per PIN gesperrt
+ * und belegen die alten Sync-Metadaten genau dieses Konto, wird nur die
+ * Gerätesperre (nicht die Daten!) in den Konto-Namensraum übernommen.
+ */
+function seedDeviceLockFromLegacy(id: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const rawMeta = window.localStorage.getItem(LEGACY_KEYS.syncMeta);
+    const legacyOwner = rawMeta ? (JSON.parse(rawMeta) as { userId?: unknown }).userId : null;
+    if (legacyOwner !== id) return;
+    const legacy = readStoredData(LEGACY_KEYS.data);
+    if (legacy) seedDeviceLock(legacy.settings);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Session bestätigt: in den Namensraum dieses Kontos wechseln. */
+function bindSession(id: string): void {
+  userId = id;
+  if (getActiveScope().kind !== "user") {
+    // Wizard-Fortschritt (nur Schritt/Arbeitsart) über den OAuth-Redirect retten.
+    const marker = readOAuthPending();
+    if (marker) {
+      handoffOnboardingDraft(marker.from === "demo" ? DEMO_SCOPE : GUEST_SCOPE, userScope(id));
+    }
+  }
+  switchLocalScope(userScope(id));
+  seedDeviceLockFromLegacy(id);
+}
+
+let initialized = false;
+
+export function initCloudSync() {
+  if (initialized || typeof window === "undefined") return;
+  initialized = true;
+
+  loadMetaForActiveScope();
   setState({ lastSyncedAt: meta.lastSyncedAt });
 
   onDataChange((data) => scheduleBackup(data));
@@ -903,36 +1200,48 @@ export function initCloudSync() {
   try {
     void supabase.auth
       .getSession()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
         if (data.session) {
-          userId = data.session.user.id;
+          bindSession(data.session.user.id);
           exitLocalDemoMode();
-          adoptUser(userId);
+          adoptUser(data.session.user.id);
+          consumeOAuthPending(data.session.user.id);
           setState({ signedIn: true });
           requestInitSync();
+        } else if (!error) {
+          // Verifiziert keine Session (abgelaufen / OAuth abgebrochen): Kontodaten
+          // nicht weiter anzeigen. Bei Fehler (z. B. offline) bleibt der Scope.
+          clearOAuthPending();
+          if (userId === null) leaveAccountScope();
         }
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         console.error("[cloud] getSession failed; cloud sync disabled", error);
       });
 
     supabase.auth.onAuthStateChange((event, session) => {
-      userId = session?.user.id ?? null;
+      const nextId = session?.user.id ?? null;
+      if (nextId) bindSession(nextId);
+      else {
+        // Wie SIGNED_OUT: keinen Init-Abgleich des alten Kontos mehr koaleszieren.
+        initSyncQueued = false;
+        releaseSession(event);
+      }
       setState({ signedIn: userId !== null });
       if (event === "SIGNED_IN" && userId) {
         exitLocalDemoMode();
         adoptUser(userId);
+        consumeOAuthPending(userId);
         requestInitSync();
       }
       if (event === "SIGNED_OUT") {
         // Geplanten Push abbrechen: er würde sonst ohne Konto laufen bzw.
         // nach einem Kontowechsel in den falschen Cloud-Stand schreiben.
-        if (timeout) clearTimeout(timeout);
-        timeout = null;
         initSyncQueued = false;
-        clearSyncWatchdog();
-        syncing = false;
-        syncEpoch += 1;
+        // Kontodaten aus dem Speicher nehmen (bleiben für dieses Konto gespeichert);
+        // switchLocalScope bricht dabei Timer/laufende Abgleiche ab (Epoch-Bump).
+        if (getActiveScope().kind === "user") leaveAccountScope();
+        else cancelPendingSync();
         setState({ status: "idle", pending: false, message: null, lastSyncedAt: null });
       }
     });

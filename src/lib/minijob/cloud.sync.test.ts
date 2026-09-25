@@ -42,7 +42,8 @@ vi.mock("@/integrations/supabase/client", () => ({
             cloud.gate ? await cloud.gate : undefined,
             cloud.selectError
               ? { data: null, error: cloud.selectError }
-              : { data: cloud.remote, error: null }),
+              : { data: cloud.remote, error: null }
+          ),
         }),
       }),
     }),
@@ -161,7 +162,7 @@ describe("initCloudSync", () => {
     local = makeData(0);
     cloud.remote = { payload: makeData(3), updated_at: new Date().toISOString() };
     window.localStorage.setItem(
-      "minijob-sync-meta-v1",
+      "minijob-sync-meta-v1:u:user-1",
       JSON.stringify({
         userId: "user-1",
         localChangedAt: Date.now(),
@@ -208,7 +209,7 @@ describe("initCloudSync", () => {
     } as unknown as AppData;
     cloud.remote = { payload: makeData(5), updated_at: new Date().toISOString() };
     window.localStorage.setItem(
-      "minijob-sync-meta-v1",
+      "minijob-sync-meta-v1:u:user-1",
       JSON.stringify({
         userId: "user-1",
         localChangedAt: Date.now(),
@@ -235,7 +236,7 @@ describe("initCloudSync", () => {
     } as unknown as AppData;
     cloud.remote = { payload: makeData(5), updated_at: new Date().toISOString() };
     window.localStorage.setItem(
-      "minijob-sync-meta-v1",
+      "minijob-sync-meta-v1:u:user-1",
       JSON.stringify({
         userId: "user-1",
         localChangedAt: Date.now(),
@@ -260,7 +261,7 @@ describe("initCloudSync", () => {
     } as unknown as AppData;
     cloud.remote = { payload: makeData(5), updated_at: new Date().toISOString() };
     window.localStorage.setItem(
-      "minijob-sync-meta-v1",
+      "minijob-sync-meta-v1:u:user-1",
       JSON.stringify({
         userId: "user-1",
         localChangedAt: Date.now(),
@@ -277,7 +278,7 @@ describe("initCloudSync", () => {
     expect(getSyncState().status).not.toBe("conflict");
     expect(replaced).toHaveLength(1);
     // Flag cleared after successful restore
-    const meta = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1")!);
+    const meta = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1:u:user-1")!);
     expect(meta.wizardPendingFirstSync).toBe(false);
   });
 
@@ -288,7 +289,7 @@ describe("initCloudSync", () => {
     } as unknown as AppData;
     cloud.remote = { payload: makeData(5), updated_at: new Date().toISOString() };
     window.localStorage.setItem(
-      "minijob-sync-meta-v1",
+      "minijob-sync-meta-v1:u:user-1",
       JSON.stringify({
         userId: "user-1",
         localChangedAt: Date.now(),
@@ -310,7 +311,7 @@ describe("initCloudSync", () => {
     local = makeData(2);
     cloud.remote = { payload: makeData(9), updated_at: new Date().toISOString() };
     window.localStorage.setItem(
-      "minijob-sync-meta-v1",
+      "minijob-sync-meta-v1:u:user-1",
       JSON.stringify({
         userId: "user-1",
         localChangedAt: Date.now(),
@@ -339,7 +340,7 @@ describe("initCloudSync", () => {
       updated_at: new Date(remoteAt).toISOString(),
     };
     window.localStorage.setItem(
-      "minijob-sync-meta-v1",
+      "minijob-sync-meta-v1:u:user-1",
       JSON.stringify({
         userId: "user-1",
         localChangedAt: Date.now(),
@@ -357,7 +358,7 @@ describe("initCloudSync", () => {
     expect(getSyncState().status).not.toBe("conflict");
     expect(replaced).toHaveLength(0);
     expect(cloud.upserts).toBe(0);
-    const meta = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1")!);
+    const meta = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1:u:user-1")!);
     expect(meta.lastSyncedAt).toBe(remoteAt);
     expect(meta.remoteSeenAt).toBe(remoteAt);
     expect(meta.localChangedAt).toBeNull();
@@ -369,7 +370,7 @@ describe("initCloudSync", () => {
     local = makeData(2);
     cloud.remote = { payload: makeData(9), updated_at: new Date().toISOString() };
     window.localStorage.setItem(
-      "minijob-sync-meta-v1",
+      "minijob-sync-meta-v1:u:user-1",
       JSON.stringify({
         userId: "user-1",
         localChangedAt: Date.now(),
@@ -386,7 +387,7 @@ describe("initCloudSync", () => {
     expect(getSyncState().status).toBe("conflict");
     expect(replaced).toHaveLength(0);
     expect(cloud.upserts).toBe(0);
-    const meta = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1")!);
+    const meta = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1:u:user-1")!);
     expect(meta.lastSyncedAt).toBeNull();
   });
 
@@ -406,7 +407,6 @@ describe("initCloudSync", () => {
     expect(replaced[0]?.shifts).toHaveLength(3);
   });
 });
-
 
 describe("automatischer Abgleich", () => {
   it("meldet einen Konflikt statt fremde Cloud-Änderungen zu überschreiben", async () => {
@@ -449,7 +449,10 @@ describe("automatischer Abgleich", () => {
     };
 
     // Same shifts fingerprint; only settings stamp via changeHook
-    local = { ...makeData(1), settings: { autoBackup: true, onboarded: true, language: "en" } } as unknown as AppData;
+    local = {
+      ...makeData(1),
+      settings: { autoBackup: true, onboarded: true, language: "en" },
+    } as unknown as AppData;
     changeHook?.(local);
     await vi.advanceTimersByTimeAsync(3000);
     await settle();
@@ -467,7 +470,10 @@ describe("automatischer Abgleich", () => {
     expect(mod.getSyncState().status).toBe("synced");
     const before = cloud.upserts;
 
-    local = { ...makeData(1), settings: { autoBackup: true, onboarded: true, language: "de" } } as unknown as AppData;
+    local = {
+      ...makeData(1),
+      settings: { autoBackup: true, onboarded: true, language: "de" },
+    } as unknown as AppData;
     changeHook?.(local);
     await vi.advanceTimersByTimeAsync(3000);
     await settle();
@@ -712,7 +718,6 @@ describe("paralleler Abgleich", () => {
   });
 });
 
-
 describe("Sync-Timeout (SYNC-LIVE-P1)", () => {
   it("exportiert SYNC_TIMEOUT_MS = 15s für UX", async () => {
     const mod = await loadModule();
@@ -880,7 +885,10 @@ describe("Sync-Timeout (SYNC-LIVE-P1)", () => {
     const statusAfterFail = mod.getSyncState().status;
 
     // Remote present so decide could push; late ungated work must not mutate.
-    cloud.remote = { payload: makeData(1), updated_at: new Date(Date.now() - 60_000).toISOString() };
+    cloud.remote = {
+      payload: makeData(1),
+      updated_at: new Date(Date.now() - 60_000).toISOString(),
+    };
     release();
     await settle();
     await vi.advanceTimersByTimeAsync(50);
@@ -891,7 +899,7 @@ describe("Sync-Timeout (SYNC-LIVE-P1)", () => {
     expect(mod.getSyncState().status).not.toBe("synced");
   });
 
-    it("applyRemote löst keinen Backup-Loop über onDataChange aus", async () => {
+  it("applyRemote löst keinen Backup-Loop über onDataChange aus", async () => {
     local = makeData(0);
     cloud.remote = { payload: makeData(3), updated_at: new Date().toISOString() };
 
@@ -945,16 +953,13 @@ describe("normalize-safe work fingerprint (false conflict)", () => {
 
   it("raw remote missing kind/breakMinutes vs normalized local → synced (no conflict)", async () => {
     const remoteAt = Date.now() - 60_000;
-    local = basePayload(
-      [richShift({ kind: "arbeit", breakMinutes: 0 })],
-      [richJob()],
-    );
+    local = basePayload([richShift({ kind: "arbeit", breakMinutes: 0 })], [richJob()]);
     cloud.remote = {
       payload: basePayload([richShift()], [richJob()]),
       updated_at: new Date(remoteAt).toISOString(),
     };
     window.localStorage.setItem(
-      "minijob-sync-meta-v1",
+      "minijob-sync-meta-v1:u:user-1",
       JSON.stringify({
         userId: "user-1",
         localChangedAt: Date.now(),
@@ -981,7 +986,7 @@ describe("normalize-safe work fingerprint (false conflict)", () => {
       updated_at: new Date(remoteAt).toISOString(),
     };
     window.localStorage.setItem(
-      "minijob-sync-meta-v1",
+      "minijob-sync-meta-v1:u:user-1",
       JSON.stringify({
         userId: "user-1",
         localChangedAt: Date.now(),
@@ -1002,10 +1007,7 @@ describe("normalize-safe work fingerprint (false conflict)", () => {
 
   it("different key order same data → no conflict", async () => {
     const remoteAt = Date.now() - 60_000;
-    local = basePayload(
-      [richShift({ kind: "arbeit", breakMinutes: 0 })],
-      [richJob({ rate: 12 })],
-    );
+    local = basePayload([richShift({ kind: "arbeit", breakMinutes: 0 })], [richJob({ rate: 12 })]);
     cloud.remote = {
       payload: {
         ...makeData(0),
@@ -1025,7 +1027,7 @@ describe("normalize-safe work fingerprint (false conflict)", () => {
       updated_at: new Date(remoteAt).toISOString(),
     };
     window.localStorage.setItem(
-      "minijob-sync-meta-v1",
+      "minijob-sync-meta-v1:u:user-1",
       JSON.stringify({
         userId: "user-1",
         localChangedAt: Date.now(),
@@ -1046,10 +1048,7 @@ describe("normalize-safe work fingerprint (false conflict)", () => {
   it("lastSyncedAt set + remote newer + localWorkChangedAt + equal FP → no conflict", async () => {
     const syncedAt = Date.now() - 120_000;
     const remoteAt = Date.now() - 30_000;
-    const workLocal = basePayload(
-      [richShift({ kind: "arbeit", breakMinutes: 0 })],
-      [richJob()],
-    );
+    const workLocal = basePayload([richShift({ kind: "arbeit", breakMinutes: 0 })], [richJob()]);
     local = workLocal;
     cloud.remote = {
       // semantically same, raw missing defaults
@@ -1057,7 +1056,7 @@ describe("normalize-safe work fingerprint (false conflict)", () => {
       updated_at: new Date(remoteAt).toISOString(),
     };
     window.localStorage.setItem(
-      "minijob-sync-meta-v1",
+      "minijob-sync-meta-v1:u:user-1",
       JSON.stringify({
         userId: "user-1",
         localChangedAt: Date.now() - 10_000,
@@ -1076,7 +1075,7 @@ describe("normalize-safe work fingerprint (false conflict)", () => {
     expect(getSyncState().status).not.toBe("conflict");
     expect(replaced).toHaveLength(0);
     expect(cloud.upserts).toBe(0);
-    const meta = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1")!);
+    const meta = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1:u:user-1")!);
     expect(meta.lastSyncedAt).toBe(remoteAt);
     expect(meta.localChangedAt).toBeNull();
     expect(meta.localWorkChangedAt).toBeNull();
@@ -1088,14 +1087,11 @@ describe("normalize-safe work fingerprint (false conflict)", () => {
       [richJob()],
     );
     cloud.remote = {
-      payload: basePayload(
-        [richShift({ end: "17:00" })],
-        [richJob()],
-      ),
+      payload: basePayload([richShift({ end: "17:00" })], [richJob()]),
       updated_at: new Date().toISOString(),
     };
     window.localStorage.setItem(
-      "minijob-sync-meta-v1",
+      "minijob-sync-meta-v1:u:user-1",
       JSON.stringify({
         userId: "user-1",
         localChangedAt: Date.now(),
@@ -1123,7 +1119,7 @@ describe("normalize-safe work fingerprint (false conflict)", () => {
       updated_at: new Date(remoteAt).toISOString(),
     };
     window.localStorage.setItem(
-      "minijob-sync-meta-v1",
+      "minijob-sync-meta-v1:u:user-1",
       JSON.stringify({
         userId: "user-1",
         localChangedAt: Date.now(),
@@ -1149,7 +1145,7 @@ describe("normalize-safe work fingerprint (false conflict)", () => {
       updated_at: new Date().toISOString(),
     };
     window.localStorage.setItem(
-      "minijob-sync-meta-v1",
+      "minijob-sync-meta-v1:u:user-1",
       JSON.stringify({
         userId: "user-1",
         localChangedAt: Date.now(),
@@ -1171,7 +1167,14 @@ describe("normalize-safe work fingerprint (false conflict)", () => {
 describe("device-local auth secrets", () => {
   it("strips PIN and WebAuthn id from cloud upsert payload", async () => {
     local = makeData(1);
-    (local.settings as { pinEnabled?: boolean; pin?: string; biometric?: boolean; biometricCredentialId?: string }).pinEnabled = true;
+    (
+      local.settings as {
+        pinEnabled?: boolean;
+        pin?: string;
+        biometric?: boolean;
+        biometricCredentialId?: string;
+      }
+    ).pinEnabled = true;
     (local.settings as { pin?: string }).pin = "4242";
     (local.settings as { biometric?: boolean }).biometric = true;
     (local.settings as { biometricCredentialId?: string }).biometricCredentialId = "cred-local";
@@ -1182,7 +1185,12 @@ describe("device-local auth secrets", () => {
     await mod.backupNow();
 
     const uploaded = cloud.remote?.payload as {
-      settings?: { pin?: string; pinEnabled?: boolean; biometric?: boolean; biometricCredentialId?: string };
+      settings?: {
+        pin?: string;
+        pinEnabled?: boolean;
+        biometric?: boolean;
+        biometricCredentialId?: string;
+      };
       timer?: unknown;
     };
     expect(uploaded?.timer ?? null).toBeNull();
@@ -1302,7 +1310,7 @@ describe("orders sync (v1.1)", () => {
     await settle();
     await vi.advanceTimersByTimeAsync(1000);
 
-    const metaBefore = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1")!);
+    const metaBefore = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1:u:user-1")!);
     const fpBefore = workFingerprint(local);
     const workAtBefore = metaBefore.localWorkChangedAt ?? null;
 
@@ -1324,7 +1332,7 @@ describe("orders sync (v1.1)", () => {
     changeHook?.(local);
     await vi.advanceTimersByTimeAsync(100); // scheduleBackup stamps meta immediately
 
-    const metaAfter = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1")!);
+    const metaAfter = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1:u:user-1")!);
     expect(metaAfter.localChangedAt).toBeGreaterThan(metaBefore.localChangedAt ?? 0);
     expect(metaAfter.localWorkChangedAt ?? null).toBe(workAtBefore);
     expect(workFingerprint(local)).toBe(fpBefore);

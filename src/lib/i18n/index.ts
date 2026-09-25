@@ -12,6 +12,7 @@ import { goalsDict } from "./dict/goals";
 import { ordersDict } from "./dict/orders";
 import { objectsDict } from "./dict/objects";
 import { jobsDict } from "./dict/jobs";
+import { localDataDict } from "./dict/local-data";
 import { reports } from "./dict/reports";
 import { settingsDict } from "./dict/settings";
 import { v2 } from "./dict/v2";
@@ -40,6 +41,7 @@ const BUNDLE: Bundle = mergeBundles([
   docsDict,
   worklog,
   entry,
+  localDataDict,
 ]);
 
 export type Vars = Record<string, string | number>;

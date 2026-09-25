@@ -22,18 +22,34 @@ describe("localDemoMode separation from auth", () => {
     vi.resetModules();
   });
 
-  it("demo completion is local only — flag stays until sign-in clears it", async () => {
+  /**
+   * Spec change (P1 Testmodus isolation): previously the demo flag was flipped
+   * off IN PLACE on sign-in, so onboarded/wizardCompletedAt (and all demo data)
+   * were carried over into the real account and pushed to an empty cloud.
+   * New safe behavior: Testmodus lives in its own namespace (`demo`); a real
+   * account loads its own namespace and does NOT inherit demo completion.
+   */
+  it("demo completion stays in the demo namespace — a real account does not inherit it", async () => {
     const store = await import("./store");
+    const { DEMO_SCOPE, userScope } = await import("./storage-scope");
+    store.activateScope(DEMO_SCOPE);
     store.updateSettings({
       localDemoMode: true,
       onboarded: true,
       wizardCompletedAt: 123,
     });
     expect(store.getData().settings.localDemoMode).toBe(true);
-    store.updateSettings({ localDemoMode: false });
-    expect(store.getData().settings.localDemoMode).toBe(false);
-    // onboarded stamp must not be invented as cloud completion by clearing demo
-    expect(store.getData().settings.onboarded).toBe(true);
-    expect(store.getData().settings.wizardCompletedAt).toBe(123);
+
+    // Real sign-in → account namespace (cloud.ts bindSession → activateScope).
+    store.activateScope(userScope("real-user"));
+    expect(store.getData().settings.localDemoMode).not.toBe(true);
+    expect(store.getData().settings.onboarded).not.toBe(true);
+    expect(store.getData().settings.wizardCompletedAt).toBeUndefined();
+
+    // Demo namespace keeps its flag and completion untouched.
+    const demo = store.readScopeData(DEMO_SCOPE);
+    expect(demo?.settings.localDemoMode).toBe(true);
+    expect(demo?.settings.onboarded).toBe(true);
+    expect(demo?.settings.wizardCompletedAt).toBe(123);
   });
 });

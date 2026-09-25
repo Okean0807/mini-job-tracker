@@ -7,6 +7,7 @@ import {
   clearOnboardingDraft,
   loadOnboardingDraft,
   normalizeOnboardingDraft,
+  onboardingDraftStorageKey,
   persistOnboardingProgress,
   saveOnboardingDraft,
 } from "./onboarding-draft";
@@ -16,7 +17,9 @@ const STEPS = WIZARD_STEP_COUNT;
 
 describe("normalizeOnboardingDraft", () => {
   it("accepts a valid draft", () => {
-    expect(normalizeOnboardingDraft({ step: WIZARD_STEP_INDEX.cloud, mode: "fest" }, STEPS)).toEqual({
+    expect(
+      normalizeOnboardingDraft({ step: WIZARD_STEP_INDEX.cloud, mode: "fest" }, STEPS),
+    ).toEqual({
       step: WIZARD_STEP_INDEX.cloud,
       mode: "fest",
     });
@@ -39,7 +42,9 @@ describe("onboarding draft storage", () => {
 
   it("round-trips save → load across a simulated OAuth remount", () => {
     saveOnboardingDraft({ step: WIZARD_STEP_INDEX.cloud, mode: "selbststaendig" });
-    expect(window.localStorage.getItem(ONBOARDING_DRAFT_KEY)).toBeTruthy();
+    // Draft is stored per storage scope (P0 isolation), not under the global key.
+    expect(window.localStorage.getItem(onboardingDraftStorageKey())).toBeTruthy();
+    expect(window.localStorage.getItem(ONBOARDING_DRAFT_KEY)).toBeNull();
     expect(loadOnboardingDraft(STEPS)).toEqual({
       step: WIZARD_STEP_INDEX.cloud,
       mode: "selbststaendig",
@@ -54,7 +59,7 @@ describe("onboarding draft storage", () => {
   });
 
   it("loadOnboardingDraft ignores corrupt JSON and clears legacy v1", () => {
-    window.localStorage.setItem(ONBOARDING_DRAFT_KEY, "{not-json");
+    window.localStorage.setItem(onboardingDraftStorageKey(), "{not-json");
     expect(loadOnboardingDraft(STEPS)).toBeNull();
     window.localStorage.setItem(ONBOARDING_DRAFT_KEY_V1, JSON.stringify({ step: 5, mode: "flex" }));
     expect(loadOnboardingDraft(STEPS)).toBeNull();

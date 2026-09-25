@@ -19,12 +19,11 @@ import {
 import {
   newId,
   nextJobColor,
-  replaceAll,
   saveJob,
   saveShifts,
   getData,
 } from "@/lib/minijob/store";
-import { isValidPayload } from "@/lib/minijob/payload";
+import { importJsonBackupFile } from "@/lib/minijob/json-backup-import";
 import type { Job, Settings } from "@/lib/minijob/types";
 import { useT } from "@/lib/i18n";
 
@@ -53,12 +52,13 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
 
     if (lower.endsWith(".json")) {
       try {
-        const data: unknown = JSON.parse(await file.text());
-        if (!isValidPayload(data)) {
+        const outcome = await importJsonBackupFile(file);
+        // Namensraum während des Lesens gewechselt: nichts schreiben, still beenden.
+        if (outcome === "stale") return;
+        if (outcome === "invalid") {
           toast.error(t("imp.jsonInvalid"));
           return;
         }
-        replaceAll(data);
         toast.success(t("imp.jsonSuccess"));
         onOpenChange(false);
         reset();

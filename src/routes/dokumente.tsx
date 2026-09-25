@@ -41,7 +41,7 @@ import {
   openGeneratedDocument,
   type GeneratedDocument,
 } from "@/lib/minijob/generated-docs";
-import { useAppData } from "@/lib/minijob/store";
+import { onScopeChange, useAppData } from "@/lib/minijob/store";
 
 export const Route = createFileRoute("/dokumente")({
   head: () => ({
@@ -66,9 +66,7 @@ export const Route = createFileRoute("/dokumente")({
 
 const MAX_SIZE = 20 * 1024 * 1024;
 
-type HubItem =
-  | { kind: "upload"; doc: DocumentRow }
-  | { kind: "generated"; doc: GeneratedDocument };
+type HubItem = { kind: "upload"; doc: DocumentRow } | { kind: "generated"; doc: GeneratedDocument };
 
 function DocumentsPage() {
   const { t } = useT();
@@ -109,6 +107,9 @@ function DocumentsPage() {
 
   useEffect(() => {
     refreshGenerated();
+    // Nur Dokumente des aktiven Namensraums (Konto / Testmodus / Gast) zeigen –
+    // bei Login/Logout/Kontowechsel sofort neu laden.
+    return onScopeChange(() => refreshGenerated());
   }, [refreshGenerated]);
 
   useEffect(() => {
