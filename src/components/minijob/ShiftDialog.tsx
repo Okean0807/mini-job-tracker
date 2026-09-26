@@ -35,6 +35,7 @@ import {
   sanitizeRateInput,
 } from "@/lib/minijob/entry-format";
 import { shiftPayroll } from "@/lib/minijob/payroll";
+import { absenceDayTimes } from "@/lib/minijob/schedule";
 import { holidayName } from "@/lib/minijob/holidays";
 import { parseRateInput, suggestedRate } from "@/lib/minijob/rate";
 import { ObjectDialog } from "@/components/minijob/ObjectDialog";
@@ -287,13 +288,17 @@ export function ShiftDialog({
   const job = jobs.find((j) => j.id === jobId);
   const holiday = holidayName(entryDate, settings.bundesland);
   const selectedObject = objects.find((o) => o.id === objectId);
+  // Neue Abwesenheit (jede Art außer Arbeit): Zeiten wie im Zeitraum-Dialog
+  // (Wochenplan oder 09:00–17:00 ohne Pause), nie die versteckten Editor-Zeiten.
+  // Bestehende Einträge behalten ihre gespeicherten Zeiten.
+  const newAbsenceTimes = !isEditing && kind !== "arbeit" ? absenceDayTimes(job, entryDate) : null;
   const draft: Shift = {
     id: shift?.id ?? "draft",
     kind,
     date: entryDate,
-    start,
-    end,
-    breakMinutes: Number(breakMinutes) || 0,
+    start: newAbsenceTimes?.start ?? start,
+    end: newAbsenceTimes?.end ?? end,
+    breakMinutes: newAbsenceTimes?.breakMinutes ?? (Number(breakMinutes) || 0),
     overtime,
   };
   const parsedRate = parseRateInput(rate);
@@ -430,14 +435,21 @@ export function ShiftDialog({
     setFieldError({});
     const editingId = editingIdRef.current;
     const existing = editingId ? getShift(editingId) : undefined;
+    const saveAbsenceTimes =
+      !editingId && kind !== "arbeit"
+        ? absenceDayTimes(
+            jobs.find((j) => j.id === jobId),
+            entryDate,
+          )
+        : null;
     const next: Shift = withEntryDate(
       {
         id: editingId || existing?.id || "new",
         kind,
         date: entryDate,
-        start,
-        end,
-        breakMinutes: Number(breakMinutes) || 0,
+        start: saveAbsenceTimes?.start ?? start,
+        end: saveAbsenceTimes?.end ?? end,
+        breakMinutes: saveAbsenceTimes?.breakMinutes ?? (Number(breakMinutes) || 0),
       },
       entryDate,
     );
@@ -1306,6 +1318,25 @@ export function ShiftDialog({
                   </div>
                 </section>
               </>
+            ) : null}
+
+            {!isWork ? (
+              <div
+                className="rounded-xl bg-card p-3 text-sm"
+                data-testid="entry-absence-preview"
+                data-hours={preview.hours}
+              >
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">{t("shift.duration")}</span>
+                  <span className="font-semibold tabular-nums">{durationText}</span>
+                </div>
+                <div className="mt-1 flex justify-between">
+                  <span className="text-muted-foreground">{t("label.earnings")}</span>
+                  <span className="font-semibold tabular-nums">
+                    {formatEuro(preview.total, locale)}
+                  </span>
+                </div>
+              </div>
             ) : null}
 
             {!isWork ? <section>{noteField}</section> : null}
