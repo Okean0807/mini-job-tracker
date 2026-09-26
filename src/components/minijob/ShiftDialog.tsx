@@ -329,18 +329,15 @@ export function ShiftDialog({
           labels: [] as string[],
         };
 
+  // Die Art wird immer direkt im Editor gewählt – der Block ART mit allen
+  // 6 Arten bleibt sichtbar. Mehrtägige Abwesenheiten bleiben über den
+  // optionalen Zeitraum-Link erreichbar (kein automatischer Wechsel mehr).
   function selectKind(next: ShiftKind) {
-    if (
-      (next === "urlaub" || next === "krank" || next === "frei" || next === "sonstige") &&
-      onRequestAbsence &&
-      !isEditing
-    ) {
-      onRequestAbsence(next, entryDate);
-      onOpenChange(false);
-      return;
-    }
     setKind(next);
   }
+
+  const absenceRangeKind =
+    kind === "urlaub" || kind === "krank" || kind === "frei" || kind === "sonstige" ? kind : null;
 
   function onStartChange(value: string) {
     setStart(value);
@@ -687,6 +684,20 @@ export function ShiftDialog({
                   </button>
                 ))}
               </div>
+              {absenceRangeKind && onRequestAbsence && !isEditing ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  data-testid="entry-absence-range"
+                  className="mt-1 h-11 px-3 text-primary"
+                  onClick={() => {
+                    onRequestAbsence(absenceRangeKind, entryDate);
+                    onOpenChange(false);
+                  }}
+                >
+                  <CalendarDays className="size-4" aria-hidden /> {t("absence.newTitle")}
+                </Button>
+              ) : null}
             </section>
 
             {holiday ? (
