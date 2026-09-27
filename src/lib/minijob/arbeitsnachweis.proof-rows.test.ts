@@ -73,7 +73,7 @@ describe("proofTableHead", () => {
   it("uses §7 columns without Tätigkeiten", () => {
     expect(proofTableHead()).toEqual([
       "Datum",
-      "Einsatzort / Objekt",
+      "Eintragsart",
       "Beginn",
       "Ende",
       "Stunden",
@@ -81,11 +81,12 @@ describe("proofTableHead", () => {
       "Notiz",
     ]);
     expect(proofTableHead().join("|")).not.toContain("Tätigkeiten");
+    expect(proofTableHead().join("|")).not.toContain("Einsatzort / Objekt");
   });
 });
 
 describe("buildProofTableRows", () => {
-  it("maps street/houseNo/workCode and job name into §7 row", () => {
+  it("maps kind/street/houseNo/workCode into §7 row (Eintragsart statt Jobname)", () => {
     const job = makeJob({ name: "Reinigung" });
     const shift = makeShift({
       street: "Musterstraße",
@@ -98,7 +99,7 @@ describe("buildProofTableRows", () => {
     const [row] = buildProofTableRows([shift], [job]);
     expect(row).toEqual([
       "20.09.2026",
-      "Reinigung",
+      "Arbeit",
       "06:00",
       "07:00",
       "1,00 h",
@@ -130,7 +131,7 @@ describe("buildProofTableRows", () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]).toEqual([
       "20.09.2026",
-      "Reinigung",
+      "Arbeit",
       "06:00",
       "07:00",
       "1,00 h",
@@ -139,7 +140,7 @@ describe("buildProofTableRows", () => {
     ]);
     expect(rows[1]).toEqual([
       "20.09.2026",
-      "Reinigung",
+      "Arbeit",
       "08:00",
       "09:30",
       "1,50 h",
@@ -194,9 +195,9 @@ describe("buildProofTableRows", () => {
     );
     expect(rows).toHaveLength(3);
     expect(rows.map((row) => [row[0], row[1], row[2], row[3], row[4], row[5]])).toEqual([
-      ["19.09.2026", "Büro", "06:00", "06:15", "0,25 h", "SA"],
-      ["19.09.2026", "Fehrenwinkel 16", "06:15", "16:30", "10,25 h", "ER"],
-      ["19.09.2026", "Fenster", "17:00", "18:00", "1,00 h", "FR"],
+      ["19.09.2026", "Arbeit", "06:00", "06:15", "0,25 h", "SA"],
+      ["19.09.2026", "Arbeit", "06:15", "16:30", "10,25 h", "ER"],
+      ["19.09.2026", "Arbeit", "17:00", "18:00", "1,00 h", "FR"],
     ]);
     expect(rows[1]![6]).toContain("Fehrenwinkel 16");
   });
@@ -249,12 +250,12 @@ describe("buildProofTableRows", () => {
     ]);
   });
 
-  it("prefers workplace over job name; empty workCode → —", () => {
+  it("column 2 is the Eintragsart, not workplace/job name; empty workCode → —", () => {
     const rows = buildProofTableRows(
       [makeShift({ workplace: "Objekt Nord" })],
       [makeJob()],
     );
-    expect(rows[0]![1]).toBe("Objekt Nord");
+    expect(rows[0]![1]).toBe("Arbeit");
     expect(rows[0]![5]).toBe("—");
     expect(rows[0]![6]).toBe("");
   });
@@ -315,7 +316,8 @@ describe("PDF export regression (real jspdf, no pdftotext)", () => {
     });
     const raw = pdfLatin1FromLastSave();
     assertProofPdfMarkers(raw);
-    expect(raw).toContain("Reinigung");
+    expect(raw).toContain("Eintragsart");
+    expect(raw).toContain("Arbeit");
   });
 
   it("exportWorkReportPdf (Leistungsnachweis button) shares same markers", () => {
