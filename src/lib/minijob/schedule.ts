@@ -77,14 +77,28 @@ export function generateAbsence(
       jobId: job.id,
       kind,
       date,
-      start: plan?.start ?? "09:00",
-      end: plan?.end ?? "17:00",
-      breakMinutes: plan?.breakMinutes ?? 0,
+      ...absenceDayTimes(job, date),
       ...(typeof job.rate === "number" ? { rate: job.rate } : {}),
       note: isHoliday(date, bundesland) ? "Feiertag" : undefined,
     });
   }
   return result;
+}
+
+/**
+ * Zeiten eines Abwesenheitstags – gemeinsame Quelle für den Zeitraum-Dialog
+ * (generateAbsence) und neue Abwesenheiten im Eintrags-Editor:
+ * aktiver Wochenplan-Tag → dessen Beginn/Ende/Pause, sonst 09:00–17:00 ohne Pause.
+ */
+export function absenceDayTimes(
+  job: Pick<Job, "week"> | undefined,
+  date: string,
+): { start: string; end: string; breakMinutes: number } {
+  const plan = job?.week?.[(localDate(date).getDay() + 6) % 7];
+  if (plan?.active) {
+    return { start: plan.start, end: plan.end, breakMinutes: plan.breakMinutes ?? 0 };
+  }
+  return { start: "09:00", end: "17:00", breakMinutes: 0 };
 }
 
 /** Überstunden = geleistete Arbeitsstunden minus Sollstunden im Zeitraum. */

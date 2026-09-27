@@ -9,6 +9,7 @@ import {
   listShifts,
   monthStats,
   removeShift,
+  persistDialogShift,
   updateShift,
   upsertShift,
 } from "./service";
@@ -70,6 +71,64 @@ describe("service shift CRUD", () => {
     expect(getData().shifts).toHaveLength(1);
     expect(getShift(shift.id)?.date).toBe("2026-03-05");
     expect(earningsOf(replaced).total).toBe(40);
+  });
+
+  it("persistDialogShift updates the same Shift ID and does not append", () => {
+    const existing = addShift({
+      ...base,
+      date: "2026-09-19",
+      start: "06:15",
+      end: "16:30",
+      workCode: "ER",
+      workCodeLabel: "Endreinigung",
+      tasks: ["Endreinigung"],
+      workplace: "Fehrenwinkel 16",
+    });
+    expect(getData().shifts).toHaveLength(1);
+
+    const saved = persistDialogShift(
+      {
+        ...existing,
+        tasks: ["Fensterreinigung"],
+      },
+      existing.id,
+    );
+    expect(saved.id).toBe(existing.id);
+    expect(getData().shifts).toHaveLength(1);
+    expect(getShift(existing.id)?.tasks).toEqual(["Fensterreinigung"]);
+    expect(getShift(existing.id)?.workCode).toBe("ER");
+  });
+
+  it("persistDialogShift without editingId creates exactly one new Shift", () => {
+    const a = addShift({ ...base, date: "2026-09-19", start: "06:00", end: "06:15", workCode: "SA" });
+    const created = persistDialogShift({
+      ...base,
+      date: "2026-09-19",
+      start: "06:15",
+      end: "16:30",
+      workCode: "ER",
+    });
+    expect(created.id).not.toBe(a.id);
+    expect(getData().shifts).toHaveLength(2);
+  });
+
+  it("persistDialogShift on one of three same-day Shifts leaves the others unchanged", () => {
+    const a = addShift({ ...base, date: "2026-09-19", start: "06:00", end: "06:15", workCode: "SA" });
+    const b = addShift({ ...base, date: "2026-09-19", start: "06:15", end: "16:30", workCode: "ER" });
+    const c = addShift({ ...base, date: "2026-09-19", start: "17:00", end: "18:00", workCode: "FR" });
+    persistDialogShift({ ...b, workCode: "GL", workCodeLabel: "Glasreinigung" }, b.id);
+    expect(getData().shifts).toHaveLength(3);
+    expect(getShift(a.id)?.workCode).toBe("SA");
+    expect(getShift(b.id)?.workCode).toBe("GL");
+    expect(getShift(c.id)?.workCode).toBe("FR");
+  });
+
+  it("persistDialogShift no-op save of an existing Shift does not duplicate", () => {
+    const existing = addShift({ ...base, date: "2026-09-19", start: "06:15", end: "16:30", workCode: "ER" });
+    persistDialogShift({ ...existing }, existing.id);
+    persistDialogShift({ ...existing }, existing.id);
+    expect(getData().shifts).toHaveLength(1);
+    expect(getData().shifts[0]?.id).toBe(existing.id);
   });
 
   it("löscht eine Schicht", () => {

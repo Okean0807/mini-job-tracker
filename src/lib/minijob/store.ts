@@ -17,6 +17,15 @@ import {
 } from "./storage-scope";
 import { applyAppearance } from "./theme";
 import {
+  ensureCustomTasksFromShifts,
+  ensureWorkCodesFromShifts,
+  isBuiltinWorkCode,
+  learnSavedValuesFromShift,
+  normalizeCatalogText,
+  normalizeTaskCompare,
+  normalizeWorkCode,
+} from "./catalog";
+import {
   clearObjectIdFromShifts,
   ensureObjectsFromShifts,
   linkShiftToObject,
@@ -37,6 +46,7 @@ import {
   type RunningTimer,
   type Settings,
   type Shift,
+  type WorkCodeDef,
   type WorkObject,
 } from "./types";
 
@@ -192,6 +202,21 @@ export function normalize(input: Partial<AppData>): AppData {
   }
   // pinEnabled ohne gültige PIN wäre nur UI-Kosmetik (Root sperrt nicht).
   settings = withConsistentPinSettings(settings);
+  if (Array.isArray(settings.customTasks)) {
+    settings.customTasks = settings.customTasks.filter(
+      (item): item is string => typeof item === "string" && item.trim().length > 0,
+    );
+  }
+  if (Array.isArray(settings.workCodes)) {
+    settings.workCodes = settings.workCodes.filter((item): item is WorkCodeDef =>
+      Boolean(
+        item &&
+        typeof item === "object" &&
+        typeof (item as { code?: unknown }).code === "string" &&
+        typeof (item as { label?: unknown }).label === "string",
+      ),
+    );
+  }
   // Drop null/primitive/"array" holes so property access (s.kind, j.rate) never
   // throws — a throw in loadFromStorage would wipe local data via its catch.
   const shiftRows = (Array.isArray(raw.shifts) ? raw.shifts : []).filter(isPlainRecord);
@@ -279,9 +304,10 @@ function loadScopeState(
       newId,
       now: todayIso(),
     });
-    return objects !== stored.objects
-      ? { data: { ...stored, objects }, filled: true }
-      : { data: stored, filled: false };
+    // Kataloge (Leistungsarten/Tätigkeiten) ADD-only aus Schichten nachziehen –
+    // im Stand dieses Scopes (settings), kein eigener Storage-Key.
+    const next = withEnsuredCatalogs(objects !== stored.objects ? { ...stored, objects } : stored);
+    return next !== stored ? { data: next, filled: true } : { data: stored, filled: false };
   }
   return {
     data: { ...EMPTY_DATA, settings: { ...EMPTY_DATA.settings, language: languageSeed } },
@@ -349,6 +375,23 @@ export function getData(): AppData {
   return state;
 }
 
+/** Kataloge ADD-only aus Schichten nachziehen — analog ensureObjectsFromShifts. */
+function withEnsuredCatalogs(data: AppData): AppData {
+  const prevCodes = data.settings.workCodes ?? [];
+  const prevTasks = data.settings.customTasks ?? [];
+  const workCodes = ensureWorkCodesFromShifts(prevCodes, data.shifts);
+  const customTasks = ensureCustomTasksFromShifts(prevTasks, data.shifts);
+  if (workCodes === prevCodes && customTasks === prevTasks) return data;
+  return {
+    ...data,
+    settings: {
+      ...data.settings,
+      ...(workCodes !== prevCodes ? { workCodes } : {}),
+      ...(customTasks !== prevTasks ? { customTasks } : {}),
+    },
+  };
+}
+
 function todayIso(): string {
   const d = new Date();
   const y = d.getFullYear();
@@ -366,6 +409,18 @@ function learnObjectsFromShift(
   return {
     shift: linkShiftToObject(shift, result.objectId),
     objects: result.objects,
+  };
+}
+
+function withLearnedCatalogs(settings: Settings, shift: Shift): Settings {
+  const prevCodes = settings.workCodes ?? [];
+  const prevTasks = settings.customTasks ?? [];
+  const learned = learnSavedValuesFromShift(prevCodes, prevTasks, shift);
+  if (learned.workCodes === prevCodes && learned.customTasks === prevTasks) return settings;
+  return {
+    ...settings,
+    ...(learned.workCodes !== prevCodes ? { workCodes: learned.workCodes } : {}),
+    ...(learned.customTasks !== prevTasks ? { customTasks: learned.customTasks } : {}),
   };
 }
 
@@ -391,7 +446,8 @@ export function saveShift(shift: Shift) {
     ? state.shifts.map((s) => (s.id === learned.shift.id ? learned.shift : s))
     : [...state.shifts, learned.shift];
   shifts.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-  commit({ ...state, shifts, objects: learned.objects });
+  const settings = withLearnedCatalogs(state.settings, learned.shift);
+  commit({ ...state, shifts, objects: learned.objects, settings });
 }
 
 export function saveShifts(list: Shift[]) {
@@ -399,7 +455,11 @@ export function saveShifts(list: Shift[]) {
   const map = new Map(state.shifts.map((s) => [s.id, s]));
   for (const s of learned.shifts) map.set(s.id, s);
   const shifts = [...map.values()].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-  commit({ ...state, shifts, objects: learned.objects });
+  let settings = state.settings;
+  for (const s of learned.shifts) {
+    settings = withLearnedCatalogs(settings, s);
+  }
+  commit({ ...state, shifts, objects: learned.objects, settings });
 }
 
 export function deleteShift(id: string) {
@@ -545,6 +605,56 @@ export function removeObject(id: string) {
   deleteObject(id);
 }
 
+/** Gespeicherte Leistungsart anlegen/umbenennen. Schichten werden nicht geändert. */
+export function upsertWorkCodeDef(item: WorkCodeDef, previousCode?: string) {
+  const code = normalizeWorkCode(item.code);
+  const label = normalizeCatalogText(item.label);
+  if (!code || !label || isBuiltinWorkCode(code)) return;
+  const prev = state.settings.workCodes ?? [];
+  let next = previousCode
+    ? prev.filter((c) => normalizeWorkCode(c.code) !== normalizeWorkCode(previousCode))
+    : [...prev];
+  const idx = next.findIndex((c) => normalizeWorkCode(c.code) === code);
+  if (idx >= 0) {
+    next = next.map((c, i) => (i === idx ? { code, label } : c));
+  } else {
+    next = [...next, { code, label }];
+  }
+  updateSettings({ workCodes: next });
+}
+
+export function deleteWorkCodeDef(codeRaw: string) {
+  const code = normalizeWorkCode(codeRaw);
+  if (!code) return;
+  const prev = state.settings.workCodes ?? [];
+  const workCodes = prev.filter((c) => normalizeWorkCode(c.code) !== code);
+  if (workCodes.length === prev.length) return;
+  updateSettings({ workCodes });
+}
+
+/** Gespeicherte Tätigkeit anlegen/umbenennen. Schichten werden nicht geändert. */
+export function upsertCustomTask(valueRaw: string, previous?: string) {
+  const value = normalizeCatalogText(valueRaw);
+  if (!value) return;
+  let next = [...(state.settings.customTasks ?? [])];
+  if (previous) {
+    next = next.filter((item) => normalizeTaskCompare(item) !== normalizeTaskCompare(previous));
+  }
+  if (!next.some((item) => normalizeTaskCompare(item) === normalizeTaskCompare(value))) {
+    next = [...next, value];
+  }
+  updateSettings({ customTasks: next });
+}
+
+export function deleteCustomTask(valueRaw: string) {
+  const compare = normalizeTaskCompare(valueRaw);
+  if (!compare) return;
+  const prev = state.settings.customTasks ?? [];
+  const customTasks = prev.filter((item) => normalizeTaskCompare(item) !== compare);
+  if (customTasks.length === prev.length) return;
+  updateSettings({ customTasks });
+}
+
 /* ---------- Einstellungen ---------- */
 
 export function updateSettings(patch: Partial<Settings>) {
@@ -619,6 +729,7 @@ export function replaceAll(data: Partial<AppData>) {
     now: todayIso(),
   });
   if (objects !== next.objects) next = { ...next, objects };
+  next = withEnsuredCatalogs(next);
   commit(next, false);
   applyAppearance(next.settings);
 }

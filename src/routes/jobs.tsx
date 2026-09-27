@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { JobDialog } from "@/components/minijob/JobDialog";
 import { OrdersCard } from "@/components/minijob/OrdersCard";
 import { ObjectsCard } from "@/components/minijob/ObjectsCard";
+import { WorkCodesCard } from "@/components/minijob/WorkCodesCard";
+import { CustomTasksCard } from "@/components/minijob/CustomTasksCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,6 +60,12 @@ function JobsPage() {
 
       <div className="mt-4">
         <ObjectsCard objects={objects} />
+      </div>
+      <div className="mt-4">
+        <WorkCodesCard workCodes={settings.workCodes ?? []} />
+      </div>
+      <div className="mt-4">
+        <CustomTasksCard tasks={settings.customTasks ?? []} />
       </div>
 
       {isSelf ? (

@@ -159,6 +159,70 @@ describe("buildProofTableRows", () => {
     ]);
   });
 
+  it("keeps three same-day work blocks as three independent rows", () => {
+    const job = makeJob({ name: "Reinigung" });
+    const rows = buildProofTableRows(
+      [
+        makeShift({
+          id: "c",
+          date: "2026-09-19",
+          start: "17:00",
+          end: "18:00",
+          workCode: "FR",
+          workplace: "Fenster",
+        }),
+        makeShift({
+          id: "a",
+          date: "2026-09-19",
+          start: "06:00",
+          end: "06:15",
+          workCode: "SA",
+          workplace: "Büro",
+        }),
+        makeShift({
+          id: "b",
+          date: "2026-09-19",
+          start: "06:15",
+          end: "16:30",
+          workCode: "ER",
+          street: "Fehrenwinkel",
+          houseNo: "16",
+          workplace: "Fehrenwinkel 16",
+        }),
+      ],
+      [job],
+    );
+    expect(rows).toHaveLength(3);
+    expect(rows.map((row) => [row[0], row[1], row[2], row[3], row[4], row[5]])).toEqual([
+      ["19.09.2026", "Büro", "06:00", "06:15", "0,25 h", "SA"],
+      ["19.09.2026", "Fehrenwinkel 16", "06:15", "16:30", "10,25 h", "ER"],
+      ["19.09.2026", "Fenster", "17:00", "18:00", "1,00 h", "FR"],
+    ]);
+    expect(rows[1]![6]).toContain("Fehrenwinkel 16");
+  });
+
+  it("keeps four same-day work blocks as four PDF rows", () => {
+    const rows = buildProofTableRows(
+      [
+        makeShift({ id: "a", date: "2026-09-19", start: "06:00", end: "06:15", workCode: "SA", workplace: "Büro" }),
+        makeShift({
+          id: "b",
+          date: "2026-09-19",
+          start: "06:15",
+          end: "16:30",
+          workCode: "ER",
+          workplace: "Fehrenwinkel 16",
+        }),
+        makeShift({ id: "c", date: "2026-09-19", start: "17:00", end: "18:00", workCode: "FR", workplace: "Fenster" }),
+        makeShift({ id: "d", date: "2026-09-19", start: "18:15", end: "19:00", workCode: "UR", workplace: "Nachgang" }),
+      ],
+      [makeJob()],
+    );
+    expect(rows).toHaveLength(4);
+    expect(rows.map((row) => row[2])).toEqual(["06:00", "06:15", "17:00", "18:15"]);
+    expect(new Set(rows.map((row) => row[5])).size).toBe(4);
+  });
+
   it("uses stable id secondary when date and start match", () => {
     const b = makeShift({ id: "b-id", start: "06:00", end: "07:00", workCode: "UR" });
     const a = makeShift({ id: "a-id", start: "06:00", end: "07:00", workCode: "FR" });
@@ -292,5 +356,100 @@ describe("PDF export regression (real jspdf, no pdftotext)", () => {
     expect(raw).toContain("Musterstraße 10, 3. OG, linke Tür");
     // Keep #102 markers
     assertProofPdfMarkers(raw);
+  });
+
+  it("four same-day shifts stay four Leistungsnachweis rows with per-shift address and Leistungsart", () => {
+    const four = [
+      makeShift({
+        id: "a",
+        date: "2026-09-19",
+        start: "06:00",
+        end: "06:15",
+        workCode: "SA",
+        workplace: "Büro",
+        street: "Büro",
+      }),
+      makeShift({
+        id: "b",
+        date: "2026-09-19",
+        start: "06:15",
+        end: "16:30",
+        workCode: "ER",
+        workplace: "Fehrenwinkel 16",
+        street: "Fehrenwinkel",
+        houseNo: "16",
+      }),
+      makeShift({
+        id: "c",
+        date: "2026-09-19",
+        start: "17:00",
+        end: "18:00",
+        workCode: "FR",
+        workplace: "Fenster",
+      }),
+      makeShift({
+        id: "d",
+        date: "2026-09-19",
+        start: "18:15",
+        end: "19:00",
+        workCode: "UR",
+        workplace: "Nachgang",
+        street: "Musterstraße",
+        houseNo: "10",
+        floor: "3. OG",
+        doorSide: "linke Tür",
+        zip: "30159",
+        city: "Hannover",
+      }),
+    ];
+    exportWorkReportPdf(four, {
+      jobs: [job],
+      month: "September 2026",
+      employeeName: "Max Mustermann",
+      includePhotos: false,
+    });
+    const raw = pdfLatin1FromLastSave();
+    expect(raw).toContain("SA");
+    expect(raw).toContain("ER");
+    expect(raw).toContain("FR");
+    expect(raw).toContain("UR");
+    expect(raw).toContain("06:00");
+    expect(raw).toContain("06:15");
+    expect(raw).toContain("17:00");
+    expect(raw).toContain("18:15");
+    expect(raw).toContain("B");
+    expect(raw).toContain("Fehrenwinkel");
+    expect(raw).toContain("Musterstra");
+    expect(raw.split("19.09.2026").length - 1).toBeGreaterThanOrEqual(4);
+    expect(raw).toContain("Ausgefüllt");
+  });
+});
+
+describe("Arbeitsnachweis – Legende der Leistungsarten (Snapshot + Fallback)", () => {
+  const ctxBase = { jobs: [makeJob()], month: 8, year: 2026, employeeName: "Anna" };
+
+  it("bevorzugt die Bezeichnung aus dem Schicht-Snapshot vor dem aktuellen Katalog", () => {
+    exportArbeitsnachweisPdf([makeShift({ workCode: "XY", workCodeLabel: "Snapshotname" })], {
+      ...ctxBase,
+      customCodes: [{ code: "XY", label: "Katalogname" }],
+    });
+    const raw = pdfLatin1FromLastSave();
+    expect(raw).toContain("XY = Snapshotname");
+    expect(raw).not.toContain("XY = Katalogname");
+  });
+
+  it("fällt ohne Snapshot auf Katalog, dann Standard-Bezeichnung, dann Code zurück", () => {
+    exportArbeitsnachweisPdf(
+      [
+        makeShift({ id: "a", workCode: "XY" }),
+        makeShift({ id: "b", workCode: "UR", start: "08:00", end: "09:00" }),
+        makeShift({ id: "c", workCode: "ZQ", workCodeLabel: "  ", start: "10:00", end: "11:00" }),
+      ],
+      { ...ctxBase, customCodes: [{ code: "XY", label: "Katalogname" }] },
+    );
+    const raw = pdfLatin1FromLastSave();
+    expect(raw).toContain("XY = Katalogname");
+    expect(raw).toContain("UR = Unterhaltsreinigung");
+    expect(raw).toContain("ZQ = ZQ");
   });
 });
