@@ -94,11 +94,16 @@ export function noteCell(shift: Shift): string {
   return lines.filter(Boolean).join("\n");
 }
 
-/** PDF-Tabellenkopf (7 Spalten, §7). */
+/** Eintragsart-Zelle: Shift.kind, immer in Dokumentensprache (td → Deutsch). */
+export function entryKindCell(shift: Pick<Shift, "kind">): string {
+  return td(`kind.${shift.kind}`);
+}
+
+/** PDF-Tabellenkopf (7 Spalten): Datum | Eintragsart | Beginn | Ende | Stunden | Leistungsart | Notiz. */
 export function proofTableHead(): string[] {
   return [
     td("label.date"),
-    td("worklog.workplace"),
+    td("proof.entryKind"),
     td("label.start"),
     td("label.end"),
     td("label.hours"),
@@ -119,17 +124,17 @@ export function sortProofShifts(shifts: Shift[]): Shift[] {
 
 /**
  * Gemeinsame PDF-Zeilen für Arbeitsnachweis / Leistungsnachweis.
- * Spalten: Datum | Einsatzort/Objekt | Beginn | Ende | Stunden | Leistungsart | Notiz
+ * Spalten: Datum | Eintragsart | Beginn | Ende | Stunden | Leistungsart | Notiz
  * Leistungsart leer → "—"; Notiz leer wenn keine Adresse/Notiz.
+ * Adresse/Objekt steht (unverändert) in der Notiz-Spalte.
+ * `_jobs` bleibt nur aus Kompatibilität der Aufrufer in der Signatur.
  */
-export function buildProofTableRows(shifts: Shift[], jobs: Job[] = []): string[][] {
+export function buildProofTableRows(shifts: Shift[], _jobs: Job[] = []): string[][] {
   return sortProofShifts(shifts).map((s) => {
-    const jobName = jobs.find((j) => j.id === s.jobId)?.name;
-    const einsatzort = (s.workplace ?? jobName ?? "").trim() || "—";
     const leistungsart = leistungsartCell(s) || "—";
     return [
       formatProofDate(s.date),
-      einsatzort,
+      entryKindCell(s),
       s.start,
       s.end,
       formatHours(shiftHours(s), DOCUMENT_LOCALE),
