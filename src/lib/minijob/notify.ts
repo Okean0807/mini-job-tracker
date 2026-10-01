@@ -2,10 +2,11 @@ import { t } from "@/lib/i18n";
 
 import { formatDate, formatEuro, isoDate, shiftsInYear, timeFromDate } from "./calc";
 import { payrollTotals } from "./payroll";
-import { monthUsage, yearlyLimitOf } from "./limits";
+import { monthUsage, yearUsage } from "./limits";
 import { payPeriods } from "./payday";
 import { makeResolver } from "./resolve";
 import { getData } from "./store";
+import { isWithinTimeWindow, previousCalendarDate } from "./notify-time";
 
 const FLAG_KEY = "minijob-notify-flags";
 
@@ -32,9 +33,9 @@ function writeFlags(flags: Flags) {
 function notifyOnce(key: string, stamp: string, title: string, body: string) {
   const flags = readFlags();
   if (flags[key] === stamp) return;
+  if (!send(title, body)) return;
   flags[key] = stamp;
   writeFlags(flags);
-  send(title, body);
 }
 
 export function notificationsSupported(): boolean {
@@ -51,12 +52,22 @@ export async function requestNotificationPermission(): Promise<boolean> {
   return result === "granted";
 }
 
-export function send(title: string, body: string) {
-  if (!notificationsSupported() || Notification.permission !== "granted") return;
+export function send(title: string, body: string): boolean {
+  if (!notificationsSupported() || Notification.permission !== "granted") return false;
   try {
+    const registration = typeof navigator !== "undefined" && "serviceWorker" in navigator
+      ? navigator.serviceWorker.controller
+        ? navigator.serviceWorker.ready
+        : null
+      : null;
+    if (registration) {
+      void registration.then((reg) => reg.showNotification(title, { body, icon: "/icons/icon-192.png", tag: title })).catch(() => {});
+      return true;
+    }
     new Notification(title, { body, icon: "/icons/icon-192.png", tag: title });
+    return true;
   } catch {
-    /* Browser blockiert */
+    return false;
   }
 }
 
@@ -64,6 +75,13 @@ export function markBackup() {
   const flags = readFlags();
   flags["lastBackup"] = new Date().toISOString();
   writeFlags(flags);
+}
+
+export function getLastBackupAt(): number | null {
+  const raw = readFlags()["lastBackup"];
+  if (!raw) return null;
+  const ms = Date.parse(raw);
+  return Number.isFinite(ms) ? ms : null;
 }
 
 /** Prüft alle Regeln (Limits, Erinnerungen) und sendet fällige Meldungen. */
@@ -80,8 +98,7 @@ export function runNotificationChecks() {
 
   if (
     n.startReminder &&
-    clock >= n.startTime &&
-    clock < addMinutes(n.startTime, 90) &&
+    isWithinTimeWindow(clock, n.startTime, 90) &&
     !data.timer
   ) {
     const hasToday = data.shifts.some((s) => s.date === today);
@@ -95,9 +112,9 @@ export function runNotificationChecks() {
   }
 
   if (n.missingShift) {
-    const yesterday = new Date(now.getTime() - 86_400_000);
-    const day = yesterday.getDay();
-    const iso = isoDate(yesterday);
+    const iso = previousCalendarDate(today);
+    const [y, m, d] = iso.split("-").map(Number);
+    const day = new Date(y, m - 1, d).getDay();
     if (day !== 0 && day !== 6 && !data.shifts.some((s) => s.date === iso)) {
       notifyOnce(
         "missing",
@@ -130,7 +147,7 @@ function checkPayday(today: string) {
     ...payPeriods(jobs, shifts, payments, resolve, now.getFullYear(), now.getMonth()),
   ];
   for (const p of periods) {
-    if (p.dueDate !== today || p.payment) continue;
+    if (p.dueDate !== today || p.payments.length > 0) continue;
     notifyOnce(
       `payday-${p.job.id}`,
       today,
@@ -140,11 +157,6 @@ function checkPayday(today: string) {
   }
 }
 
-function addMinutes(time: string, minutes: number): string {
-  const [h = 0, m = 0] = time.split(":").map(Number);
-  const total = Math.min(24 * 60 - 1, h * 60 + m + minutes);
-  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-}
 
 export interface LimitStatus {
   monthShare: number;
@@ -157,18 +169,11 @@ export function limitStatus(): LimitStatus {
   const resolve = makeResolver(jobs, settings);
   const now = new Date();
   const month = monthUsage(shifts, resolve, settings, now.getFullYear(), now.getMonth());
-  const yearEarnings = payrollTotals(
-    shiftsInYear(shifts, now.getFullYear()),
-    resolve,
-    shifts,
-  ).earnings;
+  const year = yearUsage(shifts, resolve, settings, now.getFullYear());
   return {
     monthShare: month.earningsShare,
     monthHoursShare: month.hoursShare,
-    yearShare:
-      yearlyLimitOf(settings, now.getFullYear()) > 0
-        ? (yearEarnings / yearlyLimitOf(settings, now.getFullYear())) * 100
-        : 0,
+    yearShare: year.earningsShare,
   };
 }
 

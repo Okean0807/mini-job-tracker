@@ -1,8 +1,8 @@
-import * as XLSX from "xlsx";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
 import { td, DOCUMENT_LOCALE } from "./document-i18n";
+import { appendXlsxSheet, createXlsxBook, createXlsxSheet, writeXlsx } from "./xlsx-export";
 
 import { formatDate, formatEuro, formatHours } from "./calc";
 import { saveAndRegisterBytes } from "./generated-docs";
@@ -111,12 +111,12 @@ export function exportXlsx(shifts: Shift[], title: string, ctx: ExportContext) {
     [earningsLabel]: Number(total(shifts, ctx).toFixed(2)),
     [noteLabel]: "",
   });
-  const sheet = XLSX.utils.json_to_sheet(data);
+  const sheet = createXlsxSheet(data);
   sheet["!cols"] = [12, 16, 10, 8, 8, 12, 10, 16, 14, 16, 24].map((wch) => ({ wch }));
-  const book = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(book, sheet, td("report.sheetName"));
+  const book = createXlsxBook();
+  appendXlsxSheet(book, sheet, td("report.sheetName"));
   const filename = `${title}.xlsx`;
-  const buffer = XLSX.write(book, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
+  const buffer = writeXlsx(book) as ArrayBuffer;
   saveAndRegisterBytes({
     bytes: buffer,
     filename,

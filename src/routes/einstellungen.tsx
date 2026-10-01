@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { CloudDownload, CloudUpload, Lock, LogOut } from "lucide-react";
+import { CloudDownload, CloudUpload, Lock, LogOut, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { Skeleton } from "@/components/ui/skeleton";
 import { signInWithOAuthProvider } from "@/lib/minijob/oauth-sign-in";
+import { deleteMyAccount } from "@/lib/minijob/account-delete";
 import { markOAuthPending } from "@/lib/minijob/storage-scope";
 import { LocalDataImportSection } from "@/components/minijob/LocalDataImport";
 import { formatDateDE, formatEuro, formatHours, isoDate } from "@/lib/minijob/calc";
@@ -31,6 +32,7 @@ import { downloadText, shiftsToCsv } from "@/lib/minijob/csv";
 import { exportXlsx } from "@/lib/minijob/export";
 import { holidaysFor } from "@/lib/minijob/holidays";
 import {
+  getLastBackupAt,
   markBackup,
   notificationPermission,
   requestNotificationPermission,
@@ -749,6 +751,12 @@ function SettingsPage() {
           <LocalDataImportSection />
         </TabsContent>
       </Tabs>
+
+      <nav className="mt-6 mb-6 flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs text-muted-foreground" aria-label="Rechtliche Informationen">
+        <a className="underline underline-offset-4" href="/impressum">Impressum</a>
+        <a className="underline underline-offset-4" href="/datenschutz">Datenschutz</a>
+        <a className="underline underline-offset-4" href="/ki-hinweise">KI-Hinweise</a>
+      </nav>
     </main>
   );
 }
@@ -974,6 +982,7 @@ function LocalBackup({ shiftCount }: { shiftCount: number }) {
 function SyncStatusRow({ busy, setBusy }: { busy: boolean; setBusy: (value: boolean) => void }) {
   const { t } = useT();
   const sync = useSyncState();
+  const lastBackupAt = getLastBackupAt();
 
   // UI failsafe: never leave "Wird synchronisiert …" past timeout even if cloud Promise.race fails.
   useEffect(() => {
@@ -1024,8 +1033,23 @@ function SyncStatusRow({ busy, setBusy }: { busy: boolean; setBusy: (value: bool
 
   return (
     <div className="rounded-xl border border-border/60 bg-muted/30 p-3">
-      <p className="text-xs font-medium">{t("set.account.cloud.sync.status")}</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-medium">{t("set.account.cloud.sync.status")}</p>
+        <span className="text-[11px] text-muted-foreground">
+          {sync.lastSyncedAt ? new Date(sync.lastSyncedAt).toLocaleString() : t("set.account.cloud.sync.never")}
+        </span>
+      </div>
       <p className={`mt-1 text-xs ${tone}`}>{label}</p>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
+        <div className="rounded-lg border bg-background/70 p-2">
+          <div className="font-medium text-foreground">{t("set.account.cloud.sync.device")}</div>
+          <div>{sync.pending ? t("set.account.cloud.sync.localChanges") : t("set.account.cloud.sync.localReady")}</div>
+        </div>
+        <div className="rounded-lg border bg-background/70 p-2">
+          <div className="font-medium text-foreground">{t("set.account.cloud.sync.cloud")}</div>
+          <div>{sync.lastSyncedAt ? t("set.account.cloud.sync.cloudAvailable") : t("set.account.cloud.sync.cloudUnknown")}</div>
+        </div>
+      </div>
       {sync.status === "conflict" ? (
         <div className="mt-2 grid grid-cols-2 gap-2">
           <Button size="sm" onClick={() => resolve("local")} disabled={busy}>
@@ -1126,6 +1150,19 @@ function CloudSync({
       </p>
       <SyncStatusRow busy={busy} setBusy={setBusy} />
 
+      <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
+        <p className="text-xs font-medium">{t("set.account.cloud.backupStatus")}</p>
+        <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+          <div><span className="text-muted-foreground">{t("set.account.cloud.lastBackup")}</span><br />
+            <span className="font-medium">{lastBackupAt ? new Date(lastBackupAt).toLocaleString() : t("set.account.cloud.notYet")}</span>
+          </div>
+          <div><span className="text-muted-foreground">{t("set.account.cloud.cloudCopy")}</span><br />
+            <span className="font-medium">{sync.lastSyncedAt ? t("set.account.cloud.available") : t("set.account.cloud.notAvailable")}</span>
+          </div>
+        </div>
+        <p className="mt-2 text-[11px] text-muted-foreground">{t("set.account.cloud.backupWhat")}</p>
+      </div>
+
       <ToggleRow
         title={t("set.account.cloud.autoBackup")}
         description={t("set.account.cloud.autoBackupDesc")}
@@ -1140,6 +1177,29 @@ function CloudSync({
           <CloudDownload className="size-4" /> {t("set.account.cloud.restore")}
         </Button>
       </div>
+      <Button
+        variant="destructive"
+        className="w-full"
+        disabled={busy}
+        onClick={async () => {
+          if (!window.confirm(t("set.account.delete.confirm"))) return;
+          setBusy(true);
+          try {
+            const result = await deleteMyAccount();
+            if (!result.ok) {
+              toast.error(t("set.account.delete.failed"));
+              return;
+            }
+            toast.success(t("set.account.delete.success"));
+            window.location.reload();
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <Trash2 className="size-4" /> {t("set.account.delete.button")}
+      </Button>
+
       <Button
         variant="ghost"
         className="w-full text-muted-foreground"

@@ -549,6 +549,7 @@ export function workFingerprint(data: Pick<AppData, "shifts" | "jobs">): string 
 async function push(
   data: AppData,
   preserveIfNewerThan?: { local: number | null; work: number | null },
+  isCurrent?: () => boolean,
 ): Promise<void> {
   if (!userId) throw new Error(t("error.notSignedIn"));
   // Owner guard: only ever upload data that was loaded from THIS account's namespace.
@@ -561,8 +562,9 @@ async function push(
     payload: payloadOf(data) as never,
     updated_at: updatedAt.toISOString(),
   });
-  // Post-await-Guard: Konto/Scope gewechselt → keine Meta, kein markBackup, kein "synced".
-  if (!stillOwner(snap)) throw new StaleSyncError();
+  // Post-await-Guard: Konto/Scope gewechselt oder der Sync-Lauf wurde bereits
+  // abgebrochen (z. B. Timeout) → keine Meta, kein markBackup, kein "synced".
+  if (!stillOwner(snap) || (isCurrent && !isCurrent())) throw new StaleSyncError();
   if (error) throw error;
   const ts = updatedAt.getTime();
   let nextLocal: number | null = null;
@@ -659,7 +661,7 @@ export async function backupNow(): Promise<void> {
   armSyncWatchdog(epoch);
   const snap = snapshotOwner();
   try {
-    await withSyncTimeout(push(getData()));
+    await withSyncTimeout(push(getData(), undefined, () => epoch === syncEpoch));
     // Lauf wurde abgebrochen (Kontowechsel/Timeout): nie als Erfolg melden.
     if (epoch !== syncEpoch) throw new StaleSyncError();
     if (!stillOwner(snap)) throw new StaleSyncError();
@@ -886,10 +888,11 @@ async function autoSync(): Promise<void> {
       if (decision === "restore" && remote) applyRemote(remote);
       if (epoch !== syncEpoch) return;
       if (decision === "push") {
-        await push(local, {
-          local: changedAtStart,
-          work: workChangedAtStart,
-        });
+        await push(
+          local,
+          { local: changedAtStart, work: workChangedAtStart },
+          () => epoch === syncEpoch,
+        );
       }
       if (epoch !== syncEpoch) return;
       const changedDuringSync =

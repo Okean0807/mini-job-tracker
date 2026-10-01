@@ -1,8 +1,14 @@
 import { shiftsInMonth, shiftsInYear } from "./calc";
-import { findRuleVersion, minijobLimitFromWage } from "./legal";
+import {
+  findRuleVersion,
+  minijobLimitFromWage,
+  isEligibleMinijobShift,
+} from "./legal";
+import { effectiveHourlyFromMonthly } from "./rate";
 import { payrollTotals } from "./payroll";
+import { buildMonthlyIncomeFromShifts, legalActualIncomeForMonth, legalActualIncomeForYear } from "./legal/integration";
 import type { Resolver } from "./resolve";
-import type { Settings, Shift } from "./types";
+import type { Job, Settings, Shift } from "./types";
 
 export interface LimitUsage {
   earnings: number;
@@ -23,6 +29,12 @@ export interface LimitUsage {
   absenceEarnings: number;
   /** true, wenn mindestens eine Fortzahlung auf einer Schätzung beruht. */
   estimated: boolean;
+  /** Zusätzlich erwartetes Entgelt aus zukünftigen Einträgen dieses Zeitraums. */
+  expectedAdditional: number;
+  /** Prognose aus tatsächlichem + erwartetem Entgelt. */
+  projectedEarnings: number;
+  /** Stichtag, bis zu dem Einkommen als tatsächlich angefallen gilt. */
+  referenceDate: string;
 }
 
 export type LimitSource = "legal" | "manual";
@@ -107,13 +119,119 @@ export function yearlyHoursLimitOf(settings: Settings, year?: number): number {
   return sum;
 }
 
+/**
+ * Filtert die für die gesetzliche Minijob-Grenze relevanten Schichten.
+ *
+ * Die Resolver-Auflösung ist absichtlich die Quelle für den Job, damit alte
+ * Aufrufer keine neue `jobs`-Dependency benötigen.
+ */
+function eligibleMinijobShifts(shifts: Shift[], resolve: Resolver): Shift[] {
+  return shifts.filter((shift) => {
+    const job = resolve(shift).job;
+    return isEligibleMinijobShift(shift, job);
+  });
+}
+
+/**
+ * Eine einzelne Minijob-Beschäftigung kann informativ eine Stundenobergrenze
+ * aus Grenzbetrag / Stundensatz anzeigen.
+ *
+ * Bei mehreren Minijobs mit unterschiedlichen Sätzen gibt es bewusst keine
+ * künstliche gemeinsame Stundenobergrenze: rechtlich maßgeblich ist die
+ * gemeinsame Entgeltgrenze. `0` bedeutet hier "keine belastbare Stundenbasis".
+ */
+function hoursLimitForEligibleShifts(
+  shifts: Shift[],
+  resolve: Resolver,
+  settings: Settings,
+  year: number,
+  month: number,
+): number {
+  if (!settings.hoursLimitAuto && settings.hoursLimitMonthly > 0) {
+    return settings.hoursLimitMonthly;
+  }
+
+  const jobs = new Map<string, Job | undefined>();
+  for (const shift of shifts) {
+    const job = resolve(shift).job;
+    jobs.set(job?.id ?? "__unassigned__", job);
+  }
+
+  if (jobs.size === 0) return 0;
+
+  const rates = new Set<number>();
+  for (const job of jobs.values()) {
+    if (!job) {
+      if (settings.defaultRate > 0) rates.add(settings.defaultRate);
+      continue;
+    }
+    const rate =
+      typeof job.rate === "number"
+        ? job.rate
+        : effectiveHourlyFromMonthly(job) ?? settings.defaultRate;
+    if (rate > 0) rates.add(rate);
+  }
+
+  if (rates.size !== 1) return 0;
+  const rate = [...rates][0]!;
+  if (!rate) return 0;
+
+  const limit = monthlyLimitOf(settings, year, month);
+  return limit > 0 ? limit / rate : 0;
+}
+
+function yearlyHoursLimitForEligibleShifts(
+  shifts: Shift[],
+  resolve: Resolver,
+  settings: Settings,
+  year: number,
+): number {
+  if (!settings.hoursLimitAuto && settings.hoursLimitMonthly > 0) {
+    return settings.hoursLimitMonthly * 12;
+  }
+
+  const jobs = new Map<string, Job | undefined>();
+  for (const shift of shifts) {
+    const job = resolve(shift).job;
+    jobs.set(job?.id ?? "__unassigned__", job);
+  }
+
+  if (jobs.size === 0) return 0;
+
+  const rates = new Set<number>();
+  for (const job of jobs.values()) {
+    if (!job) {
+      if (settings.defaultRate > 0) rates.add(settings.defaultRate);
+      continue;
+    }
+    const rate =
+      typeof job.rate === "number"
+        ? job.rate
+        : effectiveHourlyFromMonthly(job) ?? settings.defaultRate;
+    if (rate > 0) rates.add(rate);
+  }
+
+  if (rates.size !== 1) return 0;
+  const rate = [...rates][0]!;
+  if (!rate) return 0;
+
+  const limit = yearlyLimitOf(settings, year);
+  return limit > 0 ? limit / rate : 0;
+}
+
 function usage(
   earnings: number,
   earningsLimit: number,
   hours: number,
   hoursLimit: number,
   limitSource: LimitSource,
-  extra: { paidAbsenceHours: number; absenceEarnings: number; estimated: boolean } = {
+  extra: {
+    paidAbsenceHours: number;
+    absenceEarnings: number;
+    estimated: boolean;
+    expectedAdditional?: number;
+    referenceDate?: string;
+  } = {
     paidAbsenceHours: 0,
     absenceEarnings: 0,
     estimated: false,
@@ -132,6 +250,9 @@ function usage(
     hoursLeft: Math.max(0, hoursLimit - hours),
     share: Math.max(earningsShare, hoursShare),
     limitSource,
+    expectedAdditional: extra.expectedAdditional ?? 0,
+    projectedEarnings: earnings + (extra.expectedAdditional ?? 0),
+    referenceDate: extra.referenceDate ?? new Date().toISOString().slice(0, 10),
     ...extra,
   };
 }
@@ -142,19 +263,26 @@ export function monthUsage(
   settings: Settings,
   year: number,
   month: number,
+  referenceDate = new Date().toISOString().slice(0, 10),
 ): LimitUsage {
-  const list = shiftsInMonth(shifts, year, month);
-  const totals = payrollTotals(list, resolve, shifts);
+  const list = eligibleMinijobShifts(shiftsInMonth(shifts, year, month), resolve);
+  const actualList = list.filter((shift) => shift.date <= referenceDate);
+  const totals = payrollTotals(actualList, resolve, shifts);
+  const legalEarnings = legalActualIncomeForMonth(shifts, resolve, year, month, referenceDate);
+  const monthKey = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+  const breakdown = buildMonthlyIncomeFromShifts(shifts, resolve, referenceDate).find((entry) => entry.date === monthKey);
   return usage(
-    totals.earnings,
+    legalEarnings,
     monthlyLimitOf(settings, year, month),
     totals.workedHours,
-    monthlyHoursLimit(settings, year, month),
+    hoursLimitForEligibleShifts(actualList, resolve, settings, year, month),
     limitSourceOf(settings, year, month),
     {
       paidAbsenceHours: totals.paidAbsenceHours,
       absenceEarnings: totals.absenceEarnings,
       estimated: totals.estimated,
+      expectedAdditional: breakdown?.expectedAdditional ?? 0,
+      referenceDate,
     },
   );
 }
@@ -164,19 +292,28 @@ export function yearUsage(
   resolve: Resolver,
   settings: Settings,
   year: number,
+  referenceDate = new Date().toISOString().slice(0, 10),
 ): LimitUsage {
-  const list = shiftsInYear(shifts, year);
-  const totals = payrollTotals(list, resolve, shifts);
+  const list = shiftsInYear(shifts, year)
+    .filter((shift) => isEligibleMinijobShift(shift, resolve(shift).job));
+  const actualList = list.filter((shift) => shift.date <= referenceDate);
+  const totals = payrollTotals(actualList, resolve, shifts);
+  const legalEarnings = legalActualIncomeForYear(shifts, resolve, year, referenceDate);
+  const breakdown = buildMonthlyIncomeFromShifts(shifts, resolve, referenceDate)
+    .filter((entry) => entry.date.startsWith(`${year}-`));
+  const expectedAdditional = breakdown.reduce((sum, entry) => sum + entry.expectedAdditional, 0);
   return usage(
-    totals.earnings,
+    legalEarnings,
     yearlyLimitOf(settings, year),
     totals.workedHours,
-    yearlyHoursLimitOf(settings, year),
+    yearlyHoursLimitForEligibleShifts(actualList, resolve, settings, year),
     limitSourceOf(settings, year, 0),
     {
       paidAbsenceHours: totals.paidAbsenceHours,
       absenceEarnings: totals.absenceEarnings,
       estimated: totals.estimated,
+      expectedAdditional,
+      referenceDate,
     },
   );
 }

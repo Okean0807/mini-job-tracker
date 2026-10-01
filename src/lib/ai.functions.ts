@@ -6,7 +6,7 @@ import {
   ASK_GATEWAY_TIMEOUT_MS,
   isAbortOrTimeoutError,
 } from "@/lib/ai-ask";
-import { AiGuardError, assertRateLimit, parseAskAssistantInput } from "@/lib/ai-guard";
+import { AiGuardError, parseAskAssistantInput } from "@/lib/ai-guard";
 import { createDefaultProvider } from "@/lib/ai/provider";
 import type { AskRequest } from "@/lib/ai/types";
 
@@ -14,8 +14,23 @@ export const askAssistant = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => parseAskAssistantInput(input))
   .handler(async ({ data, context }) => {
-    // Rate-Limit strikt pro authentifiziertem Nutzer (userId stammt aus dem verifizierten Token).
-    assertRateLimit(context.userId);
+    // Shared DB-backed rate limit: serverless instances no longer keep separate Maps.
+    const { data: rate, error: rateError } = await context.supabase.rpc(
+      "consume_ai_rate_limit" as never,
+      { p_user_id: context.userId } as never,
+    );
+    if (rateError) {
+      // Fail closed when the security control cannot be evaluated.
+      throw new AiGuardError("unavailable", "Die KI ist vorübergehend nicht verfügbar.");
+    }
+    const rateRow = Array.isArray(rate) ? rate[0] : rate;
+    if (!rateRow?.allowed) {
+      const retry = Number(rateRow?.retry_after_seconds ?? 1);
+      throw new AiGuardError(
+        "rate_limited",
+        `Zu viele KI-Anfragen. Bitte in ${Math.max(1, retry)} Sekunden erneut versuchen.`,
+      );
+    }
 
     const provider = createDefaultProvider();
     const signal = AbortSignal.timeout(ASK_GATEWAY_TIMEOUT_MS);

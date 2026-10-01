@@ -99,7 +99,7 @@ export function entryKindCell(shift: Pick<Shift, "kind">): string {
   return td(`kind.${shift.kind}`);
 }
 
-/** PDF-Tabellenkopf (7 Spalten): Datum | Eintragsart | Beginn | Ende | Stunden | Leistungsart | Notiz. */
+/** PDF-Tabellenkopf (8 Spalten): Datum | Eintragsart | Beginn | Ende | Pause | Stunden | Leistungsart | Notiz. */
 export function proofTableHead(): string[] {
   return [
     td("label.date"),
@@ -124,7 +124,7 @@ export function sortProofShifts(shifts: Shift[]): Shift[] {
 
 /**
  * Gemeinsame PDF-Zeilen für Arbeitsnachweis / Leistungsnachweis.
- * Spalten: Datum | Eintragsart | Beginn | Ende | Stunden | Leistungsart | Notiz
+ * Spalten: Datum | Eintragsart | Beginn | Ende | Pause | Stunden | Leistungsart | Notiz
  * Leistungsart leer → "—"; Notiz leer wenn keine Adresse/Notiz.
  * Adresse/Objekt steht (unverändert) in der Notiz-Spalte.
  * `_jobs` bleibt nur aus Kompatibilität der Aufrufer in der Signatur.
@@ -137,6 +137,7 @@ export function buildProofTableRows(shifts: Shift[], _jobs: Job[] = []): string[
       entryKindCell(s),
       s.start,
       s.end,
+      `${s.breakMinutes} ${td("label.minutes")}`,
       formatHours(shiftHours(s), DOCUMENT_LOCALE),
       leistungsart,
       noteCell(s),
@@ -167,7 +168,7 @@ export function computeLeistungsartColWidth(
   return Math.min(maxMm, Math.max(minMm, maxW + padMm));
 }
 
-const NOTE_COL_INDEX = 6;
+const NOTE_COL_INDEX = 7;
 
 type AutoTableCellHookData = {
   section: string;
@@ -358,7 +359,7 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
   };
 
   const head = proofTableHead();
-  const leistungsartWidth = computeLeistungsartColWidth(doc, list, head[5] ?? L.workCode, {
+  const leistungsartWidth = computeLeistungsartColWidth(doc, list, head[6] ?? L.workCode, {
     minMm: 12,
     maxMm: 28,
   });
@@ -373,7 +374,7 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
     body: buildProofTableRows(list, ctx.jobs),
     foot: [
       [
-        { content: `${L.totalHours}:`, colSpan: 4, styles: { halign: "right" as const } },
+        { content: `${L.totalHours}:`, colSpan: 5, styles: { halign: "right" as const } },
         { content: formatHours(totalHours, DOCUMENT_LOCALE), styles: { halign: "right" as const } },
         "",
         "",
@@ -411,9 +412,10 @@ export function exportArbeitsnachweisPdf(shifts: Shift[], ctx: ArbeitsnachweisCo
       1: { cellWidth: 28 },
       2: { cellWidth: 12, halign: "center" },
       3: { cellWidth: 12, halign: "center" },
-      4: { cellWidth: 16, halign: "right" },
-      5: { cellWidth: leistungsartWidth, overflow: "linebreak" },
-      6: { cellWidth: "auto" },
+      4: { cellWidth: 12, halign: "right" },
+      5: { cellWidth: 16, halign: "right" },
+      6: { cellWidth: leistungsartWidth, overflow: "linebreak" },
+      7: { cellWidth: "auto" },
     },
     rowPageBreak: "avoid",
     showHead: "everyPage",

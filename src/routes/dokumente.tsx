@@ -269,7 +269,7 @@ function DocumentsPage() {
                 <Input
                   id="doc-file"
                   type="file"
-                  accept="application/pdf,image/*"
+                  accept="application/pdf,image/jpeg,image/png,image/webp"
                   onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 />
               </div>
@@ -450,6 +450,7 @@ function DocumentsPage() {
                             {t(`doc.cat.${doc.category}`)} · {t("doc.source.generated")} ·{" "}
                             {formatSize(doc.size)}
                             {createdDay ? ` · ${formatDate(createdDay)}` : ""}
+                            {doc.payloadStatus === "downloaded_only" ? ` · ${t("doc.downloadedOnly")}` : ""}
                           </p>
                         </button>
                         <Button

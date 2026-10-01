@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { findPayment, paydayFor, payPeriod, payPeriods } from "./payday";
+import { findPayment, findPayments, paydayFor, payPeriod, payPeriods } from "./payday";
 import type { Job, Payment, Shift } from "./types";
 
 const RATE = 15;
@@ -83,6 +83,14 @@ describe("findPayment", () => {
   it("liefert undefined ohne Treffer", () => {
     expect(findPayment(payments, "j1", 2026, 3)).toBeUndefined();
   });
+
+  it("liefert mehrere Teilzahlungen für denselben Abrechnungsmonat", () => {
+    const ledger: Payment[] = [
+      ...payments,
+      { id: "p3", jobId: "j1", year: 2026, month: 2, actual: 50 },
+    ];
+    expect(findPayments(ledger, "j1", 2026, 2).map((p) => p.id)).toEqual(["p1", "p3"]);
+  });
 });
 
 describe("payPeriod / payPeriods", () => {
@@ -107,7 +115,88 @@ describe("payPeriod / payPeriods", () => {
     ];
     const period = payPeriod(job, shifts, payments, resolve, 2026, 2);
     expect(period.payment?.actual).toBe(140);
+    expect(period.payments).toHaveLength(1);
+    expect(period.paid).toBeCloseTo(140);
     expect(period.diff).toBeCloseTo(-10);
+  });
+
+  it("trennt expected, earned und paid und behandelt zukünftige Schichten als expected", () => {
+    const mixed = [
+      ...shifts,
+      shift({ date: "2026-03-16" }), // liegt nach dem Stichtag
+    ];
+    const payments: Payment[] = [
+      { id: "p1", jobId: "j1", year: 2026, month: 2, actual: 100 },
+    ];
+    const period = payPeriod(job, mixed, payments, resolve, 2026, 2, "2026-03-15");
+    expect(period.earned).toBeCloseTo(150);
+    expect(period.expected).toBeCloseTo(225);
+    expect(period.paid).toBeCloseTo(100);
+    expect(period.outstanding).toBeCloseTo(50);
+    expect(period.paymentDiff).toBeCloseTo(-50);
+    expect(period.overpaid).toBe(0);
+    expect(period.overdue).toBe(false);
+  });
+
+  it("meldet überfällige Zahlung anhand des bis zum Stichtag verdienten Entgelts", () => {
+    const payments: Payment[] = [
+      { id: "p1", jobId: "j1", year: 2026, month: 2, actual: 100 },
+    ];
+    const period = payPeriod(job, shifts, payments, resolve, 2026, 4, "2026-04-20");
+    expect(period.earned).toBe(0);
+    expect(period.overdue).toBe(false);
+
+    const march = payPeriod(job, shifts, payments, resolve, 2026, 2, "2026-05-01");
+    expect(march.earned).toBeCloseTo(150);
+    expect(march.outstanding).toBeCloseTo(50);
+    expect(march.overdue).toBe(true);
+  });
+
+  it("summiert zwei Teilzahlungen und berechnet Offen aus Earned − Paid", () => {
+    const payments: Payment[] = [
+      { id: "p1", jobId: "j1", year: 2026, month: 2, actual: 60, paidOn: "2026-04-10" },
+      { id: "p2", jobId: "j1", year: 2026, month: 2, actual: 50, paidOn: "2026-04-20" },
+    ];
+    const period = payPeriod(job, shifts, payments, resolve, 2026, 4, "2026-05-01");
+    expect(period.payments).toHaveLength(2);
+    expect(period.paid).toBeCloseTo(110);
+    expect(period.earned).toBeCloseTo(150);
+    expect(period.outstanding).toBeCloseTo(40);
+    expect(period.overpaid).toBe(0);
+    expect(period.overdue).toBe(true);
+  });
+
+  it("behandelt vollständige Zahlung als nicht offen und nicht überfällig", () => {
+    const payments: Payment[] = [
+      { id: "p1", jobId: "j1", year: 2026, month: 2, actual: 100 },
+      { id: "p2", jobId: "j1", year: 2026, month: 2, actual: 50 },
+    ];
+    const period = payPeriod(job, shifts, payments, resolve, 2026, 2, "2026-05-01");
+    expect(period.paid).toBeCloseTo(150);
+    expect(period.outstanding).toBe(0);
+    expect(period.overpaid).toBe(0);
+    expect(period.overdue).toBe(false);
+  });
+
+  it("trennt Überzahlung von offenem Betrag", () => {
+    const payments: Payment[] = [
+      { id: "p1", jobId: "j1", year: 2026, month: 2, actual: 175 },
+    ];
+    const period = payPeriod(job, shifts, payments, resolve, 2026, 2, "2026-05-01");
+    expect(period.paid).toBeCloseTo(175);
+    expect(period.outstanding).toBe(0);
+    expect(period.overpaid).toBeCloseTo(25);
+    expect(period.overdue).toBe(false);
+  });
+
+  it("ignoriert nicht bestätigte Zahlungen beim Paid-Ledger", () => {
+    const payments: Payment[] = [
+      { id: "p1", jobId: "j1", year: 2026, month: 2, actual: 150, confirmed: false },
+      { id: "p2", jobId: "j1", year: 2026, month: 2, actual: 50 },
+    ];
+    const period = payPeriod(job, shifts, payments, resolve, 2026, 2, "2026-05-01");
+    expect(period.paid).toBeCloseTo(50);
+    expect(period.outstanding).toBeCloseTo(100);
   });
 
   it("filtert archivierte Jobs und Perioden ohne Soll/Ist", () => {
