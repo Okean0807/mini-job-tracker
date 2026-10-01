@@ -1,0 +1,81 @@
+name: Prepare Phase 17 transfer
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Checkout Phase 17 archive source
+        uses: actions/checkout@v4
+        with:
+          ref: phase17-audit-transfer
+          path: /tmp/phase17-source
+          fetch-depth: 1
+
+      - name: Extract Phase 17
+        run: |
+          set -euo pipefail
+
+          ARCHIVE="/tmp/phase17-source/mini-job-tracker-post-audit-phase17-final-audit.zip"
+
+          test -f "$ARCHIVE"
+
+          rm -rf /tmp/phase17
+          mkdir -p /tmp/phase17
+
+          unzip -q "$ARCHIVE" -d /tmp/phase17
+
+          cp -a /tmp/phase17/. .
+
+          rm -f mini-job-tracker-post-audit-phase17-final-audit.zip
+          rm -f .github/workflows/phase17-transfer.yml
+
+      - name: Create transfer branch
+        id: branch
+        run: |
+          set -euo pipefail
+
+          BRANCH="phase17-apply-${GITHUB_RUN_ID}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git switch -c "$BRANCH"
+
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No Phase 17 changes detected."
+            exit 1
+          fi
+
+          git commit -m "feat: apply MiniJob Tracker Phase 17 audit hardening"
+          git push origin "$BRANCH"
+
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Open Pull Request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+        run: |
+          set -euo pipefail
+
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "feat: apply MiniJob Tracker Phase 17 audit hardening" \
+            --body "Automated transfer of the reviewed Phase 17 audit archive. The archive and temporary transfer workflow are not included in the resulting branch."
