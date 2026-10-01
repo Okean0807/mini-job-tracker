@@ -38,7 +38,7 @@ jobs:
           unzip -q "$ARCHIVE" -d /tmp/phase17
 
           cp -a /tmp/phase17/. .
-
+          rm -rf phase17-source
           rm -f mini-job-tracker-post-audit-phase17-final-audit.zip
           rm -f .github/workflows/phase17-transfer.yml
 
