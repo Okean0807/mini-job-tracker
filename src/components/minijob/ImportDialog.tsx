@@ -14,6 +14,7 @@ import {
   csvTemplate,
   downloadText,
   parseCsv,
+  duplicateShiftIndexes,
   type CsvParseResult,
 } from "@/lib/minijob/csv";
 import {
@@ -39,16 +40,24 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [result, setResult] = useState<CsvParseResult | null>(null);
   const [fileName, setFileName] = useState("");
+  const [duplicateCount, setDuplicateCount] = useState(0);
 
   function reset() {
     setResult(null);
     setFileName("");
+    setDuplicateCount(0);
     if (fileRef.current) fileRef.current.value = "";
   }
 
   async function handleFile(file: File) {
     setFileName(file.name);
     const lower = file.name.toLowerCase();
+
+    const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
+    if (file.size > MAX_IMPORT_BYTES) {
+      toast.error(t("imp.fileTooLarge"));
+      return;
+    }
 
     if (lower.endsWith(".json")) {
       try {
@@ -68,18 +77,19 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
       return;
     }
 
-    let text: string;
     if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
-      const XLSX = await import("xlsx");
-      const book = XLSX.read(await file.arrayBuffer(), { type: "array" });
-      const sheetName = book.SheetNames[0];
-      if (!sheetName) {
-        toast.error(t("imp.noSheet"));
-        return;
-      }
-      text = XLSX.utils.sheet_to_csv(book.Sheets[sheetName]!, { FS: ";" });
-    } else {
+      // XLS/XLSX parsing was removed from the client import path. The old
+      // SheetJS dependency was unmaintained and expanded the attack surface.
+      toast.error(t("imp.xlsxUnsupported"));
+      return;
+    }
+
+    let text: string;
+    try {
       text = await file.text();
+    } catch {
+      toast.error(t("imp.readError"));
+      return;
     }
 
     const parsed = parseCsv(text, { jobs, defaultRate: settings.defaultRate });
@@ -88,6 +98,8 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
       return;
     }
     setResult(parsed);
+    const incoming = parsed.valid.flatMap((row) => (row.shift ? [row.shift] : []));
+    setDuplicateCount(duplicateShiftIndexes(incoming, getData().shifts, getData().jobs).size);
   }
 
   function confirmImport() {
@@ -96,17 +108,10 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
     for (const name of result.newJobs) {
       const id = newId();
       created.set(name.toLowerCase(), id);
-      // Kein eigener Satz: rate bleibt "nicht gesetzt" (undefined),
-      // damit der Job dem aktuellen Standardsatz folgt.
-      saveJob({
-        id,
-        name,
-        color: nextJobColor(),
-        mode: "flex",
-      });
+      saveJob({ id, name, color: nextJobColor(), mode: "flex" });
     }
     const currentJobs = getData().jobs;
-    const shifts = result.valid.map((row) => {
+    const incoming = result.valid.map((row) => {
       const shift = { ...row.shift! };
       if (!shift.jobId && row.jobName) {
         const id =
@@ -116,6 +121,9 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
       }
       return shift;
     });
+    const jobsAfterCreation = getData().jobs;
+    const duplicateIndexes = duplicateShiftIndexes(incoming, jobsAfterCreation, jobsAfterCreation);
+    const shifts = incoming.filter((_, index) => !duplicateIndexes.has(index));
     saveShifts(shifts);
     toast.success(t("imp.imported", { count: shifts.length }));
     onOpenChange(false);
@@ -141,7 +149,7 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
             <input
               ref={fileRef}
               type="file"
-              accept=".csv,.txt,.json,.xlsx,.xls"
+              accept=".csv,.txt,.json"
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0];
@@ -166,6 +174,12 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
               <span className="font-medium">{fileName}</span> ·{" "}
               {t("imp.summary", { valid: result.valid.length, invalid: result.invalid.length })}
             </p>
+
+            {duplicateCount > 0 ? (
+              <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
+                {duplicateCount} doppelte Zeile(n) werden beim Import automatisch übersprungen.
+              </p>
+            ) : null}
 
             {result.newJobs.length > 0 ? (
               <p className="rounded-xl bg-muted p-3 text-xs">

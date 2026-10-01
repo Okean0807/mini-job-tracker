@@ -111,37 +111,45 @@ function safeName(name: string): string {
   return name.replace(/[^\w.-]+/g, "_").slice(-80);
 }
 
+export const MAX_DOCUMENT_SIZE = 20 * 1024 * 1024;
+export const ALLOWED_DOCUMENT_MIME_TYPES = [
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+] as const;
+
+export class DocumentUploadError extends Error {
+  constructor(public readonly code: string) {
+    super(code);
+    this.name = "DocumentUploadError";
+  }
+}
+
 export async function uploadDocument(
   file: File,
   meta: { category: string; jobId?: string; note?: string; folderId?: string; tags?: string[] },
 ): Promise<void> {
-  const { data: auth } = await supabase.auth.getUser();
-  const userId = auth.user?.id;
-  if (!userId) throw new Error("not-signed-in");
-
-  const path = `${userId}/${Date.now().toString(36)}-${safeName(file.name)}`;
-  const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file, {
-    contentType: file.type || "application/octet-stream",
-    upsert: false,
-  });
-  if (upErr) throw upErr;
-
-  const { error } = await supabase.from("documents").insert({
-    user_id: userId,
-    name: file.name,
-    path,
-    category: meta.category,
-    job_id: meta.jobId ?? null,
-    folder_id: meta.folderId ?? null,
-    tags: meta.tags ?? [],
-    size: file.size,
-    mime_type: file.type || null,
-    note: meta.note ?? null,
-  });
-  if (error) {
-    await supabase.storage.from(BUCKET).remove([path]);
-    throw error;
+  if (file.size <= 0 || file.size > MAX_DOCUMENT_SIZE) {
+    throw new DocumentUploadError("file-too-large");
   }
+  if (!ALLOWED_DOCUMENT_MIME_TYPES.includes(file.type as (typeof ALLOWED_DOCUMENT_MIME_TYPES)[number])) {
+    throw new DocumentUploadError("file-type-not-allowed");
+  }
+
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user?.id) throw new DocumentUploadError("not-signed-in");
+
+  const body = new FormData();
+  body.append("file", file, file.name);
+  body.append("category", meta.category);
+  if (meta.jobId) body.append("jobId", meta.jobId);
+  if (meta.folderId) body.append("folderId", meta.folderId);
+  if (meta.note) body.append("note", meta.note);
+  body.append("tags", JSON.stringify(meta.tags ?? []));
+
+  const { error } = await supabase.functions.invoke("upload-document", { body });
+  if (error) throw error;
 }
 
 export async function updateDocument(

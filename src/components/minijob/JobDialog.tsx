@@ -19,6 +19,7 @@ import { isoDate, weekdayNames } from "@/lib/minijob/calc";
 import { weeklyPlanHours } from "@/lib/minijob/schedule";
 import { resolvePayType } from "@/lib/minijob/work-mode";
 import { parseRateInput } from "@/lib/minijob/rate";
+import { INDUSTRY_MINIMUM_WAGE_SECTORS, industryMinimumWageFor } from "@/lib/minijob/industry-minimum-wage";
 import { deleteJob, newId, nextJobColor, saveJob } from "@/lib/minijob/store";
 import {
   DEFAULT_SUPPLEMENTS,
@@ -47,6 +48,8 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
   const [color, setColor] = useState(JOB_COLORS[0]!);
   const [rate, setRate] = useState(String(defaultRate));
   const [mode, setMode] = useState<WorkMode>("flex");
+  const [industrySectorId, setIndustrySectorId] = useState("");
+  const [industryGroupId, setIndustryGroupId] = useState("");
   const [employer, setEmployer] = useState("");
   const [contact, setContact] = useState("");
   const [phone, setPhone] = useState("");
@@ -71,6 +74,8 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
     setColor(job?.color ?? nextJobColor());
     setRate(typeof job?.rate === "number" ? String(job.rate) : job ? "" : String(defaultRate));
     setMode(job?.mode ?? "flex");
+    setIndustrySectorId(job?.industrySectorId ?? "");
+    setIndustryGroupId(job?.industryGroupId ?? "");
     setEmployer(job?.employer ?? "");
     setContact(job?.contact ?? "");
     setPhone(job?.phone ?? "");
@@ -106,6 +111,7 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
       name: name.trim(),
       color,
       mode,
+      ...(industrySectorId && industryGroupId ? { industrySectorId, industryGroupId } : {}),
       employer: employer.trim(),
       contact: contact.trim(),
       phone: phone.trim(),
@@ -242,6 +248,52 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="grid gap-2 rounded-xl border bg-muted/30 p-3">
+              <div className="text-sm font-medium">{t("job.industryMinimumWage")}</div>
+              <label className="grid gap-1.5">
+                <span className="text-xs text-muted-foreground">{t("job.industry")}</span>
+                <select
+                  className="h-10 rounded-md border bg-background px-3 text-sm"
+                  value={industrySectorId}
+                  onChange={(e) => {
+                    setIndustrySectorId(e.target.value);
+                    setIndustryGroupId("");
+                  }}
+                >
+                  <option value="">{t("job.industryNone")}</option>
+                  {INDUSTRY_MINIMUM_WAGE_SECTORS.map((sector) => (
+                    <option key={sector.id} value={sector.id}>{sector.label}</option>
+                  ))}
+                </select>
+              </label>
+              {industrySectorId ? (
+                <label className="grid gap-1.5">
+                  <span className="text-xs text-muted-foreground">{t("job.industryGroup")}</span>
+                  <select
+                    className="h-10 rounded-md border bg-background px-3 text-sm"
+                    value={industryGroupId}
+                    onChange={(e) => setIndustryGroupId(e.target.value)}
+                  >
+                    <option value="">{t("job.industryNone")}</option>
+                    {(INDUSTRY_MINIMUM_WAGE_SECTORS.find((s) => s.id === industrySectorId)?.groups ?? []).map((group) => (
+                      <option key={group.id} value={group.id}>{group.label}{group.description ? ` — ${group.description}` : ""}</option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              {industrySectorId && industryGroupId ? (() => {
+                const floor = industryMinimumWageFor(new Date(), industrySectorId, industryGroupId);
+                const entered = parseRateInput(rate);
+                if (floor == null) return null;
+                return (
+                  <div className={cn("text-xs", entered != null && entered + 0.0001 < floor ? "text-destructive" : "text-muted-foreground")}>
+                    {t("job.industryFloor", { rate: `${floor.toFixed(2).replace(".", ",")} €` })}
+                    {entered != null && entered + 0.0001 < floor ? ` ${t("job.industryWarning")}` : ""}
+                  </div>
+                );
+              })() : null}
             </div>
 
             {mode === "fest" ? (

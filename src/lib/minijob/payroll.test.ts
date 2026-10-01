@@ -94,11 +94,31 @@ describe("Krankheit (§ 3 EntgFG)", () => {
     expect(p.workedHours).toBe(0);
   });
 
+
+  it("führt getrennte Krankheitsfälle nicht allein wegen zeitlicher Nähe zusammen", () => {
+    const history = [
+      shift({ date: "2026-03-02", kind: "krank", sickCaseId: "case-a" }),
+      shift({ date: "2026-03-03", kind: "krank", sickCaseId: "case-a" }),
+      shift({ date: "2026-03-09", kind: "krank", sickCaseId: "case-b" }),
+    ];
+    const p = shiftPayroll(history[2]!, { ...opts, history });
+    expect(p.reason).toBe("sick-pay");
+    expect(p.earnings).toBeCloseTo(75);
+  });
+
+  it("verwendet sickCaseId statt einer 7-Tage-Lücke als Krankheitsfall-Heuristik", () => {
+    const history = [
+      shift({ date: "2026-03-02", kind: "krank", sickCaseId: "case-a" }),
+      shift({ date: "2026-03-10", kind: "krank", sickCaseId: "case-a" }),
+    ];
+    const p = shiftPayroll(history[1]!, { ...opts, history });
+    expect(p.reason).toBe("sick-pay");
+  });
   it("endet nach sechs Wochen desselben Krankheitsfalls", () => {
     const history: Shift[] = [];
     for (let d = 0; d < SICK_MAX_DAYS + 1; d++) {
       const date = isoDate(new Date(2026, 2, 2 + d));
-      history.push(shift({ date, kind: "krank" }));
+      history.push(shift({ date, kind: "krank", sickCaseId: "case-1" }));
     }
     const last = history[history.length - 1]!;
     const p = shiftPayroll(last, { ...opts, history });
@@ -128,6 +148,31 @@ describe("Urlaub (§ 11 BUrlG)", () => {
     expect(p.basis).toBe("average13");
     expect(p.estimated).toBe(false);
     expect(p.earnings).toBeCloseTo(75);
+  });
+
+  it("schließt einen konfigurierten Überstundenzuschlag aus dem Urlaubsentgelt aus", () => {
+    const overtimeJob: Job = {
+      ...job,
+      supplements: {
+        ...DEFAULT_SUPPLEMENTS,
+        overtime: { enabled: true, mode: "prozent", value: 50 },
+      },
+    };
+    const overtimeHistory = [
+      shift({ date: "2026-02-02", start: "09:00", end: "14:00", overtime: true }),
+      shift({ date: "2026-02-09", start: "09:00", end: "14:00", overtime: true }),
+      shift({ date: "2026-02-16", start: "09:00", end: "14:00", overtime: true }),
+      shift({ date: "2026-02-23", start: "09:00", end: "14:00", overtime: true }),
+      shift({ date: "2026-03-02", start: "09:00", end: "14:00", overtime: true }),
+    ];
+    const avg = vacationDailyPay(shift({ date: "2026-03-09", kind: "urlaub" }), {
+      job: overtimeJob,
+      defaultRate: RATE,
+      history: overtimeHistory,
+    });
+    // 5 h × 15 € = 75 €; der zusätzliche 50%-Überstundenzuschlag (37,50 €)
+    // gehört nicht in die Referenzvergütung.
+    expect(avg?.amount).toBeCloseTo(75);
   });
 
   it("fällt ohne genügend Referenztage sauber auf den Plan zurück", () => {

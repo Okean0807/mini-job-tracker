@@ -1,4 +1,4 @@
-import { yearlyLimitOf } from "./limits";
+import { yearUsage } from "./limits";
 import { monthNames, shiftsInMonth, shiftsInYear } from "./calc";
 import { shiftPayroll } from "./payroll";
 import type { Resolver } from "./resolve";
@@ -152,7 +152,9 @@ export function buildAnnualReport(
     .sort((a, b) => b.earnings - a.earnings);
 
   const activeMonths = months.filter((m) => m.entries > 0).length;
-  const limit = yearlyLimitOf(settings, year);
+  const legalUsage = yearUsage(shifts, resolve, settings, year);
+  const limit = legalUsage.earningsLimit;
+  const legalEarnings = legalUsage.earnings;
 
   return {
     year,
@@ -171,7 +173,7 @@ export function buildAnnualReport(
     avgDayHours: byDay.size > 0 ? hours / byDay.size : 0,
     activeMonths,
     limit,
-    limitShare: limit > 0 ? (earnings / limit) * 100 : 0,
+    limitShare: limit > 0 ? (legalEarnings / limit) * 100 : 0,
     bestMonth,
     bestDay,
     months,

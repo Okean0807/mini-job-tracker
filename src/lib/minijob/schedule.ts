@@ -63,6 +63,10 @@ export function generateAbsence(
 ): Shift[] {
   const result: Shift[] = [];
   const taken = new Set(existing.filter((s) => s.jobId === job.id).map((s) => s.date));
+  // A range-created sick leave is one explicitly identifiable illness case.
+  // This avoids the former heuristic that merged cases merely because they
+  // happened to be within seven calendar days of each other.
+  const sickCaseId = kind === "krank" ? newId() : undefined;
   const start = localDate(from);
   const end = localDate(to);
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
@@ -79,6 +83,7 @@ export function generateAbsence(
       date,
       ...absenceDayTimes(job, date),
       ...(typeof job.rate === "number" ? { rate: job.rate } : {}),
+      ...(sickCaseId ? { sickCaseId } : {}),
       note: isHoliday(date, bundesland) ? "Feiertag" : undefined,
     });
   }

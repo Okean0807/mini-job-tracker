@@ -1,8 +1,8 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import * as XLSX from "xlsx";
 
 import { td, DOCUMENT_LOCALE } from "./document-i18n";
+import { appendXlsxSheet, createXlsxBook, createXlsxSheet, writeXlsx } from "./xlsx-export";
 
 import { formatDate, formatEuro, formatHours, monthNames, weekdayNames } from "./calc";
 import { saveAndRegisterBytes } from "./generated-docs";
@@ -227,7 +227,7 @@ export function exportAnnualPdf(report: AnnualReport) {
 
 export function exportAnnualXlsx(report: AnnualReport) {
   const title = td("annual.title", { year: report.year });
-  const book = XLSX.utils.book_new();
+  const book = createXlsxBook();
 
   const overview = kpis(report).map((k) => ({
     [td("annual.table.metric")]: k.label,
@@ -247,9 +247,9 @@ export function exportAnnualXlsx(report: AnnualReport) {
         : "–",
     },
   );
-  const overviewSheet = XLSX.utils.json_to_sheet(overview);
+  const overviewSheet = createXlsxSheet(overview);
   overviewSheet["!cols"] = [{ wch: 28 }, { wch: 24 }];
-  XLSX.utils.book_append_sheet(book, overviewSheet, td("annual.sheet.overview"));
+  appendXlsxSheet(book, overviewSheet, td("annual.sheet.overview"));
 
   const monthRows = report.months.map((m) => ({
     [td("annual.table.month")]: docMonthLabel(m.month),
@@ -267,12 +267,12 @@ export function exportAnnualXlsx(report: AnnualReport) {
     [td("report.earningsEur")]: Number(report.earnings.toFixed(2)),
     [td("annual.table.entries")]: report.entries,
   });
-  const monthSheet = XLSX.utils.json_to_sheet(monthRows);
+  const monthSheet = createXlsxSheet(monthRows);
   monthSheet["!cols"] = [18, 10, 14, 14, 16, 12].map((wch) => ({ wch }));
-  XLSX.utils.book_append_sheet(book, monthSheet, td("annual.sheet.months"));
+  appendXlsxSheet(book, monthSheet, td("annual.sheet.months"));
 
   if (report.jobs.length > 0) {
-    const jobSheet = XLSX.utils.json_to_sheet(
+    const jobSheet = createXlsxSheet(
       report.jobs.map((j) => ({
         [td("label.job")]: j.name,
         [td("label.hours")]: Number(j.hours.toFixed(2)),
@@ -281,21 +281,21 @@ export function exportAnnualXlsx(report: AnnualReport) {
       })),
     );
     jobSheet["!cols"] = [22, 10, 16, 12].map((wch) => ({ wch }));
-    XLSX.utils.book_append_sheet(book, jobSheet, td("annual.sheet.jobs"));
+    appendXlsxSheet(book, jobSheet, td("annual.sheet.jobs"));
   }
 
   const days = weekdayNames(DOCUMENT_LOCALE);
-  const weekdaySheet = XLSX.utils.json_to_sheet(
+  const weekdaySheet = createXlsxSheet(
     report.weekdayHours.map((h, i) => ({
       [td("annual.table.weekday")]: days[i] ?? "",
       [td("label.hours")]: Number(h.toFixed(2)),
     })),
   );
   weekdaySheet["!cols"] = [{ wch: 18 }, { wch: 10 }];
-  XLSX.utils.book_append_sheet(book, weekdaySheet, td("annual.sheet.weekdays"));
+  appendXlsxSheet(book, weekdaySheet, td("annual.sheet.weekdays"));
 
   const filename = `${title}.xlsx`;
-  const buffer = XLSX.write(book, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
+  const buffer = writeXlsx(book) as ArrayBuffer;
   saveAndRegisterBytes({
     bytes: buffer,
     filename,

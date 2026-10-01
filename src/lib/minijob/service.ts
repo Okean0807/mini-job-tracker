@@ -26,6 +26,8 @@ import { payrollTotals, shiftPayroll, type PayrollTotals, type ShiftPayroll } fr
 import { payPeriod, payPeriods, paydayFor, type PayPeriod } from "./payday";
 import { effectiveShiftRate, resolveRate, suggestedRate, type RateSource } from "./rate";
 import { makeResolver, type ResolveOptions, type Resolver } from "./resolve";
+import { assessLegalIncome, type LegalIncomeAssessment } from "./legal";
+
 import { generateAbsence, generateFixedMonth, overtimeHours, weeklyPlanHours } from "./schedule";
 import {
   deleteShift as storeDeleteShift,
@@ -245,6 +247,17 @@ export function limitsForMonth(
 
 export function limitsForYear(year: number, ctx: AppContext = context()): LimitUsage {
   return yearUsage(ctx.data.shifts, ctx.resolve, ctx.data.settings, year);
+}
+
+/** Rolling-12 Legal Engine assessment using the current application data. */
+export function legalIncomeForMonth(
+  year: number,
+  month: number,
+  ctx: AppContext = context(),
+  referenceDate?: string,
+): LegalIncomeAssessment {
+  const anchorMonth = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+  return assessLegalIncome(ctx.data, anchorMonth, referenceDate);
 }
 
 export function goalsOverview(ctx: AppContext = context()): GoalProgress[] {

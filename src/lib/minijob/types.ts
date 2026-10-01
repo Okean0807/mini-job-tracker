@@ -4,6 +4,18 @@ export type { Lang };
 
 export type WorkMode = "flex" | "fest" | "selbststaendig";
 
+/**
+ * Rechtliche Beschäftigungsart.
+ *
+ * `mode` bleibt als UI-/Kompatibilitätsfeld bestehen. Die gesetzliche
+ * Minijob-Prüfung darf nicht mehr aus dem UI-Modus allein abgeleitet werden.
+ */
+export type EmploymentType =
+  | "minijob"
+  | "hauptbeschaeftigung"
+  | "kurzfristig"
+  | "selbststaendig";
+
 export type ShiftKind = "arbeit" | "urlaub" | "krank" | "feiertag" | "frei" | "sonstige";
 
 export type SupplementMode = "prozent" | "fest";
@@ -58,7 +70,17 @@ export interface Job {
   color: string;
   /** Stundenlohn in EUR; undefined = nicht gesetzt (Fallback auf Standardsatz), 0 = bewusst 0 EUR/h */
   rate?: number;
+  /** Optional branchenspezifische Mindestlohn-Zuordnung. */
+  industrySectorId?: string;
+  industryGroupId?: string;
   mode: WorkMode;
+  /**
+   * Rechtliche Beschäftigungsart. Optional für Altbestände; wenn nicht
+   * vorhanden, wird sie deterministisch aus `mode` abgeleitet.
+   */
+  employmentType?: EmploymentType;
+  /** Beschäftigungsende (ISO yyyy-MM-dd), inklusive. */
+  endDate?: string;
   /** Beschäftigungsbeginn (ISO yyyy-MM-dd) – Basis der 4-Wochen-Wartezeit (§ 3 Abs. 3 EntgFG) */
   startDate?: string;
   employer?: string;
@@ -101,6 +123,8 @@ export interface Payment {
   month: number;
   /** Tatsächlich erhaltener Betrag */
   actual: number;
+  /** Zahlung ist bestätigt und zählt zu "Ausgezahlt". Legacy-Einträge ohne Feld gelten als bestätigt. */
+  confirmed?: boolean;
   /** Zahlungsdatum ISO */
   paidOn?: string;
   note?: string;
@@ -141,6 +165,8 @@ export interface Shift {
   note?: string | undefined;
   /** Als Überstunden werten */
   overtime?: boolean;
+  /** Explizite Zuordnung zu einem Krankheitsfall (§ 3 EntgFG). */
+  sickCaseId?: string;
   /** Optionaler Link auf gespeichertes WorkObject */
   objectId?: string;
   /** Leistungsnachweis: Einsatzort / Objekt */
@@ -263,6 +289,7 @@ export type WidgetId =
   | "stats"
   | "limitMonth"
   | "limitYear"
+  | "legalForecast"
   | "payday"
   | "insights"
   | "calendar"
@@ -388,10 +415,10 @@ export interface AppData {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  defaultRate: 13.5,
-  monthlyLimit: 556,
+  defaultRate: 13.9,
+  monthlyLimit: 603,
   limitAuto: true,
-  yearlyLimit: 6672,
+  yearlyLimit: 7236,
   hoursLimitMonthly: 0,
   hoursLimitAuto: false,
   themeMode: "system",
@@ -402,7 +429,7 @@ export const DEFAULT_SETTINGS: Settings = {
   highContrast: false,
   reduceMotion: false,
   country: "DE",
-  bundesland: "NW",
+  bundesland: "NI",
   supplements: DEFAULT_SUPPLEMENTS,
   pinEnabled: false,
   biometric: false,

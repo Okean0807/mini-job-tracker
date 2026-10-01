@@ -23,8 +23,10 @@ export interface GeneratedDocument {
   mimeType: string;
   size: number;
   createdAt: string;
-  /** data: URL; empty when payload was too large to persist */
+  /** data: URL; empty when the binary payload is not retained locally. */
   dataUrl: string;
+  /** Explicitly distinguishes a locally reopenable export from a downloaded-only registry entry. */
+  payloadStatus: "local" | "downloaded_only";
   source: "generated";
 }
 
@@ -65,9 +67,14 @@ function readAll(key: string = generatedDocsStorageKey()): GeneratedDocument[] {
           typeof d.size === "number" &&
           typeof d.createdAt === "string" &&
           typeof d.dataUrl === "string" &&
+          (d.payloadStatus === "local" || d.payloadStatus === "downloaded_only" || d.payloadStatus === undefined) &&
           d.source === "generated"
         );
       })
+      .map((d) => ({
+        ...d,
+        payloadStatus: d.dataUrl ? "local" : "downloaded_only",
+      }))
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   } catch {
     return [];
@@ -76,15 +83,26 @@ function readAll(key: string = generatedDocsStorageKey()): GeneratedDocument[] {
 
 function writeAll(docs: GeneratedDocument[], key: string = generatedDocsStorageKey()): void {
   if (!canUseStorage()) return;
-  try {
-    window.localStorage.setItem(key, JSON.stringify(docs.slice(0, MAX_ENTRIES)));
-  } catch {
-    /* quota — drop payloads and retry metadata-only */
+  const bounded = docs.slice(0, MAX_ENTRIES);
+
+  // Keep the newest payloads first. If localStorage is full, progressively
+  // evict payload bytes from the oldest entries instead of destroying every
+  // locally reopenable document at once. The registry itself remains useful
+  // and explicitly records which entries are downloaded-only.
+  for (let stripFrom = bounded.length; stripFrom >= 0; stripFrom -= 1) {
+    const candidate = bounded.map((d, index) => {
+      const keepPayload = index < stripFrom && d.dataUrl.length > 0;
+      return {
+        ...d,
+        dataUrl: keepPayload ? d.dataUrl : "",
+        payloadStatus: keepPayload ? "local" : "downloaded_only",
+      } as GeneratedDocument;
+    });
     try {
-      const slim = docs.slice(0, MAX_ENTRIES).map((d) => ({ ...d, dataUrl: "" }));
-      window.localStorage.setItem(key, JSON.stringify(slim));
+      window.localStorage.setItem(key, JSON.stringify(candidate));
+      return;
     } catch {
-      /* ignore */
+      // Retry with one fewer payload.
     }
   }
 }
@@ -125,6 +143,7 @@ export function registerGeneratedDocument(
     size: Math.max(0, input.size),
     createdAt: input.createdAt ?? new Date().toISOString(),
     dataUrl,
+    payloadStatus: dataUrl ? "local" : "downloaded_only",
     source: "generated",
   };
   const next = [doc, ...readAll(key).filter((d) => d.id !== doc.id)].slice(0, MAX_ENTRIES);

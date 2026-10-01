@@ -3,9 +3,11 @@ import { AlertTriangle, Clock, Euro, LayoutGrid, Plus, TrendingUp } from "lucide
 import { useMemo, useState } from "react";
 
 import { DashboardCustomizer } from "@/components/minijob/DashboardCustomizer";
+import { TodayImportantCard } from "@/components/minijob/TodayImportantCard";
 import { GoalsCard } from "@/components/minijob/GoalsCard";
 import { OrdersCard } from "@/components/minijob/OrdersCard";
 import { LimitCard } from "@/components/minijob/LimitCard";
+import { LegalForecastCard } from "@/components/minijob/LegalForecastCard";
 import { TimeAccountCard } from "@/components/minijob/TimeAccountCard";
 import { PaydayCard } from "@/components/minijob/PaydayCard";
 import { InsightsCard } from "@/components/minijob/InsightsCard";
@@ -31,6 +33,7 @@ import { activeWidgets, spanClass, widgetSize } from "@/lib/minijob/dashboard";
 import { goalsProgress } from "@/lib/minijob/goals";
 import { buildInsights } from "@/lib/minijob/insights";
 import { monthUsage, yearUsage } from "@/lib/minijob/limits";
+import { legalIncomeForMonth } from "@/lib/minijob/service";
 import { isAbsenceKind, type AbsenceKind } from "@/lib/minijob/absence-range";
 import { monthTimeAccount } from "@/lib/minijob/fest-time-account";
 import { jobsApplyMinijobLimit, primaryWorkMode } from "@/lib/minijob/work-mode";
@@ -99,6 +102,10 @@ function DashboardPage() {
   const yearLimit = useMemo(
     () => yearUsage(shifts, resolve, settings, year),
     [shifts, resolve, settings, year],
+  );
+  const legalForecast = useMemo(
+    () => legalIncomeForMonth(year, month),
+    [year, month, shifts, jobs, settings, resolve],
   );
   const goalList = useMemo(
     () => goalsProgress(goals, shifts, jobs, resolve),
@@ -199,6 +206,7 @@ function DashboardPage() {
         notApplicable={!appliesMinijobLimit}
       />
     ),
+    legalForecast: <LegalForecastCard forecast={legalForecast.rolling} />,
     limitYear: (
       <LimitCard
         usage={yearLimit}
@@ -309,6 +317,19 @@ function DashboardPage() {
           <OrdersCard orders={orders} jobs={jobs} payments={payments} />
         </div>
       ) : null}
+
+      <div className="mt-4">
+        <TodayImportantCard
+          shifts={shifts}
+          jobs={jobs}
+          payments={payments}
+          settings={settings}
+          resolve={resolve}
+          monthUsage={monthLimit}
+          yearUsage={yearLimit}
+          onNewEntry={() => openNew(isoDate(new Date()))}
+        />
+      </div>
 
       <div className="mt-4 grid grid-cols-2 items-start gap-3">
         {widgets.map((id) => (

@@ -1113,6 +1113,67 @@ describe("Auth-Event ohne Session (nicht SIGNED_OUT)", () => {
   });
 });
 
+describe("Rapid account switching: A → B → A", () => {
+  it("late result from the first A session cannot mutate the second A session", async () => {
+    session = { user: { id: A } };
+    const { store, cloud } = await boot();
+    const gate = deferred();
+    selectGate = gate.promise;
+    backups.set(A, { payload: payloadWith(["a-cloud"]), updated_at: new Date().toISOString() });
+
+    const firstRestore = cloud.restoreNow().then(
+      () => "resolved",
+      (error: unknown) => error,
+    );
+    await settle();
+
+    authCallback?.("SIGNED_OUT", null);
+    session = { user: { id: B } };
+    authCallback?.("SIGNED_IN", session);
+    await settle();
+    expect(store.getActiveScopeOwner()).toBe(B);
+
+    authCallback?.("SIGNED_OUT", null);
+    session = { user: { id: A } };
+    authCallback?.("SIGNED_IN", session);
+    await settle();
+    expect(store.getActiveScopeOwner()).toBe(A);
+    expect(store.getData().shifts.some((s) => s.id === "a-cloud")).toBe(false);
+
+    gate.release();
+    selectGate = null;
+    await settle();
+
+    expect(await firstRestore).toBeInstanceOf(cloud.StaleSyncError);
+    expect(store.getActiveScopeOwner()).toBe(A);
+    expect(store.getData().shifts.some((s) => s.id === "a-cloud")).toBe(false);
+    expect(cloud.getSyncState().status).not.toBe("error");
+  });
+
+  it("old debounced work cannot write after A → B → A even when B is briefly active", async () => {
+    session = { user: { id: A } };
+    const { store, cloud } = await boot();
+    store.saveShift(shift("a-local"));
+
+    authCallback?.("SIGNED_OUT", null);
+    session = { user: { id: B } };
+    authCallback?.("SIGNED_IN", session);
+    authCallback?.("SIGNED_OUT", null);
+    session = { user: { id: A } };
+    authCallback?.("SIGNED_IN", session);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await settle();
+
+    expect(upserts.filter((u) => u.user_id === B)).toHaveLength(0);
+    expect(upserts.filter((u) => u.user_id === A).every((u) =>
+      (u.payload?.shifts ?? []).some((s) => s.id === "a-local"),
+    )).toBe(true);
+    expect(store.getActiveScopeOwner()).toBe(A);
+    expect(cloud.getSyncState().status).not.toBe("error");
+  });
+});
+
 describe("Async-Schreibpfade außerhalb des Sync (Epoch-Snapshot)", () => {
   it("JSON-Sicherung: Konto wechselt während des Datei-Lesens → nichts in B geschrieben", async () => {
     session = { user: { id: A } };

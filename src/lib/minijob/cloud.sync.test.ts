@@ -32,6 +32,7 @@ vi.mock("@/integrations/supabase/client", () => ({
     from: () => ({
       upsert: async (row: { payload: unknown; updated_at: string }) => {
         cloud.upserts += 1;
+        if (cloud.gate) await cloud.gate;
         if (cloud.upsertError) return { error: cloud.upsertError };
         cloud.remote = { payload: row.payload, updated_at: row.updated_at };
         return { error: null };
@@ -859,6 +860,34 @@ describe("Sync-Timeout (SYNC-LIVE-P1)", () => {
     expect(cloud.upserts).toBe(upsertsAfterTimeout);
     expect(mod.getSyncState().status).toBe(statusAfterTimeout);
     expect(mod.getSyncState().status).not.toBe("synced");
+  });
+
+  it("late push nach Timeout darf Meta nicht nachträglich als synced markieren", async () => {
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(mod.getSyncState().status).toBe("synced");
+
+    let release!: () => void;
+    cloud.gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    local = makeData(2);
+    await expect(mod.backupNow()).rejects.toBeInstanceOf(Error);
+    expect(["error", "offline"]).toContain(mod.getSyncState().status);
+    expect(mod.getSyncState().lastSyncedAt).toBeNull();
+
+    // The underlying upsert promise resolves after the timeout. Its late
+    // completion must not write sync metadata or turn the UI back to synced.
+    release();
+    await settle();
+    await vi.advanceTimersByTimeAsync(50);
+    await settle();
+
+    expect(mod.getSyncState().status).not.toBe("synced");
+    expect(mod.getSyncState().lastSyncedAt).toBeNull();
   });
 
   it("nach forceFail darf late push weder upserten noch synced setzen", async () => {

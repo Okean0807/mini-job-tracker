@@ -38,6 +38,12 @@ export type AssistantContextPayload = {
     hours: number;
     earnings: number;
   };
+  /** Recent historical months, including zero-activity years, for period-aware questions. */
+  historicalYears: Array<{
+    year: number;
+    hours: number;
+    earnings: number;
+  }>;
   months: Array<{
     year: number;
     month: number;
@@ -79,6 +85,17 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
 
   const yearList = shiftsInYear(data.shifts, year);
   const yearTotals = payrollTotals(yearList, resolve, data.shifts);
+
+  const historicalYears: AssistantContextPayload["historicalYears"] = [];
+  for (let y = year - 2; y <= year; y++) {
+    const list = shiftsInYear(data.shifts, y);
+    const totals = payrollTotals(list, resolve, data.shifts);
+    historicalYears.push({
+      year: y,
+      hours: Number(totals.workedHours.toFixed(2)),
+      earnings: Number(totals.earnings.toFixed(2)),
+    });
+  }
 
   const months: AssistantContextPayload["months"] = [];
   for (let m = 0; m < 12; m++) {
@@ -132,6 +149,7 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
       hours: Number(yearTotals.workedHours.toFixed(2)),
       earnings: Number(yearTotals.earnings.toFixed(2)),
     },
+    historicalYears,
     months,
     jobs,
   };

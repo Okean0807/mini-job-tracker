@@ -149,3 +149,11 @@ describe("buildAssistantContext", () => {
     expect(parsed.jobs[0].minijobLimitApplies).toBe(false);
   });
 });
+
+describe("historical AI context", () => {
+  it("includes the current year and two prior years", () => {
+    const data = makeData();
+    const parsed = JSON.parse(buildAssistantContext(data, new Date(2026, 8, 15)));
+    expect(parsed.historicalYears.map((x: { year: number }) => x.year)).toEqual([2024, 2025, 2026]);
+  });
+});

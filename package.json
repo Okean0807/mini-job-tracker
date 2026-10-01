@@ -12,7 +12,8 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "assert:pwa-precache": "node scripts/assert-pwa-precache.mjs",
-    "assert:vite-supabase-env": "node scripts/assert-vite-supabase-env.mjs"
+    "assert:vite-supabase-env": "node scripts/assert-vite-supabase-env.mjs",
+    "assert:xlsx-boundary": "node scripts/assert-xlsx-boundary.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -71,8 +72,8 @@
     "vaul": "^1.1.2",
     "vite-plugin-pwa": "^1.3.0",
     "vite-tsconfig-paths": "^6.0.2",
-    "xlsx": "^0.18.5",
-    "zod": "^3.24.2"
+    "zod": "^3.24.2",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",

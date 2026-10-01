@@ -1,4 +1,5 @@
 import type { Job, WorkMode } from "./types";
+import { employmentTypeOf, isMinijobEmployment } from "./legal/employment";
 
 /**
  * Employee Minijob mode: only flex applies the €603 Geringfügigkeitsgrenze.
@@ -10,6 +11,7 @@ export function isEmployeeMinijobMode(mode: WorkMode): boolean {
 
 /** Whether the Minijob income/hours limit is applicable for this work mode. */
 export function workModeAppliesMinijobLimit(mode: WorkMode): boolean {
+  // Legacy helper kept for callers that only have WorkMode.
   return mode === "flex";
 }
 
@@ -21,7 +23,7 @@ export function workModeAppliesMinijobLimit(mode: WorkMode): boolean {
 export function jobsApplyMinijobLimit(jobs: Job[]): boolean {
   const active = jobs.filter((j) => !j.archived);
   if (active.length === 0) return true;
-  return active.some((j) => workModeAppliesMinijobLimit(j.mode));
+  return active.some((j) => isMinijobEmployment(j) && employmentTypeOf(j) === "minijob");
 }
 
 /** Primary / active job mode for assistant context; falls back to first active. */

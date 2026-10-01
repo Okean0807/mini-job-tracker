@@ -92,7 +92,7 @@ export const LEGAL_RULE_VERSIONS: LegalRuleVersion[] = [
     minimumWage: 13.9,
     pension: PENSION_STANDARD,
     tax: TAX_STANDARD,
-    source: "Vierte Mindestlohnanpassungsverordnung (MiLoV4), § 8 Abs. 1a SGB IV",
+    source: "Fünfte Mindestlohnanpassungsverordnung (MiLoV5), § 8 Abs. 1a SGB IV",
   },
   {
     id: "de-2027",
@@ -100,7 +100,7 @@ export const LEGAL_RULE_VERSIONS: LegalRuleVersion[] = [
     minimumWage: 14.6,
     pension: PENSION_STANDARD,
     tax: TAX_STANDARD,
-    source: "Vierte Mindestlohnanpassungsverordnung (MiLoV4), § 8 Abs. 1a SGB IV",
+    source: "Fünfte Mindestlohnanpassungsverordnung (MiLoV5), § 8 Abs. 1a SGB IV",
   },
 ];
 
