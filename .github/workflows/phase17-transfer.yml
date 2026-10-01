@@ -22,15 +22,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: phase17-audit-transfer
-          path: /tmp/phase17-source
+          path: phase17-source
           fetch-depth: 1
 
       - name: Extract Phase 17
         run: |
           set -euo pipefail
 
-          ARCHIVE="/tmp/phase17-source/mini-job-tracker-post-audit-phase17-final-audit.zip"
-
+                    ARCHIVE="phase17-source/mini-job-tracker-post-audit-phase17-final-audit.zip"
           test -f "$ARCHIVE"
 
           rm -rf /tmp/phase17
