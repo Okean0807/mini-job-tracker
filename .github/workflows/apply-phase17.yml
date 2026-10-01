@@ -1,0 +1,37 @@
+name: Apply Phase 17 archive
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout transfer branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract Phase 17
+        run: |
+          set -euo pipefail
+          unzip -q mini-job-tracker-post-audit-phase17-final-audit.zip -d /tmp/phase17
+          cp -a /tmp/phase17/. .
+          rm -f mini-job-tracker-post-audit-phase17-final-audit.zip
+
+      - name: Commit Phase 17
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git commit -m "feat: apply MiniJob Tracker Phase 17 audit hardening"
+          git push origin HEAD:phase17-audit-transfer
