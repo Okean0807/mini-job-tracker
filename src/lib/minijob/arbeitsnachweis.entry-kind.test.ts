@@ -119,6 +119,7 @@ describe("Eintragsart-Spalte", () => {
       "Eintragsart",
       "Beginn",
       "Ende",
+      "Pause",
       "Stunden",
       "Leistungsart",
       "Notiz",
@@ -132,6 +133,7 @@ describe("Eintragsart-Spalte", () => {
       "Arbeit",
       "06:00",
       "06:15",
+      "0 Min.",
       "0,25 h",
       "—",
       "Kantstraße 5",
@@ -145,6 +147,7 @@ describe("Eintragsart-Spalte", () => {
       "Arbeit",
       "06:15",
       "08:00",
+      "0 Min.",
       "1,75 h",
       "UR",
       "Kantstraße 5\n10623 Berlin\nTreppenhaus",
@@ -163,7 +166,7 @@ describe("Eintragsart-Spalte", () => {
       ["25.09.2026", "Sonstige", "09:00"],
     ]);
     // Zeiten/Stunden/Leistungsart der Abwesenheiten wie bisher
-    expect(rows[2]!.slice(2, 6)).toEqual(["09:00", "17:00", "8,00 h", "—"]);
+    expect(rows[2]!.slice(2, 7)).toEqual(["09:00", "17:00", "0 Min.", "8,00 h", "—"]);
   });
 });
 

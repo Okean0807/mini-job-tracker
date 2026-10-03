@@ -4,6 +4,23 @@ import { newId } from "./store";
 import type { Job, Shift, ShiftKind } from "./types";
 
 /**
+ * Jobs, die laut Wochenplan an `date` geplant, aber dort noch nicht erfasst
+ * sind. Gleiche Regel wie der Kalender (MonthCalendar → generateFixedMonth):
+ * nur Planungsmodus "fest" mit Wochenplan, nicht archiviert. Ein flex-Job hat
+ * zwar oft einen (inaktiven) EMPTY_WEEK-Plan, ist aber nie „geplant“.
+ */
+export function jobsPlannedOn(jobs: Job[], existing: Shift[], date: string): Job[] {
+  const weekdayIndex = (localDate(date).getDay() + 6) % 7;
+  return jobs.filter(
+    (job) =>
+      !job.archived &&
+      job.mode === "fest" &&
+      Boolean(job.week?.[weekdayIndex]?.active) &&
+      !existing.some((s) => s.jobId === job.id && s.date === date),
+  );
+}
+
+/**
  * Erzeugt Schichten aus dem Wochenplan einer Festanstellung für einen Monat.
  * Bestehende Einträge an einem Tag bleiben unangetastet.
  */
@@ -63,6 +80,10 @@ export function generateAbsence(
 ): Shift[] {
   const result: Shift[] = [];
   const taken = new Set(existing.filter((s) => s.jobId === job.id).map((s) => s.date));
+  // A range-created sick leave is one explicitly identifiable illness case.
+  // This avoids the former heuristic that merged cases merely because they
+  // happened to be within seven calendar days of each other.
+  const sickCaseId = kind === "krank" ? newId() : undefined;
   const start = localDate(from);
   const end = localDate(to);
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
@@ -79,6 +100,7 @@ export function generateAbsence(
       date,
       ...absenceDayTimes(job, date),
       ...(typeof job.rate === "number" ? { rate: job.rate } : {}),
+      ...(sickCaseId ? { sickCaseId } : {}),
       note: isHoliday(date, bundesland) ? "Feiertag" : undefined,
     });
   }

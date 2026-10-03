@@ -91,3 +91,21 @@ describe("ai-chat-history", () => {
     expect(again.conversations[0]?.title).toBe("Bleibt erhalten");
   });
 });
+
+describe("AI history budgets", () => {
+  it("caps conversations and messages on save/load", () => {
+    let store = emptyAiChatHistory();
+    for (let i = 0; i < 55; i++) {
+      store = startNewConversation(store);
+      const messages = Array.from({ length: 105 }, (_, n) => ({
+        role: (n % 2 === 0 ? "user" : "ai") as "user" | "ai",
+        text: `message-${i}-${n}`,
+      }));
+      store = setActiveMessages(store, messages);
+    }
+    saveAiChatHistory("budget-user", store);
+    const loaded = loadAiChatHistory("budget-user");
+    expect(loaded.conversations.length).toBeLessThanOrEqual(50);
+    expect(loaded.conversations.every((c) => c.messages.length <= 100)).toBe(true);
+  });
+});

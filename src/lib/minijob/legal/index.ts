@@ -123,3 +123,35 @@ export const KNOWN_LEGAL_MONTHLY_LIMITS: number[] = [
   450, 520, 538, 556,
   ...LEGAL_RULE_VERSIONS.map((v) => minijobLimitFromWage(v.minimumWage)),
 ];
+
+export {
+  employmentTypeOf,
+  jobActiveOn,
+  isMinijobEmployment,
+  isEligibleMinijobShift,
+  minijobJobs,
+  needsEmploymentTypeReview,
+  jobsNeedingEmploymentType,
+} from "./employment";
+
+export {
+  UNPREDICTABLE_MAX_MONTHS,
+  UNPREDICTABLE_MONTH_MULTIPLIER,
+  evaluateUnpredictableMonth,
+  evaluateRolling12MonthExceedances,
+  type MonthlyIncome,
+  type UnpredictableExceedanceResult,
+} from "./exceedance";
+
+export { monthStart, addMonths, rolling12Months, evaluateRolling12Months, forecastMonth, forecastRolling12Months, type Rolling12MonthResult, type ForecastInput, type ForecastMonth, type ForecastRollingMonthInput, type Rolling12ForecastResult } from "./rolling";
+
+export {
+  buildMonthlyIncomeFromShifts,
+  assessLegalIncome,
+  legalActualIncomeForMonth,
+  legalActualIncomeForYear,
+  type MonthlyIncomeBreakdown,
+  type LegalIncomeAssessment,
+} from "./integration";
+
+export { evaluateForecastMonthWarning, evaluateRollingWarning, type LegalWarningStatus, type LegalWarningAssessment } from "./warnings";

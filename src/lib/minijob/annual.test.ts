@@ -19,6 +19,9 @@ function baseJob(partial: Partial<Job> = {}): Job {
     color: "#111",
     rate: RATE,
     mode: "fest",
+    // Fixture ist ein Minijob mit festem Wochenplan. Seit Runde 3 ist ein
+    // Altbestand fest OHNE employmentType „ungeklärt“ (siehe Test unten).
+    employmentType: "minijob",
     startDate: "2026-01-01",
     week: [
       { active: true, start: "09:00", end: "14:00", breakMinutes: 0 },
@@ -174,6 +177,27 @@ describe("buildAnnualReport – Aggregation", () => {
     const idle = baseJob({ id: "j-idle", name: "Idle" });
     const withIdle = buildAnnualReport(shifts, [...jobs, idle], settings, 2026, resolve);
     expect(withIdle.jobs.map((j) => j.id)).toEqual(["j1", "j2"]);
+  });
+});
+
+describe("buildAnnualReport – ungeklärter Altbestand (fest ohne employmentType)", () => {
+  it("zählt Entgelt im Bericht, aber nicht in den Minijob-Limitanteil", () => {
+    const { employmentType: _omit, ...legacyFest } = baseJob();
+    const legacyJobs: Job[] = [legacyFest];
+    const legacyResolve = (s: Shift): ResolveOptions => ({
+      job: legacyJobs.find((j) => j.id === s.jobId) ?? legacyFest,
+      defaultRate: settings.defaultRate,
+      supplements: settings.supplements,
+    });
+    const report = buildAnnualReport(
+      [shift({ date: "2026-03-02" })],
+      legacyJobs,
+      settings,
+      2026,
+      legacyResolve,
+    );
+    expect(report.earnings).toBeCloseTo(75);
+    expect(report.limitShare).toBe(0);
   });
 });
 

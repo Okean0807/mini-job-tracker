@@ -29,6 +29,9 @@ function usage(over: Partial<LimitUsage>): LimitUsage {
     paidAbsenceHours: 0,
     absenceEarnings: 0,
     estimated: false,
+    expectedAdditional: 0,
+    projectedEarnings: over.earnings ?? 0,
+    referenceDate: "2026-09-30",
     ...over,
   };
 }

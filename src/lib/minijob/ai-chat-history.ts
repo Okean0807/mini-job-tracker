@@ -8,6 +8,11 @@ import type { AskSource } from "@/lib/ai/types";
 
 export const AI_CHAT_HISTORY_KEY_PREFIX = "minijob-ai-chat-history-v1:";
 
+/** Local-first history budgets prevent unbounded localStorage growth. */
+export const AI_MAX_CONVERSATIONS = 50;
+export const AI_MAX_MESSAGES_PER_CONVERSATION = 100;
+export const AI_MAX_MESSAGE_CHARS = 8000;
+
 export type AiChatRole = "user" | "ai";
 
 export type AiChatMessage = {
@@ -64,7 +69,7 @@ function normalizeMessage(raw: unknown): AiChatMessage | null {
   const text = o["text"];
   if (role !== "user" && role !== "ai") return null;
   if (typeof text !== "string") return null;
-  const msg: AiChatMessage = { role, text };
+  const msg: AiChatMessage = { role, text: text.slice(0, AI_MAX_MESSAGE_CHARS) };
   const sources = o["sources"];
   if (Array.isArray(sources)) {
     const ok = sources.filter(isAskSource);
@@ -112,7 +117,15 @@ export function normalizeAiChatHistory(raw: unknown): AiChatHistoryStore {
     const sorted = [...conversations].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     activeId = sorted[0]?.id ?? null;
   }
-  return { conversations, activeId };
+  const trimmed = conversations
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, AI_MAX_CONVERSATIONS)
+    .map((conversation) => ({
+      ...conversation,
+      messages: conversation.messages.slice(-AI_MAX_MESSAGES_PER_CONVERSATION),
+    }));
+  const nextActiveId = activeId && trimmed.some((c) => c.id === activeId) ? activeId : trimmed[0]?.id ?? null;
+  return { conversations: trimmed, activeId: nextActiveId };
 }
 
 export function loadAiChatHistory(userId: string): AiChatHistoryStore {
@@ -129,7 +142,10 @@ export function loadAiChatHistory(userId: string): AiChatHistoryStore {
 export function saveAiChatHistory(userId: string, store: AiChatHistoryStore): void {
   if (!userId || typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(aiChatHistoryStorageKey(userId), JSON.stringify(store));
+    window.localStorage.setItem(
+      aiChatHistoryStorageKey(userId),
+      JSON.stringify(normalizeAiChatHistory(store)),
+    );
   } catch {
     /* quota / private mode */
   }

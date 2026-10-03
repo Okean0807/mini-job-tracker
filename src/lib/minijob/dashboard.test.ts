@@ -21,6 +21,7 @@ describe("constants", () => {
       "stats",
       "limitMonth",
       "limitYear",
+      "legalForecast",
       "payday",
       "insights",
       "goals",

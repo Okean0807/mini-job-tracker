@@ -4,16 +4,12 @@
  * confuse forecast / other months with the current period.
  */
 import { MONTHS_DE, isoDate, shiftsInMonth, shiftsInYear } from "./calc";
-import { monthlyHoursLimitFor } from "./legal";
+import { employmentTypeOf, isMinijobEmployment, monthlyHoursLimitFor } from "./legal";
 import { monthlyHoursLimit, monthlyLimitOf, yearlyLimitOf } from "./limits";
 import { payrollTotals } from "./payroll";
 import { makeResolver } from "./resolve";
-import type { AppData, WorkMode } from "./types";
-import {
-  jobsApplyMinijobLimit,
-  primaryWorkMode,
-  workModeAppliesMinijobLimit,
-} from "./work-mode";
+import type { AppData, ResolvedEmploymentType, WorkMode } from "./types";
+import { jobsApplyMinijobLimit, primaryWorkMode } from "./work-mode";
 
 export type AssistantContextPayload = {
   currentDate: string;
@@ -38,6 +34,12 @@ export type AssistantContextPayload = {
     hours: number;
     earnings: number;
   };
+  /** Recent historical months, including zero-activity years, for period-aware questions. */
+  historicalYears: Array<{
+    year: number;
+    hours: number;
+    earnings: number;
+  }>;
   months: Array<{
     year: number;
     month: number;
@@ -53,6 +55,8 @@ export type AssistantContextPayload = {
     hourlyRate: number | null;
     hours: number;
     earnings: number;
+    /** Aufgelöste Beschäftigungsart; "unknown" = Altbestand fest, Art noch nicht gewählt. */
+    employmentType: ResolvedEmploymentType;
     minijobLimitApplies: boolean;
   }>;
 };
@@ -80,6 +84,17 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
   const yearList = shiftsInYear(data.shifts, year);
   const yearTotals = payrollTotals(yearList, resolve, data.shifts);
 
+  const historicalYears: AssistantContextPayload["historicalYears"] = [];
+  for (let y = year - 2; y <= year; y++) {
+    const list = shiftsInYear(data.shifts, y);
+    const totals = payrollTotals(list, resolve, data.shifts);
+    historicalYears.push({
+      year: y,
+      hours: Number(totals.workedHours.toFixed(2)),
+      earnings: Number(totals.earnings.toFixed(2)),
+    });
+  }
+
   const months: AssistantContextPayload["months"] = [];
   for (let m = 0; m < 12; m++) {
     const list = shiftsInMonth(data.shifts, year, m);
@@ -105,7 +120,8 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
       hourlyRate: typeof job.rate === "number" ? job.rate : null,
       hours: Number(totals.workedHours.toFixed(2)),
       earnings: Number(totals.earnings.toFixed(2)),
-      minijobLimitApplies: workModeAppliesMinijobLimit(job.mode),
+      employmentType: employmentTypeOf(job),
+      minijobLimitApplies: isMinijobEmployment(job),
     };
   });
 
@@ -132,6 +148,7 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
       hours: Number(yearTotals.workedHours.toFixed(2)),
       earnings: Number(yearTotals.earnings.toFixed(2)),
     },
+    historicalYears,
     months,
     jobs,
   };

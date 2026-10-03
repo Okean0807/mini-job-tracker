@@ -3,9 +3,11 @@ import { AlertTriangle, Clock, Euro, LayoutGrid, Plus, TrendingUp } from "lucide
 import { useMemo, useState } from "react";
 
 import { DashboardCustomizer } from "@/components/minijob/DashboardCustomizer";
+import { TodayImportantCard } from "@/components/minijob/TodayImportantCard";
 import { GoalsCard } from "@/components/minijob/GoalsCard";
 import { OrdersCard } from "@/components/minijob/OrdersCard";
 import { LimitCard } from "@/components/minijob/LimitCard";
+import { LegalForecastCard } from "@/components/minijob/LegalForecastCard";
 import { TimeAccountCard } from "@/components/minijob/TimeAccountCard";
 import { PaydayCard } from "@/components/minijob/PaydayCard";
 import { InsightsCard } from "@/components/minijob/InsightsCard";
@@ -31,9 +33,11 @@ import { activeWidgets, spanClass, widgetSize } from "@/lib/minijob/dashboard";
 import { goalsProgress } from "@/lib/minijob/goals";
 import { buildInsights } from "@/lib/minijob/insights";
 import { monthUsage, yearUsage } from "@/lib/minijob/limits";
+import { legalIncomeForMonth } from "@/lib/minijob/service";
 import { isAbsenceKind, type AbsenceKind } from "@/lib/minijob/absence-range";
 import { monthTimeAccount } from "@/lib/minijob/fest-time-account";
 import { jobsApplyMinijobLimit, primaryWorkMode } from "@/lib/minijob/work-mode";
+import { limitAlertLevel } from "@/lib/minijob/limit-alert";
 import { payPeriods } from "@/lib/minijob/payday";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { useAppData } from "@/lib/minijob/store";
@@ -100,6 +104,10 @@ function DashboardPage() {
     () => yearUsage(shifts, resolve, settings, year),
     [shifts, resolve, settings, year],
   );
+  const legalForecast = useMemo(
+    () => legalIncomeForMonth(year, month),
+    [year, month, shifts, jobs, settings, resolve],
+  );
   const goalList = useMemo(
     () => goalsProgress(goals, shifts, jobs, resolve),
     [goals, shifts, jobs, resolve],
@@ -111,6 +119,7 @@ function DashboardPage() {
   const limitShare = monthLimit.share;
   const yearShare = yearLimit.share;
   const appliesMinijobLimit = jobsApplyMinijobLimit(jobs);
+  const limitAlert = limitAlertLevel(appliesMinijobLimit, limitShare, yearShare);
   const workMode = primaryWorkMode(jobs, settings.activeJobId);
   const isFest = workMode === "fest";
   const isSelf = workMode === "selbststaendig";
@@ -199,6 +208,7 @@ function DashboardPage() {
         notApplicable={!appliesMinijobLimit}
       />
     ),
+    legalForecast: <LegalForecastCard forecast={legalForecast.rolling} />,
     limitYear: (
       <LimitCard
         usage={yearLimit}
@@ -271,7 +281,7 @@ function DashboardPage() {
         </Button>
       </header>
 
-      {appliesMinijobLimit && (limitShare >= 100 || yearShare >= 100) ? (
+      {limitAlert === "over" ? (
         <LimitBanner
           tone="over"
           text={
@@ -282,7 +292,7 @@ function DashboardPage() {
           detail={t("dash.limitOverExplain")}
           disclaimer={t("dash.limitDisclaimer")}
         />
-      ) : appliesMinijobLimit && (limitShare >= 85 || yearShare >= 85) ? (
+      ) : limitAlert === "near" ? (
         <LimitBanner
           tone="near"
           text={t("dash.limitNear", { percent: Math.round(Math.max(limitShare, yearShare)) })}
@@ -309,6 +319,19 @@ function DashboardPage() {
           <OrdersCard orders={orders} jobs={jobs} payments={payments} />
         </div>
       ) : null}
+
+      <div className="mt-4">
+        <TodayImportantCard
+          shifts={shifts}
+          jobs={jobs}
+          payments={payments}
+          settings={settings}
+          resolve={resolve}
+          monthUsage={monthLimit}
+          yearUsage={yearLimit}
+          onNewEntry={() => openNew(isoDate(new Date()))}
+        />
+      </div>
 
       <div className="mt-4 grid grid-cols-2 items-start gap-3">
         {widgets.map((id) => (

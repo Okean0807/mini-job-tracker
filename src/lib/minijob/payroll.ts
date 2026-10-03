@@ -15,7 +15,7 @@
  * Grundsatz dieser Schicht: bezahlte Abwesenheit erzeugt Entgelt, aber KEINE
  * geleisteten Arbeitsstunden. Doppelzählung ist damit ausgeschlossen.
  */
-import { shiftBreakdown, shiftHours, sumEarnings } from "./calc";
+import { shiftBreakdown, shiftHours } from "./calc";
 import { weekForDate } from "./fest-time-account";
 import { effectiveShiftRate } from "./rate";
 import type { ResolveOptions } from "./resolve";
@@ -25,8 +25,11 @@ import type { Job, Shift, ShiftKind } from "./types";
 export const SICK_WAITING_DAYS = 28;
 /** Höchstdauer der Entgeltfortzahlung je Krankheitsfall (§ 3 Abs. 1 EntgFG). */
 export const SICK_MAX_DAYS = 42;
-/** Vereinfachung: Krankheitstage mit Abstand ≤ 7 Tagen gehören zu einem Fall. */
-export const SICK_CASE_GAP_DAYS = 7;
+/**
+ * No calendar-gap heuristic is used for sickness cases. The legal question
+ * is whether the incapacity is the same illness; the app cannot infer that
+ * from dates alone. Range-created sick entries therefore carry `sickCaseId`.
+ */
 /** Referenzzeitraum des Urlaubsentgelts (§ 11 BUrlG). */
 export const VACATION_REFERENCE_DAYS = 91;
 /** Mindestzahl an Arbeitstagen im Referenzzeitraum für eine belastbare Berechnung. */
@@ -151,21 +154,26 @@ export function regularHoursFor(
   return { hours: shiftHours(shift), basis: "entry" };
 }
 
-/** Beginn des Krankheitsfalls: erster zusammenhängender Krankheitstag (Lücke ≤ 7 Tage). */
+/**
+ * Beginn des ausdrücklich zugeordneten Krankheitsfalls.
+ *
+ * Ohne `sickCaseId` wird nur der aktuelle Eintrag als Fall betrachtet.
+ * Das ist absichtlich konservativ: aus einer Datumsnähe lässt sich die
+ * "gleiche Krankheit" i. S. d. § 3 Abs. 1 EntgFG nicht zuverlässig ableiten.
+ */
 export function sickCaseStart(shift: Shift, history: Shift[] = []): string {
-  const sick = history
-    .filter((s) => s.kind === "krank" && sameJob(s, shift.jobId) && s.date <= shift.date)
-    .map((s) => s.date)
-    .concat(shift.date)
-    .sort();
-  let start = shift.date;
-  for (let i = sick.length - 1; i > 0; i--) {
-    const current = sick[i]!;
-    const previous = sick[i - 1]!;
-    if (daysBetween(previous, current) > SICK_CASE_GAP_DAYS) break;
-    start = previous;
-  }
-  return start;
+  if (!shift.sickCaseId) return shift.date;
+  const dates = history
+    .filter(
+      (s) =>
+        s.kind === "krank" &&
+        sameJob(s, shift.jobId) &&
+        s.sickCaseId === shift.sickCaseId &&
+        s.date <= shift.date,
+    )
+    .map((s) => s.date);
+  dates.push(shift.date);
+  return dates.sort()[0] ?? shift.date;
 }
 
 /**
@@ -186,11 +194,29 @@ export function vacationDailyPay(
   );
   const days = new Set(reference.map((s) => s.date)).size;
   if (days < VACATION_MIN_REFERENCE_DAYS) return undefined;
-  const earnings = sumEarnings(reference, () => ({
-    job: options.job,
-    supplements: options.supplements,
-    defaultRate: options.defaultRate,
-  }));
+  const earnings = reference.reduce((total, referenceShift) => {
+    const breakdown = shiftBreakdown(referenceShift, {
+      job: options.job,
+      supplements: options.supplements,
+      defaultRate: options.defaultRate,
+    });
+    // § 11 BUrlG: Vergütung für Überstunden gehört nicht in den
+    // 13-Wochen-Durchschnitt des Urlaubsentgelts.
+    const overtime = referenceShift.overtime
+      ? (() => {
+          const supplement = (options.job?.supplements ?? options.supplements)?.overtime;
+          if (!supplement?.enabled) return 0;
+          const rate = effectiveShiftRate(referenceShift, {
+            job: options.job,
+            defaultRate: options.defaultRate,
+          });
+          return supplement.mode === "prozent"
+            ? (breakdown.hours * rate * supplement.value) / 100
+            : breakdown.hours * supplement.value;
+        })()
+      : 0;
+    return total + breakdown.total - overtime;
+  }, 0);
   const hours = reference.reduce((acc, s) => acc + shiftHours(s), 0);
   return { amount: earnings / days, hours: hours / days };
 }

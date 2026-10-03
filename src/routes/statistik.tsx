@@ -43,7 +43,8 @@ import { exportArbeitsnachweisPdf } from "@/lib/minijob/arbeitsnachweis";
 import { exportWorkReportPdf } from "@/lib/minijob/worklog";
 import { DOCUMENT_LOCALE, td } from "@/lib/minijob/document-i18n";
 import { makeResolver } from "@/lib/minijob/resolve";
-import { yearlyLimitOf } from "@/lib/minijob/limits";
+import { yearUsage } from "@/lib/minijob/limits";
+import { payPeriods } from "@/lib/minijob/payday";
 import { canUse } from "@/lib/minijob/premium";
 import { useAppData } from "@/lib/minijob/store";
 import type { Shift } from "@/lib/minijob/types";
@@ -69,7 +70,7 @@ export const Route = createFileRoute("/statistik")({
 
 function StatsPage() {
   const { t } = useT();
-  const { shifts, jobs, settings } = useAppData();
+  const { shifts, jobs, payments, settings } = useAppData();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
@@ -147,6 +148,11 @@ function StatsPage() {
     [filtered, jobs, settings, year, resolve],
   );
 
+  const legalYearUsage = useMemo(
+    () => yearUsage(filtered, resolve, settings, year),
+    [filtered, resolve, settings, year],
+  );
+
   const ctx = {
     jobs,
     bundesland: settings.bundesland,
@@ -167,6 +173,45 @@ function StatsPage() {
     else exportPdf(list, title, ctx);
     toast.success(t("stats.toast.exportSuccess"));
   }
+
+  const selectedJobs = useMemo(
+    () => (jobFilter === "alle" ? jobs : jobs.filter((j) => j.id === jobFilter)),
+    [jobs, jobFilter],
+  );
+  const monthPayPeriods = useMemo(
+    () => payPeriods(selectedJobs, filtered, payments, resolve, year, month),
+    [selectedJobs, filtered, payments, resolve, year, month],
+  );
+  const monthPaymentTotals = useMemo(
+    () =>
+      monthPayPeriods.reduce(
+        (acc, p) => ({
+          expected: acc.expected + p.expected,
+          earned: acc.earned + p.earned,
+          paid: acc.paid + p.paid,
+          open: acc.open + p.outstanding,
+          overpaid: acc.overpaid + p.overpaid,
+          overdue: acc.overdue + (p.overdue ? 1 : 0),
+        }),
+        { expected: 0, earned: 0, paid: 0, open: 0, overpaid: 0, overdue: 0 },
+      ),
+    [monthPayPeriods],
+  );
+  const yearPaymentTotals = useMemo(() => {
+    const initial = { expected: 0, earned: 0, paid: 0, open: 0, overpaid: 0, overdue: 0 };
+    for (let m = 0; m < 12; m += 1) {
+      const periods = payPeriods(selectedJobs, filtered, payments, resolve, year, m);
+      for (const p of periods) {
+        initial.expected += p.expected;
+        initial.earned += p.earned;
+        initial.paid += p.paid;
+        initial.open += p.outstanding;
+        initial.overpaid += p.overpaid;
+        if (p.overdue) initial.overdue += 1;
+      }
+    }
+    return initial;
+  }, [selectedJobs, filtered, payments, resolve, year]);
 
   const monthTotals = payrollTotals(monthShifts, resolve, shifts);
   const yearTotals = payrollTotals(yearShifts, resolve, shifts);
@@ -262,6 +307,23 @@ function StatsPage() {
               hint={t("stats.card.hoursHint")}
               icon={Clock}
             />
+          </div>
+
+          <div className="rounded-2xl border bg-card p-4 shadow-card">
+            <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {t("stats.paymentSummary")}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <StatCard label={t("stats.payment.expected")} value={formatEuro(monthPaymentTotals.expected)} hint={t("stats.payment.monthBasis")} icon={Euro} />
+              <StatCard label={t("stats.payment.earned")} value={formatEuro(monthPaymentTotals.earned)} hint={t("stats.payment.monthBasis")} icon={Euro} />
+              <StatCard label={t("stats.payment.paid")} value={formatEuro(monthPaymentTotals.paid)} hint={t("stats.payment.monthBasis")} icon={Euro} />
+              <StatCard label={t("stats.payment.open")} value={formatEuro(monthPaymentTotals.open)} hint={monthPaymentTotals.overdue > 0 ? t("stats.payment.overdueCount", { count: monthPaymentTotals.overdue }) : t("stats.payment.noOverdue")} icon={Euro} />
+            </div>
+            {monthPaymentTotals.overpaid > 0.005 ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                {t("stats.payment.overpaid")}: <span className="font-medium tabular-nums">{formatEuro(monthPaymentTotals.overpaid)}</span>
+              </p>
+            ) : null}
           </div>
 
           <ChartCard title={earningsDayTitle}>
@@ -498,11 +560,28 @@ function StatsPage() {
             <StatCard
               label={t("stats.card.yearLimit")}
               value={`${Math.round(
-                yearlyLimitOf(settings, year) > 0 ? (yearEarnings / yearlyLimitOf(settings, year)) * 100 : 0,
+                legalYearUsage.earningsShare,
               )} %`}
-              hint={t("stats.card.yearLimitHint", { amount: formatEuro(yearlyLimitOf(settings, year)) })}
+              hint={t("stats.card.yearLimitHint", { amount: formatEuro(legalYearUsage.earningsLimit) })}
               icon={Euro}
             />
+          </div>
+
+          <div className="rounded-2xl border bg-card p-4 shadow-card">
+            <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {t("stats.paymentSummaryYear")}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <StatCard label={t("stats.payment.expected")} value={formatEuro(yearPaymentTotals.expected)} hint={String(year)} icon={Euro} />
+              <StatCard label={t("stats.payment.earned")} value={formatEuro(yearPaymentTotals.earned)} hint={String(year)} icon={Euro} />
+              <StatCard label={t("stats.payment.paid")} value={formatEuro(yearPaymentTotals.paid)} hint={String(year)} icon={Euro} />
+              <StatCard label={t("stats.payment.open")} value={formatEuro(yearPaymentTotals.open)} hint={yearPaymentTotals.overdue > 0 ? t("stats.payment.overdueCount", { count: yearPaymentTotals.overdue }) : t("stats.payment.noOverdue")} icon={Euro} />
+            </div>
+            {yearPaymentTotals.overpaid > 0.005 ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                {t("stats.payment.overpaid")}: <span className="font-medium tabular-nums">{formatEuro(yearPaymentTotals.overpaid)}</span>
+              </p>
+            ) : null}
           </div>
 
           <ChartCard title={t("stats.chart.earningsMonth")}>

@@ -11,9 +11,12 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AssistentRouteImport } from './routes/assistent'
+import { Route as DatenschutzRouteImport } from './routes/datenschutz'
 import { Route as DokumenteRouteImport } from './routes/dokumente'
 import { Route as EinstellungenRouteImport } from './routes/einstellungen'
+import { Route as ImpressumRouteImport } from './routes/impressum'
 import { Route as JobsRouteImport } from './routes/jobs'
+import { Route as KiHinweiseRouteImport } from './routes/ki-hinweise'
 import { Route as StatistikRouteImport } from './routes/statistik'
 
 const IndexRoute = IndexRouteImport.update({
@@ -26,6 +29,11 @@ const AssistentRoute = AssistentRouteImport.update({
   path: '/assistent',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DatenschutzRoute = DatenschutzRouteImport.update({
+  id: '/datenschutz',
+  path: '/datenschutz',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DokumenteRoute = DokumenteRouteImport.update({
   id: '/dokumente',
   path: '/dokumente',
@@ -36,9 +44,19 @@ const EinstellungenRoute = EinstellungenRouteImport.update({
   path: '/einstellungen',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ImpressumRoute = ImpressumRouteImport.update({
+  id: '/impressum',
+  path: '/impressum',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const JobsRoute = JobsRouteImport.update({
   id: '/jobs',
   path: '/jobs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const KiHinweiseRoute = KiHinweiseRouteImport.update({
+  id: '/ki-hinweise',
+  path: '/ki-hinweise',
   getParentRoute: () => rootRouteImport,
 } as any)
 const StatistikRoute = StatistikRouteImport.update({
@@ -50,26 +68,35 @@ const StatistikRoute = StatistikRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/assistent': typeof AssistentRoute
+  '/datenschutz': typeof DatenschutzRoute
   '/dokumente': typeof DokumenteRoute
   '/einstellungen': typeof EinstellungenRoute
+  '/impressum': typeof ImpressumRoute
   '/jobs': typeof JobsRoute
+  '/ki-hinweise': typeof KiHinweiseRoute
   '/statistik': typeof StatistikRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/assistent': typeof AssistentRoute
+  '/datenschutz': typeof DatenschutzRoute
   '/dokumente': typeof DokumenteRoute
   '/einstellungen': typeof EinstellungenRoute
+  '/impressum': typeof ImpressumRoute
   '/jobs': typeof JobsRoute
+  '/ki-hinweise': typeof KiHinweiseRoute
   '/statistik': typeof StatistikRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/assistent': typeof AssistentRoute
+  '/datenschutz': typeof DatenschutzRoute
   '/dokumente': typeof DokumenteRoute
   '/einstellungen': typeof EinstellungenRoute
+  '/impressum': typeof ImpressumRoute
   '/jobs': typeof JobsRoute
+  '/ki-hinweise': typeof KiHinweiseRoute
   '/statistik': typeof StatistikRoute
 }
 export interface FileRouteTypes {
@@ -77,34 +104,46 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/assistent'
+    | '/datenschutz'
     | '/dokumente'
     | '/einstellungen'
+    | '/impressum'
     | '/jobs'
+    | '/ki-hinweise'
     | '/statistik'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/assistent'
+    | '/datenschutz'
     | '/dokumente'
     | '/einstellungen'
+    | '/impressum'
     | '/jobs'
+    | '/ki-hinweise'
     | '/statistik'
   id:
     | '__root__'
     | '/'
     | '/assistent'
+    | '/datenschutz'
     | '/dokumente'
     | '/einstellungen'
+    | '/impressum'
     | '/jobs'
+    | '/ki-hinweise'
     | '/statistik'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AssistentRoute: typeof AssistentRoute
+  DatenschutzRoute: typeof DatenschutzRoute
   DokumenteRoute: typeof DokumenteRoute
   EinstellungenRoute: typeof EinstellungenRoute
+  ImpressumRoute: typeof ImpressumRoute
   JobsRoute: typeof JobsRoute
+  KiHinweiseRoute: typeof KiHinweiseRoute
   StatistikRoute: typeof StatistikRoute
 }
 
@@ -124,6 +163,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AssistentRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/datenschutz': {
+      id: '/datenschutz'
+      path: '/datenschutz'
+      fullPath: '/datenschutz'
+      preLoaderRoute: typeof DatenschutzRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dokumente': {
       id: '/dokumente'
       path: '/dokumente'
@@ -138,11 +184,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EinstellungenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/impressum': {
+      id: '/impressum'
+      path: '/impressum'
+      fullPath: '/impressum'
+      preLoaderRoute: typeof ImpressumRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/jobs': {
       id: '/jobs'
       path: '/jobs'
       fullPath: '/jobs'
       preLoaderRoute: typeof JobsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ki-hinweise': {
+      id: '/ki-hinweise'
+      path: '/ki-hinweise'
+      fullPath: '/ki-hinweise'
+      preLoaderRoute: typeof KiHinweiseRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/statistik': {
@@ -158,9 +218,12 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AssistentRoute: AssistentRoute,
+  DatenschutzRoute: DatenschutzRoute,
   DokumenteRoute: DokumenteRoute,
   EinstellungenRoute: EinstellungenRoute,
+  ImpressumRoute: ImpressumRoute,
   JobsRoute: JobsRoute,
+  KiHinweiseRoute: KiHinweiseRoute,
   StatistikRoute: StatistikRoute,
 }
 export const routeTree = rootRouteImport

@@ -307,3 +307,17 @@ describe("CSV formula injection", () => {
     expect(r.valid[0]!.shift!.note).toBe("@SUM(A1)");
   });
 });
+
+describe("duplicate-safe CSV import", () => {
+  it("detects duplicates against existing shifts and repeated rows", async () => {
+    const { duplicateShiftIndexes } = await import("./csv");
+    const jobs = [{ id: "j1", name: "Café", color: "x", mode: "flex" as const }];
+    const base = { id: "old", kind: "arbeit" as const, date: "2026-09-30", start: "09:00", end: "10:00", breakMinutes: 0, jobId: "j1" };
+    const incoming = [
+      { ...base, id: "a" },
+      { ...base, id: "b" },
+      { ...base, id: "c", note: "different" },
+    ];
+    expect([...duplicateShiftIndexes(incoming, [base], jobs)]).toEqual([0, 1]);
+  });
+});

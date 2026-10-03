@@ -48,6 +48,8 @@ describe("generated docs registry", () => {
     expect(list[0]?.name).toBe("b.xlsx");
     expect(list[1]?.name).toBe("a.pdf");
     expect(list.every((d) => d.source === "generated")).toBe(true);
+    expect(list[0]?.payloadStatus).toBe("downloaded_only");
+    expect(list[1]?.payloadStatus).toBe("local");
   });
 
   it("deletes by id without touching others", () => {
@@ -84,5 +86,47 @@ describe("generated docs registry", () => {
     expect(listGeneratedDocuments()).toHaveLength(1);
     expect(click).toHaveBeenCalled();
     click.mockRestore();
+  });
+});
+
+
+describe("generated docs quota handling", () => {
+  it("evicts oldest payloads first instead of stripping every export", () => {
+    registerGeneratedDocument({
+      name: "older.pdf",
+      category: "report_pdf",
+      mimeType: "application/pdf",
+      size: 10,
+      dataUrl: "data:application/pdf;base64,OLD",
+      createdAt: "2026-01-01T10:00:00.000Z",
+    });
+
+    // happy-dom defines setItem on the instance, so spy on window.localStorage
+    // (a Storage.prototype spy would never be hit).
+    const storage = window.localStorage;
+    const originalSetItem = storage.setItem.bind(storage);
+    let attempts = 0;
+    vi.spyOn(storage, "setItem").mockImplementation((key: string, value: string) => {
+      attempts += 1;
+      if (attempts === 1) throw new DOMException("quota", "QuotaExceededError");
+      originalSetItem(key, value);
+    });
+
+    registerGeneratedDocument({
+      name: "newer.pdf",
+      category: "report_pdf",
+      mimeType: "application/pdf",
+      size: 20,
+      dataUrl: "data:application/pdf;base64,NEW",
+      createdAt: "2026-02-01T10:00:00.000Z",
+    });
+
+    const list = listGeneratedDocuments();
+    expect(list[0]?.name).toBe("newer.pdf");
+    expect(list[0]?.payloadStatus).toBe("local");
+    expect(list[0]?.dataUrl).toContain("NEW");
+    expect(list[1]?.name).toBe("older.pdf");
+    expect(list[1]?.payloadStatus).toBe("downloaded_only");
+    expect(list[1]?.dataUrl).toBe("");
   });
 });

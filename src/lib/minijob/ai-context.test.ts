@@ -112,6 +112,7 @@ describe("buildAssistantContext", () => {
     expect(Object.keys(parsed).sort()).toEqual([
       "currentDate",
       "currentMonth",
+      "historicalYears",
       "jobs",
       "months",
       "settings",
@@ -147,5 +148,69 @@ describe("buildAssistantContext", () => {
     expect(parsed.settings.automaticMonthlyHours).toBeNull();
     expect(parsed.settings.annualLimit).toBeNull();
     expect(parsed.jobs[0].minijobLimitApplies).toBe(false);
+  });
+
+  it("fixed weekly plan does not imply Hauptbeschäftigung; explicit employmentType decides", () => {
+    const now = new Date(2026, 8, 15);
+    const data = makeData({
+      jobs: [
+        {
+          id: "fest-mini",
+          name: "Plan-Minijob",
+          color: "#0d9488",
+          mode: "fest",
+          rate: 15,
+          employmentType: "minijob",
+        },
+        {
+          id: "main",
+          name: "Hauptjob",
+          color: "#111",
+          mode: "fest",
+          rate: 25,
+          employmentType: "hauptbeschaeftigung",
+        },
+      ],
+    });
+    const parsed = JSON.parse(buildAssistantContext(data, now));
+    expect(parsed.settings.minijobLimitApplies).toBe(true);
+    expect(parsed.jobs.find((j: { id: string }) => j.id === "fest-mini").minijobLimitApplies).toBe(
+      true,
+    );
+    expect(parsed.jobs.find((j: { id: string }) => j.id === "main").minijobLimitApplies).toBe(
+      false,
+    );
+  });
+
+  it("B: legacy fest job without employmentType → unknown, no minijob limit in AI context", () => {
+    const now = new Date(2026, 8, 15);
+    const data = makeData({
+      jobs: [{ id: "legacy", name: "Alt-Fest", color: "#0d9488", mode: "fest", rate: 15 }],
+    });
+    const parsed = JSON.parse(buildAssistantContext(data, now));
+    const legacy = parsed.jobs.find((j: { id: string }) => j.id === "legacy");
+    expect(legacy.employmentType).toBe("unknown");
+    expect(legacy.minijobLimitApplies).toBe(false);
+    expect(parsed.settings.minijobLimitApplies).toBe(false);
+  });
+
+  it("A: legacy flex job without employmentType → minijob in AI context", () => {
+    const now = new Date(2026, 8, 15);
+    const data = makeData({
+      jobs: [{ id: "legacy", name: "Alt-Flex", color: "#0d9488", mode: "flex", rate: 15 }],
+    });
+    const parsed = JSON.parse(buildAssistantContext(data, now));
+    const legacy = parsed.jobs.find((j: { id: string }) => j.id === "legacy");
+    expect(legacy.employmentType).toBe("minijob");
+    expect(legacy.minijobLimitApplies).toBe(true);
+    expect(parsed.settings.minijobLimitApplies).toBe(true);
+  });
+});
+
+describe("historical AI context", () => {
+  it("includes the current year and two prior years", () => {
+    const data = makeData();
+    const parsed = JSON.parse(buildAssistantContext(data, new Date(2026, 8, 15)));
+    expect(parsed.historicalYears.map((x: { year: number }) => x.year)).toEqual([2024, 2025, 2026]);
   });
 });

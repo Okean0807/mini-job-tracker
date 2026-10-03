@@ -76,6 +76,7 @@ describe("proofTableHead", () => {
       "Eintragsart",
       "Beginn",
       "Ende",
+      "Pause",
       "Stunden",
       "Leistungsart",
       "Notiz",
@@ -102,11 +103,12 @@ describe("buildProofTableRows", () => {
       "Arbeit",
       "06:00",
       "07:00",
+      "0 Min.",
       "1,00 h",
       "UR",
       expect.stringContaining("Musterstraße 10"),
     ]);
-    expect(row![6]).toBe("Musterstraße 10");
+    expect(row![7]).toBe("Musterstraße 10");
   });
 
   it("keeps two same-day shifts with distinct Leistungsart and Notiz", () => {
@@ -134,6 +136,7 @@ describe("buildProofTableRows", () => {
       "Arbeit",
       "06:00",
       "07:00",
+      "0 Min.",
       "1,00 h",
       "UR",
       "Musterstraße 10",
@@ -143,6 +146,7 @@ describe("buildProofTableRows", () => {
       "Arbeit",
       "08:00",
       "09:30",
+      "0 Min.",
       "1,50 h",
       "FR",
       "Bahnhofstraße 20",
@@ -154,7 +158,7 @@ describe("buildProofTableRows", () => {
     const er = makeShift({ id: "er", start: "06:15", end: "07:15", workCode: "ER" });
     const rows = buildProofTableRows([er, sa], [makeJob()]);
 
-    expect(rows.map((row) => [row[2], row[5]])).toEqual([
+    expect(rows.map((row) => [row[2], row[6]])).toEqual([
       ["06:00", "SA"],
       ["06:15", "ER"],
     ]);
@@ -194,12 +198,12 @@ describe("buildProofTableRows", () => {
       [job],
     );
     expect(rows).toHaveLength(3);
-    expect(rows.map((row) => [row[0], row[1], row[2], row[3], row[4], row[5]])).toEqual([
+    expect(rows.map((row) => [row[0], row[1], row[2], row[3], row[5], row[6]])).toEqual([
       ["19.09.2026", "Arbeit", "06:00", "06:15", "0,25 h", "SA"],
       ["19.09.2026", "Arbeit", "06:15", "16:30", "10,25 h", "ER"],
       ["19.09.2026", "Arbeit", "17:00", "18:00", "1,00 h", "FR"],
     ]);
-    expect(rows[1]![6]).toContain("Fehrenwinkel 16");
+    expect(rows[1]![7]).toContain("Fehrenwinkel 16");
   });
 
   it("keeps four same-day work blocks as four PDF rows", () => {
@@ -221,14 +225,14 @@ describe("buildProofTableRows", () => {
     );
     expect(rows).toHaveLength(4);
     expect(rows.map((row) => row[2])).toEqual(["06:00", "06:15", "17:00", "18:15"]);
-    expect(new Set(rows.map((row) => row[5])).size).toBe(4);
+    expect(new Set(rows.map((row) => row[6])).size).toBe(4);
   });
 
   it("uses stable id secondary when date and start match", () => {
     const b = makeShift({ id: "b-id", start: "06:00", end: "07:00", workCode: "UR" });
     const a = makeShift({ id: "a-id", start: "06:00", end: "07:00", workCode: "FR" });
     const rows = buildProofTableRows([b, a], [makeJob()]);
-    expect(rows.map((row) => row[5])).toEqual(["FR", "UR"]);
+    expect(rows.map((row) => row[6])).toEqual(["FR", "UR"]);
   });
 
   it("sorts multiple days by date and then start time", () => {
@@ -242,7 +246,7 @@ describe("buildProofTableRows", () => {
       [makeJob()],
     );
 
-    expect(rows.map((row) => [row[0], row[2], row[5]])).toEqual([
+    expect(rows.map((row) => [row[0], row[2], row[6]])).toEqual([
       ["19.09.2026", "06:00", "SA"],
       ["19.09.2026", "06:15", "FR"],
       ["20.09.2026", "05:30", "UR"],
@@ -256,8 +260,8 @@ describe("buildProofTableRows", () => {
       [makeJob()],
     );
     expect(rows[0]![1]).toBe("Arbeit");
-    expect(rows[0]![5]).toBe("—");
-    expect(rows[0]![6]).toBe("");
+    expect(rows[0]![6]).toBe("—");
+    expect(rows[0]![7]).toBe("");
   });
 });
 

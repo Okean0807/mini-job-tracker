@@ -231,3 +231,29 @@ export function downloadText(filename: string, text: string, type = "text/csv;ch
   a.click();
   URL.revokeObjectURL(url);
 }
+
+/** Stable duplicate key for idempotent CSV imports. IDs are deliberately ignored. */
+export function shiftImportKey(shift: Shift, jobs: Job[]): string {
+  const jobName = jobs.find((j) => j.id === shift.jobId)?.name?.trim().toLowerCase() ?? "";
+  return [
+    shift.date,
+    shift.start,
+    shift.end,
+    String(shift.breakMinutes ?? 0),
+    typeof shift.rate === "number" ? String(shift.rate) : "",
+    jobName,
+    shift.kind,
+    shift.note?.trim() ?? "",
+  ].join("|");
+}
+
+export function duplicateShiftIndexes(incoming: Shift[], existing: Shift[], jobs: Job[]): Set<number> {
+  const existingKeys = new Set(existing.map((s) => shiftImportKey(s, jobs)));
+  const duplicates = new Set<number>();
+  incoming.forEach((shift, index) => {
+    const key = shiftImportKey(shift, jobs);
+    if (existingKeys.has(key)) duplicates.add(index);
+    existingKeys.add(key); // also deduplicates repeated rows within the same file
+  });
+  return duplicates;
+}

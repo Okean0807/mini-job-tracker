@@ -130,6 +130,23 @@ export function readOAuthPending(now: number = Date.now()): OAuthPendingMarker |
   }
 }
 
+/** Remove every app-owned localStorage key belonging to one user scope.
+ * This is intentionally suffix-based so newly added scoped stores are also
+ * removed during account deletion without maintaining a second key registry.
+ */
+export function clearUserScopeLocalData(userId: string): void {
+  if (typeof window === "undefined" || !userId) return;
+  const suffix = `:u:${userId}`;
+  try {
+    const keys = Object.keys(window.localStorage);
+    for (const key of keys) {
+      if (key.endsWith(suffix)) window.localStorage.removeItem(key);
+    }
+  } catch {
+    /* best effort; account deletion remains server-authoritative */
+  }
+}
+
 export function clearOAuthPending(): void {
   if (typeof window === "undefined") return;
   try {
