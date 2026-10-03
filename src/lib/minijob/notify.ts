@@ -3,6 +3,7 @@ import { t } from "@/lib/i18n";
 import { formatDate, formatEuro, isoDate, shiftsInYear, timeFromDate } from "./calc";
 import { payrollTotals } from "./payroll";
 import { monthUsage, yearUsage } from "./limits";
+import { jobsApplyMinijobLimit } from "./work-mode";
 import { payPeriods } from "./payday";
 import { makeResolver } from "./resolve";
 import { getData } from "./store";
@@ -113,7 +114,7 @@ export function runNotificationChecks() {
 
   if (n.missingShift) {
     const iso = previousCalendarDate(today);
-    const [y, m, d] = iso.split("-").map(Number);
+    const [y = 0, m = 1, d = 1] = iso.split("-").map(Number);
     const day = new Date(y, m - 1, d).getDay();
     if (day !== 0 && day !== 6 && !data.shifts.some((s) => s.date === iso)) {
       notifyOnce(
@@ -166,6 +167,10 @@ export interface LimitStatus {
 
 export function limitStatus(): LimitStatus {
   const { shifts, jobs, settings } = getData();
+  // Gleiche Regel wie Dashboard/LimitCard: ohne (bestätigten) Minijob –
+  // z. B. nur Hauptbeschäftigung oder ungeklärter Altbestand – keine
+  // Grenz-Benachrichtigungen.
+  if (!jobsApplyMinijobLimit(jobs)) return { monthShare: 0, monthHoursShare: 0, yearShare: 0 };
   const resolve = makeResolver(jobs, settings);
   const now = new Date();
   const month = monthUsage(shifts, resolve, settings, now.getFullYear(), now.getMonth());

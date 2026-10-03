@@ -18,7 +18,8 @@ export interface LegalWarningAssessment {
   reason: "within_limit" | "near_limit" | "regular_exceeded" | "special_rule_may_apply" | "maximum_exceeded";
 }
 
-const NEAR_LIMIT_RATIO = 0.85;
+/** Business/UX rule (not legal): "near limit" from 85 % of the limit on. */
+export const NEAR_LIMIT_RATIO = 0.85;
 
 /**
  * Evaluates one forecast month. The function deliberately does not decide

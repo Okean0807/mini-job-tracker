@@ -16,10 +16,9 @@ const job: Job = {
 const shift = (id: string, date: string, hours: number): Shift => ({
   id,
   date,
-  start: "08:00",
-  end: "08:00",
+  start: "00:00",
+  end: `${String(hours).padStart(2, "0")}:00`,
   breakMinutes: 0,
-  hours,
   jobId: job.id,
   kind: "arbeit",
 });

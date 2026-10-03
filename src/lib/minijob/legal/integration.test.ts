@@ -122,4 +122,32 @@ describe("legal income integration", () => {
     expect(legalActualIncomeForYear(shifts, resolver, 2026, "2026-09-29")).toBe(120);
   });
 
+  it("B: unconfirmed legacy fest job (no employmentType) stays out of rolling / LegalForecast", () => {
+    const legacy: Job = { id: "legacy", name: "Alt-Fest", color: "#000", mode: "fest", rate: 20 };
+    const shifts = [
+      shift("mini", "2026-09-10", 4),
+      { ...shift("legacy-past", "2026-09-11", 10), jobId: "legacy" },
+      { ...shift("legacy-future", "2026-09-30", 10), jobId: "legacy" },
+    ];
+    const resolver = makeResolver([job, legacy], settings);
+    const months = buildMonthlyIncomeFromShifts(shifts, resolver, "2026-09-29");
+    expect(months).toHaveLength(1);
+    expect(months[0]?.actual).toBe(60);
+    expect(months[0]?.expectedAdditional).toBe(0);
+
+    const data = {
+      shifts,
+      jobs: [job, legacy],
+      customers: [],
+      projects: [],
+      payments: [],
+      goals: [],
+      orders: [],
+      objects: [],
+      settings,
+    } as AppData;
+    const result = assessLegalIncome(data, "2026-09-01", "2026-09-29");
+    expect(result.rolling.months.find((m) => m.date === "2026-09-01")?.projected).toBe(60);
+    expect(result.rolling.projectedEarnings).toBe(60);
+  });
 });

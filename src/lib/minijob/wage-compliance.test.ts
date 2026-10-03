@@ -4,14 +4,14 @@ import type { Job, Shift } from "./types";
 
 const cleaning: Job = { id: "j", name: "Cleaning", color: "#000", mode: "flex", rate: 14, industrySectorId: "gebaeudereinigung", industryGroupId: "lg1" };
 const other: Job = { id: "o", name: "Other", color: "#000", mode: "flex", rate: 13.9 };
-const shift = (id: string, date: string, jobId: string, rate?: number): Shift => ({ id, date, start: "09:00", end: "10:00", breakMinutes: 0, jobId, rate, kind: "actual" });
+const shift = (id: string, date: string, jobId: string, rate?: number): Shift => ({ id, date, start: "09:00", end: "10:00", breakMinutes: 0, jobId, ...(rate !== undefined ? { rate } : {}), kind: "arbeit" });
 
 describe("wage compliance", () => {
   it("uses the industry floor for cleaning LG1", () => {
     const result = findWageViolations([shift("1", "2026-09-30", "j")], [cleaning], 13.9);
     expect(result).toHaveLength(1);
-    expect(result[0].result.industryMinimumWage).toBe(15);
-    expect(result[0].result.bindingMinimumWage).toBe(15);
+    expect(result[0]!.result.industryMinimumWage).toBe(15);
+    expect(result[0]!.result.bindingMinimumWage).toBe(15);
   });
 
   it("does not flag a compliant general-minimum-wage job", () => {

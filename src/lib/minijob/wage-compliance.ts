@@ -54,7 +54,7 @@ export function findWageViolations(
   return shifts
     .filter((shift) => predicate?.(shift) ?? true)
     .map((shift) => {
-      const job = byId.get(shift.jobId);
+      const job = shift.jobId ? byId.get(shift.jobId) : undefined;
       return { shift, job, result: checkShiftWageFromRate(shift.date, shift, job, defaultRate) };
     })
     .filter(({ result }) => !result.compliant);

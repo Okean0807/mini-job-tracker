@@ -21,7 +21,7 @@ const shift: Shift = {
   end: "13:30",
   breakMinutes: 30,
   jobId: job.id,
-  kind: "actual",
+  kind: "arbeit",
 };
 
 describe("cross-engine rate consistency", () => {

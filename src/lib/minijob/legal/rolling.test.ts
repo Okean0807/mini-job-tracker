@@ -42,23 +42,26 @@ describe("rolling 12-month legal engine", () => {
     expect(result[0]?.earnings).toBe(100);
   });
 
+  // Window fix: anchored at 2026-09 the window is Oct 2025–Sep 2026 and contains
+  // three 2025 months (556 €). A pure-2026 window must end in Dec 2026.
   it("calculates the 2026 regular rolling limit", () => {
     const result = evaluateRolling12Months(
       Array.from({ length: 12 }, (_, i) => ({
-        date: addMonths("2026-09-01", i - 11),
+        date: addMonths("2026-12-01", i - 11),
         earnings: 603,
         unpredictable: false,
       })),
-      "2026-09-01",
+      "2026-12-01",
     );
     expect(result.regularLimit).toBe(7236);
     expect(result.earnings).toBe(7236);
     expect(result.allowed).toBe(true);
   });
 
+  // Window fix as above: pure 2026 window (Jan–Dec 2026), 7236 + 2 × 603 = 8442.
   it("allows two documented unpredictable months in the rolling window", () => {
     const incomes = Array.from({ length: 12 }, (_, i) => ({
-      date: addMonths("2026-09-01", i - 11),
+      date: addMonths("2026-12-01", i - 11),
       earnings: 603,
       unpredictable: false,
     }));
@@ -67,7 +70,8 @@ describe("rolling 12-month legal engine", () => {
     incomes[8]!.earnings = 1206;
     incomes[8]!.unpredictable = true;
 
-    const result = evaluateRolling12Months(incomes, "2026-09-01");
+    const result = evaluateRolling12Months(incomes, "2026-12-01");
+    expect(result.regularLimit).toBe(7236);
     expect(result.unpredictableMonths).toBe(2);
     expect(result.maximumAllowedIncome).toBe(8442);
     expect(result.allowed).toBe(true);
@@ -111,8 +115,50 @@ describe("rolling 12-month legal engine", () => {
     inputs[11]!.expectedAdditional = 150;
 
     const result = forecastRolling12Months(inputs, "2026-09-01");
-    expect(result.projectedEarnings).toBe(7386);
+    // Arithmetic fix: 11 × 603 + (500 actual + 150 expected) = 7283 (7386 was miscounted).
+    // Window Oct 2025–Sep 2026 → regular limit 3 × 556 + 9 × 603 = 7095.
+    expect(result.projectedEarnings).toBe(7283);
+    expect(result.regularLimit).toBe(7095);
     expect(result.exceedsRegularLimit).toBe(true);
     expect(result.exceedsMaximumAllowedIncome).toBe(true);
+  });
+});
+
+describe("Geringfügigkeitsgrenze pro Monat im 12-Monats-Zeitraum", () => {
+  const window = (anchor: string) =>
+    Array.from({ length: 12 }, (_, i) => ({
+      date: addMonths(anchor, i - 11),
+      earnings: 0,
+      unpredictable: false,
+    }));
+
+  it("2025 (Jan–Dez): 12 × 556 = 6672", () => {
+    expect(evaluateRolling12Months(window("2025-12-01"), "2025-12-01").regularLimit).toBe(6672);
+    expect(forecastRolling12Months([], "2025-12-01").regularLimit).toBe(6672);
+  });
+
+  it("2026 (Jan–Dez): 12 × 603 = 7236", () => {
+    expect(evaluateRolling12Months(window("2026-12-01"), "2026-12-01").regularLimit).toBe(7236);
+    expect(forecastRolling12Months([], "2026-12-01").regularLimit).toBe(7236);
+  });
+
+  it("gemischter Zeitraum Okt 2025–Sep 2026: 3 × 556 + 9 × 603 = 7095 (nicht 12 × 603)", () => {
+    const result = evaluateRolling12Months(window("2026-09-01"), "2026-09-01");
+    expect(result.months[0]?.date).toBe("2025-10-01");
+    expect(result.regularLimit).toBe(3 * 556 + 9 * 603);
+    expect(result.regularLimit).toBe(7095);
+    const forecast = forecastRolling12Months([], "2026-09-01");
+    expect(forecast.regularLimit).toBe(7095);
+    expect(forecast.months.map((m) => m.limit)).toEqual([
+      556, 556, 556, 603, 603, 603, 603, 603, 603, 603, 603, 603,
+    ]);
+  });
+
+  it("12 × 603 Einkommen im gemischten Zeitraum überschreitet die reguläre Grenze", () => {
+    const incomes = window("2026-09-01").map((m) => ({ ...m, earnings: 603 }));
+    const result = evaluateRolling12Months(incomes, "2026-09-01");
+    expect(result.earnings).toBe(7236);
+    expect(result.regularLimit).toBe(7095);
+    expect(result.allowed).toBe(false);
   });
 });

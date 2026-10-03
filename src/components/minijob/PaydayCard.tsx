@@ -69,7 +69,7 @@ function PeriodRow({ period }: { period: PayPeriod }) {
       actual,
       confirmed: true,
       paidOn: existing?.paidOn ?? isoDate(new Date()),
-      note: existing?.note,
+      ...(existing?.note !== undefined ? { note: existing.note } : {}),
     });
     setEditingId(null);
     toast.success(t("pay.saved"));

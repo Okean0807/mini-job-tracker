@@ -132,15 +132,9 @@ export const settingsDict: Bundle = {
     "set.account.cloud.backupWhat": "Gesichert werden deine App-Daten einschließlich Arbeitszeiten, Jobs, Einstellungen und weiterer lokaler Projektdaten.",
     "set.account.cloud.sync.keepCloud": "Cloud behalten",
 
-    "imp.xlsxUnsupported": "XLS/XLSX import is currently disabled. Please use CSV.",
-
-
-    "imp.fileTooLarge": "The file is too large. Maximum 2 MB.",
-
-
-    "imp.readError": "The file could not be read.",
-
-
+    "imp.xlsxUnsupported": "Der XLS/XLSX-Import ist derzeit deaktiviert. Bitte nutze CSV.",
+    "imp.fileTooLarge": "Die Datei ist zu groß. Maximal 2 MB.",
+    "imp.readError": "Die Datei konnte nicht gelesen werden.",
     "imp.title": "Daten importieren",
     "imp.desc": "CSV, TXT oder eine JSON-Sicherung einlesen. Der Excel-Import ist derzeit deaktiviert. Daten werden vor dem Import geprüft.",
     "imp.selectFile": "Datei auswählen",
@@ -313,6 +307,9 @@ export const settingsDict: Bundle = {
     "set.account.cloud.backupWhat": "The backup contains your app data, including work times, jobs, settings and other local project data.",
     "set.account.cloud.sync.keepCloud": "Keep cloud",
 
+    "imp.xlsxUnsupported": "XLS/XLSX import is currently disabled. Please use CSV.",
+    "imp.fileTooLarge": "The file is too large. Maximum 2 MB.",
+    "imp.readError": "The file could not be read.",
     "imp.title": "Import data",
     "imp.desc": "Read CSV, TXT or a JSON backup. Excel import is currently disabled. Data is checked before importing.",
     "imp.selectFile": "Choose file",
@@ -485,6 +482,9 @@ export const settingsDict: Bundle = {
     "set.account.cloud.backupWhat": "Сохраняются данные приложения, включая рабочее время, Jobs, настройки и другие данные проекта.",
     "set.account.cloud.sync.keepCloud": "Оставить облако",
 
+    "imp.xlsxUnsupported": "Импорт XLS/XLSX сейчас отключён. Используйте CSV.",
+    "imp.fileTooLarge": "Файл слишком большой. Максимум 2 МБ.",
+    "imp.readError": "Не удалось прочитать файл.",
     "imp.title": "Импорт данных",
     "imp.desc": "Загрузите CSV, TXT или JSON-резервную копию. Импорт Excel сейчас отключён. Данные проверяются перед импортом.",
     "imp.selectFile": "Выбрать файл",
@@ -657,6 +657,9 @@ export const settingsDict: Bundle = {
     "set.account.cloud.backupWhat": "Yedek; çalışma saatleri, işler, ayarlar ve diğer proje verileri dahil uygulama verilerini içerir.",
     "set.account.cloud.sync.keepCloud": "Bulutu koru",
 
+    "imp.xlsxUnsupported": "XLS/XLSX içe aktarma şu anda devre dışı. Lütfen CSV kullanın.",
+    "imp.fileTooLarge": "Dosya çok büyük. En fazla 2 MB.",
+    "imp.readError": "Dosya okunamadı.",
     "imp.title": "Veri içe aktar",
     "imp.desc": "CSV, TXT veya JSON yedeği okuyun. Excel içe aktarma şu anda devre dışı. Veriler içe aktarmadan önce kontrol edilir.",
     "imp.selectFile": "Dosya seç",
@@ -829,6 +832,9 @@ export const settingsDict: Bundle = {
     "set.account.cloud.backupWhat": "Kopia zawiera dane aplikacji, w tym godziny pracy, stanowiska, ustawienia i inne dane projektu.",
     "set.account.cloud.sync.keepCloud": "Zachowaj chmurę",
 
+    "imp.xlsxUnsupported": "Import XLS/XLSX jest obecnie wyłączony. Użyj pliku CSV.",
+    "imp.fileTooLarge": "Plik jest za duży. Maksymalnie 2 MB.",
+    "imp.readError": "Nie udało się odczytać pliku.",
     "imp.title": "Importuj dane",
     "imp.desc": "Wczytaj CSV, TXT lub kopię zapasową JSON. Import Excela jest obecnie wyłączony. Dane są sprawdzane przed importem.",
     "imp.selectFile": "Wybierz plik",

@@ -16,6 +16,21 @@ export type EmploymentType =
   | "kurzfristig"
   | "selbststaendig";
 
+/**
+ * Aufgelöster Status für die Rechtslogik: gespeicherte Beschäftigungsart oder
+ * `"unknown"` (Altbestand `mode: "fest"` ohne `employmentType` – muss von der
+ * Nutzerin bestätigt werden). `"unknown"` wird nie gespeichert.
+ */
+export type ResolvedEmploymentType = EmploymentType | "unknown";
+
+/** Auswahl im Job-Dialog (Reihenfolge = Anzeige). */
+export const EMPLOYMENT_TYPES: readonly EmploymentType[] = [
+  "minijob",
+  "hauptbeschaeftigung",
+  "kurzfristig",
+  "selbststaendig",
+];
+
 export type ShiftKind = "arbeit" | "urlaub" | "krank" | "feiertag" | "frei" | "sonstige";
 
 export type SupplementMode = "prozent" | "fest";
@@ -75,8 +90,9 @@ export interface Job {
   industryGroupId?: string;
   mode: WorkMode;
   /**
-   * Rechtliche Beschäftigungsart. Optional für Altbestände; wenn nicht
-   * vorhanden, wird sie deterministisch aus `mode` abgeleitet.
+   * Rechtliche Beschäftigungsart. Optional für Altbestände; fehlt sie, gilt
+   * die Fallback-Regel aus `employmentTypeOf` (flex → minijob,
+   * selbststaendig → selbststaendig, fest → "unknown" = Prüfung nötig).
    */
   employmentType?: EmploymentType;
   /** Beschäftigungsende (ISO yyyy-MM-dd), inklusive. */

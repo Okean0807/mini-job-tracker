@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { evaluateForecastMonthWarning, evaluateRollingWarning } from "./warnings";
+import { addMonths, forecastRolling12Months } from "./rolling";
 import type { ForecastMonth, Rolling12ForecastResult } from "./rolling";
 
 const month = (overrides: Partial<ForecastMonth> = {}): ForecastMonth => ({
@@ -56,8 +57,14 @@ describe("legal warning engine", () => {
     expect(evaluateForecastMonthWarning(month({ projected: 1207 })).status).toBe("MAXIMUM_EXCEEDED");
   });
 
+  // Expectation fix: 7000 / 7236 = 96.7 % — inside the regular envelope (not exceeded)
+  // but above the 85 % NEAR_LIMIT product threshold, which applies to rolling
+  // forecasts exactly as to single months. Only 236 € headroom remain → NEAR_LIMIT.
   it("handles rolling forecasts inside the regular annual envelope", () => {
-    expect(evaluateRollingWarning(rolling({ projectedEarnings: 7000 })).status).toBe("OK");
+    const result = evaluateRollingWarning(rolling({ projectedEarnings: 7000 }));
+    expect(result.status).toBe("NEAR_LIMIT");
+    expect(result.regularLimit - result.projected).toBe(236);
+    expect(evaluateRollingWarning(rolling({ projectedEarnings: 6000 })).status).toBe("OK");
   });
 
   it("recognizes a rolling forecast above the regular envelope with documented special months", () => {
@@ -84,5 +91,63 @@ describe("legal warning engine", () => {
         }),
       ).status,
     ).toBe("MAXIMUM_EXCEEDED");
+  });
+});
+
+describe("NEAR_LIMIT threshold boundaries (85 %, Business/UX rule)", () => {
+  // Month limit 603 → threshold 512.55 €; rolling 2026 limit 7236 → 6150.60 €.
+  it("single month: just below / at / just above 85 %", () => {
+    expect(evaluateForecastMonthWarning(month({ projected: 512.54 })).status).toBe("OK");
+    expect(evaluateForecastMonthWarning(month({ projected: 603 * 0.85 })).status).toBe(
+      "NEAR_LIMIT",
+    );
+    expect(evaluateForecastMonthWarning(month({ projected: 512.56 })).status).toBe("NEAR_LIMIT");
+  });
+
+  it("single month: exactly at the limit is not exceeded; one cent above is", () => {
+    expect(evaluateForecastMonthWarning(month({ projected: 603 })).status).toBe("NEAR_LIMIT");
+    expect(evaluateForecastMonthWarning(month({ projected: 603.01 })).status).toBe(
+      "REGULAR_LIMIT_EXCEEDED",
+    );
+  });
+
+  it("rolling: just below / at / just above 85 %", () => {
+    expect(evaluateRollingWarning(rolling({ projectedEarnings: 6150.59 })).status).toBe("OK");
+    expect(evaluateRollingWarning(rolling({ projectedEarnings: 7236 * 0.85 })).status).toBe(
+      "NEAR_LIMIT",
+    );
+    expect(evaluateRollingWarning(rolling({ projectedEarnings: 6150.61 })).status).toBe(
+      "NEAR_LIMIT",
+    );
+  });
+
+  it("rolling (real engine): at the limit stays NEAR_LIMIT; one cent over without special months → MAXIMUM_EXCEEDED", () => {
+    // Without documented unpredictable months maximumAllowedIncome === regularLimit,
+    // so every regular exceedance is also a maximum exceedance.
+    const inputs = Array.from({ length: 12 }, (_, i) => ({
+      date: addMonths("2026-12-01", i - 11),
+      actual: 603,
+    }));
+    const atLimit = forecastRolling12Months(inputs, "2026-12-01");
+    expect(atLimit.projectedEarnings).toBe(7236);
+    expect(evaluateRollingWarning(atLimit).status).toBe("NEAR_LIMIT");
+
+    inputs[11] = { ...inputs[11]!, actual: 603.01 };
+    const over = forecastRolling12Months(inputs, "2026-12-01");
+    expect(over.exceedsRegularLimit).toBe(true);
+    expect(evaluateRollingWarning(over).status).toBe("MAXIMUM_EXCEEDED");
+  });
+
+  it("rolling: over the regular limit with a documented special month → UNPREDICTABLE_EXCEEDANCE_POSSIBLE", () => {
+    const inputs = Array.from({ length: 12 }, (_, i) => ({
+      date: addMonths("2026-12-01", i - 11),
+      actual: 603,
+      unpredictable: false,
+    }));
+    inputs[11] = { ...inputs[11]!, actual: 700, unpredictable: true };
+    const result = forecastRolling12Months(inputs, "2026-12-01");
+    expect(result.regularLimit).toBe(7236);
+    expect(result.maximumAllowedIncome).toBe(7839);
+    expect(evaluateRollingWarning(result).status).toBe("UNPREDICTABLE_EXCEEDANCE_POSSIBLE");
   });
 });

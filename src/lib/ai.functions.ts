@@ -23,7 +23,9 @@ export const askAssistant = createServerFn({ method: "POST" })
       // Fail closed when the security control cannot be evaluated.
       throw new AiGuardError("unavailable", "Die KI ist vorübergehend nicht verfügbar.");
     }
-    const rateRow = Array.isArray(rate) ? rate[0] : rate;
+    type RateLimitRow = { allowed?: boolean | null; retry_after_seconds?: number | null };
+    const rateRows = rate as unknown as RateLimitRow[] | RateLimitRow | null | undefined;
+    const rateRow = Array.isArray(rateRows) ? rateRows[0] : rateRows;
     if (!rateRow?.allowed) {
       const retry = Number(rateRow?.retry_after_seconds ?? 1);
       throw new AiGuardError(

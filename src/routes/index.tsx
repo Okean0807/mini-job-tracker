@@ -37,6 +37,7 @@ import { legalIncomeForMonth } from "@/lib/minijob/service";
 import { isAbsenceKind, type AbsenceKind } from "@/lib/minijob/absence-range";
 import { monthTimeAccount } from "@/lib/minijob/fest-time-account";
 import { jobsApplyMinijobLimit, primaryWorkMode } from "@/lib/minijob/work-mode";
+import { limitAlertLevel } from "@/lib/minijob/limit-alert";
 import { payPeriods } from "@/lib/minijob/payday";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { useAppData } from "@/lib/minijob/store";
@@ -118,6 +119,7 @@ function DashboardPage() {
   const limitShare = monthLimit.share;
   const yearShare = yearLimit.share;
   const appliesMinijobLimit = jobsApplyMinijobLimit(jobs);
+  const limitAlert = limitAlertLevel(appliesMinijobLimit, limitShare, yearShare);
   const workMode = primaryWorkMode(jobs, settings.activeJobId);
   const isFest = workMode === "fest";
   const isSelf = workMode === "selbststaendig";
@@ -279,7 +281,7 @@ function DashboardPage() {
         </Button>
       </header>
 
-      {appliesMinijobLimit && (limitShare >= 100 || yearShare >= 100) ? (
+      {limitAlert === "over" ? (
         <LimitBanner
           tone="over"
           text={
@@ -290,7 +292,7 @@ function DashboardPage() {
           detail={t("dash.limitOverExplain")}
           disclaimer={t("dash.limitDisclaimer")}
         />
-      ) : appliesMinijobLimit && (limitShare >= 85 || yearShare >= 85) ? (
+      ) : limitAlert === "near" ? (
         <LimitBanner
           tone="near"
           text={t("dash.limitNear", { percent: Math.round(Math.max(limitShare, yearShare)) })}

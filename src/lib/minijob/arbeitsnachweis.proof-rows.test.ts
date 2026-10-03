@@ -103,7 +103,7 @@ describe("buildProofTableRows", () => {
       "Arbeit",
       "06:00",
       "07:00",
-      "30 Minuten",
+      "0 Min.",
       "1,00 h",
       "UR",
       expect.stringContaining("Musterstraße 10"),
@@ -136,7 +136,7 @@ describe("buildProofTableRows", () => {
       "Arbeit",
       "06:00",
       "07:00",
-      "30 Minuten",
+      "0 Min.",
       "1,00 h",
       "UR",
       "Musterstraße 10",
@@ -146,7 +146,7 @@ describe("buildProofTableRows", () => {
       "Arbeit",
       "08:00",
       "09:30",
-      "0 Minuten",
+      "0 Min.",
       "1,50 h",
       "FR",
       "Bahnhofstraße 20",
@@ -198,7 +198,7 @@ describe("buildProofTableRows", () => {
       [job],
     );
     expect(rows).toHaveLength(3);
-    expect(rows.map((row) => [row[0], row[1], row[2], row[3], row[4], row[6]])).toEqual([
+    expect(rows.map((row) => [row[0], row[1], row[2], row[3], row[5], row[6]])).toEqual([
       ["19.09.2026", "Arbeit", "06:00", "06:15", "0,25 h", "SA"],
       ["19.09.2026", "Arbeit", "06:15", "16:30", "10,25 h", "ER"],
       ["19.09.2026", "Arbeit", "17:00", "18:00", "1,00 h", "FR"],
@@ -260,8 +260,8 @@ describe("buildProofTableRows", () => {
       [makeJob()],
     );
     expect(rows[0]![1]).toBe("Arbeit");
-    expect(rows[0]![5]).toBe("—");
-    expect(rows[0]![6]).toBe("");
+    expect(rows[0]![6]).toBe("—");
+    expect(rows[0]![7]).toBe("");
   });
 });
 

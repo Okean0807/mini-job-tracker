@@ -1,4 +1,4 @@
-import { shiftsInMonth, shiftsInYear } from "./calc";
+import { isoDate, shiftsInMonth, shiftsInYear } from "./calc";
 import {
   findRuleVersion,
   minijobLimitFromWage,
@@ -252,7 +252,7 @@ function usage(
     limitSource,
     expectedAdditional: extra.expectedAdditional ?? 0,
     projectedEarnings: earnings + (extra.expectedAdditional ?? 0),
-    referenceDate: extra.referenceDate ?? new Date().toISOString().slice(0, 10),
+    referenceDate: extra.referenceDate ?? isoDate(new Date()),
     ...extra,
   };
 }
@@ -263,7 +263,7 @@ export function monthUsage(
   settings: Settings,
   year: number,
   month: number,
-  referenceDate = new Date().toISOString().slice(0, 10),
+  referenceDate = isoDate(new Date()),
 ): LimitUsage {
   const list = eligibleMinijobShifts(shiftsInMonth(shifts, year, month), resolve);
   const actualList = list.filter((shift) => shift.date <= referenceDate);
@@ -292,7 +292,7 @@ export function yearUsage(
   resolve: Resolver,
   settings: Settings,
   year: number,
-  referenceDate = new Date().toISOString().slice(0, 10),
+  referenceDate = isoDate(new Date()),
 ): LimitUsage {
   const list = shiftsInYear(shifts, year)
     .filter((shift) => isEligibleMinijobShift(shift, resolve(shift).job));

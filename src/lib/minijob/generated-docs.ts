@@ -71,7 +71,7 @@ function readAll(key: string = generatedDocsStorageKey()): GeneratedDocument[] {
           d.source === "generated"
         );
       })
-      .map((d) => ({
+      .map((d): GeneratedDocument => ({
         ...d,
         payloadStatus: d.dataUrl ? "local" : "downloaded_only",
       }))

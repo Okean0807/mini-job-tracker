@@ -106,6 +106,7 @@ export function proofTableHead(): string[] {
     td("proof.entryKind"),
     td("label.start"),
     td("label.end"),
+    td("label.break"),
     td("label.hours"),
     td("worklog.workCode"),
     td("label.note"),

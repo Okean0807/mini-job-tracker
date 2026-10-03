@@ -18,13 +18,16 @@ import { useT } from "@/lib/i18n";
 import { isoDate, weekdayNames } from "@/lib/minijob/calc";
 import { weeklyPlanHours } from "@/lib/minijob/schedule";
 import { resolvePayType } from "@/lib/minijob/work-mode";
+import { employmentTypeOf } from "@/lib/minijob/legal/employment";
 import { parseRateInput } from "@/lib/minijob/rate";
 import { INDUSTRY_MINIMUM_WAGE_SECTORS, industryMinimumWageFor } from "@/lib/minijob/industry-minimum-wage";
 import { deleteJob, newId, nextJobColor, saveJob } from "@/lib/minijob/store";
 import {
   DEFAULT_SUPPLEMENTS,
+  EMPLOYMENT_TYPES,
   EMPTY_WEEK,
   JOB_COLORS,
+  type EmploymentType,
   type FixedDay,
   type Job,
   type Supplement,
@@ -48,6 +51,8 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
   const [color, setColor] = useState(JOB_COLORS[0]!);
   const [rate, setRate] = useState(String(defaultRate));
   const [mode, setMode] = useState<WorkMode>("flex");
+  // "" = nicht festgelegt (Altbestand); wird dann auch nicht gespeichert.
+  const [employmentType, setEmploymentType] = useState<EmploymentType | "">("minijob");
   const [industrySectorId, setIndustrySectorId] = useState("");
   const [industryGroupId, setIndustryGroupId] = useState("");
   const [employer, setEmployer] = useState("");
@@ -74,6 +79,14 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
     setColor(job?.color ?? nextJobColor());
     setRate(typeof job?.rate === "number" ? String(job.rate) : job ? "" : String(defaultRate));
     setMode(job?.mode ?? "flex");
+    // Neuer Job: sichtbar vorbelegt mit Minijob. Bestehender Job: nur die
+    // gespeicherte Art – kein stilles Vorbelegen aus dem Fallback (Altbestand
+    // fest ohne Angabe bleibt "nicht festgelegt", bis die Nutzerin wählt).
+    setEmploymentType(
+      job
+        ? (job.employmentType ?? (job.mode === "selbststaendig" ? "selbststaendig" : ""))
+        : "minijob",
+    );
     setIndustrySectorId(job?.industrySectorId ?? "");
     setIndustryGroupId(job?.industryGroupId ?? "");
     setEmployer(job?.employer ?? "");
@@ -101,9 +114,47 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
     setPayrollDelay(job?.payrollDelay ?? 1);
   }, [open, job, defaultRate]);
 
+  /** Planungsmodus wechseln – ändert die Beschäftigungsart nur bei „selbstständig“. */
+  function changeMode(m: WorkMode) {
+    if (m === mode) return;
+    // Never delete shifts/jobs; fest week stays in state (inactive when not fest).
+    if (mode === "fest" && m !== "fest") {
+      toast.message(t("job.modeSwitchKeepData"));
+    }
+    if (m === "fest" && (!week.length || week.every((d) => !d.active))) {
+      setWeek(EMPTY_WEEK.map((d) => ({ ...d })));
+    }
+    // Selbstständig ist Arbeitsmodell UND Beschäftigungsart (Leistungsnachweis,
+    // Aufträge): beide bleiben gekoppelt. flex ↔ fest lässt die Art unverändert.
+    // Beim Verlassen von „selbstständig“ die ursprünglich gespeicherte Art
+    // wiederherstellen (z. B. Hauptbeschäftigung), sonst „nicht festgelegt“.
+    if (m === "selbststaendig") setEmploymentType("selbststaendig");
+    else if (mode === "selbststaendig" && employmentType === "selbststaendig") {
+      const stored = job?.employmentType;
+      setEmploymentType(stored && stored !== "selbststaendig" ? stored : "");
+    }
+    setMode(m);
+  }
+
+  function changeEmploymentType(value: EmploymentType | "") {
+    if (value === "selbststaendig") {
+      changeMode("selbststaendig");
+      return;
+    }
+    setEmploymentType(value);
+  }
+
   function save() {
     if (!name.trim()) {
       toast.error(t("job.errorName"));
+      return;
+    }
+    // Ohne gewählte Beschäftigungsart darf nur ein unveränderter Altbestand
+    // (ohne gespeicherte Art, gleiches Arbeitsmodell) gespeichert werden.
+    // Blockiert: neuer Job, Entfernen einer gespeicherten Art, Moduswechsel
+    // (sonst würde der Altbestands-Fallback den rechtlichen Status still ändern).
+    if (!employmentType && (!job || job.employmentType || job.mode !== mode)) {
+      toast.error(t("job.errorEmploymentType"));
       return;
     }
     const next: Job = {
@@ -123,6 +174,13 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
       supplements,
     };
     if (startDate) next.startDate = startDate;
+    // Beschäftigungsart nur speichern, wenn gewählt bzw. vorhanden – nie den
+    // Fallback aus employmentTypeOf festschreiben.
+    if (employmentType) next.employmentType = employmentType;
+    // Felder ohne eigenes Formularfeld beim Bearbeiten erhalten (saveJob
+    // ersetzt das ganze Objekt): Beschäftigungsende und Archiv-Status.
+    if (job?.endDate) next.endDate = job.endDate;
+    if (job?.archived) next.archived = job.archived;
     if (mode === "fest") {
       if (job?.week) {
         const weekChanged = JSON.stringify(job.week) !== JSON.stringify(week);
@@ -228,17 +286,8 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
                   <button
                     key={m}
                     type="button"
-                    onClick={() => {
-                      if (m === mode) return;
-                      // Never delete shifts/jobs; fest week stays in state (inactive when not fest).
-                      if (mode === "fest" && m !== "fest") {
-                        toast.message(t("job.modeSwitchKeepData"));
-                      }
-                      if (m === "fest" && (!week.length || week.every((d) => !d.active))) {
-                        setWeek(EMPTY_WEEK.map((d) => ({ ...d })));
-                      }
-                      setMode(m);
-                    }}
+                    data-testid={`job-mode-${m}`}
+                    onClick={() => changeMode(m)}
                     className={cn(
                       "rounded-xl border px-3 py-2 text-left text-sm",
                       mode === m ? "border-primary bg-primary/10 font-semibold" : "bg-card",
@@ -248,6 +297,39 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="job-employment-type">{t("job.employmentType")}</Label>
+              <select
+                id="job-employment-type"
+                data-testid="job-employment-type"
+                className="h-10 rounded-md border bg-background px-3 text-sm"
+                value={employmentType}
+                disabled={mode === "selbststaendig"}
+                onChange={(e) => changeEmploymentType(e.target.value as EmploymentType | "")}
+              >
+                {employmentType === "" ? (
+                  <option value="">{t("job.employmentTypeUnset")}</option>
+                ) : null}
+                {EMPLOYMENT_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {t("employment." + type)}
+                  </option>
+                ))}
+              </select>
+              {mode === "selbststaendig" ? (
+                <p className="text-xs text-muted-foreground">{t("job.employmentTypeSelfHint")}</p>
+              ) : employmentType === "" ? (
+                <p
+                  className="text-xs text-accent-foreground"
+                  data-testid="job-employment-type-hint"
+                >
+                  {employmentTypeOf({ id: "", name: "", color: "", mode }) === "unknown"
+                    ? t("job.employmentTypeHintUnknown")
+                    : t("job.employmentTypeHintLegacyMinijob")}
+                </p>
+              ) : null}
             </div>
 
             <div className="grid gap-2 rounded-xl border bg-muted/30 p-3">
@@ -587,7 +669,9 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
           ) : (
             <span />
           )}
-          <Button onClick={save}>{t("action.save")}</Button>
+          <Button onClick={save} data-testid="job-save">
+            {t("action.save")}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

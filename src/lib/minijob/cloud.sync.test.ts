@@ -868,6 +868,8 @@ describe("Sync-Timeout (SYNC-LIVE-P1)", () => {
     await settle();
     await vi.advanceTimersByTimeAsync(1000);
     expect(mod.getSyncState().status).toBe("synced");
+    // Initial sync legitimately set lastSyncedAt; the timed-out push must not change it.
+    const lastSyncedBefore = mod.getSyncState().lastSyncedAt;
 
     let release!: () => void;
     cloud.gate = new Promise<void>((resolve) => {
@@ -875,9 +877,12 @@ describe("Sync-Timeout (SYNC-LIVE-P1)", () => {
     });
 
     local = makeData(2);
-    await expect(mod.backupNow()).rejects.toBeInstanceOf(Error);
+    // Fake timers: the sync timeout only fires when time is advanced.
+    const pendingBackup = expect(mod.backupNow()).rejects.toBeInstanceOf(Error);
+    await vi.advanceTimersByTimeAsync(mod.SYNC_TIMEOUT_MS + 50);
+    await pendingBackup;
     expect(["error", "offline"]).toContain(mod.getSyncState().status);
-    expect(mod.getSyncState().lastSyncedAt).toBeNull();
+    expect(mod.getSyncState().lastSyncedAt).toBe(lastSyncedBefore);
 
     // The underlying upsert promise resolves after the timeout. Its late
     // completion must not write sync metadata or turn the UI back to synced.
@@ -887,7 +892,7 @@ describe("Sync-Timeout (SYNC-LIVE-P1)", () => {
     await settle();
 
     expect(mod.getSyncState().status).not.toBe("synced");
-    expect(mod.getSyncState().lastSyncedAt).toBeNull();
+    expect(mod.getSyncState().lastSyncedAt).toBe(lastSyncedBefore);
   });
 
   it("nach forceFail darf late push weder upserten noch synced setzen", async () => {

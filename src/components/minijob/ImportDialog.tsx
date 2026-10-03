@@ -122,7 +122,7 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
       return shift;
     });
     const jobsAfterCreation = getData().jobs;
-    const duplicateIndexes = duplicateShiftIndexes(incoming, jobsAfterCreation, jobsAfterCreation);
+    const duplicateIndexes = duplicateShiftIndexes(incoming, getData().shifts, jobsAfterCreation);
     const shifts = incoming.filter((_, index) => !duplicateIndexes.has(index));
     saveShifts(shifts);
     toast.success(t("imp.imported", { count: shifts.length }));

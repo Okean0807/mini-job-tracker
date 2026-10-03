@@ -3,6 +3,10 @@ import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { formatEuro, formatHours, isoDate, shiftHours } from "@/lib/minijob/calc";
 import { payPeriods } from "@/lib/minijob/payday";
+import { jobsPlannedOn } from "@/lib/minijob/schedule";
+import { limitAlertLevel } from "@/lib/minijob/limit-alert";
+import { jobsNeedingEmploymentType } from "@/lib/minijob/legal/employment";
+import { jobsApplyMinijobLimit } from "@/lib/minijob/work-mode";
 import { findWageViolations } from "@/lib/minijob/wage-compliance";
 import type { Job, Payment, Settings, Shift } from "@/lib/minijob/types";
 import type { Resolver } from "@/lib/minijob/resolve";
@@ -34,12 +38,23 @@ export function TodayImportantCard({
   const periods = payPeriods(jobs, shifts, payments, resolve, new Date().getFullYear(), new Date().getMonth());
   const overdue = periods.filter((p) => p.overdue).reduce((sum, p) => sum + p.outstanding, 0);
   const open = periods.filter((p) => p.outstanding > 0.005).reduce((sum, p) => sum + p.outstanding, 0);
-  const nearLimit = Math.max(monthUsage.share, yearUsage.share) >= 85;
+  // Gleiche Regel wie das Dashboard-Banner: nur mit (bestätigtem) Minijob.
+  const nearLimit =
+    limitAlertLevel(jobsApplyMinijobLimit(jobs), monthUsage.share, yearUsage.share) !== null;
+  const needsEmploymentType = jobsNeedingEmploymentType(jobs);
   const monthStart = `${today.slice(0, 7)}-01`;
   const wageViolations = findWageViolations(shifts, jobs, settings.defaultRate, (s) => s.date >= monthStart && s.date <= today);
   const hasNoJob = jobs.length === 0;
-  const hasPlannedToday = todayShifts.some((s) => s.kind === "planned");
-  const isClear = !hasNoJob && !nearLimit && overdue <= 0.005 && !hasPlannedToday && wageViolations.length === 0;
+  // "Geplant" = fester Wochenplan (mode "fest") aktiv, heute noch nicht erfasst –
+  // gleiche Regel wie der Kalender. ShiftKind kennt kein "planned".
+  const hasPlannedToday = jobsPlannedOn(jobs, todayShifts, today).length > 0;
+  const isClear =
+    !hasNoJob &&
+    !nearLimit &&
+    overdue <= 0.005 &&
+    !hasPlannedToday &&
+    wageViolations.length === 0 &&
+    needsEmploymentType.length === 0;
 
   return (
     <section className="col-span-2 rounded-2xl border bg-card p-4 shadow-card" aria-labelledby="today-important-title">
@@ -59,6 +74,15 @@ export function TodayImportantCard({
           <span className="flex items-center gap-2 text-sm"><CalendarClock className="size-4" />{t("dash.todayWorked")}</span>
           <span className="font-semibold tabular-nums">{formatHours(todayHours)}</span>
         </div>
+        {needsEmploymentType.length > 0 ? (
+          <ActionRow
+            icon={<AlertTriangle className="size-4" />}
+            title={t("dash.todayEmploymentType", {
+              names: needsEmploymentType.map((j) => j.name).join(", "),
+            })}
+            href="/jobs"
+          />
+        ) : null}
         {hasPlannedToday ? (
           <div className="rounded-xl border border-primary/30 bg-primary/5 px-3 py-2.5 text-sm">{t("dash.todayPlanned")}</div>
         ) : null}
@@ -93,5 +117,5 @@ export function TodayImportantCard({
 }
 
 function ActionRow({ icon, title, href }: { icon: React.ReactNode; title: string; href: "/jobs" }) {
-  return <Link to={href} className="flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium hover:bg-muted/50">{icon}{title}</Link>;
+  return <Link to={href} className="flex min-h-11 min-w-0 items-center gap-2 break-words rounded-xl border px-3 py-2 text-sm font-medium hover:bg-muted/50">{icon}{title}</Link>;
 }

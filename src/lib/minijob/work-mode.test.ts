@@ -18,19 +18,45 @@ function job(partial: Partial<Job> & Pick<Job, "id" | "mode">): Job {
 }
 
 describe("work-mode helpers", () => {
-  it("maps only flex as employee Minijob; fest and selbststaendig not", () => {
+  it("legacy mode-only helper mirrors employmentTypeOf (flex → Minijob, fest → review, selbststaendig → no)", () => {
+    // fest/flex sind reine Planungsmodi; beide sind Arbeitnehmer-Modi.
     expect(isEmployeeMinijobMode("flex")).toBe(true);
-    expect(isEmployeeMinijobMode("fest")).toBe(false);
+    expect(isEmployeeMinijobMode("fest")).toBe(true);
     expect(isEmployeeMinijobMode("selbststaendig")).toBe(false);
+    // Nur der Altbestands-Fallback (ohne employmentType) – gleiche Quelle wie employmentTypeOf.
     expect(workModeAppliesMinijobLimit("flex")).toBe(true);
     expect(workModeAppliesMinijobLimit("fest")).toBe(false);
     expect(workModeAppliesMinijobLimit("selbststaendig")).toBe(false);
   });
 
-  it("jobsApplyMinijobLimit: empty or any flex → true; fest-only or self → false", () => {
+  it("jobsApplyMinijobLimit: empty or any Minijob → true; only non-Minijob employment → false", () => {
     expect(jobsApplyMinijobLimit([])).toBe(true);
     expect(jobsApplyMinijobLimit([job({ id: "a", mode: "flex" })])).toBe(true);
+    // Altbestand fest ohne employmentType: ungeklärt → keine Minijob-Grenze …
     expect(jobsApplyMinijobLimit([job({ id: "a", mode: "fest" })])).toBe(false);
+    // … mit expliziter Angabe zählt nur die Angabe, nicht der Wochenplan.
+    expect(jobsApplyMinijobLimit([job({ id: "a", mode: "fest", employmentType: "minijob" })])).toBe(
+      true,
+    );
+    expect(
+      jobsApplyMinijobLimit([job({ id: "a", mode: "fest" }), job({ id: "b", mode: "flex" })]),
+    ).toBe(true);
+    expect(
+      jobsApplyMinijobLimit([
+        job({ id: "a", mode: "fest", employmentType: "hauptbeschaeftigung" }),
+      ]),
+    ).toBe(false);
+    expect(
+      jobsApplyMinijobLimit([
+        job({ id: "a", mode: "flex", employmentType: "hauptbeschaeftigung" }),
+      ]),
+    ).toBe(false);
+    expect(
+      jobsApplyMinijobLimit([
+        job({ id: "a", mode: "fest", employmentType: "hauptbeschaeftigung" }),
+        job({ id: "b", mode: "fest", employmentType: "minijob" }),
+      ]),
+    ).toBe(true);
     expect(jobsApplyMinijobLimit([job({ id: "a", mode: "selbststaendig" })])).toBe(false);
     expect(
       jobsApplyMinijobLimit([
@@ -40,7 +66,7 @@ describe("work-mode helpers", () => {
     ).toBe(true);
     expect(
       jobsApplyMinijobLimit([
-        job({ id: "a", mode: "fest" }),
+        job({ id: "a", mode: "fest", employmentType: "hauptbeschaeftigung" }),
         job({ id: "b", mode: "flex", archived: true }),
       ]),
     ).toBe(false);

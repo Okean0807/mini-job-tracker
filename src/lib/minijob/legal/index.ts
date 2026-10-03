@@ -124,7 +124,15 @@ export const KNOWN_LEGAL_MONTHLY_LIMITS: number[] = [
   ...LEGAL_RULE_VERSIONS.map((v) => minijobLimitFromWage(v.minimumWage)),
 ];
 
-export { employmentTypeOf, jobActiveOn, isMinijobEmployment, isEligibleMinijobShift, minijobJobs } from "./employment";
+export {
+  employmentTypeOf,
+  jobActiveOn,
+  isMinijobEmployment,
+  isEligibleMinijobShift,
+  minijobJobs,
+  needsEmploymentTypeReview,
+  jobsNeedingEmploymentType,
+} from "./employment";
 
 export {
   UNPREDICTABLE_MAX_MONTHS,

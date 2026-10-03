@@ -157,7 +157,7 @@ describe("payPeriod / payPeriods", () => {
       { id: "p1", jobId: "j1", year: 2026, month: 2, actual: 60, paidOn: "2026-04-10" },
       { id: "p2", jobId: "j1", year: 2026, month: 2, actual: 50, paidOn: "2026-04-20" },
     ];
-    const period = payPeriod(job, shifts, payments, resolve, 2026, 4, "2026-05-01");
+    const period = payPeriod(job, shifts, payments, resolve, 2026, 2, "2026-05-01");
     expect(period.payments).toHaveLength(2);
     expect(period.paid).toBeCloseTo(110);
     expect(period.earned).toBeCloseTo(150);

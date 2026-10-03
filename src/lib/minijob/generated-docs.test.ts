@@ -101,12 +101,15 @@ describe("generated docs quota handling", () => {
       createdAt: "2026-01-01T10:00:00.000Z",
     });
 
-    const originalSetItem = Storage.prototype.setItem;
+    // happy-dom defines setItem on the instance, so spy on window.localStorage
+    // (a Storage.prototype spy would never be hit).
+    const storage = window.localStorage;
+    const originalSetItem = storage.setItem.bind(storage);
     let attempts = 0;
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (key, value) {
+    vi.spyOn(storage, "setItem").mockImplementation((key: string, value: string) => {
       attempts += 1;
       if (attempts === 1) throw new DOMException("quota", "QuotaExceededError");
-      originalSetItem.call(this, key, value);
+      originalSetItem(key, value);
     });
 
     registerGeneratedDocument({

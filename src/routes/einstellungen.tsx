@@ -982,7 +982,6 @@ function LocalBackup({ shiftCount }: { shiftCount: number }) {
 function SyncStatusRow({ busy, setBusy }: { busy: boolean; setBusy: (value: boolean) => void }) {
   const { t } = useT();
   const sync = useSyncState();
-  const lastBackupAt = getLastBackupAt();
 
   // UI failsafe: never leave "Wird synchronisiert …" past timeout even if cloud Promise.race fails.
   useEffect(() => {
@@ -1078,6 +1077,8 @@ function CloudSync({
   const { t } = useT();
   const { status: authStatus, session } = useAuthSession();
   const [busy, setBusy] = useState(false);
+  const sync = useSyncState();
+  const lastBackupAt = getLastBackupAt();
 
   async function oauthGoogle() {
     // Testmodus NICHT vor dem Redirect beenden: Abbruch bei Google → weiter im

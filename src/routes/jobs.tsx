@@ -8,6 +8,7 @@ import { OrdersCard } from "@/components/minijob/OrdersCard";
 import { ObjectsCard } from "@/components/minijob/ObjectsCard";
 import { WorkCodesCard } from "@/components/minijob/WorkCodesCard";
 import { CustomTasksCard } from "@/components/minijob/CustomTasksCard";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +27,7 @@ import {
 } from "@/lib/minijob/store";
 import { canAddJob } from "@/lib/minijob/premium";
 import { primaryWorkMode } from "@/lib/minijob/work-mode";
+import { needsEmploymentTypeReview } from "@/lib/minijob/legal/employment";
 import { type Job } from "@/lib/minijob/types";
 
 export const Route = createFileRoute("/jobs")({
@@ -111,6 +113,11 @@ function JobsPage() {
                 />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold">{job.name}</p>
+                  {needsEmploymentTypeReview(job) ? (
+                    <Badge variant="outline" className="mt-1 border-accent text-accent-foreground">
+                      {t("job.employmentTypeMissing")}
+                    </Badge>
+                  ) : null}
                   <p className="truncate text-xs text-muted-foreground">
                     {t("mode." + job.mode)} · {formatEuro(job.rate ?? settings.defaultRate)}
                     {t("job.perHour")}

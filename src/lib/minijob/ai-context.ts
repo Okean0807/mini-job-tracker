@@ -4,16 +4,12 @@
  * confuse forecast / other months with the current period.
  */
 import { MONTHS_DE, isoDate, shiftsInMonth, shiftsInYear } from "./calc";
-import { monthlyHoursLimitFor } from "./legal";
+import { employmentTypeOf, isMinijobEmployment, monthlyHoursLimitFor } from "./legal";
 import { monthlyHoursLimit, monthlyLimitOf, yearlyLimitOf } from "./limits";
 import { payrollTotals } from "./payroll";
 import { makeResolver } from "./resolve";
-import type { AppData, WorkMode } from "./types";
-import {
-  jobsApplyMinijobLimit,
-  primaryWorkMode,
-  workModeAppliesMinijobLimit,
-} from "./work-mode";
+import type { AppData, ResolvedEmploymentType, WorkMode } from "./types";
+import { jobsApplyMinijobLimit, primaryWorkMode } from "./work-mode";
 
 export type AssistantContextPayload = {
   currentDate: string;
@@ -59,6 +55,8 @@ export type AssistantContextPayload = {
     hourlyRate: number | null;
     hours: number;
     earnings: number;
+    /** Aufgelöste Beschäftigungsart; "unknown" = Altbestand fest, Art noch nicht gewählt. */
+    employmentType: ResolvedEmploymentType;
     minijobLimitApplies: boolean;
   }>;
 };
@@ -122,7 +120,8 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
       hourlyRate: typeof job.rate === "number" ? job.rate : null,
       hours: Number(totals.workedHours.toFixed(2)),
       earnings: Number(totals.earnings.toFixed(2)),
-      minijobLimitApplies: workModeAppliesMinijobLimit(job.mode),
+      employmentType: employmentTypeOf(job),
+      minijobLimitApplies: isMinijobEmployment(job),
     };
   });
 

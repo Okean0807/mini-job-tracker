@@ -1115,39 +1115,63 @@ describe("Auth-Event ohne Session (nicht SIGNED_OUT)", () => {
 
 describe("Rapid account switching: A → B → A", () => {
   it("late result from the first A session cannot mutate the second A session", async () => {
+    // Isolation contract (not "A's cloud never shows up"): the second A session
+    // may legitimately restore A's current cloud backup. What must never happen:
+    //  - the late response of the FIRST A session (stale payload) is applied,
+    //  - B's data leaks into A (or A's into B),
+    //  - the stale run reports an error / flips the sync status.
     session = { user: { id: A } };
     const { store, cloud } = await boot();
     const gate = deferred();
     selectGate = gate.promise;
     backups.set(A, { payload: payloadWith(["a-cloud"]), updated_at: new Date().toISOString() });
+    backups.set(B, { payload: payloadWith(["b-cloud"]), updated_at: new Date().toISOString() });
 
     const firstRestore = cloud.restoreNow().then(
       () => "resolved",
       (error: unknown) => error,
     );
     await settle();
+    // Only the first A session's fetch stays parked on the gate; later
+    // sessions (B, second A) fetch immediately.
+    selectGate = null;
 
     authCallback?.("SIGNED_OUT", null);
     session = { user: { id: B } };
     authCallback?.("SIGNED_IN", session);
     await settle();
     expect(store.getActiveScopeOwner()).toBe(B);
+    expect(store.getData().shifts.some((s) => s.id === "a-cloud")).toBe(false);
 
     authCallback?.("SIGNED_OUT", null);
     session = { user: { id: A } };
     authCallback?.("SIGNED_IN", session);
     await settle();
+    await vi.advanceTimersByTimeAsync(100);
+    await settle();
     expect(store.getActiveScopeOwner()).toBe(A);
-    expect(store.getData().shifts.some((s) => s.id === "a-cloud")).toBe(false);
+    // Legit restore of the second A session.
+    expect(store.getData().shifts.some((s) => s.id === "a-cloud")).toBe(true);
+    expect(store.getData().shifts.some((s) => s.id === "b-cloud")).toBe(false);
 
+    // The parked first-session fetch now resolves with a DIFFERENT (stale)
+    // payload – if it were applied, "a-stale" would replace A's data.
+    backups.set(A, { payload: payloadWith(["a-stale"]), updated_at: new Date().toISOString() });
     gate.release();
-    selectGate = null;
+    await settle();
+    await vi.advanceTimersByTimeAsync(100);
     await settle();
 
     expect(await firstRestore).toBeInstanceOf(cloud.StaleSyncError);
     expect(store.getActiveScopeOwner()).toBe(A);
-    expect(store.getData().shifts.some((s) => s.id === "a-cloud")).toBe(false);
+    const ids = store.getData().shifts.map((s) => s.id);
+    expect(ids).toContain("a-cloud");
+    expect(ids).not.toContain("a-stale");
+    expect(ids).not.toContain("b-cloud");
     expect(cloud.getSyncState().status).not.toBe("error");
+    expect(upsertsContaining("b-cloud").filter((u) => u.user_id === A)).toHaveLength(0);
+    expect(upsertsContaining("a-cloud").filter((u) => u.user_id === B)).toHaveLength(0);
+    expect(upsertsContaining("a-stale")).toHaveLength(0);
   });
 
   it("old debounced work cannot write after A → B → A even when B is briefly active", async () => {

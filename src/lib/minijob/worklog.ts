@@ -113,7 +113,7 @@ export function exportWorkReportPdf(shifts: Shift[], ctx: WorkReportContext) {
 
   const head = proofTableHead();
   doc.setFontSize(8);
-  const leistungsartWidth = computeLeistungsartColWidth(doc, list, head[5] ?? td("worklog.workCode"), {
+  const leistungsartWidth = computeLeistungsartColWidth(doc, list, head[6] ?? td("worklog.workCode"), {
     minMm: 12,
     maxMm: 28,
   });
@@ -124,16 +124,19 @@ export function exportWorkReportPdf(shifts: Shift[], ctx: WorkReportContext) {
     startY: 41,
     head: [head],
     body: buildProofTableRows(list, ctx.jobs),
-    foot: [[td("label.total"), "", "", "", formatHours(sumHours(list), DOCUMENT_LOCALE), "", ""]],
+    foot: [
+      [td("label.total"), "", "", "", "", formatHours(sumHours(list), DOCUMENT_LOCALE), "", ""],
+    ],
     styles: { fontSize: 8, cellPadding: 2, valign: "top", overflow: "linebreak" },
     columnStyles: {
       0: { cellWidth: 22 },
       1: { cellWidth: 32 },
       2: { cellWidth: 14 },
       3: { cellWidth: 14 },
-      4: { cellWidth: 18 },
-      5: { cellWidth: leistungsartWidth, overflow: "linebreak" },
-      6: { cellWidth: "auto" },
+      4: { cellWidth: 12, halign: "right" },
+      5: { cellWidth: 18 },
+      6: { cellWidth: leistungsartWidth, overflow: "linebreak" },
+      7: { cellWidth: "auto" },
     },
     headStyles: { fillColor: TEAL, overflow: "visible" },
     footStyles: { fillColor: [230, 230, 230], textColor: 20, fontStyle: "bold" },

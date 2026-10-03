@@ -1,29 +1,36 @@
 import type { Job, WorkMode } from "./types";
-import { employmentTypeOf, isMinijobEmployment } from "./legal/employment";
+import { isMinijobEmployment } from "./legal/employment";
 
 /**
- * Employee Minijob mode: only flex applies the €603 Geringfügigkeitsgrenze.
- * Fest uses Arbeitszeitkonto (Soll/Ist) and does not apply Minijob limits.
+ * Planning mode only: flex (free entry) and fest (fixed weekly plan) are both
+ * employee modes. The legal status (Minijob vs. Hauptbeschäftigung …) comes
+ * from `Job.employmentType` via `isMinijobEmployment`, never from the plan.
  */
 export function isEmployeeMinijobMode(mode: WorkMode): boolean {
-  return mode === "flex";
-}
-
-/** Whether the Minijob income/hours limit is applicable for this work mode. */
-export function workModeAppliesMinijobLimit(mode: WorkMode): boolean {
-  // Legacy helper kept for callers that only have WorkMode.
-  return mode === "flex";
+  return mode !== "selbststaendig";
 }
 
 /**
- * True when at least one active (non-archived) job is flex Minijob,
- * or when there are no jobs yet (default flex / onboarding).
- * All-fest or all-selbstständig → limits not applicable.
+ * @deprecated A WorkMode alone carries no legal status. Kept only for callers
+ * that have no Job: answers "would a LEGACY job (no employmentType) with this
+ * mode count as Minijob?" by delegating to the single source of truth
+ * (`employmentTypeOf`): flex → true, fest → false (needs review),
+ * selbststaendig → false. Use `isMinijobEmployment(job)` instead.
+ */
+export function workModeAppliesMinijobLimit(mode: WorkMode): boolean {
+  return isMinijobEmployment({ id: "", name: "", color: "", mode });
+}
+
+/**
+ * True when at least one active (non-archived) job is a Minijob by employment
+ * type, or when there are no jobs yet (onboarding default).
+ * Only Hauptbeschäftigung / kurzfristig / selbstständig / unconfirmed legacy
+ * fest ("unknown") jobs → not applicable.
  */
 export function jobsApplyMinijobLimit(jobs: Job[]): boolean {
   const active = jobs.filter((j) => !j.archived);
   if (active.length === 0) return true;
-  return active.some((j) => isMinijobEmployment(j) && employmentTypeOf(j) === "minijob");
+  return active.some((j) => isMinijobEmployment(j));
 }
 
 /** Primary / active job mode for assistant context; falls back to first active. */
