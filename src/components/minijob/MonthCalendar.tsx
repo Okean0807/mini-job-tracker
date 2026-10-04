@@ -277,9 +277,6 @@ export function MonthCalendar({
                   {feiertag}
                 </span>
               ) : null}
-              {earnings > 0 && hours > 0 ? (
-                <span className="text-[8px] tabular-nums opacity-80">{formatEuro(earnings)}</span>
-              ) : null}
               {jobAccent ? (
                 <span
                   className="absolute bottom-1 size-1.5 rounded-full ring-1 ring-background"

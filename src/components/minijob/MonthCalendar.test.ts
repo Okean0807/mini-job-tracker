@@ -71,6 +71,14 @@ describe("MonthCalendar holiday + work dual display (Batch B)", () => {
     expect(title).toMatch(/54/);
   });
 
+  it("day cell no longer renders the € amount; tooltip title keeps it", () => {
+    expect(src).not.toMatch(/<span[^>]*>\{formatEuro\(earnings\)\}<\/span>/);
+    expect(src).toMatch(/earnings,\s*\n\s*kindLabel/);
+    const title = buildDayTitle({ kind: "arbeit", hours: 4, earnings: 54, kindLabel: (k) => k });
+    expect(title).toMatch(/54/);
+    expect(title).toMatch(/€/);
+  });
+
   it("cell markup keeps holiday marker alongside work (not color-only)", () => {
     expect(src).toMatch(/data-holiday-work/);
     expect(src).toMatch(/PartyPopper/);
