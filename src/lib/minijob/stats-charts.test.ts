@@ -42,7 +42,8 @@ describe("daysInCalendarMonth", () => {
 
 describe("buildDailyMonthSeries", () => {
   it("füllt alle Kalendertage inkl. Nullen für Tage ohne Arbeit", () => {
-    const series = buildDailyMonthSeries(2026, 8, [shift("2026-09-20", "09:00", "16:30")], resolve);
+    const list = [shift("2026-09-20", "09:00", "16:30")];
+    const series = buildDailyMonthSeries(2026, 8, list, resolve, list);
     expect(series).toHaveLength(30);
     expect(series[0]).toMatchObject({ day: 1, tag: "1", date: "2026-09-01", verdienst: 0, stunden: 0 });
     expect(series[29]).toMatchObject({ day: 30, tag: "30", date: "2026-09-30", verdienst: 0, stunden: 0 });
@@ -55,19 +56,15 @@ describe("buildDailyMonthSeries", () => {
   });
 
   it("summiert mehrere Schichten am selben Tag", () => {
-    const series = buildDailyMonthSeries(
-      2026,
-      8,
-      [shift("2026-09-05", "08:00", "12:00"), shift("2026-09-05", "14:00", "16:00")],
-      resolve,
-    );
+    const list = [shift("2026-09-05", "08:00", "12:00"), shift("2026-09-05", "14:00", "16:00")];
+    const series = buildDailyMonthSeries(2026, 8, list, resolve, list);
     expect(series).toHaveLength(30);
     expect(series[4]!.stunden).toBe(6);
     expect(series[4]!.verdienst).toBeCloseTo(6 * 20.25, 2);
   });
 
   it("liefert nur Nullen wenn der Monat leer ist", () => {
-    const series = buildDailyMonthSeries(2026, 1, [], resolve);
+    const series = buildDailyMonthSeries(2026, 1, [], resolve, []);
     expect(series).toHaveLength(28);
     expect(series.every((p) => p.verdienst === 0 && p.stunden === 0)).toBe(true);
   });
