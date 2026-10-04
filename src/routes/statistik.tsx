@@ -110,8 +110,8 @@ function StatsPage() {
   const isFestView = workMode === "fest" && festJob?.mode === "fest";
 
   const dailyData = useMemo(
-    () => buildDailyMonthSeries(year, month, monthShifts, resolve),
-    [year, month, monthShifts, resolve],
+    () => buildDailyMonthSeries(year, month, monthShifts, resolve, shifts),
+    [year, month, monthShifts, resolve, shifts],
   );
   const festDailyData = useMemo(() => {
     if (!festJob || festJob.mode !== "fest") return [];

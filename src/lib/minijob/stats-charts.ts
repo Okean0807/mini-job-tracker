@@ -1,6 +1,10 @@
-import { formatDate, formatEuro, formatHours, shiftEarnings, shiftHours } from "./calc";
+import { formatDate, formatEuro, formatHours } from "./calc";
+import { parseDateKey } from "./date-key";
 import type { Resolver } from "./resolve";
 import { dayIstHours, daySollHours } from "./fest-time-account";
+import { monthPeriod } from "./period";
+import { bucketByDay } from "./period-aggregate";
+import { evaluateShifts, payrollAggregateOptions } from "./period-payroll";
 import type { Job, Shift } from "./types";
 
 /** Ein Kalendertag im Monatsdiagramm (auch ohne Schichten → 0). */
@@ -32,38 +36,42 @@ function isoDay(year: number, month: number, day: number): string {
 
 /**
  * Tagesreihe für den gesamten Monat: jeder Kalendertag 1..N ist vorhanden.
- * Tage ohne Arbeit haben verdienst/stunden = 0 (volle Monatstendenz sichtbar).
- * Mehrere Schichten am selben Tag werden summiert.
+ * Tage ohne Einträge haben verdienst/stunden = 0 (volle Monatstendenz sichtbar).
+ * Mehrere Einträge am selben Tag werden summiert.
+ *
+ * Werte kommen ausschließlich aus der bestehenden Payroll (B1):
+ * `shiftPayroll` je Eintrag über `evaluateShifts` mit der VOLLSTÄNDIGEN
+ * `history` (alle Schichten, nicht Job-Filter/Monat), danach Tages-Buckets
+ * über `bucketByDay`. Damit gilt Σ Tage = `payrollTotals(shifts, resolve, history)`:
+ * - `verdienst` = Payroll-Entgelt inkl. Zuschläge und bezahlter Abwesenheit
+ *   (Urlaub 13-Wochen-Schnitt, Krank/Feiertag nach Plan); unbezahlt (Frei) = 0.
+ * - `stunden` = geleistete Arbeitsstunden (`workedHours`); Abwesenheit = 0 h.
+ * Geplante (zukünftige) Einträge des Monats zählen mit (wie die Monatskarte).
+ *
+ * @param shifts  Einträge der Ansicht (z. B. Monat + Job-Filter); nur Einträge
+ *                des Monats werden berücksichtigt.
+ * @param history Vollständige Historie für die Payroll (i. d. R. alle Schichten).
  */
 export function buildDailyMonthSeries(
   year: number,
   month: number,
-  shifts: Shift[],
+  shifts: readonly Shift[],
   resolve: Resolver,
+  history: Shift[],
 ): DailyChartPoint[] {
-  const n = daysInCalendarMonth(year, month);
-  const byDate = new Map<string, { verdienst: number; stunden: number }>();
-
-  for (const s of shifts) {
-    const prev = byDate.get(s.date) ?? { verdienst: 0, stunden: 0 };
-    prev.verdienst += shiftEarnings(s, resolve(s));
-    prev.stunden += shiftHours(s);
-    byDate.set(s.date, prev);
-  }
-
-  const series: DailyChartPoint[] = [];
-  for (let day = 1; day <= n; day++) {
-    const date = isoDay(year, month, day);
-    const agg = byDate.get(date);
-    series.push({
+  const period = monthPeriod(year, month);
+  const inMonth = shifts.filter((s) => s.date >= period.start && s.date <= period.end);
+  const evaluated = evaluateShifts(inMonth, resolve, history);
+  return bucketByDay(period, evaluated, payrollAggregateOptions()).map((bucket) => {
+    const { day } = parseDateKey(bucket.date);
+    return {
       day,
       tag: String(day),
-      date,
-      verdienst: Number((agg?.verdienst ?? 0).toFixed(2)),
-      stunden: Number((agg?.stunden ?? 0).toFixed(2)),
-    });
-  }
-  return series;
+      date: bucket.date,
+      verdienst: Number(bucket.values.earnings.toFixed(2)),
+      stunden: Number(bucket.values.workedHours.toFixed(2)),
+    };
+  });
 }
 
 /** Klarer Diagrammtitel inkl. Monat/Jahr, z. B. "Verdienst pro Tag — September 2026". */
