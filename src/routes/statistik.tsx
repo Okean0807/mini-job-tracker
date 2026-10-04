@@ -150,13 +150,15 @@ function StatsPage() {
     [shifts, resolve, settings, year],
   );
 
+  // Jahresbericht bleibt vollständig gefiltert (auch PDF/XLSX-Export, Entscheidung (a)).
   const annualReport = useMemo(
-    () =>
-      withLegalYearLimit(
-        buildAnnualReport(filtered, jobs, settings, year, resolve),
-        legalYearUsage,
-      ),
-    [filtered, jobs, settings, year, resolve, legalYearUsage],
+    () => buildAnnualReport(filtered, jobs, settings, year, resolve),
+    [filtered, jobs, settings, year, resolve],
+  );
+  // Nur die Bericht-Anzeige („Grenze: N %“) nutzt die rechtliche Jahresgrenze aller Minijobs.
+  const annualReportView = useMemo(
+    () => withLegalYearLimit(annualReport, legalYearUsage),
+    [annualReport, legalYearUsage],
   );
 
   const ctx = {
@@ -666,7 +668,7 @@ function StatsPage() {
         </TabsContent>
 
         <TabsContent value="bericht" className="mt-4">
-          <AnnualReportCard report={annualReport} />
+          <AnnualReportCard report={annualReportView} exportReport={annualReport} />
         </TabsContent>
       </Tabs>
     </main>

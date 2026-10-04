@@ -18,7 +18,14 @@ import type { AnnualReport } from "@/lib/minijob/annual";
 import { exportAnnualPdf, exportAnnualXlsx } from "@/lib/minijob/annual-export";
 import { formatDate, formatEuro, formatHours, weekdayNames } from "@/lib/minijob/calc";
 
-export function AnnualReportCard({ report }: { report: AnnualReport }) {
+export function AnnualReportCard({
+  report,
+  exportReport = report,
+}: {
+  report: AnnualReport;
+  /** Bericht für PDF/XLSX-Export (Standard: der angezeigte Bericht). */
+  exportReport?: AnnualReport;
+}) {
   const { t } = useT();
   const hasData = report.entries > 0;
 
@@ -39,8 +46,8 @@ export function AnnualReportCard({ report }: { report: AnnualReport }) {
       toast.error(t("stats.toast.noData"));
       return;
     }
-    if (kind === "pdf") exportAnnualPdf(report);
-    else exportAnnualXlsx(report);
+    if (kind === "pdf") exportAnnualPdf(exportReport);
+    else exportAnnualXlsx(exportReport);
     toast.success(t("stats.toast.exportSuccess"));
   }
 

@@ -74,7 +74,17 @@ describe("A) zwei Minijobs: Kennzahl identisch ohne Filter / Job A / Job B", () 
       const shown = filterBy(B4_SHIFTS, jobFilter);
       expect(shown.length).toBeLessThanOrEqual(B4_SHIFTS.length);
       // … die rechtliche Kennzahl nicht.
-      expect(legalKpi(legal(B4_SHIFTS))).toEqual(legalKpi(legal()));
+      const kpi = legalKpi(legal());
+      expect(kpi).toEqual({
+        earnings: B4_LEGAL_EARNINGS,
+        earningsLimit: LIMIT,
+        earningsShare: Number(((B4_LEGAL_EARNINGS / LIMIT) * 100).toFixed(4)),
+        rounded: 14,
+      });
+      // Gefilterte Eingabe (alter Fehler) stimmt nur bei „alle“ überein.
+      const fromFiltered = legalKpi(legal(shown));
+      if (jobFilter === "alle") expect(fromFiltered).toEqual(kpi);
+      else expect(fromFiltered).not.toEqual(kpi);
       const report = withLegalYearLimit(
         buildAnnualReport(shown, B4_JOBS, settings, YEAR, resolve),
         legal(),

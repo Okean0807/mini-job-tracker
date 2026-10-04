@@ -18,13 +18,22 @@ vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children?: unknown }) => children,
 }));
 
+// Export-Aufrufe beobachten (Entscheidung (a): Export bleibt vollständig gefiltert).
+vi.mock("@/lib/minijob/annual-export", () => ({
+  exportAnnualPdf: vi.fn(),
+  exportAnnualXlsx: vi.fn(),
+}));
+
 vi.mock("@/lib/minijob/store", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/minijob/store")>();
   return { ...actual, useAppData: () => state.data };
 });
 
 import { tl } from "@/lib/i18n";
+import { buildAnnualReport } from "@/lib/minijob/annual";
+import { exportAnnualPdf, exportAnnualXlsx } from "@/lib/minijob/annual-export";
 import { formatEuro } from "@/lib/minijob/calc";
+import { makeResolver } from "@/lib/minijob/resolve";
 import { Route } from "./statistik";
 import {
   B4_JOBS,
@@ -159,6 +168,40 @@ describe("Statistik (Seite): Jahresgrenze unabhängig vom Job-Filter", () => {
     });
     for (const r of rows) expect(r.limitPct, r.filter).toBe("14");
     expect(new Set(rows.map((r) => r.earnings)).size).toBe(4);
+  });
+
+  it("Bericht-Export (PDF/XLSX) bleibt gefiltert wie auf main; nur die Anzeige zeigt die rechtliche Grenze", () => {
+    setData({});
+    render();
+    openTab(t("stats.tab.report"));
+    const resolve = makeResolver(B4_JOBS, B4_SETTINGS);
+    const cases = [
+      [t("stats.allJobs"), "alle"],
+      ["Minijob A", "MA"],
+      ["Minijob B", "MB"],
+      ["Hauptjob", "HB"],
+    ] as const;
+    for (const [label, jobId] of cases) {
+      clickButton(label);
+      vi.mocked(exportAnnualPdf).mockClear();
+      vi.mocked(exportAnnualXlsx).mockClear();
+      clickButton("PDF");
+      clickButton("Excel");
+      const shown = jobId === "alle" ? B4_SHIFTS : B4_SHIFTS.filter((s) => s.jobId === jobId);
+      // Basis-Verhalten (ef3b5f7): buildAnnualReport(gefiltert) unverändert.
+      const base = buildAnnualReport(shown, B4_JOBS, B4_SETTINGS, 2026, resolve);
+      expect(vi.mocked(exportAnnualPdf)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(exportAnnualXlsx)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(exportAnnualPdf).mock.calls[0]![0], label).toEqual(base);
+      expect(vi.mocked(exportAnnualXlsx).mock.calls[0]![0], label).toEqual(base);
+      // UI-Bericht zeigt die rechtliche Grenze aller Minijobs.
+      expect(readReportTab().limitPct, label).toBe("14");
+    }
+    // Gefilterter Export-Prozentsatz wie bisher (z. B. Minijob A ≈ 7 %), nicht der UI-Wert.
+    clickButton("Minijob A");
+    vi.mocked(exportAnnualPdf).mockClear();
+    clickButton("PDF");
+    expect(Math.round(vi.mocked(exportAnnualPdf).mock.calls[0]![0].limitShare)).toBe(7);
   });
 
   it("ohne geeigneten Minijob (HB/kurzfristig/selbstständig/Altbestand): 0 % wie bisher", () => {
