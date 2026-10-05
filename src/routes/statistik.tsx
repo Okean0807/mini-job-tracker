@@ -43,8 +43,8 @@ import { exportArbeitsnachweisPdf } from "@/lib/minijob/arbeitsnachweis";
 import { exportWorkReportPdf } from "@/lib/minijob/worklog";
 import { DOCUMENT_LOCALE, td } from "@/lib/minijob/document-i18n";
 import { makeResolver } from "@/lib/minijob/resolve";
-import { yearUsage } from "@/lib/minijob/limits";
 import { payPeriods } from "@/lib/minijob/payday";
+import { statsLegalYearUsage, withLegalYearLimit } from "@/lib/minijob/stats-legal";
 import { canUse } from "@/lib/minijob/premium";
 import { useAppData } from "@/lib/minijob/store";
 import type { Shift } from "@/lib/minijob/types";
@@ -143,14 +143,22 @@ function StatsPage() {
     [jobs, shifts, year, resolve],
   );
 
+  // B4: Rechtliche Jahresgrenze immer aus ALLEN Einträgen (alle Minijobs),
+  // unabhängig vom Job-Filter. Eignung prüft yearUsage (employmentType).
+  const legalYearUsage = useMemo(
+    () => statsLegalYearUsage(shifts, resolve, settings, year),
+    [shifts, resolve, settings, year],
+  );
+
+  // Jahresbericht bleibt vollständig gefiltert (auch PDF/XLSX-Export, Entscheidung (a)).
   const annualReport = useMemo(
     () => buildAnnualReport(filtered, jobs, settings, year, resolve),
     [filtered, jobs, settings, year, resolve],
   );
-
-  const legalYearUsage = useMemo(
-    () => yearUsage(filtered, resolve, settings, year),
-    [filtered, resolve, settings, year],
+  // Nur die Bericht-Anzeige („Grenze: N %“) nutzt die rechtliche Jahresgrenze aller Minijobs.
+  const annualReportView = useMemo(
+    () => withLegalYearLimit(annualReport, legalYearUsage),
+    [annualReport, legalYearUsage],
   );
 
   const ctx = {
@@ -660,7 +668,7 @@ function StatsPage() {
         </TabsContent>
 
         <TabsContent value="bericht" className="mt-4">
-          <AnnualReportCard report={annualReport} />
+          <AnnualReportCard report={annualReportView} exportReport={annualReport} />
         </TabsContent>
       </Tabs>
     </main>
