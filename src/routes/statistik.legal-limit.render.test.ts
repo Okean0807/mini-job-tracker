@@ -1,9 +1,10 @@
 /**
- * Render-Test (react-dom/client + act, happy-dom) der Statistik-Seite – S3 / B4.
+ * Render-Test (react-dom/client + act, happy-dom) der Statistik-Seite – S3 / B4 + S4 IA.
  *
  * Prüft am echten Aufrufort (StatsPage), dass die rechtliche Minijob-Jahresgrenze
- * (Jahr-Karte „Jahresgrenze“ + Bericht-Kennzahl „Grenze“) bei jedem Job-Filter
- * gleich bleibt, während Jahresverdienst/-stunden weiter gefiltert werden.
+ * (Jahr-Karte „Jahresgrenze“) bei jedem Job-Filter gleich bleibt, während
+ * Jahresverdienst/-stunden weiter gefiltert werden. Bericht-Tab entfällt (S4 C1);
+ * Jahresbericht-Export bleibt gefiltert (Entscheidung a).
  */
 import { act, createElement, type ComponentType } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -98,21 +99,13 @@ function openTab(label: string) {
   expect(tab.getAttribute("aria-selected")).toBe("true");
 }
 
-/** Jahr-Tab: „Jahresgrenze“-Karte (Prozent + Grenze) und Jahresverdienst. */
-function readYearTab() {
+/** Jahr-Periode: „Jahresgrenze“-Karte (Prozent + Grenze) und Jahresverdienst. */
+function readYearKpis() {
   const s = text();
   const limit = s.match(new RegExp(`${esc(t("stats.card.yearLimit"))}\\s*(\\d+) %`));
   const hint = s.includes(t("stats.card.yearLimitHint", { amount: norm(formatEuro(7236)) }));
   const earn = s.match(new RegExp(`${esc(t("stats.card.yearEarnings"))}\\s*([\\d.,]+ €)`));
   return { limitPct: limit?.[1] ?? null, limitHint: hint, yearEarnings: earn?.[1] ?? null };
-}
-
-/** Bericht-Tab: Kennzahl „Grenze: N %“ und Jahresverdienst des Berichts. */
-function readReportTab() {
-  const s = text();
-  const m = s.match(new RegExp(`${esc(t("annual.kpi.limit"))}: (\\d+) %`));
-  const e = s.match(new RegExp(`${esc(t("annual.kpi.earnings"))}\\s*([\\d.,]+ €)`));
-  return { limitPct: m?.[1] ?? null, earnings: e?.[1] ?? null };
 }
 
 const FILTERS = [t("stats.allJobs"), "Minijob A", "Minijob B", "Hauptjob"];
@@ -137,13 +130,13 @@ afterEach(() => {
 });
 
 describe("Statistik (Seite): Jahresgrenze unabhängig vom Job-Filter", () => {
-  it("Jahr-Tab: Jahresgrenze 14 % bei Alle / Minijob A / Minijob B / Hauptjob; Jahresverdienst gefiltert", () => {
+  it("Jahr: Jahresgrenze 14 % bei Alle / Minijob A / Minijob B / Hauptjob; Jahresverdienst gefiltert", () => {
     setData({});
     render();
     openTab(t("stats.tab.year"));
     const rows = FILTERS.map((f) => {
       clickButton(f);
-      return { filter: f, ...readYearTab() };
+      return { filter: f, ...readYearKpis() };
     });
     for (const r of rows) {
       expect(r.limitPct, r.filter).toBe("14"); // 1.020 € / 7.236 €
@@ -158,22 +151,17 @@ describe("Statistik (Seite): Jahresgrenze unabhängig vom Job-Filter", () => {
     ]);
   });
 
-  it("Bericht-Tab: Kennzahl „Grenze“ gleich bei jedem Filter; Berichtsverdienst gefiltert", () => {
+  it("Jahresbericht-Export (PDF/XLSX) bleibt gefiltert; keine Bericht-Tab-UI", () => {
     setData({});
     render();
-    openTab(t("stats.tab.report"));
-    const rows = FILTERS.map((f) => {
-      clickButton(f);
-      return { filter: f, ...readReportTab() };
-    });
-    for (const r of rows) expect(r.limitPct, r.filter).toBe("14");
-    expect(new Set(rows.map((r) => r.earnings)).size).toBe(4);
-  });
+    openTab(t("stats.tab.year"));
+    const tabs = [...container.querySelectorAll('[role="tab"]')].map((el) =>
+      norm(el.textContent ?? "").trim(),
+    );
+    expect(tabs).toEqual([t("stats.tab.month"), t("stats.tab.year")]);
+    expect(tabs).not.toContain(t("stats.tab.report"));
+    expect(tabs).not.toContain(t("stats.tab.jobs"));
 
-  it("Bericht-Export (PDF/XLSX) bleibt gefiltert wie auf main; nur die Anzeige zeigt die rechtliche Grenze", () => {
-    setData({});
-    render();
-    openTab(t("stats.tab.report"));
     const resolve = makeResolver(B4_JOBS, B4_SETTINGS);
     const cases = [
       [t("stats.allJobs"), "alle"],
@@ -185,22 +173,21 @@ describe("Statistik (Seite): Jahresgrenze unabhängig vom Job-Filter", () => {
       clickButton(label);
       vi.mocked(exportAnnualPdf).mockClear();
       vi.mocked(exportAnnualXlsx).mockClear();
-      clickButton("PDF");
-      clickButton("Excel");
+      clickButton(`${t("stats.export.annualReport")} PDF`);
+      clickButton(`${t("stats.export.annualReport")} Excel`);
       const shown = jobId === "alle" ? B4_SHIFTS : B4_SHIFTS.filter((s) => s.jobId === jobId);
-      // Basis-Verhalten (ef3b5f7): buildAnnualReport(gefiltert) unverändert.
       const base = buildAnnualReport(shown, B4_JOBS, B4_SETTINGS, 2026, resolve);
       expect(vi.mocked(exportAnnualPdf)).toHaveBeenCalledTimes(1);
       expect(vi.mocked(exportAnnualXlsx)).toHaveBeenCalledTimes(1);
       expect(vi.mocked(exportAnnualPdf).mock.calls[0]![0], label).toEqual(base);
       expect(vi.mocked(exportAnnualXlsx).mock.calls[0]![0], label).toEqual(base);
-      // UI-Bericht zeigt die rechtliche Grenze aller Minijobs.
-      expect(readReportTab().limitPct, label).toBe("14");
+      // UI zeigt weiter die rechtliche Grenze aller Minijobs.
+      expect(readYearKpis().limitPct, label).toBe("14");
     }
     // Gefilterter Export-Prozentsatz wie bisher (z. B. Minijob A ≈ 7 %), nicht der UI-Wert.
     clickButton("Minijob A");
     vi.mocked(exportAnnualPdf).mockClear();
-    clickButton("PDF");
+    clickButton(`${t("stats.export.annualReport")} PDF`);
     expect(Math.round(vi.mocked(exportAnnualPdf).mock.calls[0]![0].limitShare)).toBe(7);
   });
 
@@ -218,7 +205,7 @@ describe("Statistik (Seite): Jahresgrenze unabhängig vom Job-Filter", () => {
     openTab(t("stats.tab.year"));
     for (const f of [t("stats.allJobs"), "Hauptjob", "Altbestand"]) {
       clickButton(f);
-      expect(readYearTab().limitPct, f).toBe("0");
+      expect(readYearKpis().limitPct, f).toBe("0");
     }
   });
 });

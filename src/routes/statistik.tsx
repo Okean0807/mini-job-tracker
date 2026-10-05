@@ -1,13 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ClipboardList, Clock, Euro, FileDown, FileSpreadsheet, TrendingUp } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ClipboardList,
+  Clock,
+  Euro,
+  FileDown,
+  FileSpreadsheet,
+  TrendingUp,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
-  Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -15,12 +22,21 @@ import {
 } from "recharts";
 import { toast } from "sonner";
 
-import { AnnualReportCard } from "@/components/minijob/AnnualReportCard";
 import { StatCard } from "@/components/minijob/StatCard";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useT } from "@/lib/i18n";
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useT } from "@/lib/i18n";
+import { buildAnnualReport } from "@/lib/minijob/annual";
+import { exportAnnualPdf, exportAnnualXlsx } from "@/lib/minijob/annual-export";
+import { exportArbeitsnachweisPdf } from "@/lib/minijob/arbeitsnachweis";
+import {
+  formatDate,
   formatEuro,
   formatHours,
   monthNames,
@@ -28,26 +44,25 @@ import {
   shiftsInMonth,
   shiftsInYear,
 } from "@/lib/minijob/calc";
+import { DOCUMENT_LOCALE, td } from "@/lib/minijob/document-i18n";
+import { exportPdf, exportXlsx } from "@/lib/minijob/export";
+import { monthTimeAccount } from "@/lib/minijob/fest-time-account";
+import { payPeriods } from "@/lib/minijob/payday";
+import { payrollTotals } from "@/lib/minijob/payroll";
+import { canUse } from "@/lib/minijob/premium";
+import { makeResolver } from "@/lib/minijob/resolve";
+import { avgHourlyRate } from "@/lib/minijob/stats-avg-rate";
 import {
   buildDailyMonthSeries,
   buildFestDailyMonthSeries,
-  dailyChartTitle,
   dailyXAxisTicks,
   formatDailyTooltipLine,
 } from "@/lib/minijob/stats-charts";
-import { primaryWorkMode } from "@/lib/minijob/work-mode";
-import { payrollTotals } from "@/lib/minijob/payroll";
-import { buildAnnualReport } from "@/lib/minijob/annual";
-import { exportPdf, exportXlsx } from "@/lib/minijob/export";
-import { exportArbeitsnachweisPdf } from "@/lib/minijob/arbeitsnachweis";
-import { exportWorkReportPdf } from "@/lib/minijob/worklog";
-import { DOCUMENT_LOCALE, td } from "@/lib/minijob/document-i18n";
-import { makeResolver } from "@/lib/minijob/resolve";
-import { payPeriods } from "@/lib/minijob/payday";
-import { statsLegalYearUsage, withLegalYearLimit } from "@/lib/minijob/stats-legal";
-import { canUse } from "@/lib/minijob/premium";
+import { statsLegalYearUsage } from "@/lib/minijob/stats-legal";
 import { useAppData } from "@/lib/minijob/store";
 import type { Shift } from "@/lib/minijob/types";
+import { primaryWorkMode } from "@/lib/minijob/work-mode";
+import { exportWorkReportPdf } from "@/lib/minijob/worklog";
 
 export const Route = createFileRoute("/statistik")({
   head: () => ({
@@ -68,13 +83,18 @@ export const Route = createFileRoute("/statistik")({
   component: StatsPage,
 });
 
+type PeriodKind = "monat" | "jahr";
+type ChartMode = "stunden" | "verdienst";
+
 function StatsPage() {
   const { t } = useT();
   const { shifts, jobs, payments, settings } = useAppData();
   const now = new Date();
+  const [period, setPeriod] = useState<PeriodKind>("monat");
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
   const [jobFilter, setJobFilter] = useState<string>("alle");
+  const [chartMode, setChartMode] = useState<ChartMode>("stunden");
 
   const months = monthNames();
   const monthsShort = monthNamesShort();
@@ -97,16 +117,17 @@ function StatsPage() {
           monat: label,
           stunden: Number(totals.workedHours.toFixed(2)),
           verdienst: Number(totals.earnings.toFixed(2)),
+          workEarnings: Number(totals.workEarnings.toFixed(2)),
         };
       }),
     [filtered, shifts, year, resolve, monthsShort],
   );
 
-  const workMode = primaryWorkMode(jobs, settings.activeJobId);
   const festJob =
     (jobFilter !== "alle" ? jobs.find((j) => j.id === jobFilter) : undefined) ??
     jobs.find((j) => j.id === settings.activeJobId && j.mode === "fest") ??
     jobs.find((j) => j.mode === "fest");
+  const workMode = primaryWorkMode(jobs, settings.activeJobId);
   const isFestView = workMode === "fest" && festJob?.mode === "fest";
 
   const dailyData = useMemo(
@@ -118,47 +139,34 @@ function StatsPage() {
     return buildFestDailyMonthSeries(year, month, festJob, filtered, settings.bundesland);
   }, [year, month, festJob, filtered, settings.bundesland]);
   const dailyTicks = useMemo(() => dailyXAxisTicks(dailyData.length), [dailyData.length]);
-  const festTicks = useMemo(() => dailyXAxisTicks(festDailyData.length), [festDailyData.length]);
-  const earningsDayTitle = dailyChartTitle(
-    t("stats.chart.earningsDay"),
-    months[month] ?? "",
-    year,
-  );
-  const hoursDayTitle = dailyChartTitle(t("stats.chart.hoursDay"), months[month] ?? "", year);
 
-  const perJob = useMemo(
-    () =>
-      jobs.map((job) => {
-        const list = shiftsInYear(
-          shifts.filter((s) => s.jobId === job.id),
-          year,
-        );
+  const festAccount = useMemo(() => {
+    if (!festJob || festJob.mode !== "fest") return null;
+    return monthTimeAccount(festJob, year, month, filtered, settings.bundesland);
+  }, [festJob, year, month, filtered, settings.bundesland]);
+
+  /** Aufteilung: folgt Job-Filter (S4; behebt B9-Verhalten des alten Jobs-Tabs). */
+  const breakdown = useMemo(() => {
+    const sourceJobs = jobFilter === "alle" ? jobs : jobs.filter((j) => j.id === jobFilter);
+    const listSource = period === "monat" ? monthShifts : yearShifts;
+    return sourceJobs
+      .map((job) => {
+        const list = listSource.filter((s) => s.jobId === job.id);
         const totals = payrollTotals(list, resolve, shifts);
-        return {
-          job,
-          hours: totals.workedHours,
-          earnings: totals.earnings,
-        };
-      }),
-    [jobs, shifts, year, resolve],
-  );
+        return { job, hours: totals.workedHours, earnings: totals.earnings };
+      })
+      .filter((row) => row.hours > 0 || row.earnings > 0)
+      .sort((a, b) => b.earnings - a.earnings);
+  }, [jobs, jobFilter, period, monthShifts, yearShifts, resolve, shifts]);
 
-  // B4: Rechtliche Jahresgrenze immer aus ALLEN Einträgen (alle Minijobs),
-  // unabhängig vom Job-Filter. Eignung prüft yearUsage (employmentType).
   const legalYearUsage = useMemo(
     () => statsLegalYearUsage(shifts, resolve, settings, year),
     [shifts, resolve, settings, year],
   );
 
-  // Jahresbericht bleibt vollständig gefiltert (auch PDF/XLSX-Export, Entscheidung (a)).
   const annualReport = useMemo(
     () => buildAnnualReport(filtered, jobs, settings, year, resolve),
     [filtered, jobs, settings, year, resolve],
-  );
-  // Nur die Bericht-Anzeige („Grenze: N %“) nutzt die rechtliche Jahresgrenze aller Minijobs.
-  const annualReportView = useMemo(
-    () => withLegalYearLimit(annualReport, legalYearUsage),
-    [annualReport, legalYearUsage],
   );
 
   const ctx = {
@@ -179,6 +187,16 @@ function StatsPage() {
     }
     if (kind === "xlsx") exportXlsx(list, title, ctx);
     else exportPdf(list, title, ctx);
+    toast.success(t("stats.toast.exportSuccess"));
+  }
+
+  function doAnnualExport(kind: "pdf" | "xlsx") {
+    if (annualReport.entries === 0) {
+      toast.error(t("stats.toast.noData"));
+      return;
+    }
+    if (kind === "pdf") exportAnnualPdf(annualReport);
+    else exportAnnualXlsx(annualReport);
     toast.success(t("stats.toast.exportSuccess"));
   }
 
@@ -227,21 +245,103 @@ function StatsPage() {
   const yearEarnings = yearTotals.earnings;
   const monthHours = monthTotals.workedHours;
   const yearHours = yearTotals.workedHours;
+  // S4 B1: Ø = workEarnings / workedHours
+  const monthAvgRate = avgHourlyRate(monthTotals.workEarnings, monthTotals.workedHours);
+  const yearAvgRate = avgHourlyRate(yearTotals.workEarnings, yearTotals.workedHours);
+
+  const periodLabel = period === "monat" ? `${months[month] ?? ""} ${year}` : String(year);
+
+  function shiftPeriod(delta: number) {
+    if (period === "jahr") {
+      setYear((y) => y + delta);
+      return;
+    }
+    const d = new Date(year, month + delta, 1);
+    setYear(d.getFullYear());
+    setMonth(d.getMonth());
+  }
+
+  function goToday() {
+    const n = new Date();
+    setYear(n.getFullYear());
+    setMonth(n.getMonth());
+  }
+
+  const chartData =
+    period === "monat"
+      ? dailyData.map((p) => ({
+          key: p.tag,
+          stunden: p.stunden,
+          verdienst: p.verdienst,
+          date: p.date,
+        }))
+      : monthlyData.map((p) => ({
+          key: p.monat,
+          stunden: p.stunden,
+          verdienst: p.verdienst,
+          date: p.monat,
+        }));
+
+  const chartTitle =
+    period === "monat"
+      ? `${t("stats.chart.perDay")} — ${periodLabel}`
+      : `${t("stats.chart.perMonth")} — ${periodLabel}`;
+
+  const maxBreakdown = Math.max(...breakdown.map((b) => b.earnings), 0.01);
+
+  const weekdayData = useMemo(() => {
+    const labels = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+    return labels.map((label, i) => ({
+      label,
+      stunden: Number((annualReport.weekdayHours[i] ?? 0).toFixed(2)),
+    }));
+  }, [annualReport.weekdayHours]);
 
   return (
-    <main className="mx-auto max-w-lg px-4 pt-6">
-      <h1 className="text-2xl font-extrabold tracking-tight">{t("stats.title")}</h1>
+    <main className="mx-auto max-w-lg px-4 pt-6 pb-8">
+      <div className="flex items-start justify-between gap-2">
+        <h1 className="text-2xl font-extrabold tracking-tight">{t("stats.title")}</h1>
+      </div>
 
+      {/* A1: nur Monat | Jahr */}
+      <Tabs value={period} onValueChange={(v) => setPeriod(v as PeriodKind)} className="mt-4">
+        <TabsList className="w-full" aria-label={t("stats.title")}>
+          <TabsTrigger value="monat" className="flex-1">
+            {t("stats.tab.month")}
+          </TabsTrigger>
+          <TabsTrigger value="jahr" className="flex-1">
+            {t("stats.tab.year")}
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {/* Periodennavigation */}
       <div className="mt-3 flex items-center gap-2">
-        <Button variant="outline" size="sm" onClick={() => setYear(year - 1)}>
-          {year - 1}
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label={t("stats.period.prev")}
+          onClick={() => shiftPeriod(-1)}
+        >
+          <ChevronLeft className="size-5" />
         </Button>
-        <span className="flex-1 text-center text-lg font-semibold">{year}</span>
-        <Button variant="outline" size="sm" onClick={() => setYear(year + 1)}>
-          {year + 1}
+        <div className="flex-1 text-center">
+          <p className="text-lg font-semibold">{periodLabel}</p>
+        </div>
+        <Button
+          variant="outline"
+          size="icon"
+          aria-label={t("stats.period.next")}
+          onClick={() => shiftPeriod(1)}
+        >
+          <ChevronRight className="size-5" />
+        </Button>
+        <Button variant="ghost" size="sm" onClick={goToday}>
+          {t("stats.period.today")}
         </Button>
       </div>
 
+      {/* Job-Filter */}
       {jobs.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-2">
           <button
@@ -269,43 +369,14 @@ function StatsPage() {
         </div>
       ) : null}
 
-      <Tabs defaultValue="monat" className="mt-5">
-        <TabsList className="w-full">
-          <TabsTrigger value="monat" className="flex-1">
-            {t("stats.tab.month")}
-          </TabsTrigger>
-          <TabsTrigger value="jahr" className="flex-1">
-            {t("stats.tab.year")}
-          </TabsTrigger>
-          <TabsTrigger value="jobs" className="flex-1">
-            {t("stats.tab.jobs")}
-          </TabsTrigger>
-          <TabsTrigger value="bericht" className="flex-1">
-            {t("stats.tab.report")}
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="monat" className="mt-4 space-y-4">
-          <div className="flex flex-wrap gap-1">
-            {monthsShort.map((label, idx) => (
-              <button
-                key={label}
-                type="button"
-                onClick={() => setMonth(idx)}
-                className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
-                  idx === month ? "bg-primary text-primary-foreground" : "bg-muted"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
+      {/* KPI-Zeile */}
+      <div className="mt-5 grid grid-cols-2 gap-3">
+        {period === "monat" ? (
+          <>
             <StatCard
               label={t("stats.card.earnings")}
               value={formatEuro(monthEarnings)}
-              hint={`${months[month]} ${year}`}
+              hint={periodLabel}
               icon={Euro}
               highlight
             />
@@ -315,237 +386,36 @@ function StatsPage() {
               hint={t("stats.card.hoursHint")}
               icon={Clock}
             />
-          </div>
-
-          <div className="rounded-2xl border bg-card p-4 shadow-card">
-            <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {t("stats.paymentSummary")}
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <StatCard label={t("stats.payment.expected")} value={formatEuro(monthPaymentTotals.expected)} hint={t("stats.payment.monthBasis")} icon={Euro} />
-              <StatCard label={t("stats.payment.earned")} value={formatEuro(monthPaymentTotals.earned)} hint={t("stats.payment.monthBasis")} icon={Euro} />
-              <StatCard label={t("stats.payment.paid")} value={formatEuro(monthPaymentTotals.paid)} hint={t("stats.payment.monthBasis")} icon={Euro} />
-              <StatCard label={t("stats.payment.open")} value={formatEuro(monthPaymentTotals.open)} hint={monthPaymentTotals.overdue > 0 ? t("stats.payment.overdueCount", { count: monthPaymentTotals.overdue }) : t("stats.payment.noOverdue")} icon={Euro} />
-            </div>
-            {monthPaymentTotals.overpaid > 0.005 ? (
-              <p className="mt-3 text-xs text-muted-foreground">
-                {t("stats.payment.overpaid")}: <span className="font-medium tabular-nums">{formatEuro(monthPaymentTotals.overpaid)}</span>
-              </p>
-            ) : null}
-          </div>
-
-          <ChartCard title={earningsDayTitle}>
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={dailyData}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                <XAxis
-                  dataKey="day"
-                  ticks={dailyTicks}
-                  fontSize={11}
-                  label={{ value: t("stats.axis.day"), position: "insideBottom", offset: -2 }}
-                  height={36}
-                />
-                <YAxis
-                  fontSize={11}
-                  width={42}
-                  label={{
-                    value: t("stats.axis.earnings"),
-                    angle: -90,
-                    position: "insideLeft",
-                    offset: 8,
-                  }}
-                />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (!active || !payload?.length) return null;
-                    const row = payload[0]?.payload as {
-                      date: string;
-                      stunden: number;
-                      verdienst: number;
-                    };
-                    return (
-                      <div className="rounded-md border bg-card px-2.5 py-1.5 text-xs shadow-md">
-                        {formatDailyTooltipLine(row.date, row.stunden, row.verdienst)}
-                      </div>
-                    );
-                  }}
-                />
-                <Bar dataKey="verdienst" radius={[6, 6, 0, 0]} fill="var(--primary)" />
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
-
-          <ChartCard title={hoursDayTitle}>
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={dailyData}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                <XAxis
-                  dataKey="day"
-                  ticks={dailyTicks}
-                  fontSize={11}
-                  label={{ value: t("stats.axis.day"), position: "insideBottom", offset: -2 }}
-                  height={36}
-                />
-                <YAxis
-                  fontSize={11}
-                  width={42}
-                  label={{
-                    value: t("stats.axis.hours"),
-                    angle: -90,
-                    position: "insideLeft",
-                    offset: 8,
-                  }}
-                />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (!active || !payload?.length) return null;
-                    const row = payload[0]?.payload as {
-                      date: string;
-                      stunden: number;
-                      verdienst: number;
-                    };
-                    return (
-                      <div className="rounded-md border bg-card px-2.5 py-1.5 text-xs shadow-md">
-                        {formatDailyTooltipLine(row.date, row.stunden, row.verdienst)}
-                      </div>
-                    );
-                  }}
-                />
-                <Line type="monotone" dataKey="stunden" stroke="var(--primary)" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          </ChartCard>
-
-          {isFestView && festDailyData.length > 0 ? (
-            <ChartCard title={dailyChartTitle(t("stats.chart.sollIst"), months[month] ?? "", year)}>
-              <ResponsiveContainer width="100%" height={220}>
-                <LineChart data={festDailyData}>
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                  <XAxis
-                    dataKey="day"
-                    ticks={festTicks}
-                    fontSize={11}
-                    label={{ value: t("stats.axis.day"), position: "insideBottom", offset: -2 }}
-                    height={36}
-                  />
-                  <YAxis
-                    fontSize={11}
-                    width={42}
-                    label={{
-                      value: t("stats.axis.hours"),
-                      angle: -90,
-                      position: "insideLeft",
-                      offset: 8,
-                    }}
-                  />
-                  <Tooltip
-                    content={({ active, payload }) => {
-                      if (!active || !payload?.length) return null;
-                      const row = payload[0]?.payload as {
-                        date: string;
-                        soll?: number;
-                        ist?: number;
-                        diff?: number;
-                      };
-                      return (
-                        <div className="rounded-md border bg-card px-2.5 py-1.5 text-xs shadow-md">
-                          {row.date}: Soll {row.soll ?? 0} / Ist {row.ist ?? 0} / Diff{" "}
-                          {row.diff ?? 0}
-                        </div>
-                      );
-                    }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="soll"
-                    stroke="var(--muted-foreground)"
-                    strokeWidth={2}
-                  />
-                  <Line type="monotone" dataKey="ist" stroke="var(--primary)" strokeWidth={2} />
-                  <Line
-                    type="monotone"
-                    dataKey="diff"
-                    stroke="var(--chart-3, #ea580c)"
-                    strokeWidth={1.5}
-                    strokeDasharray="4 4"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </ChartCard>
-          ) : null}
-
-          <div className="grid grid-cols-2 gap-3">
-            <Button
-              variant="outline"
-              onClick={() =>
-                doExport(
-                  "xlsx",
-                  monthShifts,
-                  td("report.monthTitle", { month: monthNames(DOCUMENT_LOCALE)[month]!, year }),
-                )
-              }
-            >
-              <FileSpreadsheet className="size-4" /> Excel
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() =>
-                doExport(
-                  "pdf",
-                  monthShifts,
-                  td("report.monthTitle", { month: monthNames(DOCUMENT_LOCALE)[month]!, year }),
-                )
-              }
-            >
-              <FileDown className="size-4" /> PDF
-            </Button>
-          </div>
-
-          <Button
-            className="w-full"
-            onClick={() => {
-              if (monthShifts.length === 0) {
-                toast.error(t("stats.toast.noData"));
-                return;
-              }
-              exportWorkReportPdf(monthShifts, {
-                jobs,
-                month: `${monthNames(DOCUMENT_LOCALE)[month]!} ${year}`,
-                includePhotos: true,
-              });
-              toast.success(t("stats.toast.exportSuccess"));
-            }}
-          >
-            <ClipboardList className="size-4" /> {t("worklog.export")}
-          </Button>
-
-          <Button
-            variant="outline"
-            className="w-full"
-            onClick={() => {
-              if (monthShifts.length === 0) {
-                toast.error(t("stats.toast.noData"));
-                return;
-              }
-              exportArbeitsnachweisPdf(monthShifts, {
-                jobs,
-                month,
-                year,
-                employeeName: settings.employeeName ?? "",
-                customCodes: settings.workCodes ?? [],
-                ...(jobs.length === 1 && jobs[0]
-                  ? { employer: jobs[0].employer ?? jobs[0].name }
-                  : {}),
-              });
-              toast.success(t("stats.toast.exportSuccess"));
-            }}
-          >
-            <FileDown className="size-4" /> {t("worklog.exportProof")}
-          </Button>
-        </TabsContent>
-
-        <TabsContent value="jahr" className="mt-4 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+            {isFestView && festAccount ? (
+              <StatCard
+                label={t("stats.kpi.sollIst")}
+                value={`${formatHours(festAccount.ist)} / ${formatHours(festAccount.soll)}`}
+                hint={t("stats.kpi.sollIstHint", {
+                  ist: formatHours(festAccount.ist),
+                  soll: formatHours(festAccount.soll),
+                })}
+                icon={TrendingUp}
+              />
+            ) : (
+              <StatCard
+                label={t("stats.card.avgRate")}
+                value={formatEuro(monthAvgRate)}
+                hint={t("stats.card.avgRateHint")}
+                icon={TrendingUp}
+              />
+            )}
+            <StatCard
+              label={t("stats.kpi.paidOut")}
+              value={formatEuro(monthPaymentTotals.paid)}
+              hint={t("stats.kpi.paidOutOf", {
+                paid: formatEuro(monthPaymentTotals.paid),
+                expected: formatEuro(monthPaymentTotals.expected),
+              })}
+              icon={Euro}
+            />
+          </>
+        ) : (
+          <>
             <StatCard
               label={t("stats.card.yearEarnings")}
               value={formatEuro(yearEarnings)}
@@ -561,125 +431,400 @@ function StatsPage() {
             />
             <StatCard
               label={t("stats.card.avgRate")}
-              value={formatEuro(yearHours > 0 ? yearEarnings / yearHours : 0)}
+              value={formatEuro(yearAvgRate)}
               hint={t("stats.card.avgRateHint")}
               icon={TrendingUp}
             />
             <StatCard
               label={t("stats.card.yearLimit")}
-              value={`${Math.round(
-                legalYearUsage.earningsShare,
-              )} %`}
-              hint={t("stats.card.yearLimitHint", { amount: formatEuro(legalYearUsage.earningsLimit) })}
+              value={`${Math.round(legalYearUsage.earningsShare)} %`}
+              hint={`${t("stats.card.yearLimitHint", {
+                amount: formatEuro(legalYearUsage.earningsLimit),
+              })} · ${t("stats.kpi.yearLimitAll")}`}
               icon={Euro}
             />
-          </div>
+          </>
+        )}
+      </div>
 
-          <div className="rounded-2xl border bg-card p-4 shadow-card">
-            <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {t("stats.paymentSummaryYear")}
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <StatCard label={t("stats.payment.expected")} value={formatEuro(yearPaymentTotals.expected)} hint={String(year)} icon={Euro} />
-              <StatCard label={t("stats.payment.earned")} value={formatEuro(yearPaymentTotals.earned)} hint={String(year)} icon={Euro} />
-              <StatCard label={t("stats.payment.paid")} value={formatEuro(yearPaymentTotals.paid)} hint={String(year)} icon={Euro} />
-              <StatCard label={t("stats.payment.open")} value={formatEuro(yearPaymentTotals.open)} hint={yearPaymentTotals.overdue > 0 ? t("stats.payment.overdueCount", { count: yearPaymentTotals.overdue }) : t("stats.payment.noOverdue")} icon={Euro} />
-            </div>
-            {yearPaymentTotals.overpaid > 0.005 ? (
-              <p className="mt-3 text-xs text-muted-foreground">
-                {t("stats.payment.overpaid")}: <span className="font-medium tabular-nums">{formatEuro(yearPaymentTotals.overpaid)}</span>
-              </p>
-            ) : null}
-          </div>
-
-          <ChartCard title={t("stats.chart.earningsMonth")}>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={monthlyData}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                <XAxis dataKey="monat" fontSize={11} />
-                <YAxis fontSize={11} width={38} />
-                <Tooltip formatter={(v: number) => formatEuro(v)} />
-                <Bar dataKey="verdienst" radius={[6, 6, 0, 0]}>
-                  {monthlyData.map((entry, idx) => (
-                    <Cell
-                      key={entry.monat}
-                      fill={idx === month ? "var(--primary)" : "var(--primary-glow)"}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
-
-          <ChartCard title={t("stats.chart.hoursMonth")}>
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={monthlyData}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                <XAxis dataKey="monat" fontSize={11} />
-                <YAxis fontSize={11} width={38} />
-                <Tooltip formatter={(v: number) => formatHours(v)} />
-                <Line type="monotone" dataKey="stunden" stroke="var(--primary)" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          </ChartCard>
-
-          <div className="grid grid-cols-2 gap-3 pb-4">
-            <Button
-              variant="outline"
-              onClick={() => doExport("xlsx", yearShifts, td("report.yearTitle", { year }))}
+      {/* Hauptdiagramm */}
+      <section className="mt-4 rounded-2xl border bg-card p-4 shadow-card">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">{chartTitle}</h2>
+          <div className="flex rounded-full border p-0.5 text-xs">
+            <button
+              type="button"
+              className={`rounded-full px-2.5 py-1 ${
+                chartMode === "stunden" ? "bg-primary text-primary-foreground" : ""
+              }`}
+              onClick={() => setChartMode("stunden")}
             >
-              <FileSpreadsheet className="size-4" /> Excel
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => doExport("pdf", yearShifts, td("report.yearTitle", { year }))}
+              {t("stats.chart.mode.hours")}
+            </button>
+            <button
+              type="button"
+              className={`rounded-full px-2.5 py-1 ${
+                chartMode === "verdienst" ? "bg-primary text-primary-foreground" : ""
+              }`}
+              onClick={() => setChartMode("verdienst")}
             >
-              <FileDown className="size-4" /> PDF
-            </Button>
+              {t("stats.chart.mode.earnings")}
+            </button>
           </div>
-        </TabsContent>
-
-        <TabsContent value="jobs" className="mt-4 space-y-3 pb-4">
-          {perJob.length === 0 ? (
-            <p className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-              {t("stats.noJobs")}
-            </p>
-          ) : (
-            perJob.map(({ job, hours, earnings }) => (
-              <div
-                key={job.id}
-                className="flex items-center gap-3 rounded-2xl border bg-card p-4 shadow-card"
-              >
-                <span
-                  className="size-9 rounded-xl"
-                  style={{ backgroundColor: job.color }}
-                  aria-hidden
+        </div>
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+            <XAxis
+              dataKey="key"
+              fontSize={11}
+              {...(period === "monat" ? { ticks: dailyTicks.map(String) } : {})}
+            />
+            <YAxis fontSize={11} width={38} />
+            <Tooltip
+              formatter={(v: number) =>
+                chartMode === "verdienst" ? formatEuro(v) : formatHours(v)
+              }
+              labelFormatter={(label, payload) => {
+                if (period === "monat") {
+                  const date = (payload?.[0]?.payload as { date?: string } | undefined)?.date;
+                  if (date) {
+                    const row = dailyData.find((d) => d.date === date);
+                    if (row) return formatDailyTooltipLine(row.date, row.stunden, row.verdienst);
+                  }
+                }
+                return String(label);
+              }}
+            />
+            <Bar
+              dataKey={chartMode === "verdienst" ? "verdienst" : "stunden"}
+              radius={[6, 6, 0, 0]}
+            >
+              {chartData.map((entry, idx) => (
+                <Cell
+                  key={`${entry.key}-${idx}`}
+                  fill={
+                    period === "jahr" && idx === month ? "var(--primary)" : "var(--primary-glow)"
+                  }
                 />
-                <div className="flex-1">
-                  <p className="font-semibold">{job.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {t("stats.jobHoursYear", { hours: formatHours(hours), year })}
-                  </p>
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </section>
+
+      {/* Aufteilung */}
+      <section className="mt-4 space-y-3">
+        <h2 className="text-sm font-semibold">{t("stats.breakdown.title")}</h2>
+        {breakdown.length === 0 ? (
+          <p className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+            {t("stats.breakdown.empty")}
+          </p>
+        ) : (
+          breakdown.map(({ job, hours, earnings }) => (
+            <div
+              key={job.id}
+              className="flex items-center gap-3 rounded-2xl border bg-card p-4 shadow-card"
+            >
+              <span
+                className="size-9 rounded-xl"
+                style={{ backgroundColor: job.color }}
+                aria-hidden
+              />
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold">{job.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {formatHours(hours)} · {formatEuro(earnings)}
+                </p>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{ width: `${Math.min(100, (earnings / maxBreakdown) * 100)}%` }}
+                  />
                 </div>
-                <p className="font-semibold tabular-nums">{formatEuro(earnings)}</p>
               </div>
-            ))
+              <p className="font-semibold tabular-nums">{formatEuro(earnings)}</p>
+            </div>
+          ))
+        )}
+      </section>
+
+      {/* Details */}
+      <Accordion type="multiple" className="mt-4">
+        <AccordionItem value="payments">
+          <AccordionTrigger>{t("stats.details.payments")}</AccordionTrigger>
+          <AccordionContent>
+            <div className="grid grid-cols-2 gap-3 pb-2">
+              {period === "monat" ? (
+                <>
+                  <StatCard
+                    label={t("stats.payment.expected")}
+                    value={formatEuro(monthPaymentTotals.expected)}
+                    hint={t("stats.payment.monthBasis")}
+                    icon={Euro}
+                  />
+                  <StatCard
+                    label={t("stats.payment.earned")}
+                    value={formatEuro(monthPaymentTotals.earned)}
+                    hint={t("stats.payment.monthBasis")}
+                    icon={Euro}
+                  />
+                  <StatCard
+                    label={t("stats.payment.paid")}
+                    value={formatEuro(monthPaymentTotals.paid)}
+                    hint={t("stats.payment.monthBasis")}
+                    icon={Euro}
+                  />
+                  <StatCard
+                    label={t("stats.payment.open")}
+                    value={formatEuro(monthPaymentTotals.open)}
+                    hint={
+                      monthPaymentTotals.overdue > 0
+                        ? t("stats.payment.overdueCount", { count: monthPaymentTotals.overdue })
+                        : t("stats.payment.noOverdue")
+                    }
+                    icon={Euro}
+                  />
+                </>
+              ) : (
+                <>
+                  <StatCard
+                    label={t("stats.payment.expected")}
+                    value={formatEuro(yearPaymentTotals.expected)}
+                    hint={String(year)}
+                    icon={Euro}
+                  />
+                  <StatCard
+                    label={t("stats.payment.earned")}
+                    value={formatEuro(yearPaymentTotals.earned)}
+                    hint={String(year)}
+                    icon={Euro}
+                  />
+                  <StatCard
+                    label={t("stats.payment.paid")}
+                    value={formatEuro(yearPaymentTotals.paid)}
+                    hint={String(year)}
+                    icon={Euro}
+                  />
+                  <StatCard
+                    label={t("stats.payment.open")}
+                    value={formatEuro(yearPaymentTotals.open)}
+                    hint={
+                      yearPaymentTotals.overdue > 0
+                        ? t("stats.payment.overdueCount", { count: yearPaymentTotals.overdue })
+                        : t("stats.payment.noOverdue")
+                    }
+                    icon={Euro}
+                  />
+                </>
+              )}
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
+        {period === "monat" && isFestView && festDailyData.length > 0 ? (
+          <AccordionItem value="sollist">
+            <AccordionTrigger>{t("stats.details.sollIst")}</AccordionTrigger>
+            <AccordionContent>
+              <div className="overflow-x-auto pb-2">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="text-muted-foreground">
+                      <th className="py-1 pr-2">{t("stats.table.day")}</th>
+                      <th className="py-1 pr-2">{t("stats.table.soll")}</th>
+                      <th className="py-1 pr-2">{t("stats.table.ist")}</th>
+                      <th className="py-1">{t("stats.table.diff")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {festDailyData
+                      .filter((d) => (d.soll ?? 0) > 0 || (d.ist ?? 0) > 0)
+                      .map((d) => (
+                        <tr key={d.date} className="border-t tabular-nums">
+                          <td className="py-1 pr-2">{d.tag}</td>
+                          <td className="py-1 pr-2">{formatHours(d.soll ?? 0)}</td>
+                          <td className="py-1 pr-2">{formatHours(d.ist ?? 0)}</td>
+                          <td className="py-1">{formatHours(d.diff ?? 0)}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        ) : null}
+
+        {period === "jahr" ? (
+          <AccordionItem value="year-extras">
+            <AccordionTrigger>{t("stats.details.yearExtras")}</AccordionTrigger>
+            <AccordionContent>
+              <div className="space-y-4 pb-2">
+                <p className="text-xs text-muted-foreground">
+                  {t("annual.subtitle", {
+                    entries: annualReport.entries,
+                    months: annualReport.activeMonths,
+                  })}
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <StatCard
+                    label={t("annual.kpi.workDays")}
+                    value={String(annualReport.workDays)}
+                    hint={t("annual.bonusShare", {
+                      share: annualReport.bonusShare.toFixed(0),
+                    })}
+                    icon={ClipboardList}
+                  />
+                  <StatCard
+                    label={t("annual.kpi.avgMonth")}
+                    value={formatEuro(annualReport.avgMonthEarnings)}
+                    hint={t("annual.kpi.avgDay") + ": " + formatHours(annualReport.avgDayHours)}
+                    icon={TrendingUp}
+                  />
+                </div>
+                <div className="rounded-2xl border p-3">
+                  <h3 className="mb-2 text-xs font-semibold">{t("annual.chart.weekdays")}</h3>
+                  <ResponsiveContainer width="100%" height={140}>
+                    <BarChart data={weekdayData}>
+                      <XAxis dataKey="label" fontSize={10} />
+                      <YAxis fontSize={10} width={28} />
+                      <Tooltip formatter={(v: number) => formatHours(v)} />
+                      <Bar dataKey="stunden" fill="var(--primary-glow)" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                {annualReport.bestMonth || annualReport.bestDay ? (
+                  <div className="rounded-2xl border p-3">
+                    <h3 className="mb-2 text-xs font-semibold">{t("annual.best.title")}</h3>
+                    <ul className="space-y-1 text-sm">
+                      {annualReport.bestMonth ? (
+                        <li className="flex justify-between gap-2">
+                          <span className="text-muted-foreground">{t("annual.best.month")}</span>
+                          <span className="tabular-nums">
+                            {annualReport.bestMonth.label} ·{" "}
+                            {formatEuro(annualReport.bestMonth.earnings)}
+                          </span>
+                        </li>
+                      ) : null}
+                      {annualReport.bestDay ? (
+                        <li className="flex justify-between gap-2">
+                          <span className="text-muted-foreground">{t("annual.best.day")}</span>
+                          <span className="tabular-nums">
+                            {formatDate(annualReport.bestDay.date)} ·{" "}
+                            {formatEuro(annualReport.bestDay.earnings)}
+                          </span>
+                        </li>
+                      ) : null}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        ) : null}
+      </Accordion>
+
+      {/* Exporte */}
+      <div className="mt-5 space-y-2 pb-4">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {t("stats.export.menu")}
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          {period === "monat" ? (
+            <>
+              <Button
+                variant="outline"
+                onClick={() =>
+                  doExport(
+                    "xlsx",
+                    monthShifts,
+                    td("report.monthTitle", {
+                      month: months[month] ?? "",
+                      year,
+                    }),
+                  )
+                }
+              >
+                <FileSpreadsheet className="size-4" /> {t("stats.export.listExcel")}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() =>
+                  doExport(
+                    "pdf",
+                    monthShifts,
+                    td("report.monthTitle", {
+                      month: months[month] ?? "",
+                      year,
+                    }),
+                  )
+                }
+              >
+                <FileDown className="size-4" /> {t("stats.export.listPdf")}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (monthShifts.length === 0) {
+                    toast.error(t("stats.toast.noData"));
+                    return;
+                  }
+                  exportWorkReportPdf(monthShifts, {
+                    jobs,
+                    month: `${monthNames(DOCUMENT_LOCALE)[month] ?? ""} ${year}`,
+                    includePhotos: true,
+                  });
+                  toast.success(t("stats.toast.exportSuccess"));
+                }}
+              >
+                <ClipboardList className="size-4" /> {t("stats.export.worklog")}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (monthShifts.length === 0) {
+                    toast.error(t("stats.toast.noData"));
+                    return;
+                  }
+                  exportArbeitsnachweisPdf(monthShifts, {
+                    jobs,
+                    month,
+                    year,
+                    employeeName: settings.employeeName ?? "",
+                    customCodes: settings.workCodes ?? [],
+                    ...(jobs.length === 1 && jobs[0]
+                      ? { employer: jobs[0].employer ?? jobs[0].name }
+                      : {}),
+                  });
+                  toast.success(t("stats.toast.exportSuccess"));
+                }}
+              >
+                <ClipboardList className="size-4" /> {t("stats.export.proof")}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => doExport("xlsx", yearShifts, td("report.yearTitle", { year }))}
+              >
+                <FileSpreadsheet className="size-4" /> {t("stats.export.listExcel")}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => doExport("pdf", yearShifts, td("report.yearTitle", { year }))}
+              >
+                <FileDown className="size-4" /> {t("stats.export.listPdf")}
+              </Button>
+              <Button variant="outline" onClick={() => doAnnualExport("xlsx")}>
+                <FileSpreadsheet className="size-4" /> {t("stats.export.annualReport")} Excel
+              </Button>
+              <Button variant="outline" onClick={() => doAnnualExport("pdf")}>
+                <FileDown className="size-4" /> {t("stats.export.annualReport")} PDF
+              </Button>
+            </>
           )}
-        </TabsContent>
-
-        <TabsContent value="bericht" className="mt-4">
-          <AnnualReportCard report={annualReportView} exportReport={annualReport} />
-        </TabsContent>
-      </Tabs>
+        </div>
+      </div>
     </main>
-  );
-}
-
-function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border bg-card p-4 shadow-card">
-      <h2 className="mb-3 text-sm font-semibold">{title}</h2>
-      {children}
-    </div>
   );
 }
