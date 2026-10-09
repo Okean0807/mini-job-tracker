@@ -333,3 +333,116 @@ describe("Prozentrundung (E7)", () => {
     });
   });
 });
+
+/* ------------------------------ Post-S5-Fixes ----------------------------- */
+
+describe("P3-1: istIncludesPlanned folgt dem Wochenstatus", () => {
+  const j2 = F1_JOBS[1]!;
+  const acc = (w: number, today: string) =>
+    weekTimeAccount(j2, weekPeriod(2026, w), F1_SHIFTS, today);
+
+  it("abgeschlossene Woche (KW 39) → false", () => {
+    expect(acc(39, F1_TODAY).istIncludesPlanned).toBe(false);
+  });
+  it("laufende Woche mit geplanter Arbeit (KW 41 am 06.10.) → true", () => {
+    expect(acc(41, "2026-10-06").istIncludesPlanned).toBe(true);
+  });
+  it("laufende Woche ohne geplante Arbeit (KW 40 am So 04.10.) → false", () => {
+    expect(acc(40, F1_TODAY).istIncludesPlanned).toBe(false);
+  });
+  it("zukünftige Woche mit / ohne geplante Arbeit (KW 41 / KW 45 am 04.10.)", () => {
+    expect(acc(41, F1_TODAY).istIncludesPlanned).toBe(true);
+    expect(acc(45, F1_TODAY).istIncludesPlanned).toBe(false);
+  });
+});
+
+describe("P3-2: Aufteilung blendet Jobs ohne Stunden und Verdienst aus (wie Monat)", () => {
+  it("KW 39: Café Nord hat nur „Frei“ (0 h / 0 €) → keine Zeile; Büro Plan sichtbar", () => {
+    const rows = buildWeekBreakdown(
+      weekPeriod(2026, 39),
+      F1_JOBS,
+      F1_SHIFTS,
+      F1_SHIFTS,
+      r,
+      F1_TODAY,
+    );
+    expect(
+      F1_SHIFTS.some((s) => s.jobId === "J1" && s.date === "2026-09-26" && s.kind === "frei"),
+    ).toBe(true);
+    expect(rows.map((x) => x.job.id)).toEqual(["J2"]);
+  });
+  it("gleiche Regel wie Monats-Aufteilung: payrollTotals der Café-Nord-Einträge KW 39 = 0 h / 0 €", () => {
+    const list = F1_SHIFTS.filter(
+      (s) => s.jobId === "J1" && s.date >= "2026-09-21" && s.date <= "2026-09-27",
+    );
+    expect(list.length).toBeGreaterThan(0);
+    const totals = payrollTotals(list, r, F1_SHIFTS);
+    expect(totals.workedHours).toBe(0);
+    expect(totals.earnings).toBe(0);
+  });
+});
+
+describe("P3-4: Payroll-Historie – Urlaub 15.09. (J1) hängt von vollständiger Historie ab", () => {
+  const urlaub = F1_SHIFTS.find(
+    (s) => s.jobId === "J1" && s.date === "2026-09-15" && s.kind === "urlaub",
+  )!;
+  const pay = (history: Shift[]) => evaluateShifts([urlaub], r, history)[0]!.payroll;
+
+  it("volle Historie = eigene Job-Historie → 13-Wochen-Durchschnitt 58,82 €", () => {
+    close(pay(F1_SHIFTS).earnings, 58.8214);
+    close(pay(F1_SHIFTS.filter((s) => s.jobId === "J1")).earnings, 58.8214);
+  });
+  it("unvollständige Historie (< 5 Referenztage) → Fallback Eintragsstunden × Satz 54,00 €, geschätzt", () => {
+    const septOnly = F1_SHIFTS.filter((s) => s.date.startsWith("2026-09"));
+    const weekOnly = F1_SHIFTS.filter((s) => s.date >= "2026-09-14" && s.date <= "2026-09-20");
+    for (const h of [[], septOnly, weekOnly]) {
+      const p = pay(h);
+      close(p.earnings, 54);
+      expect(p.estimated).toBe(true);
+    }
+  });
+  it("Wochenansicht nutzt die volle Historie: KW 38 Café Nord 106,07 € (nicht 101,25 €)", () => {
+    close(stats(2026, 38, F1_TODAY, F1_SHIFTS, "J1").actual.earnings, 106.0714);
+  });
+});
+
+describe("P3-5: kein Soll vor Beschäftigungsbeginn", () => {
+  const j2 = F1_JOBS[1]!; // Büro Plan, startDate 2026-06-01 (Mo), Mo+Mi 09–13
+  const midWeek: Job = { ...j2, startDate: "2026-06-03" }; // Mi
+
+  it("Woche vor Start (KW 13/2026) → Soll 0, Saldo 0", () => {
+    const a = weekTimeAccount(j2, weekPeriod(2026, 13), F1_SHIFTS, F1_TODAY);
+    expect(a).toMatchObject({ soll: 0, ist: 0, saldo: 0 });
+    expect(a.days.every((d) => d.soll === 0)).toBe(true);
+  });
+  it("Woche mit Start: Starttag zählt, Tage davor nicht (KW 23)", () => {
+    expect(weekTimeAccount(j2, weekPeriod(2026, 23), F1_SHIFTS, F1_TODAY).soll).toBe(8);
+    const a = weekTimeAccount(midWeek, weekPeriod(2026, 23), F1_SHIFTS, F1_TODAY);
+    expect(a.soll).toBe(4);
+    expect(a.days.find((d) => d.date === "2026-06-01")!.soll).toBe(0);
+    expect(a.days.find((d) => d.date === "2026-06-03")!.soll).toBe(4);
+  });
+  it("voll aktive Woche (KW 24) → 8 h; Regression KW 39 8/4/−4", () => {
+    expect(weekTimeAccount(j2, weekPeriod(2026, 24), F1_SHIFTS, F1_TODAY).soll).toBe(8);
+    expect(weekTimeAccount(j2, weekPeriod(2026, 39), F1_SHIFTS, F1_TODAY)).toMatchObject({
+      soll: 8,
+      ist: 4,
+      saldo: -4,
+    });
+  });
+  it("Monat: vor Start 0 (Mai), mit Start anteilig (Juni), Regression September 36/28/−8", () => {
+    expect(monthTimeAccount(j2, 2026, 4, F1_SHIFTS)).toMatchObject({ soll: 0, workDays: 0 });
+    expect(monthTimeAccount(j2, 2026, 5, F1_SHIFTS).soll).toBe(36);
+    expect(monthTimeAccount(midWeek, 2026, 5, F1_SHIFTS).soll).toBe(32);
+    expect(monthTimeAccount(j2, 2026, 8, F1_SHIFTS)).toMatchObject({
+      soll: 36,
+      ist: 28,
+      saldo: -8,
+    });
+  });
+  it("Job ohne startDate: Soll unverändert laut Plan", () => {
+    const { startDate: _omit, ...noStart } = j2;
+    void _omit;
+    expect(weekTimeAccount(noStart, weekPeriod(2026, 13), F1_SHIFTS, F1_TODAY).soll).toBe(8);
+  });
+});

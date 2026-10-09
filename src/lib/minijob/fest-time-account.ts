@@ -13,7 +13,6 @@ function weekdayIndex(date: Date): number {
   return (date.getDay() + 6) % 7;
 }
 
-
 /**
  * Wochenplan gültig an `date` (Phase A weekHistory).
  * History-Einträge speichern den *vorherigen* Plan mit effectiveFrom = Änderungsdatum;
@@ -28,7 +27,14 @@ export function weekForDate(job: Job, date: string): FixedDay[] | undefined {
   return job.week;
 }
 
+/**
+ * Plan-Tag für das Arbeitszeitkonto (Soll). Vor Beschäftigungsbeginn
+ * (`job.startDate`; der Starttag selbst hat Soll) gibt es keinen Plan-Tag → kein Soll,
+ * kein aktiver Tag. Nur Soll/Ist (daySollHours, monthTimeAccount); die Payroll
+ * nutzt `weekForDate` direkt und bleibt unverändert.
+ */
 function planForDate(job: Job, date: string): FixedDay | undefined {
+  if (job.startDate && date.slice(0, 10) < job.startDate.slice(0, 10)) return undefined;
   const week = weekForDate(job, date);
   if (!week) return undefined;
   return week[weekdayIndex(localDate(date))];

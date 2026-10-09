@@ -171,7 +171,7 @@ export function StatsWeekView({
               ist: formatHours(account.ist),
               soll: formatHours(account.soll),
             })}
-            details={[t("stats.week.inclPlanned")]}
+            details={account.istIncludesPlanned ? [t("stats.week.inclPlanned")] : []}
             icon={TrendingUp}
           />
         ) : null}
@@ -380,7 +380,9 @@ export function StatsWeekView({
           <AccordionItem value="week-sollist">
             <AccordionTrigger>{t("stats.week.details.sollIst")}</AccordionTrigger>
             <AccordionContent>
-              <p className="pb-2 text-xs text-muted-foreground">{t("stats.week.inclPlanned")}</p>
+              {account.istIncludesPlanned ? (
+                <p className="pb-2 text-xs text-muted-foreground">{t("stats.week.inclPlanned")}</p>
+              ) : null}
               <div className="overflow-x-auto pb-2">
                 <table className="w-full text-left text-xs">
                   <thead>

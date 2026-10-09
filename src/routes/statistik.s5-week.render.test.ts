@@ -232,12 +232,21 @@ describe("S5 Woche: KPIs, Vergleich, keine Jahresgrenze/Exporte", () => {
 });
 
 describe("S5 Woche: Soll/Ist (gleiches Gating wie Monat, E5)", () => {
-  it("aktiver Fest-Job Büro Plan: Soll/Ist-Kachel mit „Ist inkl. geplant“", () => {
+  it("aktiver Fest-Job Büro Plan: Soll/Ist-Kachel; abgeschlossene KW 39 ohne „inkl. geplant“ (P3-1)", () => {
     setData({ activeJobId: "J2" });
     render();
     openTab(t("stats.tab.week"));
     clickAria(t("stats.period.prev")); // KW 39: Krank 21.09. bleibt Minus (B7)
     expect(text()).toContain(t("stats.week.kpi.sollIst"));
+    expect(text()).toContain(`${hrs(4)} / ${hrs(8)}`);
+    expect(text()).not.toContain(t("stats.week.inclPlanned"));
+  });
+
+  it("zukünftige KW 41 mit geplanter Arbeit: „Ist inkl. geplant“ sichtbar (P3-1)", () => {
+    setData({ activeJobId: "J2" });
+    render();
+    openTab(t("stats.tab.week"));
+    clickAria(t("stats.period.next")); // KW 41: J2 07.10. geplant
     expect(text()).toContain(`${hrs(4)} / ${hrs(8)}`);
     expect(text()).toContain(t("stats.week.inclPlanned"));
   });
