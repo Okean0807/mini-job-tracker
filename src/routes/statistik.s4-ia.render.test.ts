@@ -112,10 +112,11 @@ afterEach(() => {
 });
 
 describe("S4 IA: Monat|Jahr Struktur", () => {
-  it("A1: nur Monat|Jahr-Tabs; Jobs- und Bericht-Tabs fehlen", () => {
+  // S5 / E1 (freigegeben 09.10.2026): Perioden-Tabs Woche | Monat | Jahr, Default Monat.
+  it("A1: nur Perioden-Tabs Woche|Monat|Jahr; Jobs- und Bericht-Tabs fehlen", () => {
     setData();
     render();
-    expect(tabLabels()).toEqual([t("stats.tab.month"), t("stats.tab.year")]);
+    expect(tabLabels()).toEqual([t("stats.tab.week"), t("stats.tab.month"), t("stats.tab.year")]);
     expect(text()).not.toMatch(new RegExp(`\\b${t("stats.tab.jobs")}\\b`));
     expect(text()).not.toMatch(new RegExp(`\\b${t("stats.tab.report")}\\b`));
     expect(text()).toContain(t("stats.breakdown.title"));
@@ -144,7 +145,7 @@ describe("S4 IA: Monat|Jahr Struktur", () => {
     expect(text()).toContain(t("stats.chart.perDay"));
     clickButton(t("stats.chart.mode.earnings"));
     // Umschalten bleibt auf Monat — kein zweites Peer-Diagramm-Tab
-    expect(tabLabels()).toEqual([t("stats.tab.month"), t("stats.tab.year")]);
+    expect(tabLabels()).toEqual([t("stats.tab.week"), t("stats.tab.month"), t("stats.tab.year")]);
   });
 
   it("C1: Jahr zeigt Jahresgrenze-KPI + Jahresbericht-Export; Details zugeklappt", () => {
