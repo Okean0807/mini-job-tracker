@@ -158,7 +158,8 @@ describe("Statistik (Seite): Jahresgrenze unabhängig vom Job-Filter", () => {
     const tabs = [...container.querySelectorAll('[role="tab"]')].map((el) =>
       norm(el.textContent ?? "").trim(),
     );
-    expect(tabs).toEqual([t("stats.tab.month"), t("stats.tab.year")]);
+    // S5 / E1: Woche | Monat | Jahr
+    expect(tabs).toEqual([t("stats.tab.week"), t("stats.tab.month"), t("stats.tab.year")]);
     expect(tabs).not.toContain(t("stats.tab.report"));
     expect(tabs).not.toContain(t("stats.tab.jobs"));
 

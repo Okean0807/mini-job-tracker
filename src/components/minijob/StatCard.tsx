@@ -8,9 +8,11 @@ interface StatCardProps {
   hint?: string;
   icon: LucideIcon;
   highlight?: boolean;
+  /** Optionale Zusatzzeilen unter `hint` (z. B. „davon …“, „+ … geplant“). */
+  details?: readonly string[];
 }
 
-export function StatCard({ label, value, hint, icon: Icon, highlight }: StatCardProps) {
+export function StatCard({ label, value, hint, icon: Icon, highlight, details }: StatCardProps) {
   return (
     <div
       className={cn(
@@ -35,6 +37,11 @@ export function StatCard({ label, value, hint, icon: Icon, highlight }: StatCard
           {hint}
         </p>
       ) : null}
+      {details?.map((line) => (
+        <p key={line} className={cn("text-xs", highlight ? "opacity-80" : "text-muted-foreground")}>
+          {line}
+        </p>
+      ))}
     </div>
   );
 }
