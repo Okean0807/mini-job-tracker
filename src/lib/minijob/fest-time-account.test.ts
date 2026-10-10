@@ -178,3 +178,31 @@ describe("weekHistory Phase A (v1.1)", () => {
     expect(acc.workDays).toBe(without.workDays - 1);
   });
 });
+
+describe("fest-time-account: Beschäftigungsbeginn (Post-S5 P3-5)", () => {
+  const open = festJob();
+  const started = festJob({ startDate: "2026-06-03" }); // Mi
+
+  it("daySollHours: vor startDate 0, ab Starttag (inklusive) Plan-Soll", () => {
+    expect(daySollHours(open, "2026-06-02")).toBeGreaterThan(0);
+    expect(daySollHours(started, "2026-06-02")).toBe(0);
+    expect(daySollHours(started, "2026-06-03")).toBe(daySollHours(open, "2026-06-03"));
+  });
+
+  it("Ist und Wochenplan (Payroll-Basis) bleiben unverändert", () => {
+    const shifts = [arbeit("2026-06-02")];
+    expect(dayIstHours(started, "2026-06-02", shifts)).toBe(
+      dayIstHours(open, "2026-06-02", shifts),
+    );
+    expect(weekForDate(started, "2026-06-02")).toEqual(weekForDate(open, "2026-06-02"));
+  });
+
+  it("monthTimeAccount: Tage vor Start zählen weder als Soll noch als Arbeitstag", () => {
+    const before = monthTimeAccount(started, 2026, 4, []);
+    expect(before).toMatchObject({ soll: 0, workDays: 0 });
+    const june = monthTimeAccount(started, 2026, 5, []);
+    const juneOpen = monthTimeAccount(open, 2026, 5, []);
+    expect(june.workDays).toBe(juneOpen.workDays - 2); // Mo 01.06., Di 02.06.
+    expect(june.soll).toBeCloseTo(juneOpen.soll - 2 * daySollHours(open, "2026-06-01"), 6);
+  });
+});
