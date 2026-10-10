@@ -1,0 +1,6 @@
+# Narrow, reviewed exceptions only (exact finding fingerprints: commit:file:rule:line).
+# Historical Supabase PUBLISHABLE key (public by design, protected by RLS) committed in
+# 30be62c (.env lines 2 and 5) and removed in 639ce65. No path/regex/rule allowlists.
+# See /workspace/stat-analysis-report/pr01-secrets/IMPL.md / master fix plan A1-2.
+30be62c375cc64069453c4f89bec85938c0dcd91:.env:generic-api-key:2
+30be62c375cc64069453c4f89bec85938c0dcd91:.env:generic-api-key:5
