@@ -251,6 +251,39 @@ describe("S5 Woche: Soll/Ist (gleiches Gating wie Monat, E5)", () => {
     expect(text()).toContain(t("stats.week.inclPlanned"));
   });
 
+  /** Soll/Ist-Accordion „Soll / Ist pro Tag“ öffnen und dessen Inhalt liefern (P3-A). */
+  function openSollIstDetails(): string {
+    clickButton(t("stats.week.details.sollIst"));
+    const trigger = [...container.querySelectorAll("button")].find(
+      (b) => norm(b.textContent ?? "").trim() === t("stats.week.details.sollIst"),
+    );
+    expect(trigger?.getAttribute("aria-expanded")).toBe("true");
+    const region = container.querySelector('[role="region"]');
+    if (!region) throw new Error("Soll/Ist-Details nicht geöffnet");
+    const content = norm(region.textContent ?? "");
+    expect(content).toContain(t("stats.week.table.soll"));
+    return content;
+  }
+
+  it("geöffnete Soll/Ist-Details: abgeschlossene KW 39 ohne „Ist inkl. geplant“ (P3-A)", () => {
+    setData({ activeJobId: "J2" });
+    render();
+    openTab(t("stats.tab.week"));
+    clickAria(t("stats.period.prev")); // KW 39
+    expect(label()).toBe("KW 39/2026");
+    expect(openSollIstDetails()).not.toContain(t("stats.week.inclPlanned"));
+    expect(text()).not.toContain(t("stats.week.inclPlanned"));
+  });
+
+  it("geöffnete Soll/Ist-Details: KW 41 mit geplanter Arbeit zeigt „Ist inkl. geplant“ (P3-A)", () => {
+    setData({ activeJobId: "J2" });
+    render();
+    openTab(t("stats.tab.week"));
+    clickAria(t("stats.period.next")); // KW 41: J2 07.10. geplant
+    expect(label()).toBe("KW 41/2026");
+    expect(openSollIstDetails()).toContain(t("stats.week.inclPlanned"));
+  });
+
   it("aktiver Flex-Job: keine Soll/Ist-Kachel (wie Monat)", () => {
     setData({ activeJobId: "J1" });
     render();

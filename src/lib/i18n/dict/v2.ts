@@ -43,7 +43,8 @@ export const v2: Bundle = {
 
     "job.payday": "Zahltag (Tag im Monat)",
     "job.startDate": "Beschäftigungsbeginn",
-    "job.startDateHint": "Basis der 4-Wochen-Wartezeit für Lohnfortzahlung im Krankheitsfall (§ 3 Abs. 3 EntgFG).",
+    "job.startDateHint":
+      "Basis der 4-Wochen-Wartezeit für Lohnfortzahlung im Krankheitsfall (§ 3 Abs. 3 EntgFG). Vor dem Startdatum werden keine Sollstunden angesetzt. Ab dem Startdatum gelten die regulären Soll-Regeln.",
     "pay.absencePaid": "Bezahlte Abwesenheit",
     "pay.absenceUnpaid": "Ohne Entgeltfortzahlung",
     "pay.estimate": "Geschätzte Basis",
@@ -119,7 +120,8 @@ export const v2: Bundle = {
 
     "job.payday": "Payday (day of month)",
     "job.startDate": "Employment start",
-    "job.startDateHint": "Basis for the 4-week waiting period for sick pay (§ 3 EntgFG).",
+    "job.startDateHint":
+      "Basis for the 4-week waiting period for sick pay (§ 3 EntgFG). No target hours are applied before the start date. From the start date, the regular target-hour rules apply.",
     "pay.absencePaid": "Paid absence",
     "pay.absenceUnpaid": "No continued pay",
     "pay.estimate": "Estimated basis",
@@ -195,7 +197,8 @@ export const v2: Bundle = {
 
     "job.payday": "День выплаты (число месяца)",
     "job.startDate": "Начало занятости",
-    "job.startDateHint": "Основа 4-недельного срока ожидания оплаты больничного (§ 3 EntgFG).",
+    "job.startDateHint":
+      "Основа 4-недельного срока ожидания оплаты больничного (§ 3 EntgFG). До даты начала плановые часы не начисляются. С даты начала действуют обычные правила плановых часов.",
     "pay.absencePaid": "Оплачиваемое отсутствие",
     "pay.absenceUnpaid": "Без сохранения оплаты",
     "pay.estimate": "Оценочная основа",
@@ -271,7 +274,8 @@ export const v2: Bundle = {
 
     "job.payday": "Ödeme günü (ayın günü)",
     "job.startDate": "İşe başlama",
-    "job.startDateHint": "Hastalıkta ücret ödemesi için 4 haftalık bekleme süresinin temeli (§ 3 EntgFG).",
+    "job.startDateHint":
+      "Hastalıkta ücret ödemesi için 4 haftalık bekleme süresinin temeli (§ 3 EntgFG). Başlangıç tarihinden önce hedef saat hesaplanmaz. Başlangıç tarihinden itibaren normal hedef saat kuralları geçerlidir.",
     "pay.absencePaid": "Ücretli devamsızlık",
     "pay.absenceUnpaid": "Ücret ödemesi yok",
     "pay.estimate": "Tahmini temel",
@@ -347,7 +351,8 @@ export const v2: Bundle = {
 
     "job.payday": "Dzień wypłaty (dzień miesiąca)",
     "job.startDate": "Początek zatrudnienia",
-    "job.startDateHint": "Podstawa 4-tygodniowego okresu wyczekiwania na wynagrodzenie chorobowe (§ 3 EntgFG).",
+    "job.startDateHint":
+      "Podstawa 4-tygodniowego okresu wyczekiwania na wynagrodzenie chorobowe (§ 3 EntgFG). Przed datą rozpoczęcia nie nalicza się godzin docelowych. Od daty rozpoczęcia obowiązują zwykłe zasady godzin docelowych.",
     "pay.absencePaid": "Płatna nieobecność",
     "pay.absenceUnpaid": "Bez wynagrodzenia",
     "pay.estimate": "Podstawa szacunkowa",
