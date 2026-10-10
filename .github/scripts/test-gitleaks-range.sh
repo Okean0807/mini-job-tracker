@@ -11,7 +11,7 @@ work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 fail=0; pass=0
 ZERO="0000000000000000000000000000000000000000"
 
-fake() { printf 'ghp_%s' "$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 36)"; }
+fake() { printf 'ghp_%s' "$(head -c 512 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c 36)"; }
 repo() { d="$work/$1"; rm -rf "$d"; git init -q -b main "$d"; cd "$d";
   git config user.name t; git config user.email t@example.invalid;
   echo base > README; git add .; git commit -qm base; }
@@ -69,6 +69,30 @@ expect "full: other secret in same file not suppressed" block EVENT=workflow_dis
 repo s8
 expect "pr: missing head fails closed" "error(2)" EVENT=pull_request PR_BASE=$(git rev-parse HEAD) PR_HEAD=$ZERO
 expect "unknown event fails closed" "error(2)" EVENT=bogus
+
+# 9 evil merge: secret only in conflict resolution of a merge commit
+expect_dir() { # name want(pass|block)
+  name=$1; want=$2
+  out=$("$GITLEAKS" dir --no-banner --redact --exit-code 1 . 2>&1); rc=$?
+  got=pass; if [ $rc -eq 1 ]; then echo "$out" | grep -q "leaks found:" && got=block || got="error(1)"; fi
+  [ "$rc" -gt 1 ] && got="error($rc)"
+  if [ "$got" = "$want" ]; then pass=$((pass+1)); echo "PASS  $name -> $got";
+  else fail=$((fail+1)); echo "FAIL  $name -> got $got want $want"; fi
+}
+repo s9; echo "v=0" > conf.txt; git add conf.txt; git commit -qm c0
+git checkout -q -b side; echo "v=side" > conf.txt; git commit -qam side
+git checkout -q main; echo "v=main" > conf.txt; git commit -qam main
+git merge -q side >/dev/null 2>&1 || true
+tok=$(fake); printf 'v=resolved\nTOKEN=%s\n' "$tok" > conf.txt; git add conf.txt; git commit -qm "merge side"
+out=$(EVENT=workflow_dispatch "$SCAN" 2>&1); rc=$?
+if [ $rc -eq 0 ]; then pass=$((pass+1)); echo "PASS  evil merge: git --all scan misses it (documented limit) -> exit 0";
+else fail=$((fail+1)); echo "FAIL  evil merge: git --all scan expected exit 0, got $rc"; fi
+expect_dir "evil merge: dir scan of tree catches it" block
+dout=$("$GITLEAKS" dir --no-banner --redact --verbose --exit-code 1 . 2>&1 || true)
+if printf '%s' "$dout$out" | grep -qF "${tok:4}"; then fail=$((fail+1)); echo "FAIL  redaction: token substring in output";
+else pass=$((pass+1)); echo "PASS  redaction: no token substring in output"; fi
+repo s10; clean_commit
+expect_dir "dir scan: clean tree" pass
 
 echo "harness: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
