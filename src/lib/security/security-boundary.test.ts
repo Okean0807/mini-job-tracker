@@ -7,7 +7,7 @@ describe("security boundary", () => {
 
   it("keeps AI rate-limit state behind RLS with no client policy", () => {
     const sql = readFileSync(
-      resolve(root, "supabase/migrations/20260930220000_p1_ai_rate_limit_rls.sql"),
+      resolve(root, "supabase/pending/20260930220000_p1_ai_rate_limit_rls.sql"),
       "utf8",
     );
     expect(sql).toMatch(/enable row level security/i);
