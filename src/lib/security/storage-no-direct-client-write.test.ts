@@ -118,7 +118,7 @@ describe("storage write guard (AST)", () => {
     expect(findStorageWrites(src).length).toBeGreaterThan(0);
   });
   it("detects both move and copy", () => {
-    expect(findStorageWrites(NEGATIVE.moveCopy!)).toHaveLength(2);
+    expect(findStorageWrites(NEGATIVE["moveCopy"]!)).toHaveLength(2);
   });
   it.each(Object.entries(POSITIVE))("allows: %s", (_n, src) => {
     expect(findStorageWrites(src)).toEqual([]);
