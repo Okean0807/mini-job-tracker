@@ -87,7 +87,7 @@ Order: OPTIONS/405/Bearer -> env -> `auth.getUser` -> form parse -> size (<= 20 
 path `${user.id}/<ts>-<uuid>-<safeName>` -> service-role `upload` (upsert false) -> `documents` insert
 (FK to auth.users + trigger `enforce_document_account_isolation`) -> on insert error `remove([path])`.
 Finding: the `remove` result/exception is not checked and the insert cause is not logged
-(separate PR for upload-document). Uses `supabase-js@2` (unpinned).
+(separate PR for upload-document). Uses `supabase-js@2` (unpinned). Both points describe live v2 and are fixed in PR #137 (pending deploy).
 
 ## Tests
 
