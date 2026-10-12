@@ -10,7 +10,7 @@
 -- the auth.users FK after deletion). Client code only uses createSignedUrl
 -- (SELECT) and remove (DELETE), which stay allowed.
 --
--- Rollback: re-create both policies exactly as in
--- 20260930192403_p1_storage_policy_drift_hardening.sql.
+-- Rollback: supabase/pending/rollback/20261012160000_p2_documents_no_direct_client_write.rollback.sql
+-- (exact definitions from 20260930192515_p1_rls_performance_hardening.sql).
 drop policy if exists "Users upload own document files" on storage.objects;
 drop policy if exists "Users update own document files" on storage.objects;

@@ -50,13 +50,50 @@ content validation). Optionally E later as a safety net.
 Note: the Round 4 integration test seeded objects through the direct Storage API.
 After option A, future runs must seed via `upload-document`.
 
-## Rollback
+## Rollback (C1)
 
-Re-create the two policies verbatim from
-`supabase/migrations/20260930192403_p1_storage_policy_drift_hardening.sql`.
+`supabase/pending/rollback/20261012160000_p2_documents_no_direct_client_write.rollback.sql`
+re-creates both policies exactly as in the last applied definition,
+`supabase/migrations/20260930192515_p1_rls_performance_hardening.sql` (lines 32-39):
+`(select auth.uid())::text = (storage.foldername(name))[1]` (initPlan form).
+
+| Source                                     | INSERT / UPDATE predicate                                                                 |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| 20260930192403 (older)                     | `auth.uid()::text = (storage.foldername(name))[1]` (bare call)                            |
+| 20260930192515 (later, applied)            | `(select auth.uid())::text = ...`                                                         |
+| Live `pg_policies` (read-only, 2026-10-12) | `((( SELECT auth.uid() AS uid))::text = (storage.foldername(name))[1])` -> matches 192515 |
+
+The earlier version of this note pointed to 192403; that was imprecise (semantically equal,
+but not the current definition). The test checks rollback == 192515 (whitespace-normalised).
+
+## Affected clients (C3)
+
+- Direct client uploads were removed in commit `a8d502335c247377050ab4abf8beb032e39c69fb`
+  ("Phase 17 audit hardening", 2026-10-01 22:10 CEST): `uploadDocument` switched from
+  `supabase.storage.from(BUCKET).upload(...)` + client insert to `functions.invoke("upload-document")`.
+- After applying the migration, only builds **older than a8d5023** (e.g. a stale PWA cache or an
+  old Vercel deployment URL) would get **403** on upload. Current builds are unaffected.
+- Evidence: the current production bundle of `mini-job-tracker-blue.vercel.app` (48 JS chunks
+  fetched read-only, 2026-10-12) references `upload-document` (chunk `dokumente-*.js`) and contains
+  no `.from(x).upload(` / `createSignedUploadUrl` / `uploadToSignedUrl` call.
+- Old deployment URLs were not enumerated; whether any is still served/cached is UNKNOWN.
+
+## upload-document re-check (C4, read-only)
+
+Deployed v2 source equals repo `supabase/functions/upload-document/index.ts` except whitespace
+(newline vs space, trailing newline; live sha256 `58454e9c…cb46`, repo `030a7e52…2d39`).
+Order: OPTIONS/405/Bearer -> env -> `auth.getUser` -> form parse -> size (<= 20 MiB) -> MIME allow-list
+-> magic bytes == MIME -> extension allow-list -> folder ownership (`user_id` filter) ->
+path `${user.id}/<ts>-<uuid>-<safeName>` -> service-role `upload` (upsert false) -> `documents` insert
+(FK to auth.users + trigger `enforce_document_account_isolation`) -> on insert error `remove([path])`.
+Finding: the `remove` result/exception is not checked and the insert cause is not logged
+(separate PR for upload-document). Uses `supabase-js@2` (unpinned).
 
 ## Tests
 
-`src/lib/security/storage-no-direct-client-write.test.ts`: pending SQL only drops
-the two policies; app code contains no direct Storage write. Content checks only;
-they do not prove the live state.
+`src/lib/security/storage-no-direct-client-write.test.ts` (C2): TypeScript-AST scan of all non-test
+files under `src/` for Storage write calls (`upload`, `update`, `uploadToSignedUrl`,
+`createSignedUploadUrl`, `move`, `copy`) including multi-line chains, const/let aliases,
+destructured `storage`, element access; positive fixtures (invoke upload-document,
+createSignedUrl, remove, Postgrest update) and negative fixtures. Verified that it flags the
+pre-a8d5023 `documents.ts`. Plus SQL checks: forward only drops the two policies; rollback equals 192515. Static checks only; they do not prove the live state.
