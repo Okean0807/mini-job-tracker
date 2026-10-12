@@ -1,18 +1,28 @@
 # Unified security release - plan rev.4 (2026-10-12, CEST)
 
-Supersedes rev.3 (same directory). Merge, deploys, migrations and Vercel changes are NOT approved by this document. Each needs a separate explicit approval from Juri. The executor is never the approver. Gate names S0–S6 are reconstructed from the parent summary because Juri's original wording was not available to the author; verify them against t533u.
+Supersedes rev.3 (same directory). Merge, deploys, migrations and Vercel changes are NOT approved by this document. Each needs a separate explicit approval from Juri. The executor is never the approver. Gate names S0–S6 follow Juri's wording (QA R2 F-139-1).
 
-## Gates (each no weaker than rev.3)
+## Gates (Juri's wording; the earlier rules are kept as sub-rules, none weaker than rev.3)
 
-- **S0 Vercel scope**: production deployment SHA readable via the connector. 403 = hard STOP at step 0 (rev.3 S0). Re-checked at step 9.
-- **S1 Migrations 3-source**: git `supabase/migrations/` at the relevant SHA + `list_migrations` + live schema, at steps 1, 2, 6, 12. Any mismatch = STOP.
-- **S2 Functions**: merge ≠ deploy. Field-by-field version/updated_at/ezbr/source-hash reads after every merge and deploy (steps 2, 3, 14), each with a ≥10-min re-read. UNKNOWN/unreadable = STOP.
-- **S3 Change channel**: no `apply_migration`, no manual rollback.sql, no edits to applied migrations; rollback = new migration PR; function rollback = redeploy of the pinned copy with approval.
-- **S4 Ordering**: step 5 (migration) is hard-gated on step 3 (deploy verified) and step 4.
-- **S5 Approvals**: Juri approves merge/deploy/migration/test users individually; QA output is input only; executor ≠ approver.
-- **S6 Evidence**: every step stores its evidence under /workspace/stat-analysis-report/delete-account-fix/release/step-00/… (step-NN) with CEST timestamps; SKIPPED/UNKNOWN/403 are never PASS.
+- **S0 — Access and identity**: correct Vercel scope, project and Production alias confirmed; otherwise STOP.
+  - S0.1: the production deployment SHA must be readable via the connector. A 403 is a hard STOP at step 0 (rev.3 S0). Re-checked at step 9.
+- **S1 — Code review**: current PR, diff and required checks confirmed.
+  - S1.1: required checks `unit` + `gitleaks` green at the PR head; Supabase Preview SKIPPED is not a pass. Final QA is at the same head SHA.
+  - S1.2 (multi-source migration check): git `supabase/migrations/` at the relevant SHA + `list_migrations` + live schema, at steps 1, 2, 6, 12. Any mismatch = STOP.
+- **S2 — Merge authorization**: a separate explicit operator approval for the specific PR and HEAD SHA.
+  - S2.1: the approval text must read `merge #138 @<full 40-char head SHA>`. If the PR head differs from that SHA at merge time → STOP (new approval needed).
+  - S2.2: Juri approves; QA output is input only; the executor is never the approver.
+- **S3 — Deployment authorization and execution**: a separate approval for the specific function and expected version.
+  - S3.1: the approval names the function, merge SHA, file sha256s, verify_jwt=true and the expected version (baseline+1). Merge ≠ deploy.
+  - S3.2: no `apply_migration`, no manual rollback.sql, no edits to applied migrations. Function rollback = redeploy of the pinned copy with its own approval.
+- **S4 — Deployment verification**: version/source identity, updated_at if available, smoke tests and a re-check after 10 minutes.
+  - S4.1: field-by-field status/version/updated_at/ezbr/get_edge_function source sha256 read after every merge and deploy (steps 2, 3, 14), each with a ≥10-min re-read; both reads saved. UNKNOWN/unreadable = STOP.
+- **S5 — Migration review and authorization**: separate PR, independent migration review, recovery plan and separate approval.
+  - S5.1: step 5 is hard-gated on step 3 (deploy verified) and step 4. An independent QA of the migration-PR diff is a precondition. Rollback = a new migration PR (content = pending/rollback, which equals 192515).
+- **S6 — Post-release verification**: actual state, logs and expected functions, without assuming the result.
+  - S6.1: evidence for every step is stored under /workspace/stat-analysis-report/delete-account-fix/release/step-00/… (step-NN) with CEST timestamps; SKIPPED/UNKNOWN/403 are never PASS.
 
-Step mapping: S0→0,9 · S1→1,2,6,12 · S2→2,3,14 · S3→3,6,7,11 · S4→5 · S5→2,3,4,5,7,10,11 · S6→all.
+Step mapping: S0→0,9 · S1→1,2,6,12 · S2→2 · S3→3 · S4→2,3,4,14 · S5→5,6,11,12 · S6→6–8,12–14,18,20.
 
 ## P3-B: preconditions for step 5 (hard gate on step 3) (all required; any missing → STOP)
 
@@ -24,14 +34,15 @@ Step mapping: S0→0,9 · S1→1,2,6,12 · S2→2,3,14 · S3→3,6,7,11 · S4→
 6. delete-account unchanged vs the baseline.
 7. S1 holds immediately before: list_migrations = 9 (or the known set), policies = 4 as in 192515.
 8. S0 PASS (frontend no longer writes Storage directly; otherwise uploads from old builds break).
-9. Juri's separate approval for the migration PR.
+9. Independent QA of the migration-PR diff (file byte-equal to pending, version > last applied, no other files): PASS at the migration-PR head SHA.
+10. Juri's separate approval for the migration PR (naming the PR and its head SHA).
 
 ## P3-E: 0-byte smoke (step 3)
 
-- Request: `curl -sS -o body.json -w '%{http_code}' -H "Authorization: Bearer $TEST_JWT" -F 'file=@empty.pdf;type=application/pdf' -F folder_id=<test folder> $FN_URL/upload-document` with `: > empty.pdf` (the JWT is only from the env var, never printed).
+- Request: `curl -sS -o body.json -w '%{http_code}' -H "Authorization: Bearer $TEST_JWT" -F 'file=@empty.pdf;type=application/pdf' -F folderId=<test folder uuid> (field name per handler.ts:137; the file field is `file`, handler.ts:123) $FN_URL/upload-document` with `: > empty.pdf` (the JWT is only from the env var, never printed).
 - Expected HTTP: 400 `file-required` or 413 `file-too-large` (Deno may parse an empty part differently from Node; either is PASS; 2xx = FAIL).
 - Then SQL by test uid: 0 storage.objects in `documents/<uid>/`, 0 `documents` rows; function logs show no upload/insert/cleanup event for the request; record the response, the log event ids and the run timestamp (CEST).
-- Environment: there is NO non-production Supabase environment (list_projects = 1 project; list_branches = only the default `main` branch, which is prod). So the smoke runs in prod only with Juri's approval (step 3/4 test user). A no-approval alternative is local only: run handler.ts under Deno with a real multipart Request and mocked deps. That covers parsing, not the deployed function.
+- Environment: there is NO non-production Supabase environment (list_projects = 1 project; list_branches = only the default `main` branch, which is prod). So the smoke runs in prod only with Juri's approval (test user created before the step-3 smoke, separate approval). A no-approval alternative is local only: run handler.ts under Deno with a real multipart Request and mocked deps. That covers parsing, not the deployed function.
 
 ## Steps 0–20
 
@@ -63,11 +74,11 @@ Step mapping: S0→0,9 · S1→1,2,6,12 · S2→2,3,14 · S3→3,6,7,11 · S4→
 
 - Action: Merge PR #138 (merge commit, no squash/rebase)
 - Executor: UNASSIGNED — operator decision required
-- Approver: Juri (explicit chat approval naming this step)
-- Inputs: steps 0–1 PASS, CI unit+gitleaks green at the head; Supabase Preview is SKIPPED, which is not a pass
-- Evidence: merge SHA, CI run URLs on main at the merge SHA, list_edge_functions read immediately + after 10 min, list_migrations, pg_policies → /workspace/stat-analysis-report/delete-account-fix/release/step-02/
-- PASS: merge SHA recorded; CI green on it; both functions still v2 with identical updated_at/ezbr (baseline); migrations still 9; policies 4. A green Vercel CI is NOT Edge Function evidence
-- FAIL/STOP: any function field changed, a migration count change, unclear or unreadable values → STOP (no fix-forward)
+- Approver: Juri; approval text exactly `merge #138 @<full 40-char head SHA>`
+- Inputs: steps 0–1 PASS; the PR head equals the approved 40-char SHA (otherwise STOP); CI unit+gitleaks green at the head; Supabase Preview is SKIPPED, which is not a pass
+- Evidence: merge SHA, CI run URLs on main at the merge SHA, list_edge_functions + get_edge_function source sha256 read immediately and ≥10 min later (both saved), list_migrations, pg_policies → /workspace/stat-analysis-report/delete-account-fix/release/step-02/
+- PASS: merge SHA recorded; CI green on it; both functions still v2 with identical status/updated_at/ezbr/source sha256 (baseline) in both reads; migrations still 9; policies 4. A green Vercel CI is NOT Edge Function evidence
+- FAIL/STOP: PR head ≠ approved SHA, a source read UNKNOWN, any function field changed, a migration count change, unclear or unreadable values → STOP (no fix-forward)
 - Rollback: revert PR (new PR; separate approval); an unexpected deploy → step 4 rollback
 - Next step only if: all post-merge reads equal the baseline
 
@@ -76,16 +87,16 @@ Step mapping: S0→0,9 · S1→1,2,6,12 · S2→2,3,14 · S3→3,6,7,11 · S4→
 - Action: deploy_edge_function name=upload-document, entrypoint index.ts, verify_jwt=true, files index.ts+handler.ts byte-equal to git at the merge SHA (sha256 recorded before the deploy)
 - Executor: UNASSIGNED — operator decision required
 - Approver: Juri (explicit chat approval naming this step) naming function, merge SHA, file sha256s, verify_jwt=true
-- Inputs: step 2 PASS; file sha256s from `git show <merge>:supabase/functions/upload-document/{index,handler}.ts | sha256sum`
+- Inputs: step 2 PASS; BEFORE the smoke: the test user exists (created by Juri under its own separate approval) and the test JWT is in the env var (never printed); file sha256s from `git show <merge>:supabase/functions/upload-document/{index,handler}.ts | sha256sum`
 - Evidence: deploy response (version, ezbr); read #1 right after + read #2 ≥10 min later: status, version, updated_at (list_edge_functions provides updated_at as epoch ms → CEST), ezbr_sha256, get_edge_function source sha256 per file; both reads saved; smoke log → /workspace/stat-analysis-report/delete-account-fix/release/step-03/
 - PASS: status ACTIVE; version = baseline+1; updated_at > merge time; ezbr equals the deploy response in both reads; source sha256 = git at the merge SHA for both files; verify_jwt=true; delete-account unchanged; 0-byte smoke PASS
 - FAIL/STOP: ezbr differs between reads, source hash ≠ git, get_edge_function fails (the source hash is UNKNOWN; UNKNOWN ≠ PASS → STOP), version jump >1, delete-account changed, smoke fails → STOP
 - Rollback: redeploy /workspace/stat-analysis-report/supabase-drift/edge/upload-document/rollback-pinned/index.ts (sha256 2fd002ba…f9b9e) with verify_jwt=true; separate approval by Juri
 - Next step only if: every field PASS in both reads + smoke PASS
 
-### Step 4: Post-deploy contract probes + upload smoke with a throwaway test user
+### Step 4: Post-deploy contract probes + upload smoke with the step-3 test user
 
-- Action: OPTIONS 200, no-JWT 401, GET 405; test user (created by Juri) uploads a PDF via the app/function; object + row verified; delete-account cleans up
+- Action: OPTIONS 200, no-JWT 401, GET 405; the same test user (precondition of step 3) uploads a PDF via the app/function; object + row verified; delete-account cleans up
 - Executor: UNASSIGNED — operator decision required
 - Approver: Juri (explicit chat approval naming this step) (test user in prod)
 - Inputs: step 3 PASS
@@ -100,7 +111,7 @@ Step mapping: S0→0,9 · S1→1,2,6,12 · S2→2,3,14 · S3→3,6,7,11 · S4→
 - Action: New PR moving the file (version > 20260930192515); the content is byte-equal to pending
 - Executor: UNASSIGNED — operator decision required
 - Approver: Juri (explicit chat approval naming this step) (separate from merge/deploy approval)
-- Inputs: precondition checklist below; ALL must be PASS
+- Inputs: P3-B checklist incl. independent migration-diff QA; ALL must be PASS
 - Evidence: checklist with evidence links → /workspace/stat-analysis-report/delete-account-fix/release/step-05/
 - PASS: every precondition PASS
 - FAIL/STOP: ANY precondition not PASS/UNKNOWN → STOP (see P3-B list)
@@ -181,7 +192,7 @@ Step mapping: S0→0,9 · S1→1,2,6,12 · S2→2,3,14 · S3→3,6,7,11 · S4→
 
 ### Step 12: Post-apply check (S1)
 
-- Action: list_migrations, relrowsecurity, ACLs, consume_ai_rate_limit prosecdef/search_path/anon EXECUTE false
+- Action: git supabase/migrations at the merge SHA, list_migrations, relrowsecurity, ACLs, consume_ai_rate_limit prosecdef/search_path/anon EXECUTE false
 - Executor: UNASSIGNED — operator decision required
 - Approver: none
 - Inputs: step 11
@@ -196,7 +207,7 @@ Step mapping: S0→0,9 · S1→1,2,6,12 · S2→2,3,14 · S3→3,6,7,11 · S4→
 - Action: rate-limit RPC via the app as a test user
 - Executor: UNASSIGNED — operator decision required
 - Approver: Juri (explicit chat approval naming this step)
-- Inputs: step 13
+- Inputs: step 12 PASS
 - Evidence: statuses, logs → /workspace/stat-analysis-report/delete-account-fix/release/step-13/
 - PASS: RPC works; limit is enforced
 - FAIL/STOP: errors → STOP
@@ -205,12 +216,12 @@ Step mapping: S0→0,9 · S1→1,2,6,12 · S2→2,3,14 · S3→3,6,7,11 · S4→
 
 ### Step 14: Re-read functions (S2 drift)
 
-- Action: list_edge_functions after all merges
+- Action: list_edge_functions + get_edge_function source sha256 after all merges, re-read ≥10 min later (both saved)
 - Executor: UNASSIGNED — operator decision required
 - Approver: none
 - Inputs: step 13
-- Evidence: read → /workspace/stat-analysis-report/delete-account-fix/release/step-14/
-- PASS: only the step 3 version change
+- Evidence: two reads → /workspace/stat-analysis-report/delete-account-fix/release/step-14/
+- PASS: only the step 3 version change; source sha256 = git at the merge SHA in both reads; an UNKNOWN read is not PASS
 - FAIL/STOP: any other change → STOP
 - Rollback: step 3 rollback
 - Next step only if: PASS
