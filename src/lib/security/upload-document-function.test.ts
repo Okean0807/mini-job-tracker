@@ -96,7 +96,7 @@ function req(
   return new Request("http://t/upload-document", {
     method: init.method ?? "POST",
     headers,
-    body: (init.method ?? "POST") === "POST" ? fd : undefined,
+    body: (init.method ?? "POST") === "POST" ? fd : null,
   });
 }
 const pdf = (name = "a.pdf") => new File([PDF], name, { type: "application/pdf" });
