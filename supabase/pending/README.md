@@ -9,3 +9,10 @@ Supabase Branching / `db push`.
   so access is only via the SECURITY DEFINER function `consume_ai_rate_limit`.
   To apply: move back into `supabase/migrations/` with a new version newer than
   the latest applied remote version, after explicit approval.
+- `20261012160000_p2_documents_no_direct_client_write.sql` — drops the direct
+  client INSERT/UPDATE policies on `storage.objects` for bucket `documents`
+  (late-upload window after account deletion; app uploads only via
+  `upload-document`). Live state 2026-10-12: both policies present. NOT applied.
+  Rollback: `rollback/20261012160000_p2_documents_no_direct_client_write.rollback.sql`,
+  applied through the same channel as the forward change (a new migration file in
+  `supabase/migrations/` merged via PR), never as ad-hoc SQL.
