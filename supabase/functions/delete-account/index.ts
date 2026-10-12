@@ -1,4 +1,5 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// Pinned to the version in bun.lock (types used for handler.ts review).
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.112.3";
 
 import { type AdminClientLike, handleDeleteAccount } from "./handler.ts";
 

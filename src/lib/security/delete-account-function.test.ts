@@ -58,28 +58,46 @@ const OTHER = "22222222-2222-2222-2222-222222222222";
 
 function makeAdmin(
   bucket: FakeBucket,
-  opts: { userError?: boolean; failTable?: string; failAuthDelete?: boolean } = {},
+  opts: {
+    userError?: boolean;
+    userAndError?: boolean;
+    throwIn?: "getUser" | "db" | "deleteUser" | "storage";
+    onDbDelete?: (table: string) => void;
+    failTable?: string;
+    failAuthDelete?: boolean;
+  } = {},
 ) {
   const calls: string[] = [];
   const admin: AdminClientLike = {
     auth: {
-      getUser: vi.fn(async (token: string) =>
-        opts.userError || token !== "good-token"
+      getUser: vi.fn(async (token: string) => {
+        if (opts.throwIn === "getUser") throw new Error("network down SECRET_INTERNAL");
+        // Off-contract (auth-js says error => user null): defense in depth.
+        if (opts.userAndError) return { data: { user: { id: USER } }, error: new Error("auth") };
+        return opts.userError || token !== "good-token"
           ? { data: { user: null }, error: opts.userError ? new Error("auth") : null }
-          : { data: { user: { id: USER } }, error: null },
-      ),
+          : { data: { user: { id: USER } }, error: null };
+      }),
       admin: {
         deleteUser: vi.fn(async (id: string) => {
+          if (opts.throwIn === "deleteUser") throw new Error("boom SECRET_INTERNAL");
           calls.push(`deleteUser:${id}`);
           return { error: opts.failAuthDelete ? new Error("x") : null };
         }),
       },
     },
-    storage: { from: () => bucket },
+    storage: {
+      from: () => {
+        if (opts.throwIn === "storage") throw new Error("boom SECRET_INTERNAL");
+        return bucket;
+      },
+    },
     from: (table: string) => ({
       delete: () => ({
         eq: async (col: string, val: string) => {
+          if (opts.throwIn === "db") throw new Error("boom SECRET_INTERNAL");
           calls.push(`delete:${table}:${col}=${val}`);
+          opts.onDbDelete?.(table);
           return { error: opts.failTable === table ? new Error("db") : null };
         },
       }),
@@ -344,5 +362,106 @@ describe("delete-account: recursive storage listing", () => {
     });
     expect(noEnv.status).toBe(500);
     expect(createAdmin).not.toHaveBeenCalled();
+  });
+
+  describe("hardening round 2", () => {
+    it("A1. prefix collision: uid 'abc' never touches 'abc2/' or 'abc-x/'", async () => {
+      const b = new FakeBucket(["abc/a.pdf", "abc/d/b.pdf", "abc2/c.pdf", "abc-x/d.pdf"]);
+      expect((await listAllUserObjectPaths(b, "abc")).sort()).toEqual(["abc/a.pdf", "abc/d/b.pdf"]);
+      expect(b.listCalls.every((c) => c.path === "abc" || c.path.startsWith("abc/"))).toBe(true);
+      for (const bad of ["abc2/c.pdf", "abc-x/d.pdf", "abc", "abcd"]) {
+        const rb = new FakeBucket([bad]);
+        await expect(removeInBatches(rb, "abc", ["abc/ok.pdf", bad])).rejects.toThrow(
+          "storage-path-invalid",
+        );
+        expect(rb.removeCalls).toHaveLength(0);
+      }
+      await removeInBatches(b, "abc", ["abc/a.pdf"]);
+      expect(b.removeCalls).toEqual([["abc/a.pdf"]]);
+    });
+
+    it("A2. getUser returning user AND error is rejected (401, nothing deleted)", async () => {
+      const b = new FakeBucket([`${USER}/a.pdf`]);
+      const { res, calls } = await run(b, { userAndError: true });
+      expect(res.status).toBe(401);
+      expect(b.listCalls).toHaveLength(0);
+      expect(calls).toEqual([]);
+    });
+
+    it.each([
+      [undefined],
+      ["Bearer"],
+      ["Bearer "],
+      ["Bearer   "],
+      ["bearer good-token"],
+      ["Basic good-token"],
+      ["Token good-token"],
+    ])("A3. Authorization %j -> 401 before any client is created", async (auth) => {
+      const createAdmin = vi.fn();
+      const res = await handleDeleteAccount(post(auth), { getEnv: env, createAdmin });
+      expect(res.status).toBe(401);
+      expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
+      expect(createAdmin).not.toHaveBeenCalled();
+    });
+
+    it.each(["getUser", "storage", "db", "deleteUser"] as const)(
+      "B. unexpected throw in %s -> generic JSON 500 with CORS, no internals",
+      async (where) => {
+        const b = new FakeBucket([`${USER}/a.pdf`]);
+        const { res, body, admin } = await run(b, { throwIn: where });
+        expect(res.status).toBe(500);
+        expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
+        expect(res.headers.get("Content-Type")).toBe("application/json");
+        // storage throws are caught by the cleanup try and mapped to the generic storage code
+        expect(body).toEqual({
+          error: where === "storage" ? "storage-delete-failed" : "internal-error",
+        });
+        expect(JSON.stringify(body)).not.toContain("SECRET_INTERNAL");
+        if (where !== "deleteUser") expect(admin.auth.admin.deleteUser).not.toHaveBeenCalled();
+      },
+    );
+
+    it("B2. createAdmin throwing -> generic JSON 500", async () => {
+      const res = await handleDeleteAccount(post("Bearer good-token"), {
+        getEnv: env,
+        createAdmin: () => {
+          throw new Error("bad url SECRET_INTERNAL");
+        },
+      });
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({ error: "internal-error" });
+      expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    });
+
+    it("C. object uploaded during DB cleanup -> abort before deleteUser, retry succeeds", async () => {
+      const b = new FakeBucket([`${USER}/a.pdf`]);
+      let injected = false;
+      const onDbDelete = (table: string) => {
+        if (table === "backups" && !injected) {
+          injected = true;
+          b.files.add(`${USER}/late/upload.pdf`);
+        }
+      };
+      const first = await run(b, { onDbDelete });
+      expect(first.res.status).toBe(500);
+      expect(first.body["error"]).toBe("storage-delete-incomplete");
+      expect(first.admin.auth.admin.deleteUser).not.toHaveBeenCalled();
+      const second = await run(b, { onDbDelete });
+      expect(second.res.status).toBe(200);
+      expect(b.files.size).toBe(0);
+    });
+
+    it("C2. list error in the pre-deleteUser check aborts with non-2xx", async () => {
+      const b = new FakeBucket();
+      const { admin } = makeAdmin(b, {
+        onDbDelete: (t) => t === "backups" && b.failListFor.add(USER),
+      });
+      const res = await handleDeleteAccount(post("Bearer good-token"), {
+        getEnv: env,
+        createAdmin: () => admin,
+      });
+      expect(res.status).toBe(500);
+      expect(admin.auth.admin.deleteUser).not.toHaveBeenCalled();
+    });
   });
 });

@@ -11,7 +11,8 @@
 //   2. remove objects in batches of <= 1000
 //   3. re-list to verify nothing is left
 //   4. delete rows in documents, document_folders, backups (user_id filter)
-//   5. delete the Auth user
+//   5. re-list Storage once more right before deleteUser (race mitigation)
+//   6. delete the Auth user
 // Any failure returns a non-2xx response and stops before later steps, so the
 // Auth user (and with it the ability to re-run the request) is only removed
 // after Storage and DB cleanup succeeded.
@@ -157,10 +158,23 @@ const json = (status: number, body: Record<string, unknown>) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
+/**
+ * Entry point. Any unexpected throw (network error inside a client call,
+ * createAdmin failure, ...) is turned into a generic JSON 500 with CORS
+ * headers. The thrown value is never echoed back to the caller.
+ */
 export async function handleDeleteAccount(
   req: Request,
   deps: DeleteAccountDeps,
 ): Promise<Response> {
+  try {
+    return await handleDeleteAccountUnsafe(req, deps);
+  } catch {
+    return json(500, { error: "internal-error" });
+  }
+}
+
+async function handleDeleteAccountUnsafe(req: Request, deps: DeleteAccountDeps): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json(405, { error: "method-not-allowed" });
 
@@ -190,6 +204,19 @@ export async function handleDeleteAccount(
   for (const table of ["documents", "document_folders", "backups"] as const) {
     const { error } = await admin.from(table).delete().eq("user_id", user.id);
     if (error) return json(500, { error: `data-delete-failed:${table}` });
+  }
+
+  // Race mitigation (not elimination): an upload that lands between the
+  // storage cleanup above and this point would be orphaned once the Auth user
+  // is gone. Re-check right before deleteUser and abort if anything appeared;
+  // the account stays intact and the request can be retried. A window between
+  // this check and deleteUser still exists (no cross-service transaction).
+  try {
+    const late = await listAllUserObjectPaths(admin.storage.from(BUCKET), user.id);
+    if (late.length > 0) return json(500, { error: "storage-delete-incomplete" });
+  } catch (e) {
+    const code = e instanceof StorageCleanupError ? e.code : "storage-list-failed";
+    return json(500, { error: code });
   }
 
   const { error: deleteUserError } = await admin.auth.admin.deleteUser(user.id);
