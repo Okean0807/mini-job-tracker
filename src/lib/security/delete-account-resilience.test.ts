@@ -328,6 +328,9 @@ describe("delete-account resilience (fake clients)", () => {
     expect(last).toBeGreaterThan(iFinal);
   });
 
+  // Scope: only handled failure paths (DB error, deleteUser error, missing user). This does NOT
+  // exercise the outer catch in handleDeleteAccount; "no internals" for thrown errors is covered
+  // by delete-account-function.test.ts B/B2 only.
   it("R18 every failure body is a bare {error: code} JSON with CORS, no stack/internals", async () => {
     const cases = [
       harness(new TreeBucket(files(1)), { failTable: "documents" }),
