@@ -7,7 +7,7 @@ describe("P1 document account-isolation migration", () => {
     const migration = readFileSync(
       join(
         process.cwd(),
-        "supabase/migrations/20260930090000_p1_account_isolation_documents.sql",
+        "supabase/migrations/20260930192358_p1_account_isolation_documents.sql",
       ),
       "utf8",
     );
