@@ -73,7 +73,7 @@ but not the current definition). The test checks rollback == 192515 (whitespace-
   `supabase.storage.from(BUCKET).upload(...)` + client insert to `functions.invoke("upload-document")`.
 - After applying the migration, only builds **older than a8d5023** (e.g. a stale PWA cache or an
   old Vercel deployment URL) would get **403** on upload. Current builds are unaffected.
-- Evidence: the current production bundle of `mini-job-tracker-blue.vercel.app` (48 JS chunks
+- Evidence (author-claimed, not re-verified by QA): the current production bundle of `mini-job-tracker-blue.vercel.app` (48 JS chunks
   fetched read-only, 2026-10-12) references `upload-document` (chunk `dokumente-*.js`) and contains
   no `.from(x).upload(` / `createSignedUploadUrl` / `uploadToSignedUrl` call.
 - Old deployment URLs were not enumerated; whether any is still served/cached is UNKNOWN.
@@ -97,3 +97,19 @@ files under `src/` for Storage write calls (`upload`, `update`, `uploadToSignedU
 destructured `storage`, element access; positive fixtures (invoke upload-document,
 createSignedUrl, remove, Postgrest update) and negative fixtures. Verified that it flags the
 pre-a8d5023 `documents.ts`. Plus SQL checks: forward only drops the two policies; rollback equals 192515. Static checks only; they do not prove the live state.
+
+### Guard limits (what the AST test does NOT catch)
+
+The guard is a regression tripwire for honest code, not a security boundary. The real
+protection is the dropped INSERT/UPDATE policies (once applied): no client-side trick can
+write to `documents` without a policy. Known blind spots of the scan:
+
+- dynamic or computed member access other than a string literal, e.g. `bucket[method](...)`,
+  `supabase["storage"]` via a variable key;
+- indirect calls: `.call` / `.apply` / `.bind`, e.g. `bucket.upload.call(bucket, p, f)`;
+- wrappers and helpers defined elsewhere (a function that receives the bucket as a parameter,
+  re-exports, higher-order helpers) and aliases across module boundaries;
+- raw HTTP: `fetch("/storage/v1/object/documents/...")`, `XMLHttpRequest`, `navigator.sendBeacon`;
+- a separately constructed `StorageClient` / `createClient` from `@supabase/storage-js` whose
+  variable name does not contain `storage`;
+- anything outside `src/` (scripts, workers, generated code) and test files (excluded by design).

@@ -13,4 +13,6 @@ Supabase Branching / `db push`.
   client INSERT/UPDATE policies on `storage.objects` for bucket `documents`
   (late-upload window after account deletion; app uploads only via
   `upload-document`). Live state 2026-10-12: both policies present. NOT applied.
-  Rollback: `rollback/20261012160000_p2_documents_no_direct_client_write.rollback.sql`.
+  Rollback: `rollback/20261012160000_p2_documents_no_direct_client_write.rollback.sql`,
+  applied through the same channel as the forward change (a new migration file in
+  `supabase/migrations/` merged via PR), never as ad-hoc SQL.
