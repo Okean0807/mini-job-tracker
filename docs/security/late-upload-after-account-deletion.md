@@ -98,18 +98,30 @@ destructured `storage`, element access; positive fixtures (invoke upload-documen
 createSignedUrl, remove, Postgrest update) and negative fixtures. Verified that it flags the
 pre-a8d5023 `documents.ts`. Plus SQL checks: forward only drops the two policies; rollback equals 192515. Static checks only; they do not prove the live state.
 
-### Guard limits (what the AST test does NOT catch)
+### Guard limits and how each gap is handled (QA #135)
 
-The guard is a regression tripwire for honest code, not a security boundary. The real
-protection is the dropped INSERT/UPDATE policies (once applied): no client-side trick can
-write to `documents` without a policy. Known blind spots of the scan:
+The guard is a regression tripwire, not a security boundary. The real protection is the dropped
+INSERT/UPDATE policies (once applied). Since the QA round the test adds an allow-list rule
+(`findStorageEscapes`): every `.storage` reference must be the head of an immediate
+`.storage.from(<b>).<createSignedUrl|createSignedUrls|remove|list|download|getPublicUrl>(...)` call.
+Any other use (alias, wrapper parameter/return, computed access, `.call/.apply/.bind`, method
+extraction, destructured `storage`) is reported. Each gap below has negative fixtures plus a mutant
+that was verified to fail the repo-wide scan.
 
-- dynamic or computed member access other than a string literal, e.g. `bucket[method](...)`,
-  `supabase["storage"]` via a variable key;
-- indirect calls: `.call` / `.apply` / `.bind`, e.g. `bucket.upload.call(bucket, p, f)`;
-- wrappers and helpers defined elsewhere (a function that receives the bucket as a parameter,
-  re-exports, higher-order helpers) and aliases across module boundaries;
-- raw HTTP: `fetch("/storage/v1/object/documents/...")`, `XMLHttpRequest`, `navigator.sendBeacon`;
-- a separately constructed `StorageClient` / `createClient` from `@supabase/storage-js` whose
-  variable name does not contain `storage`;
-- anything outside `src/` (scripts, workers, generated code) and test files (excluded by design).
+| Gap                                                                           | Decision                                | How                                                                                                                                                                                                                                                                                                                                                                               |
+| ----------------------------------------------------------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| bracket / computed access (`b[m](...)`, `supabase["storage"]`, `supabase[k]`) | B (guard fixed + regression test)       | literal `["storage"]` is a storage reference; non-literal keys on `supabase`/`admin`/`storage`/`createClient(...)` receivers are reported as `computed-access`; a computed method after `.from()` breaks the allow-list chain                                                                                                                                                     |
+| `.call` / `.apply` / `.bind`, method extraction                               | B                                       | `.upload.call` etc. is not an allowed chain -> `storage-escape`; `const { upload } = ...from(B)` likewise                                                                                                                                                                                                                                                                         |
+| wrappers / helpers / cross-module aliases                                     | B                                       | allow-list: the bucket or client storage can no longer leave the immediate read/remove chain, so a wrapper cannot receive it; residual: a wrapper around an untyped `any` client obtained without ever writing `.storage` (see C below)                                                                                                                                           |
+| raw HTTP (`fetch`, `XMLHttpRequest`, `sendBeacon`) to `/storage/v1`           | B + C                                   | any string/template part containing `storage/v1` is reported. Limitation C: URLs assembled from fragments that never contain `storage/v1` (e.g. `"stor"+"age/v1"`) are not detectable statically; compensation = policy drop (DB-side, independent of client code) + release-plan step 11 (direct Storage POST with test JWT must return 403)                                     |
+| separately constructed `StorageClient` / `@supabase/storage-js`               | B                                       | import / `require` of `@supabase/storage-js` and any `StorageClient` identifier are reported                                                                                                                                                                                                                                                                                      |
+| files outside `src/`                                                          | B for client-side, C for Edge Functions | scan now covers every JS/TS file in the repo (src/, scripts/, root configs; tests, node_modules, dist excluded). `supabase/functions/` run with the service role and are not affected by the policy drop, so writes there are legitimate; compensating check pins the set of server Storage writes to `upload-document` `upload` only, so a new server-side writer fails the test |
+
+False positives checked (positive fixtures): allowed read/remove chains incl. multi-line,
+`createClient(..., { auth: { storage: undefined } })`, `localStorage[...]`, imports from
+`storage-scope`, `storage.googleapis.com` URLs, array indexing, `functions.invoke`, Postgrest
+`.update`. The current repo produces zero hits.
+
+Residual (C, accepted): `eval`/`Function`-constructed code and obfuscated dynamic property names
+cannot be proven absent by static analysis. They are not used in this repo (rg for `eval(` / `new Function(` in src/ and scripts/: 0 hits);
+the binding control remains the dropped policies.
