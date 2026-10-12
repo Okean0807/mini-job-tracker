@@ -58,7 +58,7 @@ Step mapping: S0→0,9 · S1→1,2,6,12 · S2→2 · S3→3 · S4→2,3,4,14 · 
 - Rollback: n/a (read-only)
 - Next step only if: PASS of S0
 
-### Step 1: Baseline snapshot (S1/S2 input) + final QA input
+### Step 1: Baseline snapshot (S1 input) + final QA input
 
 - Action: Final QA at the PR head is input, not approval. Read-only: list_edge_functions, get_edge_function for both functions, list_migrations, pg_policies storage.objects, ai_rate_limits relrowsecurity/ACL, consume_ai_rate_limit prosecdef/proconfig/ACL
 - Executor: UNASSIGNED — operator decision required
@@ -182,11 +182,11 @@ Step mapping: S0→0,9 · S1→1,2,6,12 · S2→2 · S3→3 · S4→2,3,4,14 · 
 
 - Action: Move the file with a new version > the last applied
 - Executor: UNASSIGNED — operator decision required
-- Approver: Juri (explicit chat approval naming this step)
-- Inputs: step 10 go
-- Evidence: PR, merge SHA → /workspace/stat-analysis-report/delete-account-fix/release/step-11/
-- PASS: merged
-- FAIL/STOP: CI red → STOP
+- Approver: Juri, explicit operator approval naming the exact migration PR number and its full 40-char HEAD SHA (`merge #<PR> @<40-char SHA>`)
+- Inputs: step 10 go; (1) independent QA of the actual migration-PR diff (file byte-equal to pending, version > last applied, no other files), result recorded with an evidence link; (2) the explicit operator approval above, naming the exact PR and full 40-char HEAD SHA
+- Evidence: PR, independent QA report link, approval text, PR HEAD SHA at merge time, merge SHA → /workspace/stat-analysis-report/delete-account-fix/release/step-11/
+- PASS: independent QA recorded as PASS at the PR HEAD; approval names that exact PR + HEAD SHA; merged at that SHA
+- FAIL/STOP: CI red → STOP; independent QA missing/incomplete/not PASS → STOP; approval missing or not naming the PR + full SHA → STOP; PR HEAD SHA ≠ approved SHA → STOP (new QA + approval needed)
 - Rollback: new migration PR disabling RLS (approval)
 - Next step only if: merged
 
@@ -214,7 +214,7 @@ Step mapping: S0→0,9 · S1→1,2,6,12 · S2→2 · S3→3 · S4→2,3,4,14 · 
 - Rollback: step 11 rollback PR
 - Next step only if: PASS
 
-### Step 14: Re-read functions (S2 drift)
+### Step 14: Re-read functions (S4 drift)
 
 - Action: list_edge_functions + get_edge_function source sha256 after all merges, re-read ≥10 min later (both saved)
 - Executor: UNASSIGNED — operator decision required
