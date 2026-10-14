@@ -5,7 +5,7 @@
  */
 import { MONTHS_DE, isoDate, shiftsInMonth, shiftsInYear } from "./calc";
 import { employmentTypeOf, isMinijobEmployment, monthlyHoursLimitFor } from "./legal";
-import { monthlyHoursLimit, monthlyLimitOf, yearlyLimitOf } from "./limits";
+import { monthUsage, monthlyHoursLimit, monthlyLimitOf, yearUsage, yearlyLimitOf } from "./limits";
 import { payrollTotals } from "./payroll";
 import { makeResolver } from "./resolve";
 import type { AppData, ResolvedEmploymentType, WorkMode } from "./types";
@@ -25,14 +25,21 @@ export type AssistantContextPayload = {
     year: number;
     month: number;
     monthName: string;
+    /** All jobs incl. Hauptbeschäftigung / self-employment — NOT the limit-relevant value. */
     hours: number;
+    /** All jobs incl. Hauptbeschäftigung / self-employment — NOT the limit-relevant value. */
     earnings: number;
+    /** Minijob-only, limit-relevant income up to today (null if no Minijob limit applies). */
+    minijobEarnings: number | null;
+    minijobHours: number | null;
     entriesCount: number;
   };
   year: {
     year: number;
     hours: number;
     earnings: number;
+    minijobEarnings: number | null;
+    minijobHours: number | null;
   };
   /** Recent historical months, including zero-activity years, for period-aware questions. */
   historicalYears: Array<{
@@ -73,8 +80,7 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
   const workMode = primaryWorkMode(data.jobs, data.settings.activeJobId);
   const legalMonthly = limitApplies ? monthlyLimitOf(data.settings, year, month) : null;
   const autoHours = limitApplies
-    ? monthlyHoursLimit(data.settings, year, month) ||
-      monthlyHoursLimitFor(currentDate, hourlyRate)
+    ? monthlyHoursLimit(data.settings, year, month) || monthlyHoursLimitFor(currentDate, hourlyRate)
     : null;
   const annual = limitApplies ? yearlyLimitOf(data.settings, year) : null;
 
@@ -83,6 +89,16 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
 
   const yearList = shiftsInYear(data.shifts, year);
   const yearTotals = payrollTotals(yearList, resolve, data.shifts);
+
+  // B4-1: the limit-relevant values come from the same functions as the UI limit cards
+  // (eligible Minijob shifts only, up to today) — never from the all-jobs totals.
+  const mjMonth = limitApplies
+    ? monthUsage(data.shifts, resolve, data.settings, year, month, currentDate)
+    : null;
+  const mjYear = limitApplies
+    ? yearUsage(data.shifts, resolve, data.settings, year, currentDate)
+    : null;
+  const r2 = (v: number) => Number(v.toFixed(2));
 
   const historicalYears: AssistantContextPayload["historicalYears"] = [];
   for (let y = year - 2; y <= year; y++) {
@@ -141,12 +157,16 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
       monthName: MONTHS_DE[month]!,
       hours: Number(currentTotals.workedHours.toFixed(2)),
       earnings: Number(currentTotals.earnings.toFixed(2)),
+      minijobEarnings: mjMonth ? r2(mjMonth.earnings) : null,
+      minijobHours: mjMonth ? r2(mjMonth.hours) : null,
       entriesCount: currentList.length,
     },
     year: {
       year,
       hours: Number(yearTotals.workedHours.toFixed(2)),
       earnings: Number(yearTotals.earnings.toFixed(2)),
+      minijobEarnings: mjYear ? r2(mjYear.earnings) : null,
+      minijobHours: mjYear ? r2(mjYear.hours) : null,
     },
     historicalYears,
     months,

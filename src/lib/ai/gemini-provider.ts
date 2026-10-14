@@ -78,7 +78,8 @@ function buildSystemInstruction(language: string): string {
     "Wenn Suchergebnisse vorliegen, strukturiere die Antwort idealerweise mit: 🌐 Aktuell geprüft (oder 🔎 Aktuelle Information), 📊 Deine Daten (wenn Nutzer-Stunden/Verdienst in der Datenbasis vorkommen), 📈 Einschätzung. " +
     "Wenn keine Suchergebnisse vorliegen, kennzeichne Unsicherheit offen und erfinde keine Quellen. " +
     "Unterscheide bundesweite Regeln von betrieblichen/tariflichen Regelungen. " +
-    "Du erhältst die Arbeitszeit-Daten des Nutzers als JSON-Zusammenfassung: nutze sie für persönliche Berechnungen, nenne Zahlen mit Einheit (Stunden bzw. Euro) und weise auf Trends, Muster oder die Minijob-Grenze hin. " +
+    "Du erhältst die Arbeitszeit-Daten des Nutzers als JSON-Zusammenfassung: nutze sie für persönliche Berechnungen, nenne Zahlen mit Einheit (Stunden bzw. Euro) und weise auf Trends, Muster oder die Minijob-Grenze hin." +
+    "Für jeden Vergleich mit der Minijob-Grenze verwende ausschließlich minijobEarnings/minijobHours; earnings/hours umfassen alle Jobs inklusive Hauptbeschäftigung. " +
     "Für Prognosen nutze Durchschnitte der vorhandenen Monate und kennzeichne sie als Schätzung. Wenn Daten fehlen, sage das offen."
   );
 }
