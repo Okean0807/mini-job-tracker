@@ -4,13 +4,22 @@
 -- (p_now_ms - x >= window), which resets the user's own counters and bypasses
 -- the 8/min and 60/h limits used by askAssistant (src/lib/ai.functions.ts).
 --
--- Change: the signature (uuid, bigint) and the grants stay identical so callers
--- remain compatible (askAssistant passes only p_user_id). p_now_ms is ignored;
--- the server clock is always used. Stored future stamps (from earlier abuse) are
--- discarded by the "x <= now" filter.
+-- Change: the signature (uuid, bigint), return type, SECURITY DEFINER,
+-- search_path and grants stay identical so callers remain compatible
+-- (askAssistant passes only p_user_id). p_now_ms is ignored; the server clock is
+-- always used.
+--
+-- The server time v_now is taken AFTER the per-user row lock (FOR UPDATE), so a
+-- request that waited for the lock never sees the stamps of requests committed
+-- before it as "future" (F-140-1). Stamps more than 1000 ms in the future
+-- (v_future_tolerance_ms) are discarded: this removes stamps injected via the old
+-- client clock without a lockout, while a small server clock step back (NTP,
+-- <= 1 s) still keeps recent stamps counted (F-140-3). A step back of more than
+-- 1 s can briefly under-count; accepted residual.
 --
 -- Rollback: re-apply the function body from
 -- supabase/migrations/20260930192406_p1_ai_rate_limit.sql (lines 10-59).
+-- NOTE: the rollback re-opens F-1 (caller-controlled p_now_ms bypass); emergency only.
 create or replace function public.consume_ai_rate_limit(
   p_user_id uuid,
   p_now_ms bigint default floor(extract(epoch from clock_timestamp()) * 1000)::bigint
@@ -21,7 +30,8 @@ security definer
 set search_path = public
 as $$
 declare
-  v_now bigint := floor(extract(epoch from clock_timestamp()) * 1000)::bigint;
+  v_now bigint;
+  v_future_tolerance_ms constant bigint := 1000;
   v_minute bigint[];
   v_hour bigint[];
   v_oldest bigint;
@@ -37,8 +47,11 @@ begin
   select minute_stamps, hour_stamps into v_minute, v_hour
   from public.ai_rate_limits where user_id = p_user_id for update;
 
-  v_minute := array(select x from unnest(coalesce(v_minute, '{}')) x where x <= v_now and v_now - x < 60000 order by x);
-  v_hour := array(select x from unnest(coalesce(v_hour, '{}')) x where x <= v_now and v_now - x < 3600000 order by x);
+  -- Server clock, read only after the row lock is held (F-140-1).
+  v_now := floor(extract(epoch from clock_timestamp()) * 1000)::bigint;
+
+  v_minute := array(select x from unnest(coalesce(v_minute, '{}')) x where x <= v_now + v_future_tolerance_ms and v_now - x < 60000 order by x);
+  v_hour := array(select x from unnest(coalesce(v_hour, '{}')) x where x <= v_now + v_future_tolerance_ms and v_now - x < 3600000 order by x);
 
   if cardinality(v_minute) >= 8 then
     v_oldest := v_minute[1];
