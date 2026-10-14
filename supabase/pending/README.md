@@ -16,3 +16,7 @@ Supabase Branching / `db push`.
   Rollback: `rollback/20261012160000_p2_documents_no_direct_client_write.rollback.sql`,
   applied through the same channel as the forward change (a new migration file in
   `supabase/migrations/` merged via PR), never as ad-hoc SQL.
+- `20261014100000_p2_ai_rate_limit_server_clock.sql` — `consume_ai_rate_limit` ignores the
+  caller-supplied `p_now_ms` and uses the server clock (direct-RPC bypass of the AI rate
+  limit). Signature and grants unchanged. NOT applied; needs separate QA and approval.
+  Rollback: function body from `supabase/migrations/20260930192406_p1_ai_rate_limit.sql`.
