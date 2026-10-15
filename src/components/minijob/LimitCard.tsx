@@ -14,9 +14,21 @@ interface LimitCardProps {
   auto: boolean;
   /** Self-employed: employee Minijob limit not applicable. */
   notApplicable?: boolean;
+  /**
+   * B3-1/O4: Hauptbeschäftigung + mehrere Minijobs. Die Karte zeigt dann nur
+   * einen Hinweis und die Summe zur Information – keinen Status/Anteil.
+   */
+  multipleMinijobs?: boolean;
 }
 
-export function LimitCard({ usage, scopeLabel, rate, auto, notApplicable }: LimitCardProps) {
+export function LimitCard({
+  usage,
+  scopeLabel,
+  rate,
+  auto,
+  notApplicable,
+  multipleMinijobs,
+}: LimitCardProps) {
   const { t } = useT();
   const titleId = useId();
   if (notApplicable) {
@@ -30,6 +42,30 @@ export function LimitCard({ usage, scopeLabel, rate, auto, notApplicable }: Limi
         </div>
         <p className="mt-3 text-sm font-semibold">{t("limit.notApplicable")}</p>
         <p className="mt-1 text-xs text-muted-foreground">{t("limit.notApplicableHint")}</p>
+      </div>
+    );
+  }
+  if (multipleMinijobs) {
+    return (
+      <div
+        className="rounded-2xl border bg-card p-4 shadow-card"
+        data-testid="limit-multiple-minijobs"
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t("limit.title")} · {scopeLabel}
+          </span>
+          <Gauge className="size-4 text-muted-foreground" />
+        </div>
+        <div className="mt-3 space-y-1 rounded-xl border border-amber-500/40 bg-amber-500/5 p-2.5">
+          <p className="text-sm font-semibold">{t("limit.multipleMinijobs")}</p>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {t("limit.multipleMinijobsHint")}
+          </p>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground tabular-nums">
+          {t("limit.multipleMinijobsSum", { amount: formatEuro(usage.earnings) })}
+        </p>
       </div>
     );
   }

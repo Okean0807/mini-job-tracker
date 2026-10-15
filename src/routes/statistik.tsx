@@ -65,6 +65,7 @@ import {
   dailyXAxisTicks,
   formatDailyTooltipLine,
 } from "@/lib/minijob/stats-charts";
+import { multipleMinijobsWithMainJob, yearPeriod } from "@/lib/minijob/multi-minijob";
 import { statsLegalYearUsage } from "@/lib/minijob/stats-legal";
 import { initialWeekForMonth } from "@/lib/minijob/stats-week";
 import { useAppData } from "@/lib/minijob/store";
@@ -174,9 +175,18 @@ function StatsPage() {
     [shifts, resolve, settings, year],
   );
 
+  // B3-1/O4: Flag aus den UNGEFILTERTEN Daten (Job-Filter ändert die Rechtslage nicht).
+  const yearMultiMinijob = useMemo(
+    () => multipleMinijobsWithMainJob(jobs, shifts, yearPeriod(year)),
+    [jobs, shifts, year],
+  );
+
   const annualReport = useMemo(
-    () => buildAnnualReport(filtered, jobs, settings, year, resolve),
-    [filtered, jobs, settings, year, resolve],
+    () => ({
+      ...buildAnnualReport(filtered, jobs, settings, year, resolve),
+      multipleMinijobs: yearMultiMinijob,
+    }),
+    [filtered, jobs, settings, year, resolve, yearMultiMinijob],
   );
 
   const ctx = {
@@ -488,10 +498,14 @@ function StatsPage() {
                 />
                 <StatCard
                   label={t("stats.card.yearLimit")}
-                  value={`${Math.round(legalYearUsage.earningsShare)} %`}
-                  hint={`${t("stats.card.yearLimitHint", {
-                    amount: formatEuro(legalYearUsage.earningsLimit),
-                  })} · ${t("stats.kpi.yearLimitAll")}`}
+                  value={yearMultiMinijob ? "—" : `${Math.round(legalYearUsage.earningsShare)} %`}
+                  hint={
+                    yearMultiMinijob
+                      ? t("limit.multipleMinijobs")
+                      : `${t("stats.card.yearLimitHint", {
+                          amount: formatEuro(legalYearUsage.earningsLimit),
+                        })} · ${t("stats.kpi.yearLimitAll")}`
+                  }
                   icon={Euro}
                 />
               </>

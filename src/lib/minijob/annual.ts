@@ -1,4 +1,5 @@
 import { yearUsage } from "./limits";
+import { multipleMinijobsWithMainJob, yearPeriod } from "./multi-minijob";
 import { monthNames, shiftsInMonth, shiftsInYear } from "./calc";
 import { shiftPayroll } from "./payroll";
 import type { Resolver } from "./resolve";
@@ -47,6 +48,11 @@ export interface AnnualReport {
   activeMonths: number;
   limit: number;
   limitShare: number;
+  /**
+   * B3-1/O4: Hauptbeschäftigung + mehrere Minijobs im Jahr → `limitShare`
+   * ist nicht belastbar und wird nicht als Prozent angezeigt.
+   */
+  multipleMinijobs?: boolean;
   bestMonth: AnnualMonth | null;
   bestDay: { date: string; hours: number; earnings: number } | null;
   months: AnnualMonth[];
@@ -174,6 +180,7 @@ export function buildAnnualReport(
     activeMonths,
     limit,
     limitShare: limit > 0 ? (legalEarnings / limit) * 100 : 0,
+    multipleMinijobs: multipleMinijobsWithMainJob(jobs, shifts, yearPeriod(year)),
     bestMonth,
     bestDay,
     months,

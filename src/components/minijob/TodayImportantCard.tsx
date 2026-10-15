@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { formatEuro, formatHours, isoDate, shiftHours } from "@/lib/minijob/calc";
 import { payPeriods } from "@/lib/minijob/payday";
 import { jobsPlannedOn } from "@/lib/minijob/schedule";
-import { limitAlertLevel } from "@/lib/minijob/limit-alert";
+import { effectiveLimitShares, limitAlertLevel } from "@/lib/minijob/limit-alert";
+import { limitReliabilityFlags } from "@/lib/minijob/multi-minijob";
 import { jobsNeedingEmploymentType } from "@/lib/minijob/legal/employment";
 import { jobsApplyMinijobLimit } from "@/lib/minijob/work-mode";
 import { findWageViolations } from "@/lib/minijob/wage-compliance";
@@ -20,6 +21,7 @@ export function TodayImportantCard({
   resolve,
   monthUsage,
   yearUsage,
+  limitFlags,
   onNewEntry,
 }: {
   shifts: Shift[];
@@ -29,6 +31,11 @@ export function TodayImportantCard({
   resolve: Resolver;
   monthUsage: { share: number; earnings: number; earningsLimit: number };
   yearUsage: { share: number; earnings: number; earningsLimit: number };
+  /**
+   * B3-1/O4-Flags für DENSELBEN Zeitraum wie monthUsage/yearUsage (vom
+   * Dashboard übergeben). Ohne Angabe: aktueller Monat/aktuelles Jahr.
+   */
+  limitFlags?: { month: boolean; year: boolean };
   onNewEntry: () => void;
 }) {
   const { t } = useT();
@@ -39,8 +46,19 @@ export function TodayImportantCard({
   const overdue = periods.filter((p) => p.overdue).reduce((sum, p) => sum + p.outstanding, 0);
   const open = periods.filter((p) => p.outstanding > 0.005).reduce((sum, p) => sum + p.outstanding, 0);
   // Gleiche Regel wie das Dashboard-Banner: nur mit (bestätigtem) Minijob.
+  const nowDate = new Date();
+  // B3-1/O4: Flags je Bereich – passend zu den übergebenen Anteilen.
+  const multiMinijob =
+    limitFlags ??
+    limitReliabilityFlags(jobs, shifts, nowDate.getFullYear(), nowDate.getMonth());
+  const shownShares = effectiveLimitShares(monthUsage.share, yearUsage.share, multiMinijob);
   const nearLimit =
-    limitAlertLevel(jobsApplyMinijobLimit(jobs), monthUsage.share, yearUsage.share) !== null;
+    limitAlertLevel(
+      jobsApplyMinijobLimit(jobs),
+      monthUsage.share,
+      yearUsage.share,
+      multiMinijob,
+    ) !== null;
   const needsEmploymentType = jobsNeedingEmploymentType(jobs);
   const monthStart = `${today.slice(0, 7)}-01`;
   const wageViolations = findWageViolations(shifts, jobs, settings.defaultRate, (s) => s.date >= monthStart && s.date <= today);
@@ -98,7 +116,9 @@ export function TodayImportantCard({
         ) : null}
         {nearLimit ? (
           <div className="rounded-xl border border-accent bg-accent/10 px-3 py-2.5 text-sm">
-            {t("dash.todayLimit", { percent: Math.round(Math.max(monthUsage.share, yearUsage.share)) })}
+            {t("dash.todayLimit", {
+              percent: Math.round(Math.max(shownShares.month, shownShares.year)),
+            })}
           </div>
         ) : null}
         {wageViolations.length > 0 ? (

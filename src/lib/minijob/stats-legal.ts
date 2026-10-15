@@ -41,10 +41,16 @@ export function statsLegalYearUsage(
  * `limit`/`limitShare` aus der ungefilterten Jahresnutzung. Alle anderen
  * Berichtswerte (Verdienst, Stunden, Monate, Jobs …) bleiben gefiltert.
  */
-export function withLegalYearLimit(report: AnnualReport, legal: LimitUsage): AnnualReport {
+export function withLegalYearLimit(
+  report: AnnualReport,
+  legal: LimitUsage,
+  /** B3-1/O4-Flag aus den UNGEFILTERTEN Daten (sonst bleibt der Berichtswert). */
+  multipleMinijobs?: boolean,
+): AnnualReport {
   return {
     ...report,
     limit: legal.earningsLimit,
     limitShare: legal.earningsShare,
+    ...(multipleMinijobs === undefined ? {} : { multipleMinijobs }),
   };
 }
