@@ -17,11 +17,34 @@ export function limitAlertLevel(
   applies: boolean,
   monthShare: number,
   yearShare: number,
-  /** B3-1/O4: Hauptbeschäftigung + mehrere Minijobs → kein belastbarer Status. */
-  unreliable = false,
+  /**
+   * B3-1/O4: Hauptbeschäftigung + mehrere Minijobs → kein belastbarer Status.
+   * `true` unterdrückt beide Bereiche; ein Objekt unterdrückt je Bereich
+   * (Monat/Jahr), damit Banner und Karten denselben Zeitraum bewerten.
+   */
+  unreliable: boolean | { month: boolean; year: boolean } = false,
 ): LimitAlertLevel {
-  if (!applies || unreliable) return null;
-  if (monthShare >= 100 || yearShare >= 100) return "over";
-  if (monthShare >= NEAR_LIMIT_PERCENT || yearShare >= NEAR_LIMIT_PERCENT) return "near";
+  if (!applies) return null;
+  const skipMonth = typeof unreliable === "boolean" ? unreliable : unreliable.month;
+  const skipYear = typeof unreliable === "boolean" ? unreliable : unreliable.year;
+  const m = skipMonth ? 0 : monthShare;
+  const y = skipYear ? 0 : yearShare;
+  if (m >= 100 || y >= 100) return "over";
+  if (m >= NEAR_LIMIT_PERCENT || y >= NEAR_LIMIT_PERCENT) return "near";
   return null;
+}
+
+/**
+ * Anteile, die für Status/Banner verwendet werden dürfen: Bereiche mit
+ * HB + mehreren Minijobs (B3-1/O4) zählen als 0 (kein belastbarer Status).
+ */
+export function effectiveLimitShares(
+  monthShare: number,
+  yearShare: number,
+  unreliable: { month: boolean; year: boolean },
+): { month: number; year: number } {
+  return {
+    month: unreliable.month ? 0 : monthShare,
+    year: unreliable.year ? 0 : yearShare,
+  };
 }

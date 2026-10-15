@@ -36,7 +36,12 @@ function kpis(report: AnnualReport) {
     { label: td("annual.kpi.avgDay"), value: formatHours(report.avgDayHours, DOCUMENT_LOCALE) },
     {
       label: td("annual.kpi.limit"),
-      value: report.limit > 0 ? `${Math.round(report.limitShare)} %` : "–",
+      value:
+        report.limit > 0
+          ? report.multipleMinijobs
+            ? td("limit.multipleMinijobs")
+            : `${Math.round(report.limitShare)} %`
+          : "–",
     },
   ];
 }
@@ -199,7 +204,9 @@ export function exportAnnualPdf(report: AnnualReport) {
       ? `${td("annual.best.day")}: ${formatDate(report.bestDay.date, DOCUMENT_LOCALE)} · ${formatEuro(report.bestDay.earnings, DOCUMENT_LOCALE)}`
       : null,
     report.limit > 0
-      ? `${td("annual.kpi.limit")}: ${formatEuro(report.earnings, DOCUMENT_LOCALE)} / ${formatEuro(report.limit, DOCUMENT_LOCALE)} (${Math.round(report.limitShare)} %)`
+      ? report.multipleMinijobs
+        ? `${td("annual.kpi.limit")}: ${td("limit.multipleMinijobs")} – ${td("limit.multipleMinijobsHint")}`
+        : `${td("annual.kpi.limit")}: ${formatEuro(report.earnings, DOCUMENT_LOCALE)} / ${formatEuro(report.limit, DOCUMENT_LOCALE)} (${Math.round(report.limitShare)} %)`
       : null,
   ].filter(Boolean) as string[];
 

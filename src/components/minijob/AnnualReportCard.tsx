@@ -90,7 +90,9 @@ export function AnnualReportCard({
           value={String(report.workDays)}
           hint={
             report.limit > 0
-              ? `${t("annual.kpi.limit")}: ${Math.round(report.limitShare)} %`
+              ? report.multipleMinijobs
+                ? `${t("annual.kpi.limit")}: ${t("limit.multipleMinijobs")}`
+                : `${t("annual.kpi.limit")}: ${Math.round(report.limitShare)} %`
               : t("annual.kpi.bonus") + ": " + formatEuro(report.bonus)
           }
           icon={CalendarDays}

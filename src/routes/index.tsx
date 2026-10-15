@@ -37,8 +37,8 @@ import { legalIncomeForMonth } from "@/lib/minijob/service";
 import { isAbsenceKind, type AbsenceKind } from "@/lib/minijob/absence-range";
 import { monthTimeAccount } from "@/lib/minijob/fest-time-account";
 import { jobsApplyMinijobLimit, primaryWorkMode } from "@/lib/minijob/work-mode";
-import { limitAlertLevel } from "@/lib/minijob/limit-alert";
-import { monthPeriod, multipleMinijobsWithMainJob, yearPeriod } from "@/lib/minijob/multi-minijob";
+import { effectiveLimitShares, limitAlertLevel } from "@/lib/minijob/limit-alert";
+import { limitReliabilityFlags } from "@/lib/minijob/multi-minijob";
 import { payPeriods } from "@/lib/minijob/payday";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { useAppData } from "@/lib/minijob/store";
@@ -120,14 +120,16 @@ function DashboardPage() {
   const limitShare = monthLimit.share;
   const yearShare = yearLimit.share;
   const appliesMinijobLimit = jobsApplyMinijobLimit(jobs);
-  const multiMinijobMonth = multipleMinijobsWithMainJob(jobs, shifts, monthPeriod(year, month));
-  const multiMinijobYear = multipleMinijobsWithMainJob(jobs, shifts, yearPeriod(year));
-  const limitAlert = limitAlertLevel(
-    appliesMinijobLimit,
-    limitShare,
-    yearShare,
-    multiMinijobMonth || multiMinijobYear,
+  // B3-1/O4: Flags für den BETRACHTETEN Monat/Jahr/Prognosezeitraum – jede
+  // Karte und der Banner nutzen den Flag ihres eigenen Zeitraums.
+  const multiMinijob = useMemo(
+    () => limitReliabilityFlags(jobs, shifts, year, month),
+    [jobs, shifts, year, month],
   );
+  const multiMinijobMonth = multiMinijob.month;
+  const multiMinijobYear = multiMinijob.year;
+  const limitAlert = limitAlertLevel(appliesMinijobLimit, limitShare, yearShare, multiMinijob);
+  const alertShares = effectiveLimitShares(limitShare, yearShare, multiMinijob);
   const workMode = primaryWorkMode(jobs, settings.activeJobId);
   const isFest = workMode === "fest";
   const isSelf = workMode === "selbststaendig";
@@ -195,11 +197,15 @@ function DashboardPage() {
             />
             <StatCard
               label={t("dash.limit")}
-              value={appliesMinijobLimit ? `${Math.round(limitShare)} %` : "—"}
+              value={
+                appliesMinijobLimit && !multiMinijobMonth ? `${Math.round(limitShare)} %` : "—"
+              }
               hint={
-                appliesMinijobLimit
-                  ? t("dash.ofAmount", { amount: formatEuro(monthLimit.earningsLimit) })
-                  : t("limit.notApplicable")
+                !appliesMinijobLimit
+                  ? t("limit.notApplicable")
+                  : multiMinijobMonth
+                    ? t("limit.multipleMinijobs")
+                    : t("dash.ofAmount", { amount: formatEuro(monthLimit.earningsLimit) })
               }
               icon={Euro}
             />
@@ -217,7 +223,12 @@ function DashboardPage() {
         multipleMinijobs={multiMinijobMonth}
       />
     ),
-    legalForecast: <LegalForecastCard forecast={legalForecast.rolling} />,
+    legalForecast: (
+      <LegalForecastCard
+        forecast={legalForecast.rolling}
+        multipleMinijobs={multiMinijob.forecast}
+      />
+    ),
     limitYear: (
       <LimitCard
         usage={yearLimit}
@@ -295,7 +306,7 @@ function DashboardPage() {
         <LimitBanner
           tone="over"
           text={
-            limitShare >= 100
+            alertShares.month >= 100
               ? t("dash.limitMonthOver", { amount: formatEuro(monthLimit.earningsLimit) })
               : t("dash.limitYearOver", { amount: formatEuro(yearLimit.earningsLimit) })
           }
@@ -305,7 +316,9 @@ function DashboardPage() {
       ) : limitAlert === "near" ? (
         <LimitBanner
           tone="near"
-          text={t("dash.limitNear", { percent: Math.round(Math.max(limitShare, yearShare)) })}
+          text={t("dash.limitNear", {
+            percent: Math.round(Math.max(alertShares.month, alertShares.year)),
+          })}
         />
       ) : null}
 
@@ -339,6 +352,7 @@ function DashboardPage() {
           resolve={resolve}
           monthUsage={monthLimit}
           yearUsage={yearLimit}
+          limitFlags={multiMinijob}
           onNewEntry={() => openNew(isoDate(new Date()))}
         />
       </div>
