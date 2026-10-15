@@ -6,6 +6,7 @@
 import { MONTHS_DE, isoDate, shiftsInMonth, shiftsInYear } from "./calc";
 import { employmentTypeOf, isMinijobEmployment, monthlyHoursLimitFor } from "./legal";
 import { monthUsage, monthlyHoursLimit, monthlyLimitOf, yearUsage, yearlyLimitOf } from "./limits";
+import { limitReliabilityFlags } from "./multi-minijob";
 import { payrollTotals } from "./payroll";
 import { makeResolver } from "./resolve";
 import type { AppData, ResolvedEmploymentType, WorkMode } from "./types";
@@ -32,6 +33,12 @@ export type AssistantContextPayload = {
     /** Minijob-only, limit-relevant income up to today (null if no Minijob limit applies). */
     minijobEarnings: number | null;
     minijobHours: number | null;
+    /**
+     * B3-1/O4 (same rule as the UI, multi-minijob.ts): Hauptbeschäftigung plus
+     * several active Minijobs in this month → minijobEarnings vs. limit is
+     * NOT an unambiguous "over/under" statement.
+     */
+    multipleMinijobsWithMainJob: boolean;
     entriesCount: number;
   };
   year: {
@@ -40,6 +47,8 @@ export type AssistantContextPayload = {
     earnings: number;
     minijobEarnings: number | null;
     minijobHours: number | null;
+    /** B3-1/O4 for the whole year (see currentMonth). */
+    multipleMinijobsWithMainJob: boolean;
   };
   /** Recent historical months, including zero-activity years, for period-aware questions. */
   historicalYears: Array<{
@@ -99,6 +108,10 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
     ? yearUsage(data.shifts, resolve, data.settings, year, currentDate)
     : null;
   const r2 = (v: number) => Number(v.toFixed(2));
+  // B3-1/O4: shared rule with the dashboard/annual report (multi-minijob.ts).
+  const multiMinijob = limitApplies
+    ? limitReliabilityFlags(data.jobs, data.shifts, year, month)
+    : { month: false, year: false, forecast: false };
 
   const historicalYears: AssistantContextPayload["historicalYears"] = [];
   for (let y = year - 2; y <= year; y++) {
@@ -159,6 +172,7 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
       earnings: Number(currentTotals.earnings.toFixed(2)),
       minijobEarnings: mjMonth ? r2(mjMonth.earnings) : null,
       minijobHours: mjMonth ? r2(mjMonth.hours) : null,
+      multipleMinijobsWithMainJob: multiMinijob.month,
       entriesCount: currentList.length,
     },
     year: {
@@ -167,6 +181,7 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
       earnings: Number(yearTotals.earnings.toFixed(2)),
       minijobEarnings: mjYear ? r2(mjYear.earnings) : null,
       minijobHours: mjYear ? r2(mjYear.hours) : null,
+      multipleMinijobsWithMainJob: multiMinijob.year,
     },
     historicalYears,
     months,
