@@ -1,17 +1,19 @@
 /**
  * Regression: Krankheitsfall-Fortsetzungsregel (DECISIONS R2, Sick pay).
- * T1–T8 + Randfälle. Daten ab dem Stichtag SICK_CONTINUOUS_RULE_FROM,
- * sofern nicht ausdrücklich das Altverhalten geprüft wird.
+ * T1–T8 + Randfälle. Die Fortsetzungsregel gilt nur für vom Nutzer
+ * bestätigte Monate (O-2, kein Stichtag); die Regeltests übergeben daher
+ * CONFIRMED, die Altverhaltens-Tests ausdrücklich keine Bestätigung.
  */
 import { describe, expect, it } from "vitest";
 
 import { isoDate } from "./calc";
 import {
-  SICK_CONTINUOUS_RULE_FROM,
+  SICK_LONG_GAP_DAYS,
   continuousSickCase,
   payrollTotals,
   shiftPayroll,
   sickLegacyDiscrepancies,
+  sickRecalcPreview,
   type PayrollOptions,
 } from "./payroll";
 import type { Job, Shift } from "./types";
@@ -54,16 +56,38 @@ function sickRun(from: string, days: number, extra: Partial<Shift> = {}): Shift[
   return Array.from({ length: days }, (_, i) => entry(addDays(from, i), "krank", extra));
 }
 
-function evaluate(shifts: Shift[], job: Job, history: Shift[] = shifts, more: PayrollOptions = {}) {
+/** Alle Monate 2026–2027 bestätigt (Regeltests). */
+const CONFIRMED: string[] = [2026, 2027].flatMap((y) =>
+  Array.from({ length: 12 }, (_, m) => `${y}-${String(m + 1).padStart(2, "0")}`),
+);
+const UNCONFIRMED: PayrollOptions = { sickContinuousConfirmed: [] };
+
+function evaluate(
+  shifts: Shift[],
+  job: Job,
+  history: Shift[] = shifts,
+  more: PayrollOptions = { sickContinuousConfirmed: CONFIRMED },
+) {
   return shifts.map((s) => shiftPayroll(s, { job, defaultRate: RATE, history, ...more }));
 }
 
 const count = (ps: { reason: string }[], reason: string) =>
   ps.filter((p) => p.reason === reason).length;
 
-describe("Stichtag", () => {
-  it("ist ein fester ISO-Tag (Owner-Entscheidung)", () => {
-    expect(SICK_CONTINUOUS_RULE_FROM).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+describe("Kein Stichtag (O-1 BLOCKED): Neuberechnung nur nach Bestätigung", () => {
+  it("es gibt keinen exportierten Stichtag mehr", async () => {
+    const mod = await import("./payroll");
+    expect(Object.keys(mod)).not.toContain("SICK_CONTINUOUS_RULE_FROM");
+  });
+
+  it("ohne Bestätigung: Werte wie bisher (Fall ohne ID beginnt am Tag), auch für künftige Monate", () => {
+    const run = sickRun("2027-05-03", 60);
+    const ps = evaluate(run, ALL_DAYS, run, UNCONFIRMED);
+    expect(count(ps, "sick-pay")).toBe(60);
+    expect(ps.filter((p) => p.notice === "sick-legacy-over-limit")).toHaveLength(18);
+    // Option fehlt ganz → ebenfalls Altverhalten
+    const none = evaluate(run, ALL_DAYS, run, {});
+    expect(count(none, "sick-pay")).toBe(60);
   });
 });
 
@@ -124,6 +148,7 @@ describe("T1–T8", () => {
     expect(continuousSickCase(shifts[10]!, ALL_DAYS, shifts)).toEqual({
       start: "2026-11-13",
       ambiguous: true,
+      longGap: false,
     });
   });
 
@@ -152,16 +177,18 @@ describe("T1–T8", () => {
     expect(p!.earnings).toBe(0);
   });
 
-  it("T8: vor dem Stichtag keine automatische Neuberechnung — nur Hinweis", () => {
+  it("T8: ohne Bestätigung keine automatische Neuberechnung — nur Hinweis", () => {
     const run = sickRun("2026-03-02", 60);
-    const ps = evaluate(run, ALL_DAYS);
+    const ps = evaluate(run, ALL_DAYS, run, UNCONFIRMED);
     expect(count(ps, "sick-pay")).toBe(60); // Altverhalten
     expect(ps.filter((p) => p.notice === "sick-legacy-over-limit")).toHaveLength(18);
     expect(ps[41]!.notice).toBeUndefined();
     const flagged = sickLegacyDiscrepancies(run, () => ({ job: ALL_DAYS, defaultRate: RATE }));
     expect(flagged.map((s) => s.date)).toEqual(run.slice(42).map((s) => s.date));
-    // Gesteuerte Neuberechnung (z. B. nach Nutzerbestätigung) über Option
-    const recalculated = evaluate(run, ALL_DAYS, run, { sickContinuousFrom: "2026-01-01" });
+    // Neuberechnung nach Nutzerbestätigung (Monate März/April)
+    const recalculated = evaluate(run, ALL_DAYS, run, {
+      sickContinuousConfirmed: ["2026-03", "2026-04"],
+    });
     expect(count(recalculated, "sick-pay")).toBe(42);
     expect(recalculated.some((p) => p.notice)).toBe(false);
   });
@@ -171,7 +198,11 @@ describe("Randfälle", () => {
   it("Monatsgrenze: Fall über Nov/Dez/Jan zählt mit voller Historie korrekt", () => {
     const run = sickRun("2026-11-20", 47); // bis 2027-01-05
     const december = run.filter((s) => s.date.startsWith("2026-12"));
-    const totals = payrollTotals(december, () => ({ job: ALL_DAYS, defaultRate: RATE }), run);
+    const totals = payrollTotals(
+      december,
+      () => ({ job: ALL_DAYS, defaultRate: RATE, sickContinuousConfirmed: CONFIRMED }),
+      run,
+    );
     // 20.11. + 41 = 31.12. ist Tag 42 → ganzer Dezember bezahlt
     expect(totals.absenceEarnings).toBeCloseTo(31 * 5 * RATE);
     const january = run.filter((s) => s.date.startsWith("2027-01"));
@@ -185,10 +216,10 @@ describe("Randfälle", () => {
     expect(count(evaluate(january, ALL_DAYS, january), "sick-pay")).toBe(5);
   });
 
-  it("Fall, der vor dem Stichtag beginnt, zählt die Tage vor dem Stichtag mit", () => {
+  it("Fall, der in einem nicht bestätigten Monat beginnt, zählt dessen Tage mit (Fallbeginn aus voller Historie)", () => {
     const run = sickRun("2026-10-15", 60);
-    const ps = evaluate(run, ALL_DAYS);
-    // 15.10. + 42 = 26.11. → ab dort überschritten (nach Stichtag)
+    const ps = evaluate(run, ALL_DAYS, run, { sickContinuousConfirmed: ["2026-11", "2026-12"] });
+    // 15.10. + 42 = 26.11. → ab dort überschritten (November bestätigt)
     const firstExceeded = run[ps.findIndex((p) => p.reason === "sick-exceeded")]!.date;
     expect(firstExceeded).toBe("2026-11-26");
     expect(count(ps, "sick-pay")).toBe(42);
@@ -204,6 +235,7 @@ describe("Randfälle", () => {
     expect(continuousSickCase(shifts[6]!, ALL_DAYS, shifts)).toEqual({
       start: "2026-11-08",
       ambiguous: false,
+      longGap: false,
     });
   });
 
@@ -257,25 +289,24 @@ describe("Randfälle", () => {
 });
 
 describe("QA R1 gaps (M144-1, M144-2)", () => {
-  it("Stichtag selbst: am Tag `sickContinuousFrom` gilt bereits die neue Regel", () => {
-    const run = sickRun("2026-03-01", 45);
-    const cutoff = run[42]!.date; // Tag 43
-    const ps = evaluate(run, ALL_DAYS, run, { sickContinuousFrom: cutoff });
+  it("Bestätigungsgrenze (ersetzt M144-1): nur Tage im bestätigten Monat folgen der neuen Regel", () => {
+    const run = sickRun("2026-03-01", 45); // Tag 43 = 12.04.
+    expect(run[42]!.date).toBe("2026-04-12");
+    const ps = evaluate(run, ALL_DAYS, run, { sickContinuousConfirmed: ["2026-04"] });
     expect(ps[42]!.reason).toBe("sick-exceeded");
     expect(ps[42]!.notice).toBeUndefined();
-    // Tag davor: Altverhalten (Tag 42 ist ohnehin bezahlt)
     expect(ps[41]!.reason).toBe("sick-pay");
-    // Ein Tag später als Stichtag → Tag 43 noch Altverhalten + Hinweis
-    const later = evaluate(run, ALL_DAYS, run, { sickContinuousFrom: run[43]!.date });
-    expect(later[42]!.reason).toBe("sick-pay");
-    expect(later[42]!.notice).toBe("sick-legacy-over-limit");
+    // März bestätigt, April nicht → Tag 43 Altverhalten + Hinweis
+    const other = evaluate(run, ALL_DAYS, run, { sickContinuousConfirmed: ["2026-03"] });
+    expect(other[42]!.reason).toBe("sick-pay");
+    expect(other[42]!.notice).toBe("sick-legacy-over-limit");
   });
 
   it("mehrtägige Lücke im Hinweisfenster (2 leere Arbeitstage) → sick-case-ambiguous", () => {
     // Plan Mo–Fr: krank Mi 04.11.; Do/Fr leer (regelmäßig); krank Mo 09.11.
     const shifts = [entry("2026-11-04"), entry("2026-11-09")];
     const res = continuousSickCase(shifts[1]!, MON_FRI, shifts);
-    expect(res).toEqual({ start: "2026-11-09", ambiguous: true });
+    expect(res).toEqual({ start: "2026-11-09", ambiguous: true, longGap: false });
     const [, p] = evaluate(shifts, MON_FRI);
     expect(p!.notice).toBe("sick-case-ambiguous");
   });
@@ -283,5 +314,86 @@ describe("QA R1 gaps (M144-1, M144-2)", () => {
   it("Krankheit länger als 7 Tage vor der Lücke → kein Hinweis", () => {
     const shifts = [entry("2026-11-02"), entry("2026-11-12")]; // dazwischen 9 leere Tage, Plan Mo–So
     expect(continuousSickCase(shifts[1]!, ALL_DAYS, shifts).ambiguous).toBe(false);
+  });
+});
+
+describe("O-2: Vorschau der Neuberechnung (sickRecalcPreview)", () => {
+  const resolveWith = (confirmed: string[]) => (): PayrollOptions => ({
+    job: ALL_DAYS,
+    defaultRate: RATE,
+    sickContinuousConfirmed: confirmed,
+  });
+
+  it("listet betroffene Monate mit vorher/nachher; ändert nichts", () => {
+    // 60 Tage ab 02.11.2026: Tage 43–60 = 14.12.–31.12.
+    const run = [...sickRun("2026-11-02", 60), entry("2026-12-01", "arbeit", { jobId: "j9" })];
+    const snapshot = JSON.stringify(run);
+    const preview = sickRecalcPreview(run, resolveWith([]));
+    expect(preview).toHaveLength(1);
+    const dec = preview[0]!;
+    expect(dec.month).toBe("2026-12");
+    expect(dec.days).toBe(18);
+    expect(dec.before - dec.after).toBeCloseTo(18 * 5 * RATE);
+    expect(JSON.stringify(run)).toBe(snapshot);
+  });
+
+  it("bestätigter Monat erscheint nicht mehr; Werte entsprechen dann 'nachher'", () => {
+    const run = sickRun("2026-11-02", 60);
+    const [dec] = sickRecalcPreview(run, resolveWith([]));
+    expect(sickRecalcPreview(run, resolveWith(["2026-12"]))).toEqual([]);
+    const december = run.filter((s) => s.date.startsWith("2026-12"));
+    const after = payrollTotals(december, resolveWith(["2026-12"]), run).earnings;
+    expect(after).toBeCloseTo(dec!.after);
+  });
+
+  it("mehrere Monate getrennt; Bestätigung eines Monats ändert den anderen nicht", () => {
+    const run = sickRun("2026-11-02", 75); // bis 15.01.2027
+    const preview = sickRecalcPreview(run, resolveWith([]));
+    expect(preview.map((m) => m.month)).toEqual(["2026-12", "2027-01"]);
+    const janBefore = preview[1]!;
+    const partial = sickRecalcPreview(run, resolveWith(["2026-12"]));
+    expect(partial).toEqual([janBefore]);
+  });
+});
+
+describe("Lange planfreie Lücke (QA P3-144-c): nur Hinweis, keine Rechenänderung", () => {
+  const MON_ONLY = makeJob([true, false, false, false, false, false, false]);
+
+  it("Plan nur Montag: krank Mo + Mo der Folgewoche → longGap + Hinweis, Beträge unverändert", () => {
+    const shifts = [entry("2026-11-02"), entry("2026-11-09")];
+    const res = continuousSickCase(shifts[1]!, MON_ONLY, shifts);
+    expect(res).toEqual({ start: "2026-11-02", ambiguous: false, longGap: true });
+    const ps = evaluate(shifts, MON_ONLY);
+    expect(ps[1]!.notice).toBe("sick-case-long-gap");
+    expect(ps.map((p) => p.reason)).toEqual(["sick-pay", "sick-pay"]);
+    const plain = evaluate(shifts, MON_ONLY, shifts, UNCONFIRMED);
+    expect(plain.map((p) => p.earnings)).toEqual(ps.map((p) => p.earnings));
+  });
+
+  it("Plan Mo–Fr: normales Wochenende (2 Tage) → kein Hinweis", () => {
+    const shifts = [entry("2026-11-06"), entry("2026-11-09")];
+    expect(continuousSickCase(shifts[1]!, MON_FRI, shifts).longGap).toBe(false);
+    expect(evaluate(shifts, MON_FRI)[1]!.notice).toBeUndefined();
+  });
+
+  it("Schwelle: 3 planfreie Tage → Hinweis, 2 → keiner (Plan berücksichtigt)", () => {
+    expect(SICK_LONG_GAP_DAYS).toBe(3);
+    const MON_THU = makeJob([true, true, true, true, false, false, false]); // Fr–So frei
+    const three = [entry("2026-11-05"), entry("2026-11-09")]; // Do → Mo: Fr/Sa/So leer
+    expect(continuousSickCase(three[1]!, MON_THU, three).longGap).toBe(true);
+    const two = [entry("2026-11-06"), entry("2026-11-09")]; // Fr → Mo (Plan Mo–Fr)
+    expect(continuousSickCase(two[1]!, MON_FRI, two).longGap).toBe(false);
+  });
+
+  it("dieselbe 3-Tage-Lücke mit Plan Mo–So endet am leeren Arbeitstag → kein longGap", () => {
+    const shifts = [entry("2026-11-05"), entry("2026-11-09")];
+    const res = continuousSickCase(shifts[1]!, ALL_DAYS, shifts);
+    expect(res.start).toBe("2026-11-09");
+    expect(res.longGap).toBe(false);
+  });
+
+  it("Mehrdeutigkeit hat Vorrang vor longGap", () => {
+    const shifts = [entry("2026-11-04"), entry("2026-11-09")]; // Mi, Mo; Plan Mo–Fr: Do/Fr leer
+    expect(evaluate(shifts, MON_FRI)[1]!.notice).toBe("sick-case-ambiguous");
   });
 });

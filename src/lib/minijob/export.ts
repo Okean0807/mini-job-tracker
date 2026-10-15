@@ -25,6 +25,8 @@ export interface ExportContext {
    * (QA P1-144-a). Aufrufer mit Teilzeiträumen müssen die volle Historie geben.
    */
   history?: Shift[] | undefined;
+  /** Bestätigte Neuberechnungs-Monate (settings.sickContinuousConfirmedMonths, O-2). */
+  sickContinuousConfirmed?: readonly string[] | undefined;
 }
 
 function resolve(shift: Shift, ctx: ExportContext, list: Shift[] = []) {
@@ -35,6 +37,7 @@ function resolve(shift: Shift, ctx: ExportContext, list: Shift[] = []) {
     supplements: ctx.supplements,
     holiday: isHoliday(shift.date, ctx.bundesland),
     defaultRate: ctx.defaultRate,
+    sickContinuousConfirmed: ctx.sickContinuousConfirmed,
     history,
   });
 }

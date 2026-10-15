@@ -62,13 +62,19 @@ function Harness({ shiftId, withHistory }: { shiftId: string; withHistory: boole
   });
 }
 
-function seed(shifts: Shift[]) {
+function seed(shifts: Shift[], confirmed: string[] = []) {
   act(() => {
     replaceAll({
       ...EMPTY_DATA,
       jobs: [JOB],
       shifts,
-      settings: { ...DEFAULT_SETTINGS, onboarded: true, localDemoMode: true, activeJobId: JOB.id },
+      settings: {
+        ...DEFAULT_SETTINGS,
+        onboarded: true,
+        localDemoMode: true,
+        activeJobId: JOB.id,
+        sickContinuousConfirmedMonths: confirmed,
+      },
     } as never);
   });
 }
@@ -99,14 +105,21 @@ afterEach(() => {
 });
 
 describe("ShiftDialog Krank-Vorschau mit Historie", () => {
-  it("Tag 50 eines Falls: mit history → sick-exceeded (wie die Liste)", () => {
-    seed(RUN);
+  it("Tag 50 eines Falls (Monat bestätigt): mit history → sick-exceeded (wie die Liste)", () => {
+    seed(RUN, ["2026-11", "2026-12"]);
     open(RUN[49]!.id, true);
     expect(preview().getAttribute("data-pay-reason")).toBe("sick-exceeded");
   });
 
-  it("Tag 50 ohne history (Altverhalten der Vorschau) → sick-pay", () => {
+  it("Tag 50 NICHT bestätigt → sick-pay + Hinweis (keine automatische Neuberechnung)", () => {
     seed(RUN);
+    open(RUN[49]!.id, true);
+    expect(preview().getAttribute("data-pay-reason")).toBe("sick-pay");
+    expect(notice()?.getAttribute("data-notice")).toBe("sick-legacy-over-limit");
+  });
+
+  it("Tag 50 ohne history (Altverhalten der Vorschau) → sick-pay", () => {
+    seed(RUN, ["2026-11", "2026-12"]);
     open(RUN[49]!.id, false);
     expect(preview().getAttribute("data-pay-reason")).toBe("sick-pay");
   });

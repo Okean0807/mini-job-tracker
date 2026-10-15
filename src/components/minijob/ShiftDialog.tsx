@@ -324,6 +324,7 @@ export function ShiftDialog({
     supplements: job?.supplements ?? settings.supplements,
     holiday: Boolean(holiday),
     defaultRate: settings.defaultRate,
+    sickContinuousConfirmed: settings.sickContinuousConfirmedMonths,
     ...(history ? { history } : {}),
   });
   const preview =

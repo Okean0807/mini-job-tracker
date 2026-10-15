@@ -186,6 +186,8 @@ function StatsPage() {
     supplements: settings.supplements,
     // Volle Historie: Krankheitsfälle über die Exportgrenze hinweg (QA P1-144-a).
     history: shifts,
+    // Gleiche Bestätigungen wie in der App (O-2), sonst weicht der Export ab.
+    sickContinuousConfirmed: settings.sickContinuousConfirmedMonths,
   };
 
   function doExport(kind: "xlsx" | "pdf", list: Shift[], title: string) {

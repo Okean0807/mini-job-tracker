@@ -37,20 +37,31 @@ export const SICK_MAX_DAYS = 42;
  *   erzeugen nur einen Hinweis (`notice = "sick-case-ambiguous"`).
  */
 /**
- * Ab diesem Datum gilt die Fortsetzungsregel für Einträge ohne `sickCaseId`.
- * Frühere Tage werden NICHT automatisch neu berechnet (bisheriges Verhalten);
- * würde die neue Regel dort abweichen, wird nur `notice =
- * "sick-legacy-over-limit"` gesetzt.
+ * Keine automatische Neuberechnung (DECISIONS R2: "vergangene Monate werden
+ * nicht automatisch neu berechnet; Abweichungen markieren; Neuberechnung nur
+ * nach Bestätigung des Nutzers").
  *
- * BLOCKED (Owner-Entscheidung O-1, offen): Der Wert ist ein PLATZHALTER und
- * kein bestätigter Stichtag. Es gibt keine Quelle (Repo-Doku, Decisions,
- * Release-Doku) für ein Datum. Jede Alternative ohne Datum ändert die
- * Berechnungsbedeutung (neue Regel überall = automatische Neuberechnung
- * vergangener Monate; nur Hinweis überall = Fehler bleibt bestehen;
- * "vor dem aktuellen Monat" = Monatswerte ändern sich mit der Zeit).
- * Nicht ohne Bestätigung des Owners mergen.
+ * Es gibt KEINEN Stichtag (O-1: kein bestätigtes Datum, der frühere
+ * Platzhalter 2026-11-01 wurde entfernt). Stattdessen gilt je Monat:
+ * - Monat vom Nutzer bestätigt (`sickContinuousConfirmed` enthält "YYYY-MM",
+ *   gespeichert in `settings.sickContinuousConfirmedMonths`): die
+ *   Fortsetzungsregel bestimmt den Fallbeginn.
+ * - Sonst: bisheriges Verhalten (Fall ohne `sickCaseId` beginnt am Tag
+ *   selbst, Beträge wie bisher). Würde die Fortsetzungsregel abweichen, wird
+ *   nur `notice = "sick-legacy-over-limit"` gesetzt und der Monat in
+ *   {@link sickRecalcPreview} zur Bestätigung angeboten (O-2).
+ *
+ * OFFEN (Owner): Ob neue Zeiträume künftig OHNE Bestätigung nach der
+ * Fortsetzungsregel berechnet werden sollen, braucht eine Grenze
+ * (Datum / Übernahmezeitpunkt) – nicht entschieden, daher nicht umgesetzt.
  */
-export const SICK_CONTINUOUS_RULE_FROM = "2026-11-01";
+/**
+ * Hinweis-Schwelle (KEINE Berechnungsregel): Überbrückt ein vermuteter Fall
+ * mehr als ein Wochenende an planfreien Tagen (≥ 3 leere, laut Arbeitsplan
+ * bzw. Muster nicht regelmäßige Kalendertage), wird nur
+ * `notice = "sick-case-long-gap"` gesetzt (QA P3-144-c).
+ */
+export const SICK_LONG_GAP_DAYS = 3;
 /** Referenzzeitraum des Urlaubsentgelts (§ 11 BUrlG). */
 export const VACATION_REFERENCE_DAYS = 91;
 /** Mindestzahl an Arbeitstagen im Referenzzeitraum für eine belastbare Berechnung. */
@@ -94,19 +105,18 @@ export interface ShiftPayroll {
 /**
  * - "sick-case-ambiguous": angrenzende Krankheitseinträge, die nicht automatisch
  *   demselben Fall zugeordnet werden (andere/fehlende sickCaseId, leerer Arbeitstag).
- * - "sick-legacy-over-limit": Tag vor dem Stichtag, bisher bezahlt, nach der
- *   Fortsetzungsregel aber jenseits von 42 Tagen (keine automatische Neuberechnung).
+ * - "sick-legacy-over-limit": Monat nicht bestätigt; Tag wird wie bisher
+ *   bezahlt, nach der Fortsetzungsregel läge er jenseits von 42 Tagen
+ *   (keine automatische Neuberechnung, Bestätigung über O-2).
+ * - "sick-case-long-gap": der vermutete Fall überbrückt ≥ SICK_LONG_GAP_DAYS
+ *   planfreie Tage – evtl. zwei getrennte Erkrankungen; nur Hinweis.
  */
-export type SickCaseNotice = "sick-case-ambiguous" | "sick-legacy-over-limit";
+export type SickCaseNotice =
+  "sick-case-ambiguous" | "sick-legacy-over-limit" | "sick-case-long-gap";
 
 export interface PayrollOptions extends ResolveOptions {
   /** Alle bekannten Schichten (für Muster-, Krankheitsfall- und 13-Wochen-Auswertung). */
   history?: Shift[];
-  /**
-   * Stichtag der Fortsetzungsregel (Default {@link SICK_CONTINUOUS_RULE_FROM}).
-   * Vorgesehen für eine spätere, vom Nutzer bestätigte Neuberechnung.
-   */
-  sickContinuousFrom?: string;
 }
 
 /* ------------------------- Hilfen ------------------------- */
@@ -242,6 +252,8 @@ export interface SickCase {
   start: string;
   /** true = angrenzende Einträge wurden bewusst nicht zusammengeführt. */
   ambiguous: boolean;
+  /** true = Kette überbrückt ≥ SICK_LONG_GAP_DAYS planfreie Tage (nur Hinweis). */
+  longGap: boolean;
 }
 
 /** Maximale Rückschau beim Verketten (42 Tage + eine Woche Lücken-Puffer). */
@@ -295,6 +307,7 @@ export function continuousSickCase(
 ): SickCase {
   let start = shift.date;
   let ambiguous = false;
+  let longGap = false;
   const limitDate = addDays(shift.date, -SICK_LOOKBACK_DAYS);
   let cursor = shift.date;
   while (daysBetween(start, shift.date) < SICK_MAX_DAYS) {
@@ -313,10 +326,13 @@ export function continuousSickCase(
       ambiguous = true; // explizit zugeordneter Fall grenzt an – nicht verketten
       break;
     }
+    // Leere Tage zwischen zwei Krankheitstagen sind hier stets planfrei
+    // (ein leerer regelmäßiger Arbeitstag hätte die Kette beendet).
+    if (daysBetween(date, cursor) - 1 >= SICK_LONG_GAP_DAYS) longGap = true;
     start = date;
     cursor = date;
   }
-  return { start, ambiguous };
+  return { start, ambiguous, longGap };
 }
 
 /** Grenzt an einen explizit zugeordneten Fall unmittelbar ein anderer Krankheitseintrag? */
@@ -378,6 +394,27 @@ export function vacationDailyPay(
   }, 0);
   const hours = reference.reduce((acc, s) => acc + shiftHours(s), 0);
   return { amount: earnings / days, hours: hours / days };
+}
+
+/** Monatsschlüssel "YYYY-MM" eines ISO-Datums. */
+export function monthKey(iso: string): string {
+  return iso.slice(0, 7);
+}
+
+/** Hat der Nutzer die Neuberechnung für den Monat des Tages bestätigt? */
+export function isSickRecalcConfirmed(
+  date: string,
+  confirmed: readonly string[] | undefined,
+): boolean {
+  return !!confirmed && confirmed.includes(monthKey(date));
+}
+
+/** Bestätigte Monate zusammenführen (sortiert, ohne Duplikate) – O-2. */
+export function withConfirmedMonths(
+  existing: readonly string[] | undefined,
+  months: readonly string[],
+): string[] {
+  return [...new Set([...(existing ?? []), ...months])].sort();
 }
 
 /* ------------------------- Kern ------------------------- */
@@ -454,11 +491,11 @@ export function shiftPayroll(shift: Shift, options: PayrollOptions = {}): ShiftP
     } else {
       const presumed = continuousSickCase(shift, job, history);
       if (presumed.ambiguous) notice = "sick-case-ambiguous";
-      const from = options.sickContinuousFrom ?? SICK_CONTINUOUS_RULE_FROM;
-      if (shift.date >= from) {
+      else if (presumed.longGap) notice = "sick-case-long-gap";
+      if (isSickRecalcConfirmed(shift.date, options.sickContinuousConfirmed)) {
         caseStart = presumed.start;
       } else {
-        // Vor dem Stichtag: bisheriges Verhalten, keine automatische Neuberechnung.
+        // Nicht bestätigt: bisheriges Verhalten, keine automatische Neuberechnung.
         caseStart = shift.date;
         if (daysBetween(presumed.start, shift.date) >= SICK_MAX_DAYS) {
           notice = "sick-legacy-over-limit";
@@ -563,9 +600,9 @@ export function payrollTotals(
 }
 
 /**
- * Erkennung (keine Neuberechnung): Krankheitstage vor dem Stichtag, die nach
- * bisherigem Verhalten bezahlt werden, nach der Fortsetzungsregel aber
- * jenseits von 42 Tagen lägen. Grundlage für einen Hinweis an den Nutzer.
+ * Erkennung (keine Neuberechnung): Krankheitstage in nicht bestätigten
+ * Monaten, die nach bisherigem Verhalten bezahlt werden, nach der
+ * Fortsetzungsregel aber jenseits von 42 Tagen lägen.
  */
 export function sickLegacyDiscrepancies(
   shifts: Shift[],
@@ -577,4 +614,48 @@ export function sickLegacyDiscrepancies(
       shift.kind === "krank" &&
       shiftPayroll(shift, { ...resolve(shift), history }).notice === "sick-legacy-over-limit",
   );
+}
+
+export interface SickRecalcMonth {
+  /** "YYYY-MM" */
+  month: string;
+  /** Betroffene Krankheitstage (würden nach Bestätigung unbezahlt). */
+  days: number;
+  /** Monatsentgelt aktuell (alle Einträge des Monats). */
+  before: number;
+  /** Monatsentgelt nach Bestätigung dieses Monats. */
+  after: number;
+}
+
+/**
+ * O-2: Vorschau der Neuberechnung je betroffenem Monat (vorher/nachher).
+ * Reine Berechnung – ändert keine Daten. Die Bestätigung eines Monats wirkt
+ * nur auf Tage dieses Monats (der Fallbeginn wird stets aus der vollen
+ * Historie bestimmt), daher sind die Monate unabhängig.
+ */
+export function sickRecalcPreview(
+  shifts: Shift[],
+  resolve: (shift: Shift) => ResolveOptions,
+): SickRecalcMonth[] {
+  const affected = new Map<string, number>();
+  for (const s of sickLegacyDiscrepancies(shifts, resolve, shifts)) {
+    const key = monthKey(s.date);
+    affected.set(key, (affected.get(key) ?? 0) + 1);
+  }
+  return [...affected.keys()].sort().map((month) => {
+    const list = shifts.filter((s) => monthKey(s.date) === month);
+    const confirmMonth = (shift: Shift): ResolveOptions => {
+      const base = resolve(shift);
+      return {
+        ...base,
+        sickContinuousConfirmed: [...(base.sickContinuousConfirmed ?? []), month],
+      };
+    };
+    return {
+      month,
+      days: affected.get(month) ?? 0,
+      before: payrollTotals(list, resolve, shifts).earnings,
+      after: payrollTotals(list, confirmMonth, shifts).earnings,
+    };
+  });
 }

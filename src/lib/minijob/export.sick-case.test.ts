@@ -2,6 +2,8 @@
  * QA P1-144-a: Statistik-Export (XLSX/PDF) muss Krankheitsfälle mit der VOLLEN
  * Historie bewerten. Fall beginnt 02.11.2026 (60 Tage, Plan Mo–So, 5 h × 15 €):
  * Dezember-Export = 13 bezahlte Tage = 975 €, nicht 31 Tage = 2325 €.
+ * R3: Die Fortsetzungsregel gilt nur für vom Nutzer bestätigte Monate (O-2);
+ * der Export übernimmt dieselben Bestätigungen wie die App.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -56,6 +58,7 @@ const all: Shift[] = Array.from({ length: 60 }, (_, i) => ({
 }));
 const december = all.filter((s) => s.date.startsWith("2026-12"));
 const ctx = { jobs: [job], bundesland: "NW", defaultRate: 15 };
+const confirmed = { sickContinuousConfirmed: ["2026-11", "2026-12"] };
 
 function xlsxTotal(): number {
   const rows = json_to_sheet.mock.calls.at(-1)![0];
@@ -70,18 +73,23 @@ describe("P1-144-a Export mit voller Historie", () => {
     expect(all[0]!.date).toBe("2026-11-02");
   });
 
-  it("XLSX Dezember mit history = 975 €", () => {
-    exportXlsx(december, "Dezember", { ...ctx, history: all });
+  it("XLSX Dezember mit history (Monat bestätigt) = 975 €", () => {
+    exportXlsx(december, "Dezember", { ...ctx, ...confirmed, history: all });
     expect(xlsxTotal()).toBe(975);
   });
 
-  it("XLSX Dezember ohne history (Altverhalten) = 2325 € – deshalb muss der Aufrufer history geben", () => {
-    exportXlsx(december, "Dezember", ctx);
+  it("XLSX Dezember ohne history (bestätigt) = 2325 € – deshalb muss der Aufrufer history geben", () => {
+    exportXlsx(december, "Dezember", { ...ctx, ...confirmed });
+    expect(xlsxTotal()).toBe(2325);
+  });
+
+  it("XLSX Dezember NICHT bestätigt = 2325 € (keine automatische Neuberechnung, wie in der App)", () => {
+    exportXlsx(december, "Dezember", { ...ctx, history: all });
     expect(xlsxTotal()).toBe(2325);
   });
 
   it("PDF Dezember mit history: Summenzeile 975 €", () => {
-    exportPdf(december, "Dezember", { ...ctx, history: all });
+    exportPdf(december, "Dezember", { ...ctx, ...confirmed, history: all });
     const opts = autoTableMock.mock.calls.at(-1)![1] as { foot: string[][] };
     const foot = opts.foot[0]!.join(" ");
     expect(foot).toMatch(/975/);
@@ -94,5 +102,6 @@ describe("P1-144-a Export mit voller Historie", () => {
       "utf8",
     );
     expect(src).toMatch(/history:\s*shifts,/);
+    expect(src).toMatch(/sickContinuousConfirmed:\s*settings\.sickContinuousConfirmedMonths/);
   });
 });

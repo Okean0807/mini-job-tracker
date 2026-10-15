@@ -33,6 +33,11 @@ const run = (from: Date, n: number) =>
     sick(isoDate(new Date(from.getFullYear(), from.getMonth(), from.getDate() + i))),
   );
 const resolve = () => ({ job, defaultRate: 15 });
+const resolveConfirmed = () => ({
+  job,
+  defaultRate: 15,
+  sickContinuousConfirmed: ["2026-11", "2026-12"],
+});
 
 let container: HTMLDivElement;
 let root: Root;
@@ -46,14 +51,14 @@ afterEach(() => {
   container.remove();
 });
 
-function render(shifts: Shift[], history?: Shift[]) {
+function render(shifts: Shift[], history?: Shift[], r: typeof resolve = resolve) {
   act(() =>
     root.render(
       createElement(ShiftList, {
         shifts,
         ...(history ? { history } : {}),
         jobs: [job],
-        resolve,
+        resolve: r,
         onSelect: () => {},
       }),
     ),
@@ -65,7 +70,7 @@ const notices = () =>
   );
 
 describe("ShiftList Krankheitsfall-Hinweise", () => {
-  it("zeigt sick-legacy-over-limit (vor dem Stichtag) mit Text", () => {
+  it("zeigt sick-legacy-over-limit (Monat nicht bestätigt) mit Text", () => {
     const all = run(new Date(2026, 2, 1), 45); // März/April 2026
     const april = all.filter((s) => s.date.startsWith("2026-04"));
     render(april, all);
@@ -85,14 +90,25 @@ describe("ShiftList Krankheitsfall-Hinweise", () => {
     expect(notices()).toEqual([]);
   });
 
-  it("Monatsgrenze: mit voller Historie ist der Dezember ab Tag 43 überschritten", () => {
+  it("zeigt sick-case-long-gap (Plan nur Montag)", () => {
+    const monOnly = {
+      ...job,
+      week: Array.from({ length: 7 }, (_, i) => ({ active: i === 0, ...day })),
+    } as Job;
+    const shifts = [sick("2026-11-02"), sick("2026-11-09")];
+    render(shifts, shifts, () => ({ job: monOnly, defaultRate: 15 }));
+    expect(notices()).toEqual(["sick-case-long-gap"]);
+    expect(container.textContent).toContain(tl("de", "pay.notice.sick-case-long-gap"));
+  });
+
+  it("Monatsgrenze (bestätigt): mit voller Historie ist der Dezember ab Tag 43 überschritten", () => {
     const all = run(new Date(2026, 10, 2), 60);
     const december = all.filter((s) => s.date.startsWith("2026-12"));
     const exceeded = tl("de", "pay.reason.sick-exceeded");
-    render(december, all);
+    render(december, all, resolveConfirmed);
     const withHistory = (container.textContent ?? "").split(exceeded).length - 1;
     expect(withHistory).toBe(18);
-    render(december); // nur Monatsliste → Fall wird abgeschnitten
+    render(december, undefined, resolveConfirmed); // nur Monatsliste → Fall wird abgeschnitten
     const without = (container.textContent ?? "").split(exceeded).length - 1;
     expect(without).toBe(0);
   });
