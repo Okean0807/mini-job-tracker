@@ -378,6 +378,7 @@ function DashboardPage() {
         settings={settings}
         objects={objects}
         onRequestAbsence={requestAbsence}
+        history={shifts}
       />
 
       <AbsenceDialog

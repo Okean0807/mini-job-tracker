@@ -93,6 +93,11 @@ interface ShiftDialogProps {
   objects?: WorkObject[];
   /** When set, choosing Urlaub/Krank closes this dialog and opens AbsenceDialog (From–To). */
   onRequestAbsence?: (kind: "urlaub" | "krank" | "frei" | "sonstige", date: string) => void;
+  /**
+   * All known entries, so the absence preview evaluates sickness cases,
+   * work patterns and the 13-week average like the list (QA P2-144-b).
+   */
+  history?: Shift[];
 }
 
 const KINDS: ShiftKind[] = ["arbeit", "urlaub", "krank", "feiertag", "frei", "sonstige"];
@@ -123,6 +128,7 @@ export function ShiftDialog({
   settings,
   objects = [],
   onRequestAbsence,
+  history,
 }: ShiftDialogProps) {
   const { t, locale } = useT();
   const [jobId, setJobId] = useState<string | undefined>(undefined);
@@ -318,6 +324,7 @@ export function ShiftDialog({
     supplements: job?.supplements ?? settings.supplements,
     holiday: Boolean(holiday),
     defaultRate: settings.defaultRate,
+    ...(history ? { history } : {}),
   });
   const preview =
     kind === "arbeit"
@@ -1325,6 +1332,7 @@ export function ShiftDialog({
                 className="rounded-xl bg-card p-3 text-sm"
                 data-testid="entry-absence-preview"
                 data-hours={preview.hours}
+                data-pay-reason={absencePreview.reason}
               >
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">{t("shift.duration")}</span>
@@ -1336,6 +1344,15 @@ export function ShiftDialog({
                     {formatEuro(preview.total, locale)}
                   </span>
                 </div>
+                {absencePreview.notice ? (
+                  <p
+                    className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-400"
+                    data-testid="entry-absence-notice"
+                    data-notice={absencePreview.notice}
+                  >
+                    {t(`pay.notice.${absencePreview.notice}`)}
+                  </p>
+                ) : null}
               </div>
             ) : null}
 

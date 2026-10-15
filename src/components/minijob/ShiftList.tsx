@@ -80,7 +80,11 @@ export function ShiftList({ shifts, history, jobs, resolve, onSelect }: ShiftLis
                   </p>
                 ) : null}
                 {pay.notice ? (
-                  <p className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                  <p
+                    className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-400"
+                    data-testid="shift-pay-notice"
+                    data-notice={pay.notice}
+                  >
                     {t(`pay.notice.${pay.notice}`)}
                   </p>
                 ) : null}
