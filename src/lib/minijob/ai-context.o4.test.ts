@@ -98,10 +98,22 @@ describe("P2-142-b: O4 im KI-Kontext", () => {
     expect(c.currentMonth.multipleMinijobsWithMainJob).toBe(false);
   });
 
-  it("Monat vs. Jahr: zweiter Minijob nur im März → Monat false, Jahr true", () => {
+  it("Monat vs. Jahr: zweiter Minijob nur im März und Ende März beendet → Monat false, Jahr true", () => {
     const shifts = [...SEPT.slice(0, 3), shift("b3", "mj-b", "2026-03-11", 4)];
-    const c = ctx([HB, MJ_A, MJ_B], shifts, NOW);
+    const c = ctx([HB, MJ_A, { ...MJ_B, endDate: "2026-03-31" }], shifts, NOW);
     expect(c.currentMonth.multipleMinijobsWithMainJob).toBe(false);
+    expect(c.year.multipleMinijobsWithMainJob).toBe(true);
+  });
+
+  it("P3-R2-145-a (wie #145): erster Minijob ruht im September, weiter beschäftigt → Monat true", () => {
+    const shifts = [
+      shift("h", "hb", "2026-09-09", 8),
+      shift("a3", "mj-a", "2026-03-10", 10),
+      shift("b", "mj-b", "2026-09-11", 10),
+    ];
+    const c = ctx([HB, MJ_A, MJ_B], shifts, NOW);
+    expect(c.currentMonth.minijobEarnings).toBe(250);
+    expect(c.currentMonth.multipleMinijobsWithMainJob).toBe(true);
     expect(c.year.multipleMinijobsWithMainJob).toBe(true);
   });
 
@@ -144,6 +156,55 @@ describe("Vormonate (N2: Summen aller Jobs bleiben)", () => {
   });
 });
 
+describe("Historischer Kontext + mehrere Minijobs (R3)", () => {
+  // HB + MJ-A + MJ-B in Vormonaten und im Vorjahr; aktueller Monat September 2026.
+  const shifts = [
+    shift("h25", "hb", "2025-11-05", 8), // 200 €
+    shift("a25", "mj-a", "2025-11-06", 10), // 200 €
+    shift("h8", "hb", "2026-08-05", 8), // 200 €
+    shift("a8", "mj-a", "2026-08-06", 10), // 200 €
+    shift("b8", "mj-b", "2026-08-07", 10), // 250 €
+    ...SEPT,
+  ];
+  const jobs = [HB, { ...MJ_A, startDate: "2025-01-01" }, MJ_B];
+  const c = ctx(jobs, shifts, NOW);
+
+  it("months[]: Summen aller Jobs, keine Minijob-Felder oder Flags", () => {
+    const aug = c.months.find(
+      (m: { year: number; month: number }) => m.year === 2026 && m.month === 7,
+    );
+    expect(aug.earnings).toBe(650);
+    for (const m of c.months) {
+      expect(Object.keys(m).some((k) => /minijob/i.test(k))).toBe(false);
+    }
+  });
+
+  it("historicalYears[]: Summen aller Jobs (2025 = 400 inkl. HB), keine Minijob-Felder", () => {
+    const y25 = c.historicalYears.find((h: { year: number }) => h.year === 2025);
+    expect(y25.earnings).toBe(400);
+    for (const h of c.historicalYears) {
+      expect(Object.keys(h).some((k) => /minijob/i.test(k))).toBe(false);
+    }
+  });
+
+  it("jobs[]: je Job getrennt, ohne Minijob-Grenzwerte (nur vorhandenes minijobLimitApplies)", () => {
+    for (const j of c.jobs) {
+      expect(Object.keys(j)).not.toContain("minijobEarnings");
+      expect(Object.keys(j)).not.toContain("multipleMinijobsWithMainJob");
+    }
+    const hb = c.jobs.find((j: { id: string }) => j.id === "hb");
+    expect(hb.minijobLimitApplies).toBe(false);
+  });
+
+  it("aktueller Monat/Jahr: Minijob-Werte + O4-Flag (HB + 2 MJ)", () => {
+    expect(c.currentMonth.minijobEarnings).toBe(650);
+    expect(c.currentMonth.multipleMinijobsWithMainJob).toBe(true);
+    expect(c.year.minijobEarnings).toBe(1100);
+    expect(c.year.multipleMinijobsWithMainJob).toBe(true);
+    expect(c.year.earnings).toBeGreaterThan(c.year.minijobEarnings);
+  });
+});
+
 describe("Prompt (M142-5, P3-142-a)", () => {
   const prompt = buildSystemInstruction("Deutsch");
   it("verlangt minijobEarnings für Grenzvergleiche", () => {
@@ -153,6 +214,15 @@ describe("Prompt (M142-5, P3-142-a)", () => {
     expect(prompt).toMatch(/multipleMinijobsWithMainJob true/);
     expect(prompt).toMatch(/NICHT eindeutig/);
   });
+  it("historische Gesamtsummen nicht als Minijob-Verdienst / kein kategorischer Grenzschluss", () => {
+    expect(prompt).toMatch(/months, jobs und historicalYears enthalten nur Summen ALLER Jobs/);
+    expect(prompt).toMatch(/niemals als Minijob-Verdienst dar/);
+    expect(prompt).toMatch(/keinen kategorischen Schluss/);
+    expect(prompt).toMatch(
+      /Für vergangene Monate und Jahre liegt kein grenzrelevanter Minijob-Wert vor/,
+    );
+  });
+
   it("kein fehlendes Leerzeichen zwischen Sätzen ('hin.Für')", () => {
     expect(prompt).not.toMatch(/hin\.Für/);
     expect(prompt).not.toMatch(/[a-zäöü]\.[A-ZÄÖÜ]/);
