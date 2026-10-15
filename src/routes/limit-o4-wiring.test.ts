@@ -14,7 +14,9 @@ const read = (rel: string) => readFileSync(join(here, rel), "utf8");
 describe("B3-1/O4 wiring", () => {
   const index = read("index.tsx");
   it("Dashboard: Flags für betrachteten Monat/Jahr", () => {
-    expect(index).toMatch(/limitReliabilityFlags\(jobs, shifts, year, month\)/);
+    expect(index).toMatch(
+      /limitReliabilityFlags\(jobs, shifts, year, month, activityOptions\(settings\)\)/,
+    );
   });
   it("Dashboard: Monats-/Jahres-LimitCard bekommen ihren eigenen Flag", () => {
     expect(index).toMatch(/usage=\{monthLimit\}[\s\S]*?multipleMinijobs=\{multiMinijobMonth\}/);
@@ -25,15 +27,18 @@ describe("B3-1/O4 wiring", () => {
   });
   it("Dashboard: Banner nutzt Flags je Bereich und effektive Anteile", () => {
     expect(index).toMatch(
-      /limitAlertLevel\(appliesMinijobLimit, limitShare, yearShare, multiMinijob\)/,
+      /limitAlertLevel\(appliesMinijobLimit, limitShare, yearShare, unreliable\)/,
     );
+    // Owner R5: "nicht sicher bestimmbar" unterdrückt den Status wie O4.
+    expect(index).toMatch(/const unreliable = statusUnreliable\(multiMinijob\)/);
+    expect(index).toMatch(/effectiveLimitShares\(limitShare, yearShare, unreliable\)/);
     expect(index).toMatch(/alertShares\.month >= 100/);
   });
   it("Dashboard: Grenz-Kachel zeigt bei Flag keinen Prozentwert", () => {
-    expect(index).toMatch(/appliesMinijobLimit && !multiMinijobMonth \?/);
+    expect(index).toMatch(/appliesMinijobLimit && !unreliable\.month \?/);
   });
   it("Dashboard: Heute-Karte bekommt dieselben Flags", () => {
-    expect(index).toMatch(/<TodayImportantCard[\s\S]*?limitFlags=\{multiMinijob\}/);
+    expect(index).toMatch(/<TodayImportantCard[\s\S]*?limitFlags=\{unreliable\}/);
   });
   it("Heute-Karte nutzt die Flags für Alert und Prozent", () => {
     const today = read("../components/minijob/TodayImportantCard.tsx");
@@ -43,12 +48,14 @@ describe("B3-1/O4 wiring", () => {
   });
   it("Statistik: Jahreskachel und Jahresbericht nutzen den ungefilterten Flag", () => {
     const stats = read("statistik.tsx");
-    expect(stats).toMatch(/multipleMinijobsWithMainJob\(jobs, shifts, yearPeriod\(year\)\)/);
+    expect(stats).toMatch(
+      /multipleMinijobsWithMainJob\(jobs, shifts, yearPeriod\(year\), activityOptions\(settings\)\)/,
+    );
     // DECISIONS R3 Punkt 5: Summen nach Filter, Flag/Monate aus ALLEN Einträgen + Erklärung.
     expect(stats).toMatch(
-      /withAllJobsO4\(\s*buildAnnualReport\(filtered, jobs, settings, year, resolve\),\s*jobs,\s*shifts,\s*jobFilter !== "alle",?\s*\)/,
+      /withAllJobsO4\(\s*buildAnnualReport\(filtered, jobs, settings, year, resolve\),\s*jobs,\s*shifts,\s*jobFilter !== "alle",\s*activityOptions\(settings\),?\s*\)/,
     );
-    expect(stats).toMatch(/yearMultiMinijob \? "—"/);
+    expect(stats).toMatch(/yearMultiMinijob \|\| yearO4Uncertain\s*\?\s*"—"/);
   });
   it("Jahresbericht-Karte und -Export zeigen bei Flag keinen Prozentwert", () => {
     expect(read("../components/minijob/AnnualReportCard.tsx")).toMatch(/report\.multipleMinijobs/);
@@ -56,6 +63,8 @@ describe("B3-1/O4 wiring", () => {
     // KPI-Wert, PDF-Hinweiszeile und O4-Zusatzzeilen (Monate/Filter-Erklärung).
     expect(exp.match(/report\.multipleMinijobs\b/g)?.length).toBe(3);
     expect(exp).toMatch(/\.\.\.annualO4Lines\(report\)/);
-    expect(exp).toMatch(/for \(const line of annualO4Lines\(report\)\)/);
+    expect(exp).toMatch(/for \(const row of annualO4Rows\(report\)\)/);
+    // Owner R5: unsicherer Status ebenfalls ohne Prozentwert.
+    expect(exp.match(/report\.o4UncertainMonths\?\.length/g)?.length).toBe(3);
   });
 });

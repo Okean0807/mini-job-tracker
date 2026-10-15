@@ -106,6 +106,12 @@ export const v2: Bundle = {
       "Im gewählten Monat ist keine Mehrfachbeschäftigung erfasst – der Hinweis entsteht durch die oben genannten anderen Monate dieses Zeitraums.",
     "limit.multipleMinijobsForecastBasis":
       "Dieser Hinweis beruht nur auf erfassten Einträgen der 12 Monate bis zum gewählten Monat (Rückblick). Er ist keine Vorhersage und keine Feststellung künftiger Beschäftigungen.",
+    "limit.o4Uncertain":
+      "Mehrfachbeschäftigung nicht sicher bestimmbar",
+    "limit.o4UncertainHint":
+      "Ob neben der Hauptbeschäftigung mehrere Minijobs gleichzeitig aktiv waren, lässt sich aus den Daten nicht sicher bestimmen: Die Bezahlung einzelner Krankheits- oder Feiertage ist nur geschätzt (z. B. ohne Wochenplan oder Beschäftigungsbeginn) oder hängt noch von einer Bestätigung ab. Deshalb wird kein Grenzstatus angezeigt.",
+    "limit.o4UncertainMonths":
+      "Nicht sicher bestimmbar in: {months}",
     "sick.linkCase":
       "Zum Krankheitsfall ab {date} hinzufügen (nur wenn es dieselbe Erkrankung ist). Ohne Haken wird der Tag getrennt gezählt.",
     "sick.ambiguousHelp":
@@ -240,6 +246,12 @@ export const v2: Bundle = {
       "No multiple employment is recorded in the selected month – the notice comes from the other months of this period listed above.",
     "limit.multipleMinijobsForecastBasis":
       "This notice is based only on recorded entries of the 12 months up to the selected month (look-back). It is not a prediction and not a statement about future employment.",
+    "limit.o4Uncertain":
+      "Multiple employment cannot be determined reliably",
+    "limit.o4UncertainHint":
+      "Whether several Minijobs were active at the same time alongside the main job cannot be determined reliably from the data: pay for some sick days or public holidays is only estimated (e.g. no weekly plan or employment start) or still depends on a confirmation. Therefore no limit status is shown.",
+    "limit.o4UncertainMonths":
+      "Cannot be determined reliably in: {months}",
     "sick.linkCase":
       "Add to the sickness case starting {date} (only if it is the same illness). Unticked, the day is counted separately.",
     "sick.ambiguousHelp":
@@ -374,6 +386,12 @@ export const v2: Bundle = {
       "В выбранном месяце несколько занятостей не зафиксировано – уведомление вызвано другими месяцами этого периода, указанными выше.",
     "limit.multipleMinijobsForecastBasis":
       "Это уведомление основано только на внесённых записях за 12 месяцев до выбранного месяца (ретроспектива). Это не прогноз и не утверждение о будущих занятостях.",
+    "limit.o4Uncertain":
+      "Совместительство нельзя определить надёжно",
+    "limit.o4UncertainHint":
+      "По данным нельзя надёжно определить, были ли наряду с основной работой одновременно активны несколько миниджобов: оплата отдельных дней болезни или праздников лишь оценочная (например, нет недельного плана или даты начала работы) или ещё зависит от подтверждения. Поэтому статус лимита не показывается.",
+    "limit.o4UncertainMonths":
+      "Нельзя надёжно определить в: {months}",
     "sick.linkCase":
       "Добавить к случаю болезни с {date} (только если это то же заболевание). Без отметки день считается отдельно.",
     "sick.ambiguousHelp":
@@ -508,6 +526,12 @@ export const v2: Bundle = {
       "Seçilen ayda birden fazla iş kaydı yok – uyarı, bu dönemin yukarıda listelenen diğer aylarından kaynaklanıyor.",
     "limit.multipleMinijobsForecastBasis":
       "Bu uyarı yalnızca seçilen aya kadarki 12 ayın kayıtlı girişlerine dayanır (geriye dönük). Bir tahmin ya da gelecekteki işler hakkında bir tespit değildir.",
+    "limit.o4Uncertain":
+      "Birden fazla iş durumu güvenilir şekilde belirlenemiyor",
+    "limit.o4UncertainHint":
+      "Ana işin yanında birden fazla Minijob'un aynı anda aktif olup olmadığı verilerden güvenilir şekilde belirlenemiyor: bazı hastalık veya tatil günlerinin ödemesi yalnızca tahmini (ör. haftalık plan veya işe başlama tarihi yok) ya da henüz bir onaya bağlı. Bu nedenle sınır durumu gösterilmez.",
+    "limit.o4UncertainMonths":
+      "Güvenilir şekilde belirlenemeyen aylar: {months}",
     "sick.linkCase":
       "{date} tarihinde başlayan hastalık vakasına ekle (yalnızca aynı hastalıksa). İşaretlenmezse gün ayrı sayılır.",
     "sick.ambiguousHelp":
@@ -642,6 +666,12 @@ export const v2: Bundle = {
       "W wybranym miesiącu nie zapisano wielu zatrudnień – informacja wynika z innych miesięcy tego okresu wymienionych wyżej.",
     "limit.multipleMinijobsForecastBasis":
       "Ta informacja opiera się wyłącznie na zapisanych wpisach z 12 miesięcy do wybranego miesiąca (wstecz). Nie jest prognozą ani stwierdzeniem dotyczącym przyszłych zatrudnień.",
+    "limit.o4Uncertain":
+      "Wielokrotnego zatrudnienia nie można wiarygodnie ustalić",
+    "limit.o4UncertainHint":
+      "Na podstawie danych nie można wiarygodnie ustalić, czy obok głównego zatrudnienia kilka minijobów było aktywnych jednocześnie: wynagrodzenie za niektóre dni choroby lub święta jest tylko szacowane (np. brak planu tygodniowego lub daty rozpoczęcia zatrudnienia) albo zależy jeszcze od potwierdzenia. Dlatego status limitu nie jest wyświetlany.",
+    "limit.o4UncertainMonths":
+      "Nie można wiarygodnie ustalić w: {months}",
     "sick.linkCase":
       "Dodaj do przypadku choroby od {date} (tylko jeśli to ta sama choroba). Bez zaznaczenia dzień liczony jest osobno.",
     "sick.ambiguousHelp":

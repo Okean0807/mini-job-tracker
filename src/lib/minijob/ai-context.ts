@@ -6,7 +6,7 @@
 import { MONTHS_DE, isoDate, shiftsInMonth, shiftsInYear } from "./calc";
 import { employmentTypeOf, isMinijobEmployment, monthlyHoursLimitFor } from "./legal";
 import { monthUsage, monthlyHoursLimit, monthlyLimitOf, yearUsage, yearlyLimitOf } from "./limits";
-import { limitReliabilityFlags } from "./multi-minijob";
+import { activityOptions, limitReliabilityFlags } from "./multi-minijob";
 import { payrollTotals } from "./payroll";
 import { makeResolver } from "./resolve";
 import type { AppData, ResolvedEmploymentType, WorkMode } from "./types";
@@ -39,6 +39,11 @@ export type AssistantContextPayload = {
      * NOT an unambiguous "over/under" statement.
      */
     multipleMinijobsWithMainJob: boolean;
+    /**
+     * Owner R5 (Variante B): whether the constellation applies cannot be
+     * determined (paid status of absences estimated / pending confirmation).
+     */
+    minijobActivityUncertain: boolean;
     entriesCount: number;
   };
   year: {
@@ -49,6 +54,7 @@ export type AssistantContextPayload = {
     minijobHours: number | null;
     /** B3-1/O4 for the whole year (see currentMonth). */
     multipleMinijobsWithMainJob: boolean;
+    minijobActivityUncertain: boolean;
   };
   /** Recent historical months, including zero-activity years, for period-aware questions. */
   historicalYears: Array<{
@@ -110,7 +116,7 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
   const r2 = (v: number) => Number(v.toFixed(2));
   // B3-1/O4: shared rule with the dashboard/annual report (multi-minijob.ts).
   const multiMinijob = limitApplies
-    ? limitReliabilityFlags(data.jobs, data.shifts, year, month)
+    ? limitReliabilityFlags(data.jobs, data.shifts, year, month, activityOptions(data.settings))
     : { month: false, year: false, forecast: false };
 
   const historicalYears: AssistantContextPayload["historicalYears"] = [];
@@ -173,6 +179,7 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
       minijobEarnings: mjMonth ? r2(mjMonth.earnings) : null,
       minijobHours: mjMonth ? r2(mjMonth.hours) : null,
       multipleMinijobsWithMainJob: multiMinijob.month,
+      minijobActivityUncertain: !!multiMinijob.monthUncertain,
       entriesCount: currentList.length,
     },
     year: {
@@ -182,6 +189,7 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
       minijobEarnings: mjYear ? r2(mjYear.earnings) : null,
       minijobHours: mjYear ? r2(mjYear.hours) : null,
       multipleMinijobsWithMainJob: multiMinijob.year,
+      minijobActivityUncertain: !!multiMinijob.yearUncertain,
     },
     historicalYears,
     months,

@@ -47,7 +47,12 @@ import { isAbsenceKind, type AbsenceKind } from "@/lib/minijob/absence-range";
 import { monthTimeAccount } from "@/lib/minijob/fest-time-account";
 import { jobsApplyMinijobLimit, primaryWorkMode } from "@/lib/minijob/work-mode";
 import { effectiveLimitShares, limitAlertLevel } from "@/lib/minijob/limit-alert";
-import { limitReliabilityFlags, limitReliabilityMonths } from "@/lib/minijob/multi-minijob";
+import {
+  activityOptions,
+  limitReliabilityFlags,
+  limitReliabilityMonths,
+  statusUnreliable,
+} from "@/lib/minijob/multi-minijob";
 import { payPeriods } from "@/lib/minijob/payday";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { updateSettings, useAppData } from "@/lib/minijob/store";
@@ -132,17 +137,19 @@ function DashboardPage() {
   // B3-1/O4: Flags für den BETRACHTETEN Monat/Jahr/Prognosezeitraum – jede
   // Karte und der Banner nutzen den Flag ihres eigenen Zeitraums.
   const multiMinijob = useMemo(
-    () => limitReliabilityFlags(jobs, shifts, year, month),
-    [jobs, shifts, year, month],
+    () => limitReliabilityFlags(jobs, shifts, year, month, activityOptions(settings)),
+    [jobs, shifts, year, month, settings],
   );
   const multiMinijobMonths = useMemo(
-    () => limitReliabilityMonths(jobs, shifts, year, month),
-    [jobs, shifts, year, month],
+    () => limitReliabilityMonths(jobs, shifts, year, month, activityOptions(settings)),
+    [jobs, shifts, year, month, settings],
   );
   const multiMinijobMonth = multiMinijob.month;
   const multiMinijobYear = multiMinijob.year;
-  const limitAlert = limitAlertLevel(appliesMinijobLimit, limitShare, yearShare, multiMinijob);
-  const alertShares = effectiveLimitShares(limitShare, yearShare, multiMinijob);
+  // Owner R5 (Variante B): "nicht sicher bestimmbar" unterdrückt den Status wie O4.
+  const unreliable = statusUnreliable(multiMinijob);
+  const limitAlert = limitAlertLevel(appliesMinijobLimit, limitShare, yearShare, unreliable);
+  const alertShares = effectiveLimitShares(limitShare, yearShare, unreliable);
   const workMode = primaryWorkMode(jobs, settings.activeJobId);
   const isFest = workMode === "fest";
   const isSelf = workMode === "selbststaendig";
@@ -211,14 +218,16 @@ function DashboardPage() {
             <StatCard
               label={t("dash.limit")}
               value={
-                appliesMinijobLimit && !multiMinijobMonth ? `${Math.round(limitShare)} %` : "—"
+                appliesMinijobLimit && !unreliable.month ? `${Math.round(limitShare)} %` : "—"
               }
               hint={
                 !appliesMinijobLimit
                   ? t("limit.notApplicable")
                   : multiMinijobMonth
                     ? t("limit.multipleMinijobs")
-                    : t("dash.ofAmount", { amount: formatEuro(monthLimit.earningsLimit) })
+                    : unreliable.month
+                      ? t("limit.o4Uncertain")
+                      : t("dash.ofAmount", { amount: formatEuro(monthLimit.earningsLimit) })
               }
               icon={Euro}
             />
@@ -234,6 +243,7 @@ function DashboardPage() {
         auto={settings.hoursLimitAuto || settings.hoursLimitMonthly <= 0}
         notApplicable={!appliesMinijobLimit}
         multipleMinijobs={multiMinijobMonth}
+        o4Uncertain={!!multiMinijob.monthUncertain}
       />
     ),
     legalForecast: (
@@ -241,6 +251,8 @@ function DashboardPage() {
         forecast={legalForecast.rolling}
         multipleMinijobs={multiMinijob.forecast}
         affectedMonths={multiMinijobMonths.forecast}
+        o4Uncertain={!!multiMinijob.forecastUncertain}
+        uncertainMonths={multiMinijobMonths.forecastUncertain}
       />
     ),
     limitYear: (
@@ -253,6 +265,8 @@ function DashboardPage() {
         multipleMinijobs={multiMinijobYear}
         affectedMonths={multiMinijobMonths.year}
         causedByOtherMonths={multiMinijobYear && !multiMinijobMonth}
+        o4Uncertain={!!multiMinijob.yearUncertain}
+        uncertainMonths={multiMinijobMonths.yearUncertain}
       />
     ),
     payday: <PaydayCard periods={periods} />,
@@ -395,7 +409,7 @@ function DashboardPage() {
           resolve={resolve}
           monthUsage={monthLimit}
           yearUsage={yearLimit}
-          limitFlags={multiMinijob}
+          limitFlags={unreliable}
           onNewEntry={() => openNew(isoDate(new Date()))}
         />
       </div>

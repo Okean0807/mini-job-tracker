@@ -16,6 +16,9 @@ interface LegalForecastCardProps {
   multipleMinijobs?: boolean;
   /** D6: Monate im Rückblickzeitraum, die den Hinweis auslösen. */
   affectedMonths?: readonly string[];
+  /** Owner R5 (Variante B): Konstellation im Rückblick nicht sicher bestimmbar. */
+  o4Uncertain?: boolean;
+  uncertainMonths?: readonly string[];
 }
 
 /**
@@ -27,14 +30,18 @@ export function LegalForecastCard({
   forecast,
   multipleMinijobs,
   affectedMonths,
+  o4Uncertain,
+  uncertainMonths,
 }: LegalForecastCardProps) {
   const { t } = useT();
-  if (multipleMinijobs) {
+  if (multipleMinijobs || o4Uncertain) {
     return (
       <section
         className="rounded-2xl border bg-card p-4 shadow-card"
         aria-label={t("legalForecast.title")}
-        data-testid="legal-forecast-multiple-minijobs"
+        data-testid={
+          multipleMinijobs ? "legal-forecast-multiple-minijobs" : "legal-forecast-o4-uncertain"
+        }
       >
         <div className="flex items-start justify-between gap-3">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -43,16 +50,23 @@ export function LegalForecastCard({
           <AlertTriangle className="size-5 shrink-0 text-amber-600" aria-hidden />
         </div>
         <div className="mt-3 space-y-1 rounded-xl border border-amber-500/40 bg-amber-500/5 p-2.5">
-          <p className="text-sm font-semibold">{t("limit.multipleMinijobs")}</p>
+          <p className="text-sm font-semibold">
+            {t(multipleMinijobs ? "limit.multipleMinijobs" : "limit.o4Uncertain")}
+          </p>
           <p className="text-xs leading-relaxed text-muted-foreground">
-            {t("limit.multipleMinijobsHint")}
+            {t(multipleMinijobs ? "limit.multipleMinijobsHint" : "limit.o4UncertainHint")}
           </p>
         </div>
-        {affectedMonths?.length ? (
+        {multipleMinijobs && affectedMonths?.length ? (
           <p className="mt-2 text-xs text-muted-foreground" data-testid="forecast-o4-months">
             {t("limit.multipleMinijobsMonths", {
               months: affectedMonths.map(o4MonthLabel).join(", "),
             })}
+          </p>
+        ) : null}
+        {uncertainMonths?.length ? (
+          <p className="mt-1 text-xs text-muted-foreground" data-testid="forecast-o4-uncertain-months">
+            {t("limit.o4UncertainMonths", { months: uncertainMonths.map(o4MonthLabel).join(", ") })}
           </p>
         ) : null}
         <p className="mt-1 text-xs text-muted-foreground" data-testid="forecast-o4-basis">

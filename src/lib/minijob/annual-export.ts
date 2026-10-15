@@ -27,8 +27,30 @@ function docFormatHours(v: number): string {
 
 /** O4-Zusatzzeilen (betroffene Monate, Filter-Erklärung) – DECISIONS R3 Punkt 5/7. */
 export function annualO4Lines(report: AnnualReport): string[] {
-  if (!(report.limit > 0) || !report.multipleMinijobs) return [];
+  return annualO4Rows(report).map((row) => row.text);
+}
+
+/** Owner R5: O4-Zeilen mit passender Bezeichnung (Mehrfachbeschäftigung / nicht sicher bestimmbar). */
+export function annualO4Rows(report: AnnualReport): { label: string; text: string }[] {
+  if (!(report.limit > 0)) return [];
+  const rows: { label: string; text: string }[] = [];
+  // Owner R5 (Variante B): unsichere Monate ausdrücklich nennen.
+  if (report.o4UncertainMonths?.length) {
+    rows.push({
+      label: td("limit.o4Uncertain"),
+      text: td("limit.o4UncertainMonths", {
+        months: report.o4UncertainMonths
+          .map((key) => docMonthLabel(Number(key.slice(5, 7)) - 1))
+          .join(", "),
+      }),
+    });
+  }
+  return [...rows, ...annualO4MultipleLines(report).map((text) => ({ label: td("limit.multipleMinijobs"), text }))];
+}
+
+function annualO4MultipleLines(report: AnnualReport): string[] {
   const lines: string[] = [];
+  if (!report.multipleMinijobs) return lines;
   if (report.multipleMinijobMonths?.length) {
     lines.push(
       td("limit.multipleMinijobsMonths", {
@@ -57,7 +79,9 @@ function kpis(report: AnnualReport) {
         report.limit > 0
           ? report.multipleMinijobs
             ? td("limit.multipleMinijobs")
-            : `${Math.round(report.limitShare)} %`
+            : report.o4UncertainMonths?.length
+              ? td("limit.o4Uncertain")
+              : `${Math.round(report.limitShare)} %`
           : "–",
     },
   ];
@@ -223,7 +247,9 @@ export function exportAnnualPdf(report: AnnualReport) {
     report.limit > 0
       ? report.multipleMinijobs
         ? `${td("annual.kpi.limit")}: ${td("limit.multipleMinijobs")} – ${td("limit.multipleMinijobsHint")}`
-        : `${td("annual.kpi.limit")}: ${formatEuro(report.earnings, DOCUMENT_LOCALE)} / ${formatEuro(report.limit, DOCUMENT_LOCALE)} (${Math.round(report.limitShare)} %)`
+        : report.o4UncertainMonths?.length
+          ? `${td("annual.kpi.limit")}: ${td("limit.o4Uncertain")} – ${td("limit.o4UncertainHint")}`
+          : `${td("annual.kpi.limit")}: ${formatEuro(report.earnings, DOCUMENT_LOCALE)} / ${formatEuro(report.limit, DOCUMENT_LOCALE)} (${Math.round(report.limitShare)} %)`
       : null,
     ...annualO4Lines(report),
   ].filter(Boolean) as string[];
@@ -279,10 +305,10 @@ export function exportAnnualXlsx(report: AnnualReport) {
         : "–",
     },
   );
-  for (const line of annualO4Lines(report)) {
+  for (const row of annualO4Rows(report)) {
     overview.push({
-      [td("annual.table.metric")]: td("limit.multipleMinijobs"),
-      [td("annual.table.value")]: line,
+      [td("annual.table.metric")]: row.label,
+      [td("annual.table.value")]: row.text,
     });
   }
   const overviewSheet = createXlsxSheet(overview);

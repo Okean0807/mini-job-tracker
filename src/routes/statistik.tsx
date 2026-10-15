@@ -65,7 +65,12 @@ import {
   dailyXAxisTicks,
   formatDailyTooltipLine,
 } from "@/lib/minijob/stats-charts";
-import { multipleMinijobsWithMainJob, yearPeriod } from "@/lib/minijob/multi-minijob";
+import {
+  activityOptions,
+  multipleMinijobsWithMainJob,
+  uncertainMinijobMonths,
+  yearPeriod,
+} from "@/lib/minijob/multi-minijob";
 import { statsLegalYearUsage } from "@/lib/minijob/stats-legal";
 import { initialWeekForMonth } from "@/lib/minijob/stats-week";
 import { useAppData } from "@/lib/minijob/store";
@@ -177,8 +182,15 @@ function StatsPage() {
 
   // B3-1/O4: Flag aus den UNGEFILTERTEN Daten (Job-Filter ändert die Rechtslage nicht).
   const yearMultiMinijob = useMemo(
-    () => multipleMinijobsWithMainJob(jobs, shifts, yearPeriod(year)),
-    [jobs, shifts, year],
+    () => multipleMinijobsWithMainJob(jobs, shifts, yearPeriod(year), activityOptions(settings)),
+    [jobs, shifts, year, settings],
+  );
+  // Owner R5 (Variante B): nicht sicher bestimmbar → kein Prozentstatus.
+  const yearO4Uncertain = useMemo(
+    () =>
+      !yearMultiMinijob &&
+      uncertainMinijobMonths(jobs, shifts, yearPeriod(year), activityOptions(settings)).length > 0,
+    [jobs, shifts, year, settings, yearMultiMinijob],
   );
 
   // DECISIONS R3 Punkt 5: Summen nach Filter, O4-Hinweis aus allen Daten + Erklärung.
@@ -189,6 +201,7 @@ function StatsPage() {
         jobs,
         shifts,
         jobFilter !== "alle",
+        activityOptions(settings),
       ),
     [filtered, jobs, settings, year, resolve, shifts, jobFilter],
   );
@@ -504,13 +517,19 @@ function StatsPage() {
                 />
                 <StatCard
                   label={t("stats.card.yearLimit")}
-                  value={yearMultiMinijob ? "—" : `${Math.round(legalYearUsage.earningsShare)} %`}
+                  value={
+                    yearMultiMinijob || yearO4Uncertain
+                      ? "—"
+                      : `${Math.round(legalYearUsage.earningsShare)} %`
+                  }
                   hint={
                     yearMultiMinijob
                       ? t("limit.multipleMinijobs")
-                      : `${t("stats.card.yearLimitHint", {
-                          amount: formatEuro(legalYearUsage.earningsLimit),
-                        })} · ${t("stats.kpi.yearLimitAll")}`
+                      : yearO4Uncertain
+                        ? t("limit.o4Uncertain")
+                        : `${t("stats.card.yearLimitHint", {
+                            amount: formatEuro(legalYearUsage.earningsLimit),
+                          })} · ${t("stats.kpi.yearLimitAll")}`
                   }
                   icon={Euro}
                 />

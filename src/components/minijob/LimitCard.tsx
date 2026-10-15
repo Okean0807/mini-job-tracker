@@ -28,6 +28,13 @@ interface LimitCardProps {
   affectedMonths?: readonly string[];
   /** D6: true = der Hinweis entsteht nur durch ANDERE Monate des Zeitraums. */
   causedByOtherMonths?: boolean;
+  /**
+   * Owner R5 (Variante B): Konstellation nicht sicher bestimmbar (bezahlte
+   * Abwesenheiten nur geschätzt / Bestätigung offen) → kein Status.
+   */
+  o4Uncertain?: boolean;
+  /** Monate ("YYYY-MM") mit unsicherem Status. */
+  uncertainMonths?: readonly string[];
 }
 
 export function LimitCard({
@@ -39,6 +46,8 @@ export function LimitCard({
   multipleMinijobs,
   affectedMonths,
   causedByOtherMonths,
+  o4Uncertain,
+  uncertainMonths,
 }: LimitCardProps) {
   const { t } = useT();
   const titleId = useId();
@@ -56,11 +65,11 @@ export function LimitCard({
       </div>
     );
   }
-  if (multipleMinijobs) {
+  if (multipleMinijobs || o4Uncertain) {
     return (
       <div
         className="rounded-2xl border bg-card p-4 shadow-card"
-        data-testid="limit-multiple-minijobs"
+        data-testid={multipleMinijobs ? "limit-multiple-minijobs" : "limit-o4-uncertain"}
       >
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -69,12 +78,14 @@ export function LimitCard({
           <Gauge className="size-4 text-muted-foreground" />
         </div>
         <div className="mt-3 space-y-1 rounded-xl border border-amber-500/40 bg-amber-500/5 p-2.5">
-          <p className="text-sm font-semibold">{t("limit.multipleMinijobs")}</p>
+          <p className="text-sm font-semibold">
+            {t(multipleMinijobs ? "limit.multipleMinijobs" : "limit.o4Uncertain")}
+          </p>
           <p className="text-xs leading-relaxed text-muted-foreground">
-            {t("limit.multipleMinijobsHint")}
+            {t(multipleMinijobs ? "limit.multipleMinijobsHint" : "limit.o4UncertainHint")}
           </p>
         </div>
-        {affectedMonths?.length ? (
+        {multipleMinijobs && affectedMonths?.length ? (
           <p className="mt-2 text-xs text-muted-foreground" data-testid="limit-o4-months">
             {t("limit.multipleMinijobsMonths", {
               months: affectedMonths.map(o4MonthLabel).join(", "),
@@ -84,6 +95,13 @@ export function LimitCard({
         {causedByOtherMonths ? (
           <p className="mt-1 text-xs text-muted-foreground" data-testid="limit-o4-other-months">
             {t("limit.multipleMinijobsOtherMonths")}
+          </p>
+        ) : null}
+        {uncertainMonths?.length ? (
+          <p className="mt-1 text-xs text-muted-foreground" data-testid="limit-o4-uncertain-months">
+            {t("limit.o4UncertainMonths", {
+              months: uncertainMonths.map(o4MonthLabel).join(", "),
+            })}
           </p>
         ) : null}
         <p className="mt-2 text-xs text-muted-foreground tabular-nums">

@@ -2,9 +2,9 @@
  * D6 (Owner R4, Regel A): O4-Hinweis je Kalendermonat nach Minijob-Aktivität
  * in genau diesem Monat. Jahres-/Prognosekarte nennen die auslösenden Monate;
  * Prognose = Rückblick 12 Monate bis zum gewählten Monat (keine Vorhersage).
- * "Aktivität" = mindestens ein Eintrag (jeder Art) des Minijobs im Monat
- * innerhalb des Beschäftigungszeitraums (bestehendes Datenmodell; welche
- * Eintragsarten zählen sollen, ist Owner-Frage D6-Q1).
+ * "Aktivität" = Owner R5, Variante B: Arbeit oder bezahlte Abwesenheit des
+ * Minijobs im Monat innerhalb des Beschäftigungszeitraums (Details und
+ * Unsicherheitszustand: multi-minijob.activity-b.test.ts).
  */
 import { describe, expect, it } from "vitest";
 
@@ -66,6 +66,8 @@ describe("D6 Regel A", () => {
     expect(limitReliabilityMonths(JOBS, SHIFTS, 2026, 3)).toEqual({
       year: ["2026-03", "2026-05"],
       forecast: ["2026-03"], // Rückblick bis April: Mai liegt in der Zukunft
+      yearUncertain: [],
+      forecastUncertain: [],
     });
   });
 
@@ -76,7 +78,7 @@ describe("D6 Regel A", () => {
     expect(limitReliabilityMonths(JOBS, SHIFTS, 2027, 4).forecast).toEqual([]);
   });
 
-  it("Urlaub zählt als Eintrag (aktuelles Modell, Owner-Frage D6-Q1)", () => {
+  it("Urlaub zählt als bezahlte Abwesenheit (Variante B, Owner R5)", () => {
     expect(limitReliabilityFlags(JOBS, SHIFTS, 2026, 4).month).toBe(true);
   });
 

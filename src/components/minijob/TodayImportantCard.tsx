@@ -5,7 +5,11 @@ import { formatEuro, formatHours, isoDate, shiftHours } from "@/lib/minijob/calc
 import { payPeriods } from "@/lib/minijob/payday";
 import { jobsPlannedOn } from "@/lib/minijob/schedule";
 import { effectiveLimitShares, limitAlertLevel } from "@/lib/minijob/limit-alert";
-import { limitReliabilityFlags } from "@/lib/minijob/multi-minijob";
+import {
+  activityOptions,
+  limitReliabilityFlags,
+  statusUnreliable,
+} from "@/lib/minijob/multi-minijob";
 import { jobsNeedingEmploymentType } from "@/lib/minijob/legal/employment";
 import { jobsApplyMinijobLimit } from "@/lib/minijob/work-mode";
 import { findWageViolations } from "@/lib/minijob/wage-compliance";
@@ -48,9 +52,18 @@ export function TodayImportantCard({
   // Gleiche Regel wie das Dashboard-Banner: nur mit (bestätigtem) Minijob.
   const nowDate = new Date();
   // B3-1/O4: Flags je Bereich – passend zu den übergebenen Anteilen.
+  // Owner R5: "nicht sicher bestimmbar" unterdrückt den Status wie O4.
   const multiMinijob =
     limitFlags ??
-    limitReliabilityFlags(jobs, shifts, nowDate.getFullYear(), nowDate.getMonth());
+    statusUnreliable(
+      limitReliabilityFlags(
+        jobs,
+        shifts,
+        nowDate.getFullYear(),
+        nowDate.getMonth(),
+        activityOptions(settings),
+      ),
+    );
   const shownShares = effectiveLimitShares(monthUsage.share, yearUsage.share, multiMinijob);
   const nearLimit =
     limitAlertLevel(

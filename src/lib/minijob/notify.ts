@@ -4,7 +4,7 @@ import { formatDate, formatEuro, isoDate, shiftsInYear, timeFromDate } from "./c
 import { payrollTotals } from "./payroll";
 import { monthUsage, yearUsage } from "./limits";
 import { jobsApplyMinijobLimit } from "./work-mode";
-import { limitReliabilityFlags } from "./multi-minijob";
+import { activityOptions, limitReliabilityFlags, statusUnreliable } from "./multi-minijob";
 import { payPeriods } from "./payday";
 import { makeResolver } from "./resolve";
 import { getData } from "./store";
@@ -176,7 +176,9 @@ export function limitStatus(): LimitStatus {
   // B3-1/O4: Hauptbeschäftigung + mehrere Minijobs → kein belastbarer Status,
   // daher keine Grenz-Benachrichtigungen für den betroffenen Bereich
   // (aktueller Monat bzw. aktuelles Jahr, wie die Heute-Karte).
-  const flags = limitReliabilityFlags(jobs, shifts, now.getFullYear(), now.getMonth());
+  const flags = statusUnreliable(
+    limitReliabilityFlags(jobs, shifts, now.getFullYear(), now.getMonth(), activityOptions(settings)),
+  );
   const resolve = makeResolver(jobs, settings);
   const month = monthUsage(shifts, resolve, settings, now.getFullYear(), now.getMonth());
   const year = yearUsage(shifts, resolve, settings, now.getFullYear());
