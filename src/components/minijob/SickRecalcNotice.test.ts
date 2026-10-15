@@ -13,7 +13,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SickRecalcNotice } from "./SickRecalcNotice";
 import { tl } from "@/lib/i18n";
 import { formatEuro, isoDate } from "@/lib/minijob/calc";
-import { payrollTotals, sickRecalcPreview, withConfirmedMonths } from "@/lib/minijob/payroll";
+import { payrollTotals, sickRecalcPreview } from "@/lib/minijob/payroll";
+import { confirmedSickMonths, withSickConfirmations } from "@/lib/minijob/sick-confirmation";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { DEMO_SCOPE } from "@/lib/minijob/storage-scope";
 import {
@@ -125,12 +126,8 @@ describe("SickRecalcNotice", () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
-  it("withConfirmedMonths: sortiert, ohne Duplikate, bestehende bleiben", () => {
-    expect(withConfirmedMonths(["2027-01"], ["2026-12", "2027-01"])).toEqual([
-      "2026-12",
-      "2027-01",
-    ]);
-    expect(withConfirmedMonths(undefined, [])).toEqual([]);
+  it("withSickConfirmations: leere Auswahl ändert nichts", () => {
+    expect(withSickConfirmations(undefined, [], [], [])).toEqual([]);
   });
 });
 
@@ -169,13 +166,15 @@ describe("Ablauf über den Store: erst nach Bestätigung ändern sich Beträge",
     // gleicher Aufruf wie im Dashboard (onConfirm)
     act(() =>
       updateSettings({
-        sickContinuousConfirmedMonths: withConfirmedMonths(
-          getData().settings.sickContinuousConfirmedMonths,
+        sickContinuousConfirmations: withSickConfirmations(
+          getData().settings.sickContinuousConfirmations,
           ["2026-12"],
+          getData().shifts,
+          getData().jobs,
         ),
       }),
     );
-    expect(getData().settings.sickContinuousConfirmedMonths).toEqual(["2026-12"]);
+    expect(confirmedSickMonths(getData().settings)).toEqual(["2026-12"]);
     expect(month("2026-12")).toBe(975);
     expect(month("2027-01")).toBe(janBefore);
     expect(JSON.stringify(getData().shifts)).toBe(shiftsBefore);
@@ -187,13 +186,13 @@ describe("Dashboard-Verdrahtung (index.tsx)", () => {
     join(dirname(fileURLToPath(import.meta.url)), "../../routes/index.tsx"),
     "utf8",
   );
-  it("SickRecalcNotice mit allen shifts, Resolver und updateSettings(withConfirmedMonths)", () => {
+  it("SickRecalcNotice mit allen shifts, Resolver und updateSettings(withSickConfirmations)", () => {
     const el = src.slice(src.indexOf("<SickRecalcNotice"));
     const element = el.slice(0, el.indexOf("/>") + 2);
     expect(element).toMatch(/shifts=\{shifts\}/);
     expect(element).toMatch(/resolve=\{resolve\}/);
     expect(element).toMatch(
-      /updateSettings\(\{\s*sickContinuousConfirmedMonths:\s*withConfirmedMonths\(/,
+      /updateSettings\(\{\s*sickContinuousConfirmations:\s*withSickConfirmations\(\s*settings\.sickContinuousConfirmations,\s*months,\s*shifts,\s*jobs,?\s*\)/,
     );
   });
 });

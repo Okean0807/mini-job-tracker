@@ -183,6 +183,15 @@ export interface Shift {
   overtime?: boolean;
   /** Explizite Zuordnung zu einem Krankheitsfall (§ 3 EntgFG). */
   sickCaseId?: string;
+  /**
+   * Herkunft eines Krankheitstags (Owner DECISIONS R3 Punkt 1): "continuous" =
+   * in dieser App-Version über den Eintragsdialog NEU als Krankheitstag erfasst.
+   * Nur vollständig so markierte, zusammenhängende Zeiträume werden automatisch
+   * nach der Fortsetzungsregel bewertet. Fehlt bei bestehenden, importierten
+   * oder älteren Einträgen → diese gelten als vergangene Zeiträume (keine
+   * automatische Neuberechnung, nur Hinweis + Bestätigung je Monat).
+   */
+  sickRule?: "continuous";
   /** Optionaler Link auf gespeichertes WorkObject */
   objectId?: string;
   /** Leistungsnachweis: Einsatzort / Objekt */
@@ -352,6 +361,14 @@ export interface WorkCodeDef {
   label: string;
 }
 
+/** Bestätigung der Krankheitsfall-Neuberechnung eines Monats (O-2, DECISIONS R3 Punkt 4). */
+export interface SickConfirmation {
+  /** "YYYY-MM" */
+  month: string;
+  /** Signatur der beim Bestätigen gezeigten Änderung (betroffene Tage). */
+  signature: string;
+}
+
 export interface Settings {
   defaultRate: number;
   monthlyLimit: number;
@@ -404,10 +421,13 @@ export interface Settings {
   /** Eigene Leistungsarten (Code + Bezeichnung) — wiederverwendbarer Katalog */
   workCodes?: WorkCodeDef[];
   /**
-   * Krankheitsfall-Fortsetzungsregel: vom Nutzer bestätigte Monate ("YYYY-MM").
-   * Nur über den Bestätigungsdialog (O-2) gesetzt; nie automatisch.
+   * O-2: vom Nutzer bestätigte Neuberechnungen nach der Krankheitsfall-
+   * Fortsetzungsregel, je Monat mit Signatur der bestätigten Änderung
+   * (DECISIONS R3 Punkt 4). Nur über den Bestätigungsdialog gesetzt; nie
+   * automatisch. Ändert sich die bestätigte Änderung (Eingabe, Import, Sync),
+   * verliert die Bestätigung ihre Gültigkeit und der Monat wird erneut angeboten.
    */
-  sickContinuousConfirmedMonths?: string[];
+  sickContinuousConfirmations?: SickConfirmation[];
   /** Eigene Tätigkeiten — wiederverwendbarer Katalog (nicht Eintragsauswahl) */
   customTasks?: string[];
   notifications: NotificationSettings;

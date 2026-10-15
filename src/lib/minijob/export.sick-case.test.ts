@@ -101,7 +101,7 @@ describe("P1-144-a Export mit voller Historie", () => {
       join(dirname(fileURLToPath(import.meta.url)), "../../routes/statistik.tsx"),
       "utf8",
     );
-    expect(src).toMatch(/history:\s*shifts,/);
-    expect(src).toMatch(/sickContinuousConfirmed:\s*settings\.sickContinuousConfirmedMonths/);
+    expect(src).toMatch(/\.\.\.sickExportFields\(settings,\s*shifts\)/);
+    expect(src).not.toMatch(/sickContinuousConfirmedMonths/);
   });
 });

@@ -1,4 +1,5 @@
 import { isHoliday } from "./holidays";
+import { confirmedSickMonths } from "./sick-confirmation";
 import type { Job, Settings, Shift, Supplements } from "./types";
 
 export interface ResolveOptions {
@@ -17,6 +18,7 @@ export interface ResolveOptions {
 
 /** Liefert Job + Zuschlagsregeln + Feiertagsinfo für eine Schicht. */
 export function makeResolver(jobs: Job[], settings: Settings) {
+  const sickContinuousConfirmed = confirmedSickMonths(settings);
   return (shift: Shift): ResolveOptions => {
     const job = jobs.find((j) => j.id === shift.jobId);
     return {
@@ -24,7 +26,7 @@ export function makeResolver(jobs: Job[], settings: Settings) {
       supplements: job?.supplements ?? settings.supplements,
       holiday: isHoliday(shift.date, settings.bundesland),
       defaultRate: settings.defaultRate,
-      sickContinuousConfirmed: settings.sickContinuousConfirmedMonths,
+      sickContinuousConfirmed,
     };
   };
 }

@@ -76,6 +76,12 @@ export const v2: Bundle = {
     "sickRecalc.confirm": "Ausgewählte Monate neu berechnen",
     "sickRecalc.cancel": "Abbrechen",
     "sickRecalc.noneSelected": "Kein Monat ausgewählt – es wird nichts geändert.",
+    "sickRecalc.reviewDays":
+      "Bitte prüfen: {count} Tag(e) mit unklarer Fallgrenze oder ungewöhnlich langer Unterbrechung.",
+    "sick.linkCase":
+      "Zum Krankheitsfall ab {date} hinzufügen (nur wenn es dieselbe Erkrankung ist). Ohne Haken wird der Tag getrennt gezählt.",
+    "sick.ambiguousHelp":
+      "Die Grenze zum vorherigen Krankheitszeitraum ist unklar. Warst du an den fehlenden Arbeitstagen ebenfalls krank, trage sie bitte als Krankheitstage ein.",
     "pay.reason.sick-off-day": "Kein regulärer Arbeitstag",
     "pay.reason.vacation-pay": "Urlaubsentgelt",
     "pay.basis.average13": "13-Wochen-Durchschnitt",
@@ -176,6 +182,12 @@ export const v2: Bundle = {
     "sickRecalc.confirm": "Recalculate selected months",
     "sickRecalc.cancel": "Cancel",
     "sickRecalc.noneSelected": "No month selected – nothing will change.",
+    "sickRecalc.reviewDays":
+      "Please check: {count} day(s) with an unclear case boundary or an unusually long gap.",
+    "sick.linkCase":
+      "Add to the sickness case starting {date} (only if it is the same illness). Unticked, the day is counted separately.",
+    "sick.ambiguousHelp":
+      "The boundary to the previous sickness period is unclear. If you were also sick on the missing working days, please enter them as sick days.",
     "pay.reason.sick-off-day": "Not a regular working day",
     "pay.reason.vacation-pay": "Holiday pay",
     "pay.basis.average13": "13-week average",
@@ -276,6 +288,12 @@ export const v2: Bundle = {
     "sickRecalc.confirm": "Пересчитать выбранные месяцы",
     "sickRecalc.cancel": "Отмена",
     "sickRecalc.noneSelected": "Месяцы не выбраны — ничего не изменится.",
+    "sickRecalc.reviewDays":
+      "Проверьте: {count} дн. с неясной границей случая или необычно долгим перерывом.",
+    "sick.linkCase":
+      "Добавить к случаю болезни с {date} (только если это то же заболевание). Без отметки день считается отдельно.",
+    "sick.ambiguousHelp":
+      "Граница с предыдущим периодом болезни неясна. Если вы болели и в пропущенные рабочие дни, внесите их как дни болезни.",
     "pay.reason.sick-off-day": "Не обычный рабочий день",
     "pay.reason.vacation-pay": "Отпускные",
     "pay.basis.average13": "Среднее за 13 недель",
@@ -376,6 +394,12 @@ export const v2: Bundle = {
     "sickRecalc.confirm": "Seçili ayları yeniden hesapla",
     "sickRecalc.cancel": "İptal",
     "sickRecalc.noneSelected": "Ay seçilmedi – hiçbir şey değişmez.",
+    "sickRecalc.reviewDays":
+      "Lütfen kontrol edin: vaka sınırı belirsiz veya alışılmadık uzun aralı {count} gün.",
+    "sick.linkCase":
+      "{date} tarihinde başlayan hastalık vakasına ekle (yalnızca aynı hastalıksa). İşaretlenmezse gün ayrı sayılır.",
+    "sick.ambiguousHelp":
+      "Önceki hastalık dönemiyle sınır belirsiz. Eksik iş günlerinde de hastaysanız lütfen bunları hastalık günü olarak girin.",
     "pay.reason.sick-off-day": "Normal çalışma günü değil",
     "pay.reason.vacation-pay": "İzin ücreti",
     "pay.basis.average13": "13 hafta ortalaması",
@@ -476,6 +500,12 @@ export const v2: Bundle = {
     "sickRecalc.confirm": "Przelicz wybrane miesiące",
     "sickRecalc.cancel": "Anuluj",
     "sickRecalc.noneSelected": "Nie wybrano miesiąca – nic się nie zmieni.",
+    "sickRecalc.reviewDays":
+      "Sprawdź: {count} dzień/dni z niejasną granicą przypadku lub nietypowo długą przerwą.",
+    "sick.linkCase":
+      "Dodaj do przypadku choroby od {date} (tylko jeśli to ta sama choroba). Bez zaznaczenia dzień liczony jest osobno.",
+    "sick.ambiguousHelp":
+      "Granica z poprzednim okresem choroby jest niejasna. Jeśli w brakujące dni robocze też byłeś chory, wpisz je jako dni choroby.",
     "pay.reason.sick-off-day": "To nie jest zwykły dzień pracy",
     "pay.reason.vacation-pay": "Wynagrodzenie urlopowe",
     "pay.basis.average13": "Średnia z 13 tygodni",

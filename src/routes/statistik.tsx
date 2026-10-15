@@ -47,7 +47,7 @@ import {
   shiftsInYear,
 } from "@/lib/minijob/calc";
 import { DOCUMENT_LOCALE, td } from "@/lib/minijob/document-i18n";
-import { exportPdf, exportXlsx } from "@/lib/minijob/export";
+import { exportPdf, exportXlsx, sickExportFields } from "@/lib/minijob/export";
 import { monthTimeAccount } from "@/lib/minijob/fest-time-account";
 import { payPeriods } from "@/lib/minijob/payday";
 import {
@@ -198,10 +198,8 @@ function StatsPage() {
     bundesland: settings.bundesland,
     defaultRate: settings.defaultRate,
     supplements: settings.supplements,
-    // Volle Historie: Krankheitsfälle über die Exportgrenze hinweg (QA P1-144-a).
-    history: shifts,
-    // Gleiche Bestätigungen wie in der App (O-2), sonst weicht der Export ab.
-    sickContinuousConfirmed: settings.sickContinuousConfirmedMonths,
+    // Volle Historie (QA P1-144-a) + gleiche O-2-Bestätigungen wie in der App.
+    ...sickExportFields(settings, shifts),
   };
 
   function doExport(kind: "xlsx" | "pdf", list: Shift[], title: string) {

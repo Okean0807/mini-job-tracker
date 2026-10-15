@@ -34,6 +34,7 @@ import { markBackup } from "./notify";
 
 import { mergeDeviceAuthFromLocal, stripDeviceAuthForCloud } from "./device-auth";
 import { isValidPayload } from "./payload";
+import { mergeSickConfirmationsForRestore } from "./sick-confirmation";
 import {
   activateScope,
   getActiveScope,
@@ -617,7 +618,21 @@ function applyRemote(remote: { payload: AppData; updatedAt: number }) {
   // PIN / WebAuthn bleiben gerätelokal (`mergeDeviceAuthFromLocal`).
   const local = getData();
   const runningTimer = local.timer ?? null;
-  const merged = mergeDeviceAuthFromLocal(remote.payload, local);
+  const authMerged = mergeDeviceAuthFromLocal(remote.payload, local);
+  // QA P3-R3-144-e: lokale O-2-Bestätigungen nicht durch einen fremden
+  // Gesamtstand verlieren; nicht mehr passende verwirft danach `commit`.
+  const confirmations = mergeSickConfirmationsForRestore(
+    authMerged.settings?.sickContinuousConfirmations,
+    local.settings.sickContinuousConfirmations,
+    Array.isArray(authMerged.shifts) ? authMerged.shifts : [],
+    Array.isArray(authMerged.jobs) ? authMerged.jobs : [],
+  );
+  const merged = confirmations.length
+    ? {
+        ...authMerged,
+        settings: { ...authMerged.settings, sickContinuousConfirmations: confirmations },
+      }
+    : authMerged;
   // Empty/partial / Skip-era cloud backups must not complete onboarding.
   // Only isWizardComplete (onboarded + jobs|wizardCompletedAt) may close the wizard.
   // Incomplete remotes force onboarded:false but KEEP jobs/shifts (no silent deletes).

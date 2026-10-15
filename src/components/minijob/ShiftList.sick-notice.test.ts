@@ -90,13 +90,30 @@ describe("ShiftList Krankheitsfall-Hinweise", () => {
     expect(notices()).toEqual([]);
   });
 
-  it("zeigt sick-case-long-gap (Plan nur Montag)", () => {
+  it("Plan nur Montag: Mo → Mo ist keine lange Lücke (DECISIONS R3 Punkt 3, keine Fehlwarnung)", () => {
     const monOnly = {
       ...job,
       week: Array.from({ length: 7 }, (_, i) => ({ active: i === 0, ...day })),
     } as Job;
     const shifts = [sick("2026-11-02"), sick("2026-11-09")];
     render(shifts, shifts, () => ({ job: monOnly, defaultRate: 15 }));
+    expect(notices()).toEqual([]);
+  });
+
+  it("zeigt sick-case-long-gap ohne Plan bei 3 ungewöhnlichen Lückentagen (Di–Do)", () => {
+    const noPlan = { ...job, week: undefined } as unknown as Job;
+    const work = (date: string) => ({ ...sick(date), id: `w-${date}`, kind: "arbeit" }) as Shift;
+    const pattern = [
+      "2026-09-15",
+      "2026-09-16",
+      "2026-09-17",
+      "2026-10-19",
+      "2026-10-23",
+      "2026-10-26",
+      "2026-10-30",
+    ].map(work);
+    const shifts = [sick("2026-11-02"), sick("2026-11-06")];
+    render(shifts, [...pattern, ...shifts], () => ({ job: noPlan, defaultRate: 15 }));
     expect(notices()).toEqual(["sick-case-long-gap"]);
     expect(container.textContent).toContain(tl("de", "pay.notice.sick-case-long-gap"));
   });

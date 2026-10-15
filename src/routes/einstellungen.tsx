@@ -29,7 +29,7 @@ import {
 } from "@/lib/minijob/cloud";
 
 import { downloadText, shiftsToCsv } from "@/lib/minijob/csv";
-import { exportXlsx } from "@/lib/minijob/export";
+import { exportXlsx, sickExportFields } from "@/lib/minijob/export";
 import { holidaysFor } from "@/lib/minijob/holidays";
 import {
   getLastBackupAt,
@@ -1344,7 +1344,8 @@ function DataMigration({ shiftCount }: { shiftCount: number }) {
               bundesland: settings.bundesland,
               defaultRate: settings.defaultRate,
               supplements: settings.supplements,
-              sickContinuousConfirmed: settings.sickContinuousConfirmedMonths,
+              // Volle Historie + O-2-Bestätigungen wie in der App (QA P3-R3-144-a).
+              ...sickExportFields(settings, shifts),
             });
             toast.success(t("set.migration.excelExported"));
           }}

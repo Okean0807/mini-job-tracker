@@ -9,7 +9,8 @@ import { saveAndRegisterBytes } from "./generated-docs";
 import { shiftPayroll } from "./payroll";
 import { isHoliday } from "./holidays";
 import { effectiveShiftRate } from "./rate";
-import type { Job, Shift, Supplements } from "./types";
+import { confirmedSickMonths } from "./sick-confirmation";
+import type { Job, Settings, Shift, Supplements } from "./types";
 
 export interface ExportContext {
   jobs: Job[];
@@ -25,7 +26,7 @@ export interface ExportContext {
    * (QA P1-144-a). Aufrufer mit Teilzeiträumen müssen die volle Historie geben.
    */
   history?: Shift[] | undefined;
-  /** Bestätigte Neuberechnungs-Monate (settings.sickContinuousConfirmedMonths, O-2). */
+  /** Bestätigte Neuberechnungs-Monate (settings.sickContinuousConfirmations, O-2). */
   sickContinuousConfirmed?: readonly string[] | undefined;
 }
 
@@ -195,4 +196,16 @@ export function exportPdf(shifts: Shift[], title: string, ctx: ExportContext) {
     category: "report_pdf",
     mimeType: "application/pdf",
   });
+}
+
+/**
+ * Krankheitsfall-relevante Export-Felder aus dem App-Stand: volle Historie
+ * (QA P1-144-a) und dieselben O-2-Bestätigungen wie in der App (QA P3-R3-144-a).
+ * Einzige Quelle für Statistik- UND Einstellungen-Export.
+ */
+export function sickExportFields(
+  settings: Pick<Settings, "sickContinuousConfirmations">,
+  shifts: Shift[],
+): Pick<ExportContext, "history" | "sickContinuousConfirmed"> {
+  return { history: shifts, sickContinuousConfirmed: confirmedSickMonths(settings) };
 }

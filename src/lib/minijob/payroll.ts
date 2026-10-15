@@ -44,22 +44,36 @@ export const SICK_MAX_DAYS = 42;
  * Es gibt KEINEN Stichtag (O-1: kein bestätigtes Datum, der frühere
  * Platzhalter 2026-11-01 wurde entfernt). Stattdessen gilt je Monat:
  * - Monat vom Nutzer bestätigt (`sickContinuousConfirmed` enthält "YYYY-MM",
- *   gespeichert in `settings.sickContinuousConfirmedMonths`): die
+ *   gespeichert in `settings.sickContinuousConfirmations`): die
  *   Fortsetzungsregel bestimmt den Fallbeginn.
  * - Sonst: bisheriges Verhalten (Fall ohne `sickCaseId` beginnt am Tag
  *   selbst, Beträge wie bisher). Würde die Fortsetzungsregel abweichen, wird
  *   nur `notice = "sick-legacy-over-limit"` gesetzt und der Monat in
  *   {@link sickRecalcPreview} zur Bestätigung angeboten (O-2).
  *
- * OFFEN (Owner): Ob neue Zeiträume künftig OHNE Bestätigung nach der
- * Fortsetzungsregel berechnet werden sollen, braucht eine Grenze
- * (Datum / Übernahmezeitpunkt) – nicht entschieden, daher nicht umgesetzt.
+ * Neue Zeiträume (Owner DECISIONS R3 Punkt 1) – ohne Stichtag: "neu" ist
+ * eine Eigenschaft der Einträge, kein Datum. Krankheitstage, die in dieser
+ * Version über den Eintragsdialog neu erfasst werden, tragen
+ * `sickRule = SICK_RULE_CONTINUOUS`.
+ * - Kette (zusammenhängende Tage) vollständig markiert → Fortsetzungsregel
+ *   gilt automatisch (nur kontinuierliche Tage werden zusammengeführt).
+ * - Mindestens ein unmarkierter Tag (Bestand, Import, ältere Version) →
+ *   bisheriges Verhalten + Hinweis + Bestätigung je Monat (O-2). Vergangene
+ *   Zeiträume ändern sich nie automatisch.
+ * - Unklare Fallgrenze → nie automatisch zusammengeführt; Hinweis, und die
+ *   Zuordnung zu einem angrenzenden ausdrücklichen Fall nur nach Bestätigung
+ *   im Eintragsdialog ({@link adjacentExplicitSickCase}).
  */
+/** Herkunftsmerkmal neu erfasster Krankheitstage (DECISIONS R3 Punkt 1). */
+export const SICK_RULE_CONTINUOUS = "continuous" as const;
+
 /**
- * Hinweis-Schwelle (KEINE Berechnungsregel): Überbrückt ein vermuteter Fall
- * mehr als ein Wochenende an planfreien Tagen (≥ 3 leere, laut Arbeitsplan
- * bzw. Muster nicht regelmäßige Kalendertage), wird nur
- * `notice = "sick-case-long-gap"` gesetzt (QA P3-144-c).
+ * Hinweis-Schwelle (KEINE Berechnungsregel, Owner DECISIONS R3 Punkt 3):
+ * 3 Kalendertage. Gezählt werden nur leere Tage zwischen zwei Krankheitstagen
+ * einer Kette, die KEINE gewöhnlichen arbeitsfreien Tage laut Arbeitsplan sind
+ * ({@link isOrdinaryOffDay}). Gewöhnliche Ruhetage (z. B. Wochenende bei
+ * Mo–Fr, Di–So bei "nur montags") lösen nie einen Hinweis aus. Der Hinweis
+ * (`notice = "sick-case-long-gap"`) ändert keine Beträge.
  */
 export const SICK_LONG_GAP_DAYS = 3;
 /** Referenzzeitraum des Urlaubsentgelts (§ 11 BUrlG). */
@@ -252,8 +266,64 @@ export interface SickCase {
   start: string;
   /** true = angrenzende Einträge wurden bewusst nicht zusammengeführt. */
   ambiguous: boolean;
-  /** true = Kette überbrückt ≥ SICK_LONG_GAP_DAYS planfreie Tage (nur Hinweis). */
+  /** true = Kette überbrückt ≥ SICK_LONG_GAP_DAYS ungewöhnliche leere Tage (nur Hinweis). */
   longGap: boolean;
+  /** true = alle Tage der Kette sind neu erfasst (`sickRule`), DECISIONS R3 Punkt 1. */
+  marked: boolean;
+}
+
+/**
+ * Gewöhnlicher arbeitsfreier Tag laut Arbeitsplan (DECISIONS R3 Punkt 3):
+ * - fester Wochenplan: Wochentag im Plan nicht aktiv;
+ * - ohne Plan: an diesem Wochentag wurde in den 13 Wochen davor für den Job
+ *   nie gearbeitet (kein Arbeitsmuster für diesen Tag).
+ */
+export function isOrdinaryOffDay(
+  date: string,
+  job: Job | undefined,
+  history: Shift[] = [],
+): boolean {
+  const week = job ? weekForDate(job, date) : undefined;
+  if (week) return week[weekIndex(date)]?.active !== true;
+  const idx = weekIndex(date);
+  return !history.some(
+    (s) =>
+      s.kind === "arbeit" &&
+      sameJob(s, job?.id) &&
+      s.date < date &&
+      weekIndex(s.date) === idx &&
+      daysBetween(s.date, date) <= VACATION_REFERENCE_DAYS,
+  );
+}
+
+/**
+ * Leere Tage zwischen zwei Kettengliedern, die keine gewöhnlichen Ruhetage
+ * sind. Ohne Plan UND ohne Arbeitseinträge des Jobs in den 13 Wochen davor
+ * gibt es keine Grundlage für "gewöhnlich frei" – dann zählt jeder
+ * Kalendertag (sonst würde eine lange Lücke ohne jede Daten nie gemeldet).
+ */
+function unusualGapDays(
+  fromDate: string,
+  toDate: string,
+  job: Job | undefined,
+  history: Shift[],
+): number {
+  const planned = job ? weekForDate(job, toDate) !== undefined : false;
+  const hasWorkBasis =
+    planned ||
+    history.some(
+      (s) =>
+        s.kind === "arbeit" &&
+        sameJob(s, job?.id) &&
+        s.date < toDate &&
+        daysBetween(s.date, toDate) <= VACATION_REFERENCE_DAYS,
+    );
+  if (!hasWorkBasis) return Math.max(0, daysBetween(fromDate, toDate) - 1);
+  let count = 0;
+  for (let d = addDays(fromDate, 1); d < toDate; d = addDays(d, 1)) {
+    if (!isOrdinaryOffDay(d, job, history)) count++;
+  }
+  return count;
 }
 
 /** Maximale Rückschau beim Verketten (42 Tage + eine Woche Lücken-Puffer). */
@@ -308,6 +378,7 @@ export function continuousSickCase(
   let start = shift.date;
   let ambiguous = false;
   let longGap = false;
+  let marked = shift.sickRule === SICK_RULE_CONTINUOUS;
   const limitDate = addDays(shift.date, -SICK_LOOKBACK_DAYS);
   let cursor = shift.date;
   while (daysBetween(start, shift.date) < SICK_MAX_DAYS) {
@@ -326,13 +397,35 @@ export function continuousSickCase(
       ambiguous = true; // explizit zugeordneter Fall grenzt an – nicht verketten
       break;
     }
-    // Leere Tage zwischen zwei Krankheitstagen sind hier stets planfrei
-    // (ein leerer regelmäßiger Arbeitstag hätte die Kette beendet).
-    if (daysBetween(date, cursor) - 1 >= SICK_LONG_GAP_DAYS) longGap = true;
+    // Leere Tage zwischen zwei Krankheitstagen sind hier nie regelmäßige
+    // Arbeitstage (sonst wäre die Kette beendet). Gewöhnliche Ruhetage laut
+    // Plan zählen nicht (DECISIONS R3 Punkt 3: keine Fehlwarnungen).
+    if (unusualGapDays(date, cursor, job, history) >= SICK_LONG_GAP_DAYS) longGap = true;
+    if (sick.some((s) => s.sickRule !== SICK_RULE_CONTINUOUS)) marked = false;
     start = date;
     cursor = date;
   }
-  return { start, ambiguous, longGap };
+  return { start, ambiguous, longGap, marked };
+}
+
+/**
+ * Angrenzender, ausdrücklich zugeordneter Krankheitsfall (mit `sickCaseId`)
+ * unmittelbar vor `shift` (nur planfreie leere Tage dazwischen). Für die
+ * Bestätigung im Eintragsdialog (DECISIONS R3 Punkt 1): Nur wenn der Nutzer
+ * ausdrücklich bestätigt, wird der Eintrag diesem Fall zugeordnet.
+ */
+export function adjacentExplicitSickCase(
+  shift: Shift,
+  job: Job | undefined,
+  history: Shift[] = [],
+): { caseId: string; start: string } | undefined {
+  const prev = previousRelevantDay(shift.date, shift, job, history, addDays(shift.date, -7));
+  if (!prev || !prev.entries.length || !prev.entries.every((s) => s.kind === "krank")) {
+    return undefined;
+  }
+  const withId = prev.entries.find((s) => s.sickCaseId && s.sickCaseId !== shift.sickCaseId);
+  if (!withId?.sickCaseId) return undefined;
+  return { caseId: withId.sickCaseId, start: sickCaseStart(withId, history) };
 }
 
 /** Grenzt an einen explizit zugeordneten Fall unmittelbar ein anderer Krankheitseintrag? */
@@ -407,14 +500,6 @@ export function isSickRecalcConfirmed(
   confirmed: readonly string[] | undefined,
 ): boolean {
   return !!confirmed && confirmed.includes(monthKey(date));
-}
-
-/** Bestätigte Monate zusammenführen (sortiert, ohne Duplikate) – O-2. */
-export function withConfirmedMonths(
-  existing: readonly string[] | undefined,
-  months: readonly string[],
-): string[] {
-  return [...new Set([...(existing ?? []), ...months])].sort();
 }
 
 /* ------------------------- Kern ------------------------- */
@@ -492,7 +577,8 @@ export function shiftPayroll(shift: Shift, options: PayrollOptions = {}): ShiftP
       const presumed = continuousSickCase(shift, job, history);
       if (presumed.ambiguous) notice = "sick-case-ambiguous";
       else if (presumed.longGap) notice = "sick-case-long-gap";
-      if (isSickRecalcConfirmed(shift.date, options.sickContinuousConfirmed)) {
+      if (presumed.marked || isSickRecalcConfirmed(shift.date, options.sickContinuousConfirmed)) {
+        // Neu erfasster Zeitraum (DECISIONS R3 Punkt 1) oder bestätigter Monat (O-2).
         caseStart = presumed.start;
       } else {
         // Nicht bestätigt: bisheriges Verhalten, keine automatische Neuberechnung.
@@ -625,6 +711,11 @@ export interface SickRecalcMonth {
   before: number;
   /** Monatsentgelt nach Bestätigung dieses Monats. */
   after: number;
+  /**
+   * Krankheitstage des Monats, deren vermuteter Fall nach Bestätigung eine
+   * lange Lücke oder eine unklare Grenze hat – Hinweis im Dialog (P3-R3-144-c).
+   */
+  reviewDays: number;
 }
 
 /**
@@ -651,11 +742,17 @@ export function sickRecalcPreview(
         sickContinuousConfirmed: [...(base.sickContinuousConfirmed ?? []), month],
       };
     };
+    const reviewDays = list.filter((s) => {
+      if (s.kind !== "krank") return false;
+      const notice = shiftPayroll(s, { ...confirmMonth(s), history: shifts }).notice;
+      return notice === "sick-case-long-gap" || notice === "sick-case-ambiguous";
+    }).length;
     return {
       month,
       days: affected.get(month) ?? 0,
       before: payrollTotals(list, resolve, shifts).earnings,
       after: payrollTotals(list, confirmMonth, shifts).earnings,
+      reviewDays,
     };
   });
 }

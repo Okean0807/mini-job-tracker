@@ -2,6 +2,10 @@
  * O-2 (DECISIONS R2, Sick pay): Bestätigung der Neuberechnung nach der
  * Krankheitsfall-Fortsetzungsregel. Listet betroffene Monate mit
  * vorher/nachher. Ohne ausdrückliche Bestätigung wird NICHTS geändert.
+ *
+ * DECISIONS R3 Punkt 4: Der Hinweis lässt sich auf diesem Bildschirm
+ * ausblenden, ohne Bestätigungen zu löschen oder zu setzen. Ändert sich die
+ * Vorschau (z. B. nach Import/Ersetzen der Daten), erscheint er erneut.
  */
 import { AlertTriangle } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -27,8 +31,14 @@ export function SickRecalcNotice({
   const preview = useMemo(() => sickRecalcPreview(shifts, resolve), [shifts, resolve]);
   const [open, setOpen] = useState(false);
   const [deselected, setDeselected] = useState<Set<string>>(() => new Set());
+  const [hiddenFor, setHiddenFor] = useState<string | null>(null);
+  const previewKey = useMemo(
+    () =>
+      preview.map((m) => `${m.month}:${m.days}:${m.before}:${m.after}:${m.reviewDays}`).join("|"),
+    [preview],
+  );
 
-  if (preview.length === 0) return null;
+  if (preview.length === 0 || hiddenFor === previewKey) return null;
   const selected = preview.map((m) => m.month).filter((m) => !deselected.has(m));
   const label = (key: string) => {
     const [y, m] = key.split("-").map(Number);
@@ -71,6 +81,11 @@ export function SickRecalcNotice({
                         after: formatEuro(m.after),
                       })}
                     </span>
+                    {m.reviewDays > 0 ? (
+                      <span className="block" data-testid="sick-recalc-review-days">
+                        {t("sickRecalc.reviewDays", { count: m.reviewDays })}
+                      </span>
+                    ) : null}
                   </span>
                 </li>
               ))}
@@ -104,14 +119,24 @@ export function SickRecalcNotice({
             </div>
           </>
         ) : (
-          <Button
-            size="sm"
-            variant="outline"
-            data-testid="sick-recalc-review"
-            onClick={() => setOpen(true)}
-          >
-            {t("sickRecalc.review")}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              data-testid="sick-recalc-review"
+              onClick={() => setOpen(true)}
+            >
+              {t("sickRecalc.review")}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              data-testid="sick-recalc-hide"
+              onClick={() => setHiddenFor(previewKey)}
+            >
+              {t("sickRecalc.hide")}
+            </Button>
+          </div>
         )}
       </div>
     </div>

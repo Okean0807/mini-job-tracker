@@ -149,6 +149,7 @@ describe("T1–T8", () => {
       start: "2026-11-13",
       ambiguous: true,
       longGap: false,
+      marked: false,
     });
   });
 
@@ -236,6 +237,7 @@ describe("Randfälle", () => {
       start: "2026-11-08",
       ambiguous: false,
       longGap: false,
+      marked: false,
     });
   });
 
@@ -306,7 +308,7 @@ describe("QA R1 gaps (M144-1, M144-2)", () => {
     // Plan Mo–Fr: krank Mi 04.11.; Do/Fr leer (regelmäßig); krank Mo 09.11.
     const shifts = [entry("2026-11-04"), entry("2026-11-09")];
     const res = continuousSickCase(shifts[1]!, MON_FRI, shifts);
-    expect(res).toEqual({ start: "2026-11-09", ambiguous: true, longGap: false });
+    expect(res).toEqual({ start: "2026-11-09", ambiguous: true, longGap: false, marked: false });
     const [, p] = evaluate(shifts, MON_FRI);
     expect(p!.notice).toBe("sick-case-ambiguous");
   });
@@ -356,18 +358,66 @@ describe("O-2: Vorschau der Neuberechnung (sickRecalcPreview)", () => {
   });
 });
 
-describe("Lange planfreie Lücke (QA P3-144-c): nur Hinweis, keine Rechenänderung", () => {
+describe("Lange Lücke (QA P3-144-c, DECISIONS R3 Punkt 3): Plan beachten, keine Fehlwarnungen", () => {
   const MON_ONLY = makeJob([true, false, false, false, false, false, false]);
+  /** Job ohne festen Plan; Arbeitsmuster nur aus den Einträgen. */
+  const NO_PLAN = { ...makeJob([]), week: undefined } as unknown as Job;
+  /**
+   * Muster ohne Plan: Mo und Fr regelmäßig (je 2× in den 4 Wochen davor),
+   * Do regelmäßig nur in PATTERN_THU; Di/Mi/Do sonst je einmal vor 7 Wochen
+   * (Arbeitsmuster vorhanden, aber nicht "regelmäßig" → kein Kettenende,
+   * aber auch kein gewöhnlicher Ruhetag). Sa/So nie gearbeitet.
+   */
+  const PATTERN = [
+    entry("2026-09-15", "arbeit"),
+    entry("2026-09-16", "arbeit"),
+    entry("2026-09-17", "arbeit"),
+    entry("2026-10-19", "arbeit"),
+    entry("2026-10-23", "arbeit"),
+    entry("2026-10-26", "arbeit"),
+    entry("2026-10-30", "arbeit"),
+  ];
+  const PATTERN_THU = [...PATTERN, entry("2026-10-22", "arbeit"), entry("2026-10-29", "arbeit")];
 
-  it("Plan nur Montag: krank Mo + Mo der Folgewoche → longGap + Hinweis, Beträge unverändert", () => {
+  it("Plan nur Montag: krank Mo + Mo der Folgewoche → KEIN Hinweis (Di–So planfrei), Beträge unverändert", () => {
     const shifts = [entry("2026-11-02"), entry("2026-11-09")];
     const res = continuousSickCase(shifts[1]!, MON_ONLY, shifts);
-    expect(res).toEqual({ start: "2026-11-02", ambiguous: false, longGap: true });
+    expect(res).toEqual({ start: "2026-11-02", ambiguous: false, longGap: false, marked: false });
     const ps = evaluate(shifts, MON_ONLY);
-    expect(ps[1]!.notice).toBe("sick-case-long-gap");
+    expect(ps[1]!.notice).toBeUndefined();
     expect(ps.map((p) => p.reason)).toEqual(["sick-pay", "sick-pay"]);
     const plain = evaluate(shifts, MON_ONLY, shifts, UNCONFIRMED);
     expect(plain.map((p) => p.earnings)).toEqual(ps.map((p) => p.earnings));
+  });
+
+  it("ohne Plan: 3 ungewöhnliche Lückentage (Di/Mi/Do mit Arbeitsmuster) → Hinweis, Beträge unverändert", () => {
+    const sick = [entry("2026-11-02"), entry("2026-11-06")]; // Mo → Fr
+    const all = [...PATTERN, ...sick];
+    expect(continuousSickCase(sick[1]!, NO_PLAN, all).longGap).toBe(true);
+    const ps = evaluate(sick, NO_PLAN, all);
+    expect(ps[1]!.notice).toBe("sick-case-long-gap");
+    const plain = evaluate(sick, NO_PLAN, all, UNCONFIRMED);
+    expect(plain.map((p) => p.earnings)).toEqual(ps.map((p) => p.earnings));
+  });
+
+  it("ohne Plan: 2 ungewöhnliche Lückentage → kein Hinweis (Schwelle 3)", () => {
+    const sick = [entry("2026-11-02"), entry("2026-11-05")]; // Mo → Do: Di/Mi
+    const all = [...PATTERN_THU, ...sick];
+    expect(continuousSickCase(sick[1]!, NO_PLAN, all).longGap).toBe(false);
+    expect(evaluate(sick, NO_PLAN, all)[1]!.notice).toBeUndefined();
+  });
+
+  it("ohne Plan: Wochenende ohne Arbeitsmuster zählt nicht (Fr → Mo, auch 3 Tage Sa–So+)", () => {
+    const sick = [entry("2026-11-06"), entry("2026-11-09")]; // Fr → Mo: Sa/So nie gearbeitet
+    const all = [...PATTERN, ...sick];
+    expect(continuousSickCase(sick[1]!, NO_PLAN, all).longGap).toBe(false);
+  });
+
+  it("ohne Plan und ohne jede Arbeitsgrundlage zählt jeder Kalendertag (Fallerkennung)", () => {
+    const sick = [entry("2026-11-02"), entry("2026-11-06")];
+    expect(continuousSickCase(sick[1]!, NO_PLAN, sick).longGap).toBe(true);
+    const near = [entry("2026-11-02"), entry("2026-11-05")];
+    expect(continuousSickCase(near[1]!, NO_PLAN, near).longGap).toBe(false);
   });
 
   it("Plan Mo–Fr: normales Wochenende (2 Tage) → kein Hinweis", () => {
@@ -376,11 +426,11 @@ describe("Lange planfreie Lücke (QA P3-144-c): nur Hinweis, keine Rechenänderu
     expect(evaluate(shifts, MON_FRI)[1]!.notice).toBeUndefined();
   });
 
-  it("Schwelle: 3 planfreie Tage → Hinweis, 2 → keiner (Plan berücksichtigt)", () => {
+  it("Schwelle 3; planfreie Tage laut festem Plan sind nie Fehlwarnungen", () => {
     expect(SICK_LONG_GAP_DAYS).toBe(3);
     const MON_THU = makeJob([true, true, true, true, false, false, false]); // Fr–So frei
-    const three = [entry("2026-11-05"), entry("2026-11-09")]; // Do → Mo: Fr/Sa/So leer
-    expect(continuousSickCase(three[1]!, MON_THU, three).longGap).toBe(true);
+    const three = [entry("2026-11-05"), entry("2026-11-09")]; // Do → Mo: Fr/Sa/So planfrei
+    expect(continuousSickCase(three[1]!, MON_THU, three).longGap).toBe(false);
     const two = [entry("2026-11-06"), entry("2026-11-09")]; // Fr → Mo (Plan Mo–Fr)
     expect(continuousSickCase(two[1]!, MON_FRI, two).longGap).toBe(false);
   });

@@ -4,6 +4,11 @@ import { LANGUAGES, detectLanguage } from "@/lib/i18n/core";
 
 import { normalizeDashboard } from "./dashboard";
 import { isPlainRecord } from "./payload";
+import {
+  SICK_RULE_CONTINUOUS,
+  sanitizeSickConfirmations,
+  withCurrentSickConfirmations,
+} from "./sick-confirmation";
 import { isValidPin, withConsistentPinSettings } from "./pin";
 import { KNOWN_LEGAL_MONTHLY_LIMITS, minimumWageFor } from "./legal";
 import {
@@ -186,7 +191,9 @@ function persist() {
 }
 
 function commit(next: AppData, sync = true) {
-  state = next;
+  // DECISIONS R3 Punkt 4: nach jeder Datenänderung/jedem Import prüfen, ob die
+  // O-2-Bestätigungen noch aktuell sind (sonst verwerfen → erneut anbieten).
+  state = withCurrentSickConfirmations(next, state);
   persist();
   emit(sync);
 }
@@ -227,6 +234,12 @@ export function normalize(input: Partial<AppData>): AppData {
       (item): item is string => typeof item === "string" && item.trim().length > 0,
     );
   }
+  // O-2-Bestätigungen: Typprüfung (Backup-Import/Sync, QA P3-R3-144-d).
+  if (settings.sickContinuousConfirmations !== undefined) {
+    const confirmations = sanitizeSickConfirmations(settings.sickContinuousConfirmations);
+    if (confirmations.length) settings.sickContinuousConfirmations = confirmations;
+    else delete settings.sickContinuousConfirmations;
+  }
   if (Array.isArray(settings.workCodes)) {
     settings.workCodes = settings.workCodes.filter((item): item is WorkCodeDef =>
       Boolean(
@@ -248,12 +261,8 @@ export function normalize(input: Partial<AppData>): AppData {
   const orderRows = (Array.isArray(raw.orders) ? raw.orders : []).filter(isPlainRecord);
   const objectRows = (Array.isArray(raw.objects) ? raw.objects : []).filter(isPlainRecord);
 
-  return {
-    shifts: shiftRows.map((s) => ({
-      ...(s as unknown as Shift),
-      kind: (s as { kind?: Shift["kind"] }).kind ?? "arbeit",
-      breakMinutes: (s as { breakMinutes?: number }).breakMinutes ?? 0,
-    })),
+  return withCurrentSickConfirmations({
+    shifts: shiftRows.map((s) => normalizeShiftRow(s as unknown as Record<string, unknown>)),
     // Kompatibilität: Ein gespeicherter Job-Satz 0 stammte bisher aus einem leeren
     // Formularfeld und wurde in der Lohnauflösung schon immer als "nicht gesetzt"
     // behandelt. Er wird daher auf undefined gehoben. Schicht-Sätze bleiben unverändert,
@@ -272,7 +281,24 @@ export function normalize(input: Partial<AppData>): AppData {
     objects: objectRows as unknown as WorkObject[],
     settings,
     timer: raw.timer ?? null,
+  });
+}
+
+function normalizeShiftRow(row: Record<string, unknown>): Shift {
+  const shift: Shift = {
+    ...(row as unknown as Shift),
+    kind: (row as { kind?: Shift["kind"] }).kind ?? "arbeit",
+    breakMinutes: (row as { breakMinutes?: number }).breakMinutes ?? 0,
   };
+  // Herkunftsmerkmal nur mit bekanntem Wert und nur an Krankheitstagen
+  // (DECISIONS R3 Punkt 1; Import-Typprüfung).
+  if (
+    shift.sickRule !== undefined &&
+    (shift.sickRule !== SICK_RULE_CONTINUOUS || shift.kind !== "krank")
+  ) {
+    delete shift.sickRule;
+  }
+  return shift;
 }
 
 /** Liest und normalisiert den gespeicherten Stand eines Scopes (null = nichts/ungültig). */

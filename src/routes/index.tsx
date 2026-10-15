@@ -29,7 +29,8 @@ import {
   shiftsInYear,
 } from "@/lib/minijob/calc";
 import { sortProofShifts } from "@/lib/minijob/arbeitsnachweis";
-import { payrollTotals, withConfirmedMonths } from "@/lib/minijob/payroll";
+import { payrollTotals } from "@/lib/minijob/payroll";
+import { withSickConfirmations } from "@/lib/minijob/sick-confirmation";
 import { activeWidgets, spanClass, widgetSize } from "@/lib/minijob/dashboard";
 import { goalsProgress } from "@/lib/minijob/goals";
 import { buildInsights } from "@/lib/minijob/insights";
@@ -338,15 +339,17 @@ function DashboardPage() {
         </div>
       ) : null}
 
-      {/* O-2: Neuberechnung nur nach ausdrücklicher Bestätigung (DECISIONS R2). */}
+      {/* O-2: Neuberechnung nur nach ausdrücklicher Bestätigung (DECISIONS R2/R3). */}
       <SickRecalcNotice
         shifts={shifts}
         resolve={resolve}
         onConfirm={(months) =>
           updateSettings({
-            sickContinuousConfirmedMonths: withConfirmedMonths(
-              settings.sickContinuousConfirmedMonths,
+            sickContinuousConfirmations: withSickConfirmations(
+              settings.sickContinuousConfirmations,
               months,
+              shifts,
+              jobs,
             ),
           })
         }

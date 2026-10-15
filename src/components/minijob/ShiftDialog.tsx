@@ -27,14 +27,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/lib/i18n";
-import { formatEuro, isoDate, shiftBreakdown } from "@/lib/minijob/calc";
+import { formatDate, formatEuro, isoDate, shiftBreakdown } from "@/lib/minijob/calc";
 import {
   extrasSummaryParts,
   formatRateInput,
   formatWorkDuration,
   sanitizeRateInput,
 } from "@/lib/minijob/entry-format";
-import { shiftPayroll } from "@/lib/minijob/payroll";
+import { adjacentExplicitSickCase, shiftPayroll } from "@/lib/minijob/payroll";
+import { confirmedSickMonths, sickRuleForSave } from "@/lib/minijob/sick-confirmation";
 import { absenceDayTimes } from "@/lib/minijob/schedule";
 import { holidayName } from "@/lib/minijob/holidays";
 import { parseRateInput, suggestedRate } from "@/lib/minijob/rate";
@@ -138,6 +139,9 @@ export function ShiftDialog({
   const [breakMinutes, setBreakMinutes] = useState("30");
   const [rate, setRate] = useState(String(settings.defaultRate));
   const [note, setNote] = useState("");
+  // DECISIONS R3 Punkt 1: Zuordnung zu einem angrenzenden Krankheitsfall nur
+  // nach ausdrücklicher Bestätigung (Standard: getrennt, nie automatisch).
+  const [sickLink, setSickLink] = useState(false);
   const [overtime, setOvertime] = useState(false);
   const [customerId, setCustomerId] = useState<string | undefined>(undefined);
   const [projectId, setProjectId] = useState<string | undefined>(undefined);
@@ -245,6 +249,7 @@ export function ShiftDialog({
       ),
     );
     setNote(source?.note ?? "");
+    setSickLink(false);
     setOvertime(source?.overtime ?? false);
     setCustomerId(source?.customerId);
     setProjectId(source?.projectId);
@@ -310,6 +315,19 @@ export function ShiftDialog({
   const parsedRate = parseRateInput(rate);
   if (parsedRate !== undefined) draft.rate = parsedRate;
   if (jobId) draft.jobId = jobId;
+  // Krankheitstage: Herkunft (DECISIONS R3 Punkt 1) und Fallzuordnung wie beim Speichern.
+  const storedSource = resolvedShiftId
+    ? (getShift(resolvedShiftId) ?? shift ?? undefined)
+    : undefined;
+  const draftSickRule = sickRuleForSave(kind, storedSource);
+  if (draftSickRule) draft.sickRule = draftSickRule;
+  const keptSickCaseId = kind === "krank" ? storedSource?.sickCaseId : undefined;
+  const sickLinkCandidate =
+    kind === "krank" && !keptSickCaseId
+      ? adjacentExplicitSickCase(draft, job, history ?? [])
+      : undefined;
+  if (keptSickCaseId) draft.sickCaseId = keptSickCaseId;
+  else if (sickLinkCandidate && sickLink) draft.sickCaseId = sickLinkCandidate.caseId;
 
   // Work on a public holiday must pay hours×rate (optional surcharge). Kind "feiertag"
   // is only for not working. Preview uses payroll for absences and breakdown for work.
@@ -324,7 +342,7 @@ export function ShiftDialog({
     supplements: job?.supplements ?? settings.supplements,
     holiday: Boolean(holiday),
     defaultRate: settings.defaultRate,
-    sickContinuousConfirmed: settings.sickContinuousConfirmedMonths,
+    sickContinuousConfirmed: confirmedSickMonths(settings),
     ...(history ? { history } : {}),
   });
   const preview =
@@ -464,6 +482,15 @@ export function ShiftDialog({
     const rateValue = parseRateInput(rate);
     if (rateValue !== undefined) next.rate = rateValue;
     if (jobId) next.jobId = jobId;
+    // Krankheitstage: Herkunftsmerkmal (DECISIONS R3 Punkt 1). Eine bestehende
+    // Fallzuordnung bleibt beim Bearbeiten erhalten (vorher ging sie verloren);
+    // eine neue Zuordnung nur nach ausdrücklicher Bestätigung.
+    const nextSickRule = sickRuleForSave(kind, existing ?? undefined);
+    if (nextSickRule) next.sickRule = nextSickRule;
+    if (kind === "krank") {
+      if (existing?.sickCaseId) next.sickCaseId = existing.sickCaseId;
+      else if (sickLink && sickLinkCandidate) next.sickCaseId = sickLinkCandidate.caseId;
+    }
     if (note.trim()) next.note = note.trim();
     if (overtime) next.overtime = true;
     if (customerId) next.customerId = customerId;
@@ -1352,6 +1379,29 @@ export function ShiftDialog({
                     data-notice={absencePreview.notice}
                   >
                     {t(`pay.notice.${absencePreview.notice}`)}
+                  </p>
+                ) : null}
+                {sickLinkCandidate ? (
+                  <label
+                    className="mt-2 flex items-start gap-2 text-xs"
+                    data-testid="entry-sick-link"
+                    data-case-start={sickLinkCandidate.start}
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 size-4"
+                      checked={sickLink}
+                      onChange={(e) => setSickLink(e.target.checked)}
+                    />
+                    <span>
+                      {t("sick.linkCase", {
+                        date: formatDate(sickLinkCandidate.start, locale),
+                      })}
+                    </span>
+                  </label>
+                ) : kind === "krank" && absencePreview.notice === "sick-case-ambiguous" ? (
+                  <p className="mt-1 text-xs" data-testid="entry-sick-ambiguous-help">
+                    {t("sick.ambiguousHelp")}
                   </p>
                 ) : null}
               </div>
