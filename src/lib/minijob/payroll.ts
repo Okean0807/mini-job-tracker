@@ -26,10 +26,23 @@ export const SICK_WAITING_DAYS = 28;
 /** Höchstdauer der Entgeltfortzahlung je Krankheitsfall (§ 3 Abs. 1 EntgFG). */
 export const SICK_MAX_DAYS = 42;
 /**
- * No calendar-gap heuristic is used for sickness cases. The legal question
- * is whether the incapacity is the same illness; the app cannot infer that
- * from dates alone. Range-created sick entries therefore carry `sickCaseId`.
+ * Krankheitsfall-Regel (Owner-Entscheidung DECISIONS R2, Sick pay):
+ * - Einträge mit derselben `sickCaseId` bilden einen Fall (unverändert).
+ * - Aufeinanderfolgende "krank"-Tage desselben Jobs OHNE `sickCaseId` bilden
+ *   einen vermuteten Fall. Lücken sind nur über leere, nicht regelmäßige
+ *   Arbeitstage (z. B. Wochenende laut Plan) erlaubt; jeder andere Eintrag
+ *   oder ein leerer regelmäßiger Arbeitstag beendet den Fall.
+ * - Verstreute Zeiträume werden NIE automatisch zusammengeführt ("dieselbe
+ *   Krankheit" lässt sich aus Daten nicht ableiten); unklare Nachbarschaften
+ *   erzeugen nur einen Hinweis (`notice = "sick-case-ambiguous"`).
  */
+/**
+ * Ab diesem Datum gilt die Fortsetzungsregel für Einträge ohne `sickCaseId`.
+ * Frühere Tage werden NICHT automatisch neu berechnet (bisheriges Verhalten);
+ * würde die neue Regel dort abweichen, wird nur `notice =
+ * "sick-legacy-over-limit"` gesetzt. Stichtag = Owner-Entscheidung (offen).
+ */
+export const SICK_CONTINUOUS_RULE_FROM = "2026-11-01";
 /** Referenzzeitraum des Urlaubsentgelts (§ 11 BUrlG). */
 export const VACATION_REFERENCE_DAYS = 91;
 /** Mindestzahl an Arbeitstagen im Referenzzeitraum für eine belastbare Berechnung. */
@@ -66,11 +79,26 @@ export interface ShiftPayroll {
   basis: PayBasis;
   /** true = Berechnungsbasis ist eine nachvollziehbare Schätzung, kein exakter Wert. */
   estimated: boolean;
+  /** Hinweis zur Krankheitsfall-Zuordnung (nur gesetzt, wenn relevant). */
+  notice?: SickCaseNotice;
 }
+
+/**
+ * - "sick-case-ambiguous": angrenzende Krankheitseinträge, die nicht automatisch
+ *   demselben Fall zugeordnet werden (andere/fehlende sickCaseId, leerer Arbeitstag).
+ * - "sick-legacy-over-limit": Tag vor dem Stichtag, bisher bezahlt, nach der
+ *   Fortsetzungsregel aber jenseits von 42 Tagen (keine automatische Neuberechnung).
+ */
+export type SickCaseNotice = "sick-case-ambiguous" | "sick-legacy-over-limit";
 
 export interface PayrollOptions extends ResolveOptions {
   /** Alle bekannten Schichten (für Muster-, Krankheitsfall- und 13-Wochen-Auswertung). */
   history?: Shift[];
+  /**
+   * Stichtag der Fortsetzungsregel (Default {@link SICK_CONTINUOUS_RULE_FROM}).
+   * Vorgesehen für eine spätere, vom Nutzer bestätigte Neuberechnung.
+   */
+  sickContinuousFrom?: string;
 }
 
 /* ------------------------- Hilfen ------------------------- */
@@ -91,6 +119,32 @@ function weekIndex(iso: string): number {
 
 function sameJob(shift: Shift, jobId?: string): boolean {
   return (shift.jobId ?? undefined) === (jobId ?? undefined);
+}
+
+function addDays(iso: string, days: number): string {
+  const d = toDate(iso);
+  d.setDate(d.getDate() + days);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+const dayIndexCache = new WeakMap<Shift[], Map<string, Shift[]>>();
+
+/** Einträge eines Jobs an einem Tag (indiziert je History-Array). */
+function entriesOn(history: Shift[], jobId: string | undefined, date: string): Shift[] {
+  let index = dayIndexCache.get(history);
+  if (!index) {
+    index = new Map();
+    for (const s of history) {
+      const key = `${s.jobId ?? ""}|${s.date}`;
+      const list = index.get(key);
+      if (list) list.push(s);
+      else index.set(key, [s]);
+    }
+    dayIndexCache.set(history, index);
+  }
+  return index.get(`${jobId ?? ""}|${date}`) ?? [];
 }
 
 /**
@@ -157,9 +211,8 @@ export function regularHoursFor(
 /**
  * Beginn des ausdrücklich zugeordneten Krankheitsfalls.
  *
- * Ohne `sickCaseId` wird nur der aktuelle Eintrag als Fall betrachtet.
- * Das ist absichtlich konservativ: aus einer Datumsnähe lässt sich die
- * "gleiche Krankheit" i. S. d. § 3 Abs. 1 EntgFG nicht zuverlässig ableiten.
+ * Ohne `sickCaseId` liefert diese Funktion nur den Eintrag selbst; die
+ * Fortsetzungsregel für Einträge ohne ID steht in {@link continuousSickCase}.
  */
 export function sickCaseStart(shift: Shift, history: Shift[] = []): string {
   if (!shift.sickCaseId) return shift.date;
@@ -174,6 +227,104 @@ export function sickCaseStart(shift: Shift, history: Shift[] = []): string {
     .map((s) => s.date);
   dates.push(shift.date);
   return dates.sort()[0] ?? shift.date;
+}
+
+export interface SickCase {
+  /** Erster Tag des (vermuteten) Krankheitsfalls. */
+  start: string;
+  /** true = angrenzende Einträge wurden bewusst nicht zusammengeführt. */
+  ambiguous: boolean;
+}
+
+/** Maximale Rückschau beim Verketten (42 Tage + eine Woche Lücken-Puffer). */
+const SICK_LOOKBACK_DAYS = SICK_MAX_DAYS + 7;
+
+/**
+ * Geht vom Tag `fromDate` rückwärts über leere, nicht regelmäßige Arbeitstage
+ * und liefert den ersten Tag mit Einträgen bzw. einen leeren regelmäßigen
+ * Arbeitstag (Ende der Kette).
+ */
+function previousRelevantDay(
+  fromDate: string,
+  shift: Shift,
+  job: Job | undefined,
+  history: Shift[],
+  limitDate: string,
+): { date: string; entries: Shift[] } | undefined {
+  let cursor = addDays(fromDate, -1);
+  while (cursor >= limitDate) {
+    const entries = entriesOn(history, shift.jobId, cursor).filter((s) => s.id !== shift.id);
+    if (entries.length) return { date: cursor, entries };
+    if (isRegularWorkday(cursor, job, history)) return { date: cursor, entries: [] };
+    cursor = addDays(cursor, -1);
+  }
+  return undefined;
+}
+
+function hasSickNearBefore(
+  date: string,
+  shift: Shift,
+  job: Job | undefined,
+  history: Shift[],
+): boolean {
+  for (let i = 1; i <= 7; i++) {
+    const d = addDays(date, -i);
+    const entries = entriesOn(history, shift.jobId, d);
+    if (entries.some((s) => s.kind === "krank")) return true;
+    if (entries.length) return false;
+  }
+  return false;
+}
+
+/**
+ * Vermuteter Krankheitsfall für einen Eintrag OHNE `sickCaseId`:
+ * zusammenhängende "krank"-Tage desselben Jobs ohne `sickCaseId`.
+ */
+export function continuousSickCase(
+  shift: Shift,
+  job: Job | undefined,
+  history: Shift[] = [],
+): SickCase {
+  let start = shift.date;
+  let ambiguous = false;
+  const limitDate = addDays(shift.date, -SICK_LOOKBACK_DAYS);
+  let cursor = shift.date;
+  while (daysBetween(start, shift.date) < SICK_MAX_DAYS) {
+    const prev = previousRelevantDay(cursor, shift, job, history, limitDate);
+    if (!prev) break;
+    const { date, entries } = prev;
+    if (!entries.length) {
+      // Leerer regelmäßiger Arbeitstag beendet den Fall; folgt davor direkt
+      // wieder Krankheit, ist die Zuordnung unklar → nur Hinweis.
+      if (hasSickNearBefore(date, shift, job, history)) ambiguous = true;
+      break;
+    }
+    const sick = entries.filter((s) => s.kind === "krank");
+    if (sick.length !== entries.length) break; // Arbeit/Urlaub/… beendet den Fall
+    if (sick.some((s) => s.sickCaseId)) {
+      ambiguous = true; // explizit zugeordneter Fall grenzt an – nicht verketten
+      break;
+    }
+    start = date;
+    cursor = date;
+  }
+  return { start, ambiguous };
+}
+
+/** Grenzt an einen explizit zugeordneten Fall unmittelbar ein anderer Krankheitseintrag? */
+function explicitCaseAmbiguous(
+  shift: Shift,
+  caseStart: string,
+  job: Job | undefined,
+  history: Shift[],
+): boolean {
+  const prev = previousRelevantDay(caseStart, shift, job, history, addDays(caseStart, -7));
+  return (
+    !!prev &&
+    prev.entries.length > 0 &&
+    prev.entries.every((s) => s.kind === "krank") &&
+    prev.entries.some((s) => s.sickCaseId !== shift.sickCaseId)
+  );
 }
 
 /**
@@ -282,10 +433,31 @@ export function shiftPayroll(shift: Shift, options: PayrollOptions = {}): ShiftP
     if (job?.startDate && daysBetween(job.startDate, shift.date) < SICK_WAITING_DAYS) {
       return unpaid("sick-waiting");
     }
-    const caseStart = sickCaseStart(shift, history);
-    if (daysBetween(caseStart, shift.date) >= SICK_MAX_DAYS) return unpaid("sick-exceeded");
+    let caseStart: string;
+    let notice: SickCaseNotice | undefined;
+    if (shift.sickCaseId) {
+      caseStart = sickCaseStart(shift, history);
+      if (explicitCaseAmbiguous(shift, caseStart, job, history)) notice = "sick-case-ambiguous";
+    } else {
+      const presumed = continuousSickCase(shift, job, history);
+      if (presumed.ambiguous) notice = "sick-case-ambiguous";
+      const from = options.sickContinuousFrom ?? SICK_CONTINUOUS_RULE_FROM;
+      if (shift.date >= from) {
+        caseStart = presumed.start;
+      } else {
+        // Vor dem Stichtag: bisheriges Verhalten, keine automatische Neuberechnung.
+        caseStart = shift.date;
+        if (daysBetween(presumed.start, shift.date) >= SICK_MAX_DAYS) {
+          notice = "sick-legacy-over-limit";
+        }
+      }
+    }
+    if (daysBetween(caseStart, shift.date) >= SICK_MAX_DAYS) {
+      return { ...unpaid("sick-exceeded"), ...(notice ? { notice } : {}) };
+    }
     const { hours, basis } = regularHoursFor(shift, job, history);
     return {
+      ...(notice ? { notice } : {}),
       kind: shift.kind,
       workedHours: 0,
       paidAbsenceHours: hours,
@@ -375,4 +547,21 @@ export function payrollTotals(
     if (p.estimated) totals.estimated = true;
   }
   return totals;
+}
+
+/**
+ * Erkennung (keine Neuberechnung): Krankheitstage vor dem Stichtag, die nach
+ * bisherigem Verhalten bezahlt werden, nach der Fortsetzungsregel aber
+ * jenseits von 42 Tagen lägen. Grundlage für einen Hinweis an den Nutzer.
+ */
+export function sickLegacyDiscrepancies(
+  shifts: Shift[],
+  resolve: (shift: Shift) => ResolveOptions,
+  history: Shift[] = shifts,
+): Shift[] {
+  return shifts.filter(
+    (shift) =>
+      shift.kind === "krank" &&
+      shiftPayroll(shift, { ...resolve(shift), history }).notice === "sick-legacy-over-limit",
+  );
 }

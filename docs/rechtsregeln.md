@@ -87,7 +87,7 @@ Doppelzählung in Stunden- und Einkommensgrenzen ausgeschlossen.
 | Fall | Regel | Ergebnis |
 | --- | --- | --- |
 | Feiertag (§ 2 EntgFG) | nur bezahlt, wenn der Tag nach Festplan/Muster ein Arbeitstag ist | `holiday-pay` / `holiday-off-day` |
-| Krankheit (§ 3 EntgFG) | Wartezeit 4 Wochen ab `job.startDate`, danach bis 6 Wochen je dokumentiertem Krankheitsfall; die "gleiche Krankheit" wird nicht aus einer Datumlücke erraten, sondern über `Shift.sickCaseId` explizit zugeordnet | `sick-waiting` / `sick-pay` / `sick-exceeded` |
+| Krankheit (§ 3 EntgFG) | Wartezeit 4 Wochen ab `job.startDate`, danach bis 6 Wochen je dokumentiertem Krankheitsfall; die "gleiche Krankheit" wird nicht aus einer Datumlücke erraten, sondern über `Shift.sickCaseId` explizit zugeordnet. Ab `SICK_CONTINUOUS_RULE_FROM` bilden zusammenhängende "krank"-Tage ohne `sickCaseId` (Lücken nur über leere, nicht regelmäßige Arbeitstage) einen vermuteten Fall mit 42-Kalendertage-Grenze; verstreute Zeiträume werden nicht zusammengeführt, unklare Nachbarschaften erzeugen nur einen Hinweis. Ältere Tage werden nicht automatisch neu berechnet (Hinweis `sick-legacy-over-limit`) | `sick-waiting` / `sick-pay` / `sick-exceeded`; Hinweise `sick-case-ambiguous` / `sick-legacy-over-limit` |
 | Urlaub (§ 11 BUrlG) | Tagesentgelt = Durchschnitt der letzten 13 Wochen (mind. 5 Referenztage), sonst Plan-Fallback (`estimated: true`) | `vacation-pay` |
 | Entgeltausfallprinzip (§ 4 EntgFG) | fortgezahlt wird die regelmäßige Arbeitszeit ohne Zuschläge für nicht geleistete Arbeit | `basis: plan / average13 / entry` |
 
