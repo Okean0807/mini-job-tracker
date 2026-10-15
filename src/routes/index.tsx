@@ -15,6 +15,7 @@ import { MonthCalendar } from "@/components/minijob/MonthCalendar";
 import { AbsenceDialog } from "@/components/minijob/AbsenceDialog";
 import { ShiftDialog } from "@/components/minijob/ShiftDialog";
 import { ShiftList } from "@/components/minijob/ShiftList";
+import { SickRecalcNotice } from "@/components/minijob/SickRecalcNotice";
 import { StatCard } from "@/components/minijob/StatCard";
 import { WorkTimer } from "@/components/minijob/WorkTimer";
 import { Button } from "@/components/ui/button";
@@ -28,7 +29,7 @@ import {
   shiftsInYear,
 } from "@/lib/minijob/calc";
 import { sortProofShifts } from "@/lib/minijob/arbeitsnachweis";
-import { payrollTotals } from "@/lib/minijob/payroll";
+import { payrollTotals, withConfirmedMonths } from "@/lib/minijob/payroll";
 import { activeWidgets, spanClass, widgetSize } from "@/lib/minijob/dashboard";
 import { goalsProgress } from "@/lib/minijob/goals";
 import { buildInsights } from "@/lib/minijob/insights";
@@ -40,7 +41,7 @@ import { jobsApplyMinijobLimit, primaryWorkMode } from "@/lib/minijob/work-mode"
 import { limitAlertLevel } from "@/lib/minijob/limit-alert";
 import { payPeriods } from "@/lib/minijob/payday";
 import { makeResolver } from "@/lib/minijob/resolve";
-import { useAppData } from "@/lib/minijob/store";
+import { updateSettings, useAppData } from "@/lib/minijob/store";
 import type { Shift, WidgetId } from "@/lib/minijob/types";
 
 export const Route = createFileRoute("/")({
@@ -313,6 +314,20 @@ function DashboardPage() {
           </Button>
         </div>
       ) : null}
+
+      {/* O-2: Neuberechnung nur nach ausdrücklicher Bestätigung (DECISIONS R2). */}
+      <SickRecalcNotice
+        shifts={shifts}
+        resolve={resolve}
+        onConfirm={(months) =>
+          updateSettings({
+            sickContinuousConfirmedMonths: withConfirmedMonths(
+              settings.sickContinuousConfirmedMonths,
+              months,
+            ),
+          })
+        }
+      />
 
       {isFest && timeAccount ? (
         <div className="mt-4 grid grid-cols-2 items-start gap-3">
