@@ -15,7 +15,8 @@ import { signInWithOAuthProvider } from "@/lib/minijob/oauth-sign-in";
 import { deleteMyAccount } from "@/lib/minijob/account-delete";
 import { markOAuthPending } from "@/lib/minijob/storage-scope";
 import { LocalDataImportSection } from "@/components/minijob/LocalDataImport";
-import { formatDateDE, formatEuro, formatHours, isoDate } from "@/lib/minijob/calc";
+import { formatDate, formatDateDE, formatEuro, formatHours, isoDate } from "@/lib/minijob/calc";
+import { defaultRateBelowMinimum } from "@/lib/minijob/wage-compliance";
 import { monthlyHoursLimit, monthlyLimitOf, yearlyLimitOf } from "@/lib/minijob/limits";
 import {
   backupNow,
@@ -149,6 +150,7 @@ function SettingsPage() {
               step="0.5"
               onCommit={(v) => updateSettings({ defaultRate: v })}
             />
+            <DefaultRateMinimumNote rate={settings.defaultRate} />
             {settings.limitAuto ? (
               <div className="rounded-xl border bg-muted/40 p-3">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
@@ -1355,5 +1357,27 @@ function DataMigration({ shiftCount }: { shiftCount: number }) {
       </div>
       <p className="text-xs text-muted-foreground">{t("set.migration.importUnavailable")}</p>
     </Section>
+  );
+}
+
+/**
+ * QA P3-INT-143-c: Nur ein Hinweis – der gespeicherte Standard-Stundenlohn
+ * wird nie automatisch angepasst (B6-1: bestehende Sätze bleiben unverändert).
+ */
+function DefaultRateMinimumNote({ rate }: { rate: number }) {
+  const { t } = useT();
+  const below = defaultRateBelowMinimum(rate, isoDate(new Date()));
+  if (!below) return null;
+  return (
+    <p
+      className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-900 dark:text-amber-200"
+      data-testid="default-rate-below-minimum"
+      data-from={below.from}
+    >
+      {t("set.defaults.rateBelowMinimum", {
+        date: formatDate(below.from),
+        min: formatEuro(below.minimum),
+      })}
+    </p>
   );
 }

@@ -76,6 +76,8 @@ export const v2: Bundle = {
     "sickRecalc.confirm": "Ausgewählte Monate neu berechnen",
     "sickRecalc.cancel": "Abbrechen",
     "sickRecalc.noneSelected": "Kein Monat ausgewählt – es wird nichts geändert.",
+    "set.defaults.rateBelowMinimum":
+      "Hinweis: Dein Standard-Stundenlohn liegt ab {date} unter dem gesetzlichen Mindestlohn ({min}). Gespeicherte Sätze werden nicht automatisch geändert – bitte bei Bedarf selbst anpassen.",
     "sickRecalc.reviewDays":
       "Bitte prüfen: {count} Tag(e) mit unklarer Fallgrenze oder ungewöhnlich langer Unterbrechung.",
     "sick.linkCase":
@@ -182,6 +184,8 @@ export const v2: Bundle = {
     "sickRecalc.confirm": "Recalculate selected months",
     "sickRecalc.cancel": "Cancel",
     "sickRecalc.noneSelected": "No month selected – nothing will change.",
+    "set.defaults.rateBelowMinimum":
+      "Note: from {date} your default hourly rate is below the statutory minimum wage ({min}). Saved rates are never changed automatically – please adjust them yourself if needed.",
     "sickRecalc.reviewDays":
       "Please check: {count} day(s) with an unclear case boundary or an unusually long gap.",
     "sick.linkCase":
@@ -288,6 +292,8 @@ export const v2: Bundle = {
     "sickRecalc.confirm": "Пересчитать выбранные месяцы",
     "sickRecalc.cancel": "Отмена",
     "sickRecalc.noneSelected": "Месяцы не выбраны — ничего не изменится.",
+    "set.defaults.rateBelowMinimum":
+      "Внимание: с {date} ваша стандартная ставка ниже установленной законом минимальной оплаты ({min}). Сохранённые ставки не меняются автоматически – при необходимости измените их сами.",
     "sickRecalc.reviewDays":
       "Проверьте: {count} дн. с неясной границей случая или необычно долгим перерывом.",
     "sick.linkCase":
@@ -394,6 +400,8 @@ export const v2: Bundle = {
     "sickRecalc.confirm": "Seçili ayları yeniden hesapla",
     "sickRecalc.cancel": "İptal",
     "sickRecalc.noneSelected": "Ay seçilmedi – hiçbir şey değişmez.",
+    "set.defaults.rateBelowMinimum":
+      "Not: {date} tarihinden itibaren varsayılan saatlik ücretiniz yasal asgari ücretin ({min}) altında. Kayıtlı ücretler otomatik olarak değiştirilmez – gerekirse kendiniz düzenleyin.",
     "sickRecalc.reviewDays":
       "Lütfen kontrol edin: vaka sınırı belirsiz veya alışılmadık uzun aralı {count} gün.",
     "sick.linkCase":
@@ -500,6 +508,8 @@ export const v2: Bundle = {
     "sickRecalc.confirm": "Przelicz wybrane miesiące",
     "sickRecalc.cancel": "Anuluj",
     "sickRecalc.noneSelected": "Nie wybrano miesiąca – nic się nie zmieni.",
+    "set.defaults.rateBelowMinimum":
+      "Uwaga: od {date} Twoja domyślna stawka godzinowa jest niższa niż ustawowa płaca minimalna ({min}). Zapisane stawki nie są zmieniane automatycznie – w razie potrzeby zmień je samodzielnie.",
     "sickRecalc.reviewDays":
       "Sprawdź: {count} dzień/dni z niejasną granicą przypadku lub nietypowo długą przerwą.",
     "sick.linkCase":
