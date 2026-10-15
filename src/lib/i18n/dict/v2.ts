@@ -53,6 +53,21 @@ export const v2: Bundle = {
     "pay.reason.sick-pay": "Lohnfortzahlung im Krankheitsfall (§ 3 EntgFG)",
     "pay.reason.sick-waiting": "Wartezeit von 4 Wochen noch nicht erfüllt",
     "pay.reason.sick-exceeded": "6-Wochen-Frist je Krankheitsfall überschritten",
+    "pay.notice.sick-case-ambiguous":
+      "Krankheitsfall unklar: angrenzende Einträge wurden nicht automatisch zusammengefasst – bitte prüfen.",
+    "pay.notice.sick-legacy-over-limit":
+      "Abweichung nach Krankheitsfall-Regel (über 6 Wochen) – nicht automatisch neu berechnet; Neuberechnung nur nach Bestätigung.",
+    "pay.notice.sick-case-long-gap":
+      "Langer planfreier Zeitraum zwischen Krankheitstagen – ggf. zwei getrennte Erkrankungen; als ein vermuteter Fall gewertet, bitte prüfen.",
+    "sickRecalc.title": "Krankheitsfall-Regel: Neuberechnung offen",
+    "sickRecalc.body":
+      "In {count} Monat(en) weichen Krankheitstage von der Krankheitsfall-Regel ab (über 6 Wochen je vermutetem Fall). Ohne deine Bestätigung bleiben alle Beträge unverändert.",
+    "sickRecalc.review": "Monate prüfen",
+    "sickRecalc.hide": "Ausblenden",
+    "sickRecalc.row": "{days} Krankheitstag(e) · bisher {before} → neu {after}",
+    "sickRecalc.confirm": "Ausgewählte Monate neu berechnen",
+    "sickRecalc.cancel": "Abbrechen",
+    "sickRecalc.noneSelected": "Kein Monat ausgewählt – es wird nichts geändert.",
     "pay.reason.sick-off-day": "Kein regulärer Arbeitstag",
     "pay.reason.vacation-pay": "Urlaubsentgelt",
     "pay.basis.average13": "13-Wochen-Durchschnitt",
@@ -130,6 +145,21 @@ export const v2: Bundle = {
     "pay.reason.sick-pay": "Continued pay while sick (§ 3 EntgFG)",
     "pay.reason.sick-waiting": "4-week waiting period not yet met",
     "pay.reason.sick-exceeded": "6-week limit per illness exceeded",
+    "pay.notice.sick-case-ambiguous":
+      "Unclear sickness case: adjacent entries were not merged automatically – please check.",
+    "pay.notice.sick-legacy-over-limit":
+      "Differs under the sickness-case rule (beyond 6 weeks) – not recalculated automatically; recalculation only after confirmation.",
+    "pay.notice.sick-case-long-gap":
+      "Long non-working gap between sick days – possibly two separate illnesses; treated as one presumed case, please check.",
+    "sickRecalc.title": "Sickness-case rule: recalculation pending",
+    "sickRecalc.body":
+      "In {count} month(s), sick days differ under the sickness-case rule (beyond 6 weeks per presumed case). Without your confirmation all amounts stay unchanged.",
+    "sickRecalc.review": "Review months",
+    "sickRecalc.hide": "Hide",
+    "sickRecalc.row": "{days} sick day(s) · currently {before} → new {after}",
+    "sickRecalc.confirm": "Recalculate selected months",
+    "sickRecalc.cancel": "Cancel",
+    "sickRecalc.noneSelected": "No month selected – nothing will change.",
     "pay.reason.sick-off-day": "Not a regular working day",
     "pay.reason.vacation-pay": "Holiday pay",
     "pay.basis.average13": "13-week average",
@@ -207,6 +237,21 @@ export const v2: Bundle = {
     "pay.reason.sick-pay": "Оплата больничного (§ 3 EntgFG)",
     "pay.reason.sick-waiting": "4 недели ожидания ещё не прошли",
     "pay.reason.sick-exceeded": "Превышен лимит 6 недель",
+    "pay.notice.sick-case-ambiguous":
+      "Неясный случай болезни: соседние записи не объединены автоматически — проверьте.",
+    "pay.notice.sick-legacy-over-limit":
+      "Расхождение по правилу случая болезни (сверх 6 недель) — не пересчитано автоматически; пересчёт только после подтверждения.",
+    "pay.notice.sick-case-long-gap":
+      "Длинный нерабочий промежуток между днями болезни — возможно, две отдельные болезни; учтено как один случай, проверьте.",
+    "sickRecalc.title": "Правило случая болезни: пересчёт не подтверждён",
+    "sickRecalc.body":
+      "В {count} мес. дни болезни расходятся с правилом случая болезни (сверх 6 недель на предполагаемый случай). Без вашего подтверждения суммы не меняются.",
+    "sickRecalc.review": "Проверить месяцы",
+    "sickRecalc.hide": "Скрыть",
+    "sickRecalc.row": "Дней болезни: {days} · сейчас {before} → после {after}",
+    "sickRecalc.confirm": "Пересчитать выбранные месяцы",
+    "sickRecalc.cancel": "Отмена",
+    "sickRecalc.noneSelected": "Месяцы не выбраны — ничего не изменится.",
     "pay.reason.sick-off-day": "Не обычный рабочий день",
     "pay.reason.vacation-pay": "Отпускные",
     "pay.basis.average13": "Среднее за 13 недель",
@@ -284,6 +329,21 @@ export const v2: Bundle = {
     "pay.reason.sick-pay": "Hastalıkta ücret ödemesi (§ 3 EntgFG)",
     "pay.reason.sick-waiting": "4 haftalık bekleme süresi dolmadı",
     "pay.reason.sick-exceeded": "Hastalık başına 6 hafta aşıldı",
+    "pay.notice.sick-case-ambiguous":
+      "Belirsiz hastalık durumu: bitişik kayıtlar otomatik birleştirilmedi – lütfen kontrol edin.",
+    "pay.notice.sick-legacy-over-limit":
+      "Hastalık durumu kuralına göre fark (6 haftayı aşıyor) – otomatik yeniden hesaplanmadı; yalnızca onaydan sonra yeniden hesaplanır.",
+    "pay.notice.sick-case-long-gap":
+      "Hastalık günleri arasında uzun çalışılmayan süre – muhtemelen iki ayrı hastalık; tek durum sayıldı, lütfen kontrol edin.",
+    "sickRecalc.title": "Hastalık durumu kuralı: yeniden hesaplama bekliyor",
+    "sickRecalc.body":
+      "{count} ayda hastalık günleri hastalık durumu kuralından farklı (varsayılan durum başına 6 haftayı aşıyor). Onayınız olmadan tüm tutarlar değişmez.",
+    "sickRecalc.review": "Ayları incele",
+    "sickRecalc.hide": "Gizle",
+    "sickRecalc.row": "{days} hastalık günü · şu an {before} → yeni {after}",
+    "sickRecalc.confirm": "Seçili ayları yeniden hesapla",
+    "sickRecalc.cancel": "İptal",
+    "sickRecalc.noneSelected": "Ay seçilmedi – hiçbir şey değişmez.",
     "pay.reason.sick-off-day": "Normal çalışma günü değil",
     "pay.reason.vacation-pay": "İzin ücreti",
     "pay.basis.average13": "13 hafta ortalaması",
@@ -361,6 +421,21 @@ export const v2: Bundle = {
     "pay.reason.sick-pay": "Wynagrodzenie chorobowe (§ 3 EntgFG)",
     "pay.reason.sick-waiting": "Okres 4 tygodni jeszcze nie minął",
     "pay.reason.sick-exceeded": "Przekroczono 6 tygodni na chorobę",
+    "pay.notice.sick-case-ambiguous":
+      "Niejasny przypadek choroby: sąsiednie wpisy nie zostały automatycznie połączone – sprawdź.",
+    "pay.notice.sick-legacy-over-limit":
+      "Rozbieżność wg zasady przypadku choroby (ponad 6 tygodni) – nie przeliczono automatycznie; przeliczenie tylko po potwierdzeniu.",
+    "pay.notice.sick-case-long-gap":
+      "Długa przerwa bez pracy między dniami choroby – możliwe dwie osobne choroby; liczone jako jeden przypadek, sprawdź.",
+    "sickRecalc.title": "Zasada przypadku choroby: przeliczenie oczekuje",
+    "sickRecalc.body":
+      "W {count} mies. dni choroby różnią się wg zasady przypadku choroby (ponad 6 tygodni na domniemany przypadek). Bez Twojego potwierdzenia kwoty pozostają bez zmian.",
+    "sickRecalc.review": "Sprawdź miesiące",
+    "sickRecalc.hide": "Ukryj",
+    "sickRecalc.row": "{days} dni choroby · obecnie {before} → nowe {after}",
+    "sickRecalc.confirm": "Przelicz wybrane miesiące",
+    "sickRecalc.cancel": "Anuluj",
+    "sickRecalc.noneSelected": "Nie wybrano miesiąca – nic się nie zmieni.",
     "pay.reason.sick-off-day": "To nie jest zwykły dzień pracy",
     "pay.reason.vacation-pay": "Wynagrodzenie urlopowe",
     "pay.basis.average13": "Średnia z 13 tygodni",

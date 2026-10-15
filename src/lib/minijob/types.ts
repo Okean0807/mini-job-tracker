@@ -403,6 +403,11 @@ export interface Settings {
   employeeName?: string;
   /** Eigene Leistungsarten (Code + Bezeichnung) — wiederverwendbarer Katalog */
   workCodes?: WorkCodeDef[];
+  /**
+   * Krankheitsfall-Fortsetzungsregel: vom Nutzer bestätigte Monate ("YYYY-MM").
+   * Nur über den Bestätigungsdialog (O-2) gesetzt; nie automatisch.
+   */
+  sickContinuousConfirmedMonths?: string[];
   /** Eigene Tätigkeiten — wiederverwendbarer Katalog (nicht Eintragsauswahl) */
   customTasks?: string[];
   notifications: NotificationSettings;

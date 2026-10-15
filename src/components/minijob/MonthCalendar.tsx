@@ -15,7 +15,7 @@ import { useT } from "@/lib/i18n";
 import { formatEuro, isoDate, monthNames, weekdayNames } from "@/lib/minijob/calc";
 import { holidayName } from "@/lib/minijob/holidays";
 import { generateFixedMonth } from "@/lib/minijob/schedule";
-import { shiftPayroll } from "@/lib/minijob/payroll";
+import { shiftPayroll, type SickCaseNotice } from "@/lib/minijob/payroll";
 import type { ResolveOptions } from "@/lib/minijob/resolve";
 import { KIND_ORDER, KIND_STYLE } from "@/lib/minijob/shift-kind-style";
 import type { Job, Shift, ShiftKind } from "@/lib/minijob/types";
@@ -70,6 +70,20 @@ function dayDisplayHours(
   }, 0);
 }
 
+/** Erster Krankheitsfall-Hinweis des Tages (wie in ShiftList), sonst undefined. */
+export function dayPayNotice(
+  dayShifts: Shift[],
+  allShifts: Shift[],
+  resolve: (shift: Shift) => ResolveOptions,
+): SickCaseNotice | undefined {
+  for (const s of dayShifts) {
+    if (s.kind !== "krank") continue;
+    const notice = shiftPayroll(s, { ...resolve(s), history: allShifts }).notice;
+    if (notice) return notice;
+  }
+  return undefined;
+}
+
 function dayEarningsTotal(
   dayShifts: Shift[],
   allShifts: Shift[],
@@ -87,12 +101,15 @@ export function buildDayTitle(options: {
   hours: number;
   earnings: number;
   kindLabel: (kind: ShiftKind) => string;
+  /** Übersetzter Krankheitsfall-Hinweis (sick-case-ambiguous / sick-legacy-over-limit). */
+  notice?: string | undefined;
 }): string {
   const parts: string[] = [];
   if (options.holiday) parts.push(options.holiday);
   if (options.kind) parts.push(options.kindLabel(options.kind));
   if (options.hours > 0) parts.push(`${options.hours.toFixed(1).replace(".", ",")} h`);
   if (options.earnings > 0) parts.push(formatEuro(options.earnings));
+  if (options.notice) parts.push(options.notice);
   return parts.join(" · ");
 }
 
@@ -210,12 +227,14 @@ export function MonthCalendar({
               ? colors[0]
               : undefined;
 
+          const notice = dayPayNotice(dayShifts, shifts, resolve);
           const title = buildDayTitle({
             holiday: feiertag,
             kind,
             hours,
             earnings,
             kindLabel: (k) => t(KIND_STYLE[k].labelKey),
+            notice: notice ? t(`pay.notice.${notice}`) : undefined,
           });
 
           return (
@@ -226,6 +245,7 @@ export function MonthCalendar({
               data-kind={kind ?? (feiertag ? "feiertag-cal" : undefined)}
               data-holiday={feiertag ? "1" : undefined}
               data-holiday-work={holidayAndWork ? "1" : undefined}
+              data-pay-notice={notice}
               onClick={() => onSelectDay(iso)}
               style={
                 jobAccent
