@@ -54,3 +54,27 @@ select t.calls(:'U', 50) as e7 \gset
 reset role;
 select t.ok(:e7 = 8, 'e7 50 consecutive calls -> exactly 8 allowed');
 select t.ok(cardinality(minute_stamps) = 8 and cardinality(hour_stamps) = 8, 'e7 42 denied calls stored nothing') from public.ai_rate_limits where user_id = :'U';
+-- e8 (derived Q10) direct table write/reset by API roles is impossible
+select t.ok(not has_table_privilege('authenticated', 'public.ai_rate_limits', 'UPDATE')
+  and not has_table_privilege('authenticated', 'public.ai_rate_limits', 'DELETE')
+  and not has_table_privilege('authenticated', 'public.ai_rate_limits', 'INSERT')
+  and not has_table_privilege('anon', 'public.ai_rate_limits', 'UPDATE'),
+  'e8 authenticated/anon have no INSERT/UPDATE/DELETE on ai_rate_limits');
+\set ON_ERROR_STOP off
+set role authenticated; set request.jwt.claim.sub = :'U';
+update public.ai_rate_limits set minute_stamps = '{}' where user_id = :'U';
+\echo 'expected above: permission denied for table ai_rate_limits (e8)'
+reset role;
+\set ON_ERROR_STOP on
+select t.ok(cardinality(minute_stamps) = 8, 'e8 row unchanged after denied direct update') from public.ai_rate_limits where user_id = :'U';
+-- e9 (derived Q12) search_path hijack: a shadow auth.uid()/unnest in a caller schema has no effect
+create schema evil;
+create function evil.unnest(anyarray) returns setof anyelement language sql as $$ select null::anyelement where false $$;
+grant usage on schema evil to authenticated;
+grant execute on function evil.unnest(anyarray) to authenticated;
+select t.reset(:'U');
+set role authenticated; set request.jwt.claim.sub = :'U'; set search_path = evil, public, pg_catalog;
+select t.calls(:'U', 10) as e9 \gset
+reset role; reset search_path;
+select t.ok(:e9 = 8, 'e9 caller search_path with shadow functions -> still exactly 8 allowed');
+drop schema evil cascade;
