@@ -213,4 +213,86 @@ describe("historical AI context", () => {
     const parsed = JSON.parse(buildAssistantContext(data, new Date(2026, 8, 15)));
     expect(parsed.historicalYears.map((x: { year: number }) => x.year)).toEqual([2024, 2025, 2026]);
   });
+
+  it("B4-1: limit comparison uses Minijob-only earnings, not Hauptbeschäftigung", () => {
+    const mj: Job = {
+      id: "j1",
+      name: "A",
+      color: "#000",
+      mode: "flex",
+      employmentType: "minijob",
+      rate: 14,
+      startDate: "2025-01-01",
+    };
+    const hb: Job = {
+      id: "h1",
+      name: "HB",
+      color: "#111",
+      mode: "fest",
+      employmentType: "hauptbeschaeftigung",
+      rate: 20,
+    };
+    const shifts = [
+      makeShift({ id: "m1", date: "2026-10-05", start: "08:00", end: "12:00", jobId: "j1" }),
+      makeShift({ id: "m2", date: "2026-10-06", start: "08:00", end: "12:00", jobId: "h1" }),
+    ];
+    const ctx = JSON.parse(
+      buildAssistantContext(makeData({ jobs: [mj, hb], shifts }), new Date("2026-10-10T12:00:00")),
+    );
+    expect(ctx.currentMonth.earnings).toBe(136);
+    expect(ctx.currentMonth.minijobEarnings).toBe(56);
+    expect(ctx.currentMonth.minijobHours).toBe(4);
+    expect(ctx.year.minijobEarnings).toBe(56);
+    expect(ctx.settings.legalMonthlyLimit).toBe(603);
+  });
+
+  it("B4-1: no Minijob limit → minijobEarnings null", () => {
+    const hb: Job = {
+      id: "h1",
+      name: "HB",
+      color: "#111",
+      mode: "fest",
+      employmentType: "hauptbeschaeftigung",
+      rate: 20,
+    };
+    const ctx = JSON.parse(
+      buildAssistantContext(
+        makeData({ jobs: [hb], shifts: [makeShift({ date: "2026-10-06", jobId: "h1" })] }),
+        new Date("2026-10-10T12:00:00"),
+      ),
+    );
+    expect(ctx.currentMonth.minijobEarnings).toBeNull();
+    expect(ctx.year.minijobEarnings).toBeNull();
+  });
+  it("N1 (documents current behaviour): earnings include future shifts of the month, minijobEarnings only up to today", () => {
+    const mj: Job = {
+      id: "j1",
+      name: "A",
+      color: "#000",
+      mode: "flex",
+      employmentType: "minijob",
+      rate: 14,
+      startDate: "2025-01-01",
+    };
+    const shifts = [
+      makeShift({ id: "past", date: "2026-10-05", start: "08:00", end: "12:00", jobId: "j1" }),
+      makeShift({ id: "future", date: "2026-10-20", start: "08:00", end: "12:00", jobId: "j1" }),
+    ];
+    const ctx = JSON.parse(
+      buildAssistantContext(makeData({ jobs: [mj], shifts }), new Date("2026-10-10T12:00:00")),
+    );
+    // All-jobs totals of the month: past + planned future shift (2 × 4 h × 14 €).
+    expect(ctx.currentMonth.earnings).toBe(112);
+    expect(ctx.currentMonth.hours).toBe(8);
+    expect(ctx.currentMonth.entriesCount).toBe(2);
+    // Limit-relevant Minijob values: only up to currentDate (same as the UI limit card).
+    expect(ctx.currentDate).toBe("2026-10-10");
+    expect(ctx.currentMonth.minijobEarnings).toBe(56);
+    expect(ctx.currentMonth.minijobHours).toBe(4);
+    expect(ctx.year.earnings).toBe(112);
+    expect(ctx.year.minijobEarnings).toBe(56);
+    // N2 (owner decision): months[] stays the all-jobs sum incl. future shifts.
+    const october = ctx.months.find((m: { month: number }) => m.month === 9);
+    expect(october.earnings).toBe(112);
+  });
 });
