@@ -228,12 +228,24 @@ describe("Prompt (M142-5, P3-142-a)", () => {
     expect(prompt).toMatch(/NICHT eindeutig/);
   });
   it("historische Gesamtsummen nicht als Minijob-Verdienst / kein kategorischer Grenzschluss", () => {
-    expect(prompt).toMatch(/months, jobs und historicalYears enthalten nur Summen ALLER Jobs/);
+    expect(prompt).toMatch(/months und historicalYears sind Gesamtsummen ALLER Jobs/);
+    expect(prompt).toMatch(/Historischer Gesamtverdienst ist KEIN Minijob-Einkommen/);
     expect(prompt).toMatch(/niemals als Minijob-Verdienst dar/);
     expect(prompt).toMatch(/keinen kategorischen Schluss/);
     expect(prompt).toMatch(
       /Für vergangene Monate und Jahre liegt kein grenzrelevanter Minijob-Wert vor/,
     );
+  });
+
+  it("DECISIONS R3 Punkt 6: ohne getrennte Minijob-Werte ist eine Überschreitung nicht bestimmbar", () => {
+    expect(prompt).toMatch(
+      /kein getrennter Minijob-Wert \(minijobEarnings\) vorliegt, sage ausdrücklich, dass sich anhand dieser Daten nicht bestimmen lässt, ob die Minijob-Grenze überschritten wurde/,
+    );
+  });
+
+  it("P3-R3-142-a: jobs = Gesamtsummen je Job (nicht 'Summen aller Jobs')", () => {
+    expect(prompt).toMatch(/jobs enthält Gesamtsummen je einzelnem Job über alle Zeiträume/);
+    expect(prompt).not.toMatch(/months, jobs und historicalYears enthalten nur Summen ALLER Jobs/);
   });
 
   it("kein fehlendes Leerzeichen zwischen Sätzen ('hin.Für')", () => {
