@@ -42,11 +42,18 @@ export function TodayImportantCard({
   // Gleiche Regel wie das Dashboard-Banner: nur mit (bestätigtem) Minijob.
   const nowDate = new Date();
   const multiMinijob =
-    multipleMinijobsWithMainJob(jobs, shifts, monthPeriod(nowDate.getFullYear(), nowDate.getMonth())) ||
-    multipleMinijobsWithMainJob(jobs, shifts, yearPeriod(nowDate.getFullYear()));
+    multipleMinijobsWithMainJob(
+      jobs,
+      shifts,
+      monthPeriod(nowDate.getFullYear(), nowDate.getMonth()),
+    ) || multipleMinijobsWithMainJob(jobs, shifts, yearPeriod(nowDate.getFullYear()));
   const nearLimit =
-    limitAlertLevel(jobsApplyMinijobLimit(jobs), monthUsage.share, yearUsage.share, multiMinijob) !==
-    null;
+    limitAlertLevel(
+      jobsApplyMinijobLimit(jobs),
+      monthUsage.share,
+      yearUsage.share,
+      multiMinijob,
+    ) !== null;
   const needsEmploymentType = jobsNeedingEmploymentType(jobs);
   const monthStart = `${today.slice(0, 7)}-01`;
   const wageViolations = findWageViolations(shifts, jobs, settings.defaultRate, (s) => s.date >= monthStart && s.date <= today);

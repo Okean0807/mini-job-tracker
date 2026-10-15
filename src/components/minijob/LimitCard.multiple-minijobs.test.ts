@@ -78,7 +78,11 @@ describe("LimitCard multipleMinijobs", () => {
 
   it("Übersetzungen in allen Sprachen vorhanden", () => {
     for (const lang of ["de", "en", "ru", "tr", "pl"] as const) {
-      for (const key of ["limit.multipleMinijobs", "limit.multipleMinijobsHint", "limit.multipleMinijobsSum"]) {
+      for (const key of [
+        "limit.multipleMinijobs",
+        "limit.multipleMinijobsHint",
+        "limit.multipleMinijobsSum",
+      ]) {
         const value = tl(lang, key as Parameters<typeof tl>[1]);
         expect(value).not.toBe(key);
         expect(value.length).toBeGreaterThan(5);

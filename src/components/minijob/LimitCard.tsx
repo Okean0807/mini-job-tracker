@@ -47,7 +47,10 @@ export function LimitCard({
   }
   if (multipleMinijobs) {
     return (
-      <div className="rounded-2xl border bg-card p-4 shadow-card" data-testid="limit-multiple-minijobs">
+      <div
+        className="rounded-2xl border bg-card p-4 shadow-card"
+        data-testid="limit-multiple-minijobs"
+      >
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {t("limit.title")} · {scopeLabel}

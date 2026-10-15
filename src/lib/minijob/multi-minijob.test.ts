@@ -90,13 +90,22 @@ describe("multipleMinijobsWithMainJob", () => {
     const kurz = job("k", 15, "kurzfristig");
     expect(multipleMinijobsWithMainJob([kurz, MJ_A, MJ_B], SHIFTS.slice(1), SEPT)).toBe(false);
     const legacyFest: Job = { id: "f", name: "f", color: "#000", mode: "fest" };
-    expect(multipleMinijobsWithMainJob([legacyFest, MJ_A, MJ_B], SHIFTS.slice(1), SEPT)).toBe(false);
+    expect(multipleMinijobsWithMainJob([legacyFest, MJ_A, MJ_B], SHIFTS.slice(1), SEPT)).toBe(
+      false,
+    );
   });
 });
 
 describe("kein 'OK'/'über der Grenze' bei HB + 2 Minijobs", () => {
   it("650 € (wäre bisher 'über'): Alert = null", () => {
-    const usage = monthUsage(SHIFTS, makeResolver([HB, MJ_A, MJ_B], settings), settings, 2026, 8, "2026-09-30");
+    const usage = monthUsage(
+      SHIFTS,
+      makeResolver([HB, MJ_A, MJ_B], settings),
+      settings,
+      2026,
+      8,
+      "2026-09-30",
+    );
     expect(usage.earnings).toBe(650); // Summe bleibt informativ
     expect(limitAlertLevel(true, usage.share, 0)).toBe("over"); // Altverhalten ohne Flag
     expect(limitAlertLevel(true, usage.share, 0, true)).toBeNull();
@@ -112,7 +121,11 @@ describe("kein 'OK'/'über der Grenze' bei HB + 2 Minijobs", () => {
 
   it("einzelner Minijob: Status unverändert", () => {
     const jobs = [HB, MJ_A];
-    const shifts = [SHIFTS[0]!, shift("a", "mj-a", "2026-09-10", 20), shift("a2", "mj-a", "2026-09-12", 11)]; // 620 €
+    const shifts = [
+      SHIFTS[0]!,
+      shift("a", "mj-a", "2026-09-10", 20),
+      shift("a2", "mj-a", "2026-09-12", 11),
+    ]; // 620 €
     const usage = monthUsage(shifts, makeResolver(jobs, settings), settings, 2026, 8, "2026-09-30");
     expect(usage.earnings).toBe(620);
     const unreliable = multipleMinijobsWithMainJob(jobs, shifts, SEPT);
