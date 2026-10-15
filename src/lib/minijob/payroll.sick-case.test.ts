@@ -58,7 +58,8 @@ function evaluate(shifts: Shift[], job: Job, history: Shift[] = shifts, more: Pa
   return shifts.map((s) => shiftPayroll(s, { job, defaultRate: RATE, history, ...more }));
 }
 
-const count = (ps: { reason: string }[], reason: string) => ps.filter((p) => p.reason === reason).length;
+const count = (ps: { reason: string }[], reason: string) =>
+  ps.filter((p) => p.reason === reason).length;
 
 describe("Stichtag", () => {
   it("ist ein fester ISO-Tag (Owner-Entscheidung)", () => {
@@ -105,7 +106,11 @@ describe("T1–T8", () => {
       entry("2026-11-12", "arbeit"),
       ...sickRun("2026-11-13", 10),
     ];
-    const ps = evaluate(shifts.filter((s) => s.kind === "krank"), ALL_DAYS, shifts);
+    const ps = evaluate(
+      shifts.filter((s) => s.kind === "krank"),
+      ALL_DAYS,
+      shifts,
+    );
     expect(count(ps, "sick-pay")).toBe(20);
     expect(continuousSickCase(shifts[11]!, ALL_DAYS, shifts).start).toBe("2026-11-13");
     expect(ps.some((p) => p.notice)).toBe(false);
@@ -191,8 +196,15 @@ describe("Randfälle", () => {
   });
 
   it("Urlaub zwischen Krankheitstagen beendet den Fall", () => {
-    const shifts = [...sickRun("2026-11-02", 5), entry("2026-11-07", "urlaub"), ...sickRun("2026-11-08", 3)];
-    expect(continuousSickCase(shifts[6]!, ALL_DAYS, shifts)).toEqual({ start: "2026-11-08", ambiguous: false });
+    const shifts = [
+      ...sickRun("2026-11-02", 5),
+      entry("2026-11-07", "urlaub"),
+      ...sickRun("2026-11-08", 3),
+    ];
+    expect(continuousSickCase(shifts[6]!, ALL_DAYS, shifts)).toEqual({
+      start: "2026-11-08",
+      ambiguous: false,
+    });
   });
 
   it("Wochenend-Lücke (Plan Mo–Fr) verbindet Fr und Mo", () => {
@@ -211,21 +223,35 @@ describe("Randfälle", () => {
   });
 
   it("ohne ID nach explizitem Fall: nicht zusammengeführt, Hinweis", () => {
-    const shifts = [...sickRun("2026-11-02", 40, { sickCaseId: "c" }), ...sickRun("2026-12-12", 10)];
+    const shifts = [
+      ...sickRun("2026-11-02", 40, { sickCaseId: "c" }),
+      ...sickRun("2026-12-12", 10),
+    ];
     const ps = evaluate(shifts, ALL_DAYS);
     expect(count(ps, "sick-pay")).toBe(50);
     expect(ps[40]!.notice).toBe("sick-case-ambiguous");
   });
 
   it("explizite sickCaseId bleibt maßgeblich (verstreute Tage desselben Falls zählen ab Fallbeginn)", () => {
-    const shifts = [entry("2026-11-02", "krank", { sickCaseId: "x" }), entry("2026-12-14", "krank", { sickCaseId: "x" })];
+    const shifts = [
+      entry("2026-11-02", "krank", { sickCaseId: "x" }),
+      entry("2026-12-14", "krank", { sickCaseId: "x" }),
+    ];
     const ps = evaluate(shifts, ALL_DAYS);
     expect(ps[1]!.reason).toBe("sick-exceeded"); // 42 Tage nach 02.11.
   });
 
   it("verstreute Zeiträume ohne ID werden nicht zusammengeführt", () => {
-    const shifts = [...sickRun("2026-11-02", 30), entry("2026-12-02", "arbeit"), ...sickRun("2026-12-03", 30)];
-    const ps = evaluate(shifts.filter((s) => s.kind === "krank"), ALL_DAYS, shifts);
+    const shifts = [
+      ...sickRun("2026-11-02", 30),
+      entry("2026-12-02", "arbeit"),
+      ...sickRun("2026-12-03", 30),
+    ];
+    const ps = evaluate(
+      shifts.filter((s) => s.kind === "krank"),
+      ALL_DAYS,
+      shifts,
+    );
     expect(count(ps, "sick-pay")).toBe(60);
   });
 });
