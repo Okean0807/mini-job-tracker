@@ -38,6 +38,7 @@ import { isAbsenceKind, type AbsenceKind } from "@/lib/minijob/absence-range";
 import { monthTimeAccount } from "@/lib/minijob/fest-time-account";
 import { jobsApplyMinijobLimit, primaryWorkMode } from "@/lib/minijob/work-mode";
 import { limitAlertLevel } from "@/lib/minijob/limit-alert";
+import { monthPeriod, multipleMinijobsWithMainJob, yearPeriod } from "@/lib/minijob/multi-minijob";
 import { payPeriods } from "@/lib/minijob/payday";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { useAppData } from "@/lib/minijob/store";
@@ -119,7 +120,14 @@ function DashboardPage() {
   const limitShare = monthLimit.share;
   const yearShare = yearLimit.share;
   const appliesMinijobLimit = jobsApplyMinijobLimit(jobs);
-  const limitAlert = limitAlertLevel(appliesMinijobLimit, limitShare, yearShare);
+  const multiMinijobMonth = multipleMinijobsWithMainJob(jobs, shifts, monthPeriod(year, month));
+  const multiMinijobYear = multipleMinijobsWithMainJob(jobs, shifts, yearPeriod(year));
+  const limitAlert = limitAlertLevel(
+    appliesMinijobLimit,
+    limitShare,
+    yearShare,
+    multiMinijobMonth || multiMinijobYear,
+  );
   const workMode = primaryWorkMode(jobs, settings.activeJobId);
   const isFest = workMode === "fest";
   const isSelf = workMode === "selbststaendig";
@@ -206,6 +214,7 @@ function DashboardPage() {
         rate={settings.defaultRate}
         auto={settings.hoursLimitAuto || settings.hoursLimitMonthly <= 0}
         notApplicable={!appliesMinijobLimit}
+        multipleMinijobs={multiMinijobMonth}
       />
     ),
     legalForecast: <LegalForecastCard forecast={legalForecast.rolling} />,
@@ -216,6 +225,7 @@ function DashboardPage() {
         rate={settings.defaultRate}
         auto={settings.hoursLimitAuto || settings.hoursLimitMonthly <= 0}
         notApplicable={!appliesMinijobLimit}
+        multipleMinijobs={multiMinijobYear}
       />
     ),
     payday: <PaydayCard periods={periods} />,

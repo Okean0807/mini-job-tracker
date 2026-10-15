@@ -5,6 +5,7 @@ import { formatEuro, formatHours, isoDate, shiftHours } from "@/lib/minijob/calc
 import { payPeriods } from "@/lib/minijob/payday";
 import { jobsPlannedOn } from "@/lib/minijob/schedule";
 import { limitAlertLevel } from "@/lib/minijob/limit-alert";
+import { monthPeriod, multipleMinijobsWithMainJob, yearPeriod } from "@/lib/minijob/multi-minijob";
 import { jobsNeedingEmploymentType } from "@/lib/minijob/legal/employment";
 import { jobsApplyMinijobLimit } from "@/lib/minijob/work-mode";
 import { findWageViolations } from "@/lib/minijob/wage-compliance";
@@ -39,8 +40,13 @@ export function TodayImportantCard({
   const overdue = periods.filter((p) => p.overdue).reduce((sum, p) => sum + p.outstanding, 0);
   const open = periods.filter((p) => p.outstanding > 0.005).reduce((sum, p) => sum + p.outstanding, 0);
   // Gleiche Regel wie das Dashboard-Banner: nur mit (bestätigtem) Minijob.
+  const nowDate = new Date();
+  const multiMinijob =
+    multipleMinijobsWithMainJob(jobs, shifts, monthPeriod(nowDate.getFullYear(), nowDate.getMonth())) ||
+    multipleMinijobsWithMainJob(jobs, shifts, yearPeriod(nowDate.getFullYear()));
   const nearLimit =
-    limitAlertLevel(jobsApplyMinijobLimit(jobs), monthUsage.share, yearUsage.share) !== null;
+    limitAlertLevel(jobsApplyMinijobLimit(jobs), monthUsage.share, yearUsage.share, multiMinijob) !==
+    null;
   const needsEmploymentType = jobsNeedingEmploymentType(jobs);
   const monthStart = `${today.slice(0, 7)}-01`;
   const wageViolations = findWageViolations(shifts, jobs, settings.defaultRate, (s) => s.date >= monthStart && s.date <= today);
