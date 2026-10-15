@@ -1346,7 +1346,7 @@ export function ShiftDialog({
                 </div>
                 {absencePreview.notice ? (
                   <p
-                    className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-400"
+                    className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400"
                     data-testid="entry-absence-notice"
                     data-notice={absencePreview.notice}
                   >

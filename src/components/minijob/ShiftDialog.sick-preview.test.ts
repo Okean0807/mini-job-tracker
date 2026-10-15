@@ -102,20 +102,20 @@ describe("ShiftDialog Krank-Vorschau mit Historie", () => {
   it("Tag 50 eines Falls: mit history → sick-exceeded (wie die Liste)", () => {
     seed(RUN);
     open(RUN[49]!.id, true);
-    expect(preview().dataset.payReason).toBe("sick-exceeded");
+    expect(preview().getAttribute("data-pay-reason")).toBe("sick-exceeded");
   });
 
   it("Tag 50 ohne history (Altverhalten der Vorschau) → sick-pay", () => {
     seed(RUN);
     open(RUN[49]!.id, false);
-    expect(preview().dataset.payReason).toBe("sick-pay");
+    expect(preview().getAttribute("data-pay-reason")).toBe("sick-pay");
   });
 
   it("zeigt sick-case-ambiguous in der Vorschau", () => {
     const shifts = [sick("2026-11-02"), sick("2026-11-04")];
     seed(shifts);
     open(shifts[1]!.id, true);
-    expect(notice()?.dataset.notice).toBe("sick-case-ambiguous");
+    expect(notice()?.getAttribute("data-notice")).toBe("sick-case-ambiguous");
     expect(notice()?.textContent).toBe(tl("de", "pay.notice.sick-case-ambiguous"));
   });
 
@@ -123,8 +123,8 @@ describe("ShiftDialog Krank-Vorschau mit Historie", () => {
     const march = Array.from({ length: 45 }, (_, i) => sick(isoDate(new Date(2026, 2, 1 + i))));
     seed(march);
     open(march[44]!.id, true);
-    expect(preview().dataset.payReason).toBe("sick-pay");
-    expect(notice()?.dataset.notice).toBe("sick-legacy-over-limit");
+    expect(preview().getAttribute("data-pay-reason")).toBe("sick-pay");
+    expect(notice()?.getAttribute("data-notice")).toBe("sick-legacy-over-limit");
   });
 
   it("ohne Hinweis keine Hinweiszeile", () => {

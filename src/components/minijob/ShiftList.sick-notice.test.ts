@@ -60,8 +60,8 @@ function render(shifts: Shift[], history?: Shift[]) {
   );
 }
 const notices = () =>
-  [...container.querySelectorAll<HTMLElement>('[data-testid="shift-pay-notice"]')].map(
-    (el) => el.dataset.notice,
+  [...container.querySelectorAll<HTMLElement>('[data-testid="shift-pay-notice"]')].map((el) =>
+    el.getAttribute("data-notice"),
   );
 
 describe("ShiftList Krankheitsfall-Hinweise", () => {
