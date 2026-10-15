@@ -13,7 +13,12 @@ import { DEFAULT_SETTINGS, type Job, type Shift } from "./types";
 const settings = { ...DEFAULT_SETTINGS, limitAuto: true };
 const SEPT = monthPeriod(2026, 8);
 
-const job = (id: string, rate: number, employmentType: Job["employmentType"], extra: Partial<Job> = {}): Job => ({
+const job = (
+  id: string,
+  rate: number,
+  employmentType: NonNullable<Job["employmentType"]>,
+  extra: Partial<Job> = {},
+): Job => ({
   id,
   name: id,
   color: "#000",
