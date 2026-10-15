@@ -7,9 +7,11 @@ import { describe, expect, it } from "vitest";
 const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "AbsenceDialog.tsx"), "utf8");
 
 describe("AbsenceDialog range UI (Batch B)", () => {
-  it("wires addAbsence with from/to and range delete/edit", () => {
-    expect(src).toMatch(/addAbsence/);
-    expect(src).toMatch(/removeAbsenceRange/);
+  it("wires planAbsence with from/to and range delete/edit (R4 D3: via Retro-Guard)", () => {
+    expect(src).toMatch(/planAbsence\(/);
+    expect(src).toMatch(/planAbsenceRemoval\(/);
+    expect(src).toMatch(/applyAbsencePlan\(/);
+    expect(src).toMatch(/RetroImpactDialog/);
     expect(src).toMatch(/absence-from/);
     expect(src).toMatch(/absence-to/);
     expect(src).toMatch(/contiguousAbsenceRange/);

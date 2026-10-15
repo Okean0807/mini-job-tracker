@@ -80,6 +80,32 @@ export const v2: Bundle = {
       "Hinweis: Dein Standard-Stundenlohn liegt ab {date} unter dem gesetzlichen Mindestlohn ({min}). Gespeicherte Sätze werden nicht automatisch geändert – bitte bei Bedarf selbst anpassen.",
     "sickRecalc.reviewDays":
       "Bitte prüfen: {count} Tag(e) mit unklarer Fallgrenze oder ungewöhnlich langer Unterbrechung.",
+    "pay.notice.sick-case-possibly-separate":
+      "Möglicherweise verschiedene Erkrankungen: Zwischen diesen Krankheitstagen liegen 6 oder mehr Kalendertage ohne Krankheit – nicht automatisch zu einem Fall zusammengefasst, Neuberechnung nur nach deiner Bestätigung.",
+    "sickRecalc.separateDays":
+      "Möglicherweise verschiedene Erkrankungen: {count} Tag(e) nach einer Unterbrechung von 6 oder mehr Kalendertagen – bitte vor der Bestätigung prüfen.",
+    "retro.title":
+      "Änderung wirkt auf andere Einträge",
+    "retro.body":
+      "Diese Änderung berechnet bereits erfasste Einträge in folgenden Monaten anders. Ohne Bestätigung wird nichts gespeichert.",
+    "retro.row":
+      "bisher {before} → neu {after}",
+    "retro.lapsed":
+      "Bestätigte Krankheitsfall-Neuberechnung wird aufgehoben für: {months}. Danach bitte erneut prüfen.",
+    "retro.cancel":
+      "Abbrechen",
+    "retro.confirm":
+      "Trotzdem speichern",
+    "sickLapsed.title":
+      "Bestätigung aufgehoben – bitte erneut prüfen",
+    "sickLapsed.body":
+      "Die Krankheitstage haben sich geändert, deshalb gilt deine frühere Bestätigung der Krankheitsfall-Neuberechnung nicht mehr für: {months}. Die Beträge folgen wieder der unbestätigten Berechnung.",
+    "sickLapsed.dismiss":
+      "Verstanden",
+    "limit.multipleMinijobsOtherMonths":
+      "Im gewählten Monat ist keine Mehrfachbeschäftigung erfasst – der Hinweis entsteht durch die oben genannten anderen Monate dieses Zeitraums.",
+    "limit.multipleMinijobsForecastBasis":
+      "Dieser Hinweis beruht nur auf erfassten Einträgen der 12 Monate bis zum gewählten Monat (Rückblick). Er ist keine Vorhersage und keine Feststellung künftiger Beschäftigungen.",
     "sick.linkCase":
       "Zum Krankheitsfall ab {date} hinzufügen (nur wenn es dieselbe Erkrankung ist). Ohne Haken wird der Tag getrennt gezählt.",
     "sick.ambiguousHelp":
@@ -188,6 +214,32 @@ export const v2: Bundle = {
       "Note: from {date} your default hourly rate is below the statutory minimum wage ({min}). Saved rates are never changed automatically – please adjust them yourself if needed.",
     "sickRecalc.reviewDays":
       "Please check: {count} day(s) with an unclear case boundary or an unusually long gap.",
+    "pay.notice.sick-case-possibly-separate":
+      "Possibly different illnesses: there are 6 or more calendar days without sickness between these sick days – not merged into one case automatically; recalculation only after your confirmation.",
+    "sickRecalc.separateDays":
+      "Possibly different illnesses: {count} day(s) after a break of 6 or more calendar days – please check before confirming.",
+    "retro.title":
+      "This change affects other entries",
+    "retro.body":
+      "This change recalculates entries already recorded in the following months. Nothing is saved without your confirmation.",
+    "retro.row":
+      "before {before} → new {after}",
+    "retro.lapsed":
+      "Confirmed sick-case recalculation will be revoked for: {months}. Please review again afterwards.",
+    "retro.cancel":
+      "Cancel",
+    "retro.confirm":
+      "Save anyway",
+    "sickLapsed.title":
+      "Confirmation revoked – please review again",
+    "sickLapsed.body":
+      "Your sick days changed, so your earlier confirmation of the sick-case recalculation no longer applies to: {months}. Amounts follow the unconfirmed calculation again.",
+    "sickLapsed.dismiss":
+      "Got it",
+    "limit.multipleMinijobsOtherMonths":
+      "No multiple employment is recorded in the selected month – the notice comes from the other months of this period listed above.",
+    "limit.multipleMinijobsForecastBasis":
+      "This notice is based only on recorded entries of the 12 months up to the selected month (look-back). It is not a prediction and not a statement about future employment.",
     "sick.linkCase":
       "Add to the sickness case starting {date} (only if it is the same illness). Unticked, the day is counted separately.",
     "sick.ambiguousHelp":
@@ -296,6 +348,32 @@ export const v2: Bundle = {
       "Внимание: с {date} ваша стандартная ставка ниже установленной законом минимальной оплаты ({min}). Сохранённые ставки не меняются автоматически – при необходимости измените их сами.",
     "sickRecalc.reviewDays":
       "Проверьте: {count} дн. с неясной границей случая или необычно долгим перерывом.",
+    "pay.notice.sick-case-possibly-separate":
+      "Возможно, разные болезни: между этими днями болезни 6 или более календарных дней без болезни – они не объединяются в один случай автоматически; пересчёт только после вашего подтверждения.",
+    "sickRecalc.separateDays":
+      "Возможно, разные болезни: {count} дн. после перерыва в 6 или более календарных дней – проверьте перед подтверждением.",
+    "retro.title":
+      "Изменение затрагивает другие записи",
+    "retro.body":
+      "Это изменение пересчитывает уже внесённые записи в следующих месяцах. Без подтверждения ничего не сохраняется.",
+    "retro.row":
+      "было {before} → станет {after}",
+    "retro.lapsed":
+      "Подтверждённый пересчёт по случаю болезни будет отменён для: {months}. После этого проверьте ещё раз.",
+    "retro.cancel":
+      "Отмена",
+    "retro.confirm":
+      "Всё равно сохранить",
+    "sickLapsed.title":
+      "Подтверждение снято – проверьте ещё раз",
+    "sickLapsed.body":
+      "Дни болезни изменились, поэтому ваше прежнее подтверждение пересчёта больше не действует для: {months}. Суммы снова считаются без подтверждения.",
+    "sickLapsed.dismiss":
+      "Понятно",
+    "limit.multipleMinijobsOtherMonths":
+      "В выбранном месяце несколько занятостей не зафиксировано – уведомление вызвано другими месяцами этого периода, указанными выше.",
+    "limit.multipleMinijobsForecastBasis":
+      "Это уведомление основано только на внесённых записях за 12 месяцев до выбранного месяца (ретроспектива). Это не прогноз и не утверждение о будущих занятостях.",
     "sick.linkCase":
       "Добавить к случаю болезни с {date} (только если это то же заболевание). Без отметки день считается отдельно.",
     "sick.ambiguousHelp":
@@ -404,6 +482,32 @@ export const v2: Bundle = {
       "Not: {date} tarihinden itibaren varsayılan saatlik ücretiniz yasal asgari ücretin ({min}) altında. Kayıtlı ücretler otomatik olarak değiştirilmez – gerekirse kendiniz düzenleyin.",
     "sickRecalc.reviewDays":
       "Lütfen kontrol edin: vaka sınırı belirsiz veya alışılmadık uzun aralı {count} gün.",
+    "pay.notice.sick-case-possibly-separate":
+      "Muhtemelen farklı hastalıklar: Bu hastalık günleri arasında hastalıksız 6 veya daha fazla takvim günü var – otomatik olarak tek vakada birleştirilmez; yeniden hesaplama yalnızca onayınızdan sonra.",
+    "sickRecalc.separateDays":
+      "Muhtemelen farklı hastalıklar: 6 veya daha fazla takvim günlük aradan sonra {count} gün – lütfen onaylamadan önce kontrol edin.",
+    "retro.title":
+      "Bu değişiklik diğer kayıtları etkiliyor",
+    "retro.body":
+      "Bu değişiklik aşağıdaki aylardaki mevcut kayıtları farklı hesaplar. Onay olmadan hiçbir şey kaydedilmez.",
+    "retro.row":
+      "önce {before} → yeni {after}",
+    "retro.lapsed":
+      "Onaylanmış hastalık vakası yeniden hesaplaması şu aylar için kaldırılacak: {months}. Ardından lütfen tekrar kontrol edin.",
+    "retro.cancel":
+      "İptal",
+    "retro.confirm":
+      "Yine de kaydet",
+    "sickLapsed.title":
+      "Onay kaldırıldı – lütfen tekrar kontrol edin",
+    "sickLapsed.body":
+      "Hastalık günleri değişti; bu nedenle önceki yeniden hesaplama onayınız şu aylar için artık geçerli değil: {months}. Tutarlar yeniden onaysız hesaplamaya göre gösterilir.",
+    "sickLapsed.dismiss":
+      "Anladım",
+    "limit.multipleMinijobsOtherMonths":
+      "Seçilen ayda birden fazla iş kaydı yok – uyarı, bu dönemin yukarıda listelenen diğer aylarından kaynaklanıyor.",
+    "limit.multipleMinijobsForecastBasis":
+      "Bu uyarı yalnızca seçilen aya kadarki 12 ayın kayıtlı girişlerine dayanır (geriye dönük). Bir tahmin ya da gelecekteki işler hakkında bir tespit değildir.",
     "sick.linkCase":
       "{date} tarihinde başlayan hastalık vakasına ekle (yalnızca aynı hastalıksa). İşaretlenmezse gün ayrı sayılır.",
     "sick.ambiguousHelp":
@@ -512,6 +616,32 @@ export const v2: Bundle = {
       "Uwaga: od {date} Twoja domyślna stawka godzinowa jest niższa niż ustawowa płaca minimalna ({min}). Zapisane stawki nie są zmieniane automatycznie – w razie potrzeby zmień je samodzielnie.",
     "sickRecalc.reviewDays":
       "Sprawdź: {count} dzień/dni z niejasną granicą przypadku lub nietypowo długą przerwą.",
+    "pay.notice.sick-case-possibly-separate":
+      "Możliwie różne choroby: między tymi dniami choroby jest 6 lub więcej dni kalendarzowych bez choroby – nie są automatycznie łączone w jeden przypadek; ponowne przeliczenie tylko po Twoim potwierdzeniu.",
+    "sickRecalc.separateDays":
+      "Możliwie różne choroby: {count} dz. po przerwie 6 lub więcej dni kalendarzowych – sprawdź przed potwierdzeniem.",
+    "retro.title":
+      "Zmiana wpływa na inne wpisy",
+    "retro.body":
+      "Ta zmiana przelicza inaczej wpisy zapisane już w poniższych miesiącach. Bez potwierdzenia nic nie zostanie zapisane.",
+    "retro.row":
+      "dotychczas {before} → nowo {after}",
+    "retro.lapsed":
+      "Potwierdzone przeliczenie przypadku choroby zostanie cofnięte dla: {months}. Następnie sprawdź ponownie.",
+    "retro.cancel":
+      "Anuluj",
+    "retro.confirm":
+      "Zapisz mimo to",
+    "sickLapsed.title":
+      "Potwierdzenie cofnięte – sprawdź ponownie",
+    "sickLapsed.body":
+      "Dni choroby się zmieniły, dlatego Twoje wcześniejsze potwierdzenie przeliczenia nie obowiązuje już dla: {months}. Kwoty znów wynikają z niepotwierdzonego obliczenia.",
+    "sickLapsed.dismiss":
+      "Rozumiem",
+    "limit.multipleMinijobsOtherMonths":
+      "W wybranym miesiącu nie zapisano wielu zatrudnień – informacja wynika z innych miesięcy tego okresu wymienionych wyżej.",
+    "limit.multipleMinijobsForecastBasis":
+      "Ta informacja opiera się wyłącznie na zapisanych wpisach z 12 miesięcy do wybranego miesiąca (wstecz). Nie jest prognozą ani stwierdzeniem dotyczącym przyszłych zatrudnień.",
     "sick.linkCase":
       "Dodaj do przypadku choroby od {date} (tylko jeśli to ta sama choroba). Bez zaznaczenia dzień liczony jest osobno.",
     "sick.ambiguousHelp":

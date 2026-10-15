@@ -3,9 +3,14 @@ import { Gauge } from "lucide-react";
 
 import { Progress } from "@/components/ui/progress";
 import { useT } from "@/lib/i18n";
-import { formatEuro, formatHours } from "@/lib/minijob/calc";
+import { formatEuro, formatHours, monthNames } from "@/lib/minijob/calc";
 import type { LimitUsage } from "@/lib/minijob/limits";
 import { cn } from "@/lib/utils";
+
+/** "YYYY-MM" → "März 2026" (D6: betroffene Monate). */
+export function o4MonthLabel(key: string): string {
+  return `${monthNames()[Number(key.slice(5, 7)) - 1] ?? key} ${key.slice(0, 4)}`;
+}
 
 interface LimitCardProps {
   usage: LimitUsage;
@@ -19,6 +24,10 @@ interface LimitCardProps {
    * einen Hinweis und die Summe zur Information – keinen Status/Anteil.
    */
   multipleMinijobs?: boolean;
+  /** D6: Monate ("YYYY-MM") im Zeitraum, die den Hinweis auslösen. */
+  affectedMonths?: readonly string[];
+  /** D6: true = der Hinweis entsteht nur durch ANDERE Monate des Zeitraums. */
+  causedByOtherMonths?: boolean;
 }
 
 export function LimitCard({
@@ -28,6 +37,8 @@ export function LimitCard({
   auto,
   notApplicable,
   multipleMinijobs,
+  affectedMonths,
+  causedByOtherMonths,
 }: LimitCardProps) {
   const { t } = useT();
   const titleId = useId();
@@ -63,6 +74,18 @@ export function LimitCard({
             {t("limit.multipleMinijobsHint")}
           </p>
         </div>
+        {affectedMonths?.length ? (
+          <p className="mt-2 text-xs text-muted-foreground" data-testid="limit-o4-months">
+            {t("limit.multipleMinijobsMonths", {
+              months: affectedMonths.map(o4MonthLabel).join(", "),
+            })}
+          </p>
+        ) : null}
+        {causedByOtherMonths ? (
+          <p className="mt-1 text-xs text-muted-foreground" data-testid="limit-o4-other-months">
+            {t("limit.multipleMinijobsOtherMonths")}
+          </p>
+        ) : null}
         <p className="mt-2 text-xs text-muted-foreground tabular-nums">
           {t("limit.multipleMinijobsSum", { amount: formatEuro(usage.earnings) })}
         </p>

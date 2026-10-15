@@ -76,6 +76,18 @@ export const SICK_RULE_CONTINUOUS = "continuous" as const;
  * (`notice = "sick-case-long-gap"`) ändert keine Beträge.
  */
 export const SICK_LONG_GAP_DAYS = 3;
+/**
+ * D4 (Owner R4): Zwischen zwei Krankheitstagen einer vermuteten Kette liegen
+ * mindestens so viele LEERE KALENDERTAGE (Tage ohne jeden Eintrag dieses Jobs,
+ * gezählt strikt zwischen den beiden Krankheitstagen) → möglicherweise
+ * verschiedene Erkrankungen. Solche Ketten werden NIE automatisch nach der
+ * Fortsetzungsregel zusammengefasst – auch nicht bei neu erfassten Tagen –,
+ * sondern nur nach Bestätigung je Monat (O-2), mit Vorher/Nachher.
+ * Keine Rechtsaussage (T6 offen): Ob es dieselbe Erkrankung ist, lässt sich aus
+ * den Daten nicht ableiten; die Schwelle steuert nur, wann NICHT automatisch
+ * zusammengefasst wird.
+ */
+export const SICK_SEPARATE_GAP_DAYS = 6;
 /** Referenzzeitraum des Urlaubsentgelts (§ 11 BUrlG). */
 export const VACATION_REFERENCE_DAYS = 91;
 /** Mindestzahl an Arbeitstagen im Referenzzeitraum für eine belastbare Berechnung. */
@@ -124,9 +136,15 @@ export interface ShiftPayroll {
  *   (keine automatische Neuberechnung, Bestätigung über O-2).
  * - "sick-case-long-gap": der vermutete Fall überbrückt ≥ SICK_LONG_GAP_DAYS
  *   planfreie Tage – evtl. zwei getrennte Erkrankungen; nur Hinweis.
+ * - "sick-case-possibly-separate": zwischen zwei Tagen des vermuteten Falls
+ *   liegen ≥ SICK_SEPARATE_GAP_DAYS leere Kalendertage – möglicherweise
+ *   verschiedene Erkrankungen; nie automatisch zusammengefasst (D4).
  */
 export type SickCaseNotice =
-  "sick-case-ambiguous" | "sick-legacy-over-limit" | "sick-case-long-gap";
+  | "sick-case-ambiguous"
+  | "sick-legacy-over-limit"
+  | "sick-case-long-gap"
+  | "sick-case-possibly-separate";
 
 export interface PayrollOptions extends ResolveOptions {
   /** Alle bekannten Schichten (für Muster-, Krankheitsfall- und 13-Wochen-Auswertung). */
@@ -270,6 +288,11 @@ export interface SickCase {
   longGap: boolean;
   /** true = alle Tage der Kette sind neu erfasst (`sickRule`), DECISIONS R3 Punkt 1. */
   marked: boolean;
+  /**
+   * true = mindestens eine Lücke von ≥ SICK_SEPARATE_GAP_DAYS leeren
+   * Kalendertagen in der Kette (D4) → nie automatisch zusammenfassen.
+   */
+  separate: boolean;
 }
 
 /**
@@ -379,6 +402,7 @@ export function continuousSickCase(
   let ambiguous = false;
   let longGap = false;
   let marked = shift.sickRule === SICK_RULE_CONTINUOUS;
+  let separate = false;
   const limitDate = addDays(shift.date, -SICK_LOOKBACK_DAYS);
   let cursor = shift.date;
   while (daysBetween(start, shift.date) < SICK_MAX_DAYS) {
@@ -401,11 +425,12 @@ export function continuousSickCase(
     // Arbeitstage (sonst wäre die Kette beendet). Gewöhnliche Ruhetage laut
     // Plan zählen nicht (DECISIONS R3 Punkt 3: keine Fehlwarnungen).
     if (unusualGapDays(date, cursor, job, history) >= SICK_LONG_GAP_DAYS) longGap = true;
+    if (daysBetween(date, cursor) - 1 >= SICK_SEPARATE_GAP_DAYS) separate = true;
     if (sick.some((s) => s.sickRule !== SICK_RULE_CONTINUOUS)) marked = false;
     start = date;
     cursor = date;
   }
-  return { start, ambiguous, longGap, marked };
+  return { start, ambiguous, longGap, marked, separate };
 }
 
 /**
@@ -575,16 +600,29 @@ export function shiftPayroll(shift: Shift, options: PayrollOptions = {}): ShiftP
       if (explicitCaseAmbiguous(shift, caseStart, job, history)) notice = "sick-case-ambiguous";
     } else {
       const presumed = continuousSickCase(shift, job, history);
+      // D4: Die Lücke ≥ SICK_SEPARATE_GAP_DAYS ist nur dann betragsrelevant,
+      // wenn der zusammengefasste Fall die 6-Wochen-Grenze erreicht; nur dann
+      // Hinweis "möglicherweise verschiedene Erkrankungen" (keine Fehlwarnung
+      // innerhalb der ersten 6 Wochen, DECISIONS R3 Punkt 3).
+      const separateRelevant =
+        presumed.separate && daysBetween(presumed.start, shift.date) >= SICK_MAX_DAYS;
       if (presumed.ambiguous) notice = "sick-case-ambiguous";
+      else if (separateRelevant) notice = "sick-case-possibly-separate";
       else if (presumed.longGap) notice = "sick-case-long-gap";
-      if (presumed.marked || isSickRecalcConfirmed(shift.date, options.sickContinuousConfirmed)) {
+      // Automatisch nur für vollständig neu erfasste Ketten OHNE Lücke von
+      // ≥ SICK_SEPARATE_GAP_DAYS Kalendertagen (D4); sonst nur nach Bestätigung.
+      const autoContinuous = presumed.marked && !presumed.separate;
+      if (autoContinuous || isSickRecalcConfirmed(shift.date, options.sickContinuousConfirmed)) {
         // Neu erfasster Zeitraum (DECISIONS R3 Punkt 1) oder bestätigter Monat (O-2).
         caseStart = presumed.start;
       } else {
         // Nicht bestätigt: bisheriges Verhalten, keine automatische Neuberechnung.
         caseStart = shift.date;
         if (daysBetween(presumed.start, shift.date) >= SICK_MAX_DAYS) {
-          notice = "sick-legacy-over-limit";
+          notice =
+            separateRelevant && !presumed.ambiguous
+              ? "sick-case-possibly-separate"
+              : "sick-legacy-over-limit";
         }
       }
     }
@@ -690,6 +728,19 @@ export function payrollTotals(
  * Monaten, die nach bisherigem Verhalten bezahlt werden, nach der
  * Fortsetzungsregel aber jenseits von 42 Tagen lägen.
  */
+/**
+ * Tag wird ohne Bestätigung wie bisher bezahlt, obwohl er nach der
+ * Fortsetzungsregel jenseits von 42 Tagen läge. D4: bei einer Lücke von
+ * ≥ SICK_SEPARATE_GAP_DAYS Kalendertagen trägt derselbe Fall den Hinweis
+ * "sick-case-possibly-separate" (Erklärung statt nur "über 6 Wochen").
+ */
+export function isSickLegacyDiscrepancy(p: ShiftPayroll): boolean {
+  return (
+    p.notice === "sick-legacy-over-limit" ||
+    (p.notice === "sick-case-possibly-separate" && p.paid && p.reason === "sick-pay")
+  );
+}
+
 export function sickLegacyDiscrepancies(
   shifts: Shift[],
   resolve: (shift: Shift) => ResolveOptions,
@@ -698,7 +749,7 @@ export function sickLegacyDiscrepancies(
   return shifts.filter(
     (shift) =>
       shift.kind === "krank" &&
-      shiftPayroll(shift, { ...resolve(shift), history }).notice === "sick-legacy-over-limit",
+      isSickLegacyDiscrepancy(shiftPayroll(shift, { ...resolve(shift), history })),
   );
 }
 
@@ -716,6 +767,12 @@ export interface SickRecalcMonth {
    * lange Lücke oder eine unklare Grenze hat – Hinweis im Dialog (P3-R3-144-c).
    */
   reviewDays: number;
+  /**
+   * Davon: Tage, deren vermuteter Fall nach Bestätigung eine Lücke von
+   * ≥ SICK_SEPARATE_GAP_DAYS Kalendertagen überbrückt – "möglicherweise
+   * verschiedene Erkrankungen" (D4).
+   */
+  separateDays: number;
 }
 
 /**
@@ -742,17 +799,23 @@ export function sickRecalcPreview(
         sickContinuousConfirmed: [...(base.sickContinuousConfirmed ?? []), month],
       };
     };
-    const reviewDays = list.filter((s) => {
-      if (s.kind !== "krank") return false;
-      const notice = shiftPayroll(s, { ...confirmMonth(s), history: shifts }).notice;
-      return notice === "sick-case-long-gap" || notice === "sick-case-ambiguous";
-    }).length;
+    const confirmedNotices = list
+      .filter((s) => s.kind === "krank")
+      .map((s) => shiftPayroll(s, { ...confirmMonth(s), history: shifts }).notice);
+    const reviewDays = confirmedNotices.filter(
+      (n) =>
+        n === "sick-case-long-gap" ||
+        n === "sick-case-ambiguous" ||
+        n === "sick-case-possibly-separate",
+    ).length;
+    const separateDays = confirmedNotices.filter((n) => n === "sick-case-possibly-separate").length;
     return {
       month,
       days: affected.get(month) ?? 0,
       before: payrollTotals(list, resolve, shifts).earnings,
       after: payrollTotals(list, confirmMonth, shifts).earnings,
       reviewDays,
+      separateDays,
     };
   });
 }

@@ -428,6 +428,12 @@ export interface Settings {
    * verliert die Bestätigung ihre Gültigkeit und der Monat wird erneut angeboten.
    */
   sickContinuousConfirmations?: SickConfirmation[];
+  /**
+   * D5 (Owner R4): Monate ("YYYY-MM"), deren O-2-Bestätigung wegen geänderter
+   * Daten aufgehoben wurde. Wird angezeigt, bis der Nutzer den Hinweis schließt
+   * oder den Monat erneut bestätigt – nie still verworfen.
+   */
+  sickConfirmationsLapsed?: string[];
   /** Eigene Tätigkeiten — wiederverwendbarer Katalog (nicht Eintragsauswahl) */
   customTasks?: string[];
   notifications: NotificationSettings;

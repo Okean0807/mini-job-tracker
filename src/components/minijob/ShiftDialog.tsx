@@ -40,6 +40,9 @@ import { absenceDayTimes } from "@/lib/minijob/schedule";
 import { holidayName } from "@/lib/minijob/holidays";
 import { parseRateInput, suggestedRate } from "@/lib/minijob/rate";
 import { ObjectDialog } from "@/components/minijob/ObjectDialog";
+import { RetroImpactDialog } from "@/components/minijob/RetroImpactDialog";
+import { needsRetroConfirmation, retroImpact, type RetroImpact } from "@/lib/minijob/retro-impact";
+import { getData } from "@/lib/minijob/store";
 import { persistDialogShift, removeShift, getShift } from "@/lib/minijob/service";
 import {
   type Customer,
@@ -166,6 +169,8 @@ export function ShiftDialog({
   const [newCodeOpen, setNewCodeOpen] = useState(false);
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const [fieldError, setFieldError] = useState<{ start?: string; end?: string }>({});
+  // D3 (Owner R4): rückwirkende Auswirkung – erst nach Bestätigung speichern.
+  const [retro, setRetro] = useState<{ impact: RetroImpact; apply: () => void } | null>(null);
   const [entryDate, setEntryDate] = useState(date);
   const [objectId, setObjectId] = useState<string | undefined>(undefined);
   const [objectDialogOpen, setObjectDialogOpen] = useState(false);
@@ -534,9 +539,41 @@ export function ShiftDialog({
     if (code && workCodeNote.trim()) next.workCodeNote = workCodeNote.trim();
     const noteSource = existing ?? shift;
     next.createdAt = noteSource?.createdAt ?? isoDate(new Date());
-    persistDialogShift(next, editingId);
-    toast.success(editingId ? t("shift.updated") : t("shift.saved"));
-    onOpenChange(false);
+    const apply = () => {
+      persistDialogShift(next, editingId);
+      toast.success(editingId ? t("shift.updated") : t("shift.saved"));
+      onOpenChange(false);
+    };
+    // D3: Ändert das Speichern die Bewertung ANDERER Einträge (anderer Monate)
+    // oder hebt es eine O-2-Bestätigung auf → erst Vorher/Nachher zeigen.
+    const data = getData();
+    const pendingId = editingId || "__retro-pending__";
+    const candidate = { ...next, id: pendingId };
+    const after = editingId
+      ? data.shifts.map((s) => (s.id === editingId ? candidate : s))
+      : [...data.shifts, candidate];
+    const impact = retroImpact(data.shifts, after, data.jobs, data.settings, [pendingId]);
+    if (needsRetroConfirmation(impact)) {
+      setRetro({ impact, apply });
+      return;
+    }
+    apply();
+  }
+
+  function deleteEntry(id: string) {
+    const apply = () => {
+      removeShift(id);
+      toast.success(t("shift.deleted"));
+      onOpenChange(false);
+    };
+    const data = getData();
+    const after = data.shifts.filter((s) => s.id !== id);
+    const impact = retroImpact(data.shifts, after, data.jobs, data.settings, [id]);
+    if (needsRetroConfirmation(impact)) {
+      setRetro({ impact, apply });
+      return;
+    }
+    apply();
   }
 
   const selfEmployed = job?.mode === "selbststaendig";
@@ -1648,9 +1685,12 @@ export function ShiftDialog({
                 data-testid="entry-delete"
                 onClick={() => {
                   const id = editingIdRef.current ?? resolvedShiftId;
-                  if (id) removeShift(id);
-                  toast.success(t("shift.deleted"));
-                  onOpenChange(false);
+                  if (id) {
+                    deleteEntry(id);
+                  } else {
+                    toast.success(t("shift.deleted"));
+                    onOpenChange(false);
+                  }
                 }}
               >
                 <Trash2 className="size-4" /> {t("entry.deleteEntry")}
@@ -1673,6 +1713,16 @@ export function ShiftDialog({
           </div>
         </DialogContent>
       </Dialog>
+
+      <RetroImpactDialog
+        impact={retro?.impact ?? null}
+        onCancel={() => setRetro(null)}
+        onConfirm={() => {
+          const pending = retro;
+          setRetro(null);
+          pending?.apply();
+        }}
+      />
 
       <ObjectDialog
         open={objectDialogOpen}

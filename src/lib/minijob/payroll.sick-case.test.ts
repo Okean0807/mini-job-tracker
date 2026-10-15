@@ -150,6 +150,7 @@ describe("T1–T8", () => {
       ambiguous: true,
       longGap: false,
       marked: false,
+      separate: false,
     });
   });
 
@@ -238,6 +239,7 @@ describe("Randfälle", () => {
       ambiguous: false,
       longGap: false,
       marked: false,
+      separate: false,
     });
   });
 
@@ -308,7 +310,13 @@ describe("QA R1 gaps (M144-1, M144-2)", () => {
     // Plan Mo–Fr: krank Mi 04.11.; Do/Fr leer (regelmäßig); krank Mo 09.11.
     const shifts = [entry("2026-11-04"), entry("2026-11-09")];
     const res = continuousSickCase(shifts[1]!, MON_FRI, shifts);
-    expect(res).toEqual({ start: "2026-11-09", ambiguous: true, longGap: false, marked: false });
+    expect(res).toEqual({
+      start: "2026-11-09",
+      ambiguous: true,
+      longGap: false,
+      marked: false,
+      separate: false,
+    });
     const [, p] = evaluate(shifts, MON_FRI);
     expect(p!.notice).toBe("sick-case-ambiguous");
   });
@@ -382,7 +390,13 @@ describe("Lange Lücke (QA P3-144-c, DECISIONS R3 Punkt 3): Plan beachten, keine
   it("Plan nur Montag: krank Mo + Mo der Folgewoche → KEIN Hinweis (Di–So planfrei), Beträge unverändert", () => {
     const shifts = [entry("2026-11-02"), entry("2026-11-09")];
     const res = continuousSickCase(shifts[1]!, MON_ONLY, shifts);
-    expect(res).toEqual({ start: "2026-11-02", ambiguous: false, longGap: false, marked: false });
+    expect(res).toEqual({
+      start: "2026-11-02",
+      ambiguous: false,
+      longGap: false,
+      marked: false,
+      separate: true,
+    });
     const ps = evaluate(shifts, MON_ONLY);
     expect(ps[1]!.notice).toBeUndefined();
     expect(ps.map((p) => p.reason)).toEqual(["sick-pay", "sick-pay"]);

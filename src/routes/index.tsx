@@ -15,7 +15,10 @@ import { MonthCalendar } from "@/components/minijob/MonthCalendar";
 import { AbsenceDialog } from "@/components/minijob/AbsenceDialog";
 import { ShiftDialog } from "@/components/minijob/ShiftDialog";
 import { ShiftList } from "@/components/minijob/ShiftList";
-import { SickRecalcNotice } from "@/components/minijob/SickRecalcNotice";
+import {
+  SickConfirmationLapsedNotice,
+  SickRecalcNotice,
+} from "@/components/minijob/SickRecalcNotice";
 import { StatCard } from "@/components/minijob/StatCard";
 import { WorkTimer } from "@/components/minijob/WorkTimer";
 import { Button } from "@/components/ui/button";
@@ -30,7 +33,11 @@ import {
 } from "@/lib/minijob/calc";
 import { sortProofShifts } from "@/lib/minijob/arbeitsnachweis";
 import { payrollTotals } from "@/lib/minijob/payroll";
-import { withSickConfirmations } from "@/lib/minijob/sick-confirmation";
+import {
+  lapsedWithout,
+  sanitizeLapsedMonths,
+  withSickConfirmations,
+} from "@/lib/minijob/sick-confirmation";
 import { activeWidgets, spanClass, widgetSize } from "@/lib/minijob/dashboard";
 import { goalsProgress } from "@/lib/minijob/goals";
 import { buildInsights } from "@/lib/minijob/insights";
@@ -40,7 +47,7 @@ import { isAbsenceKind, type AbsenceKind } from "@/lib/minijob/absence-range";
 import { monthTimeAccount } from "@/lib/minijob/fest-time-account";
 import { jobsApplyMinijobLimit, primaryWorkMode } from "@/lib/minijob/work-mode";
 import { effectiveLimitShares, limitAlertLevel } from "@/lib/minijob/limit-alert";
-import { limitReliabilityFlags } from "@/lib/minijob/multi-minijob";
+import { limitReliabilityFlags, limitReliabilityMonths } from "@/lib/minijob/multi-minijob";
 import { payPeriods } from "@/lib/minijob/payday";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { updateSettings, useAppData } from "@/lib/minijob/store";
@@ -126,6 +133,10 @@ function DashboardPage() {
   // Karte und der Banner nutzen den Flag ihres eigenen Zeitraums.
   const multiMinijob = useMemo(
     () => limitReliabilityFlags(jobs, shifts, year, month),
+    [jobs, shifts, year, month],
+  );
+  const multiMinijobMonths = useMemo(
+    () => limitReliabilityMonths(jobs, shifts, year, month),
     [jobs, shifts, year, month],
   );
   const multiMinijobMonth = multiMinijob.month;
@@ -229,6 +240,7 @@ function DashboardPage() {
       <LegalForecastCard
         forecast={legalForecast.rolling}
         multipleMinijobs={multiMinijob.forecast}
+        affectedMonths={multiMinijobMonths.forecast}
       />
     ),
     limitYear: (
@@ -239,6 +251,8 @@ function DashboardPage() {
         auto={settings.hoursLimitAuto || settings.hoursLimitMonthly <= 0}
         notApplicable={!appliesMinijobLimit}
         multipleMinijobs={multiMinijobYear}
+        affectedMonths={multiMinijobMonths.year}
+        causedByOtherMonths={multiMinijobYear && !multiMinijobMonth}
       />
     ),
     payday: <PaydayCard periods={periods} />,
@@ -340,6 +354,10 @@ function DashboardPage() {
       ) : null}
 
       {/* O-2: Neuberechnung nur nach ausdrücklicher Bestätigung (DECISIONS R2/R3). */}
+      <SickConfirmationLapsedNotice
+        months={sanitizeLapsedMonths(settings.sickConfirmationsLapsed)}
+        onDismiss={() => updateSettings({ sickConfirmationsLapsed: [] })}
+      />
       <SickRecalcNotice
         shifts={shifts}
         resolve={resolve}
@@ -351,6 +369,7 @@ function DashboardPage() {
               shifts,
               jobs,
             ),
+            sickConfirmationsLapsed: lapsedWithout(settings.sickConfirmationsLapsed, months),
           })
         }
       />

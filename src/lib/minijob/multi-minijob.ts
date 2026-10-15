@@ -170,3 +170,22 @@ export function limitReliabilityFlags(
     forecast: multipleMinijobsWithMainJob(jobs, shifts, rollingPeriod(year, month)),
   };
 }
+
+/**
+ * D6 (Owner R4, Regel A): betroffene Monate je Zeitraum, damit Jahres- und
+ * Prognosekarte erklären können, WELCHE Monate den Hinweis auslösen (auch wenn
+ * der betrachtete Monat selbst nicht betroffen ist). Die Prognose blickt nur
+ * auf die 12 Monate bis einschließlich `month` zurück (erfasste Einträge) –
+ * künftige Beschäftigungen sind darin nicht enthalten.
+ */
+export function limitReliabilityMonths(
+  jobs: Job[],
+  shifts: Shift[],
+  year: number,
+  month: number,
+): { year: string[]; forecast: string[] } {
+  return {
+    year: multipleMinijobMonths(jobs, shifts, yearPeriod(year)),
+    forecast: multipleMinijobMonths(jobs, shifts, rollingPeriod(year, month)),
+  };
+}

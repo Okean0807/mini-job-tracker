@@ -17,7 +17,7 @@ vi.mock("@/lib/minijob/payroll", async (orig) => ({
   sickRecalcPreview: () => preview,
 }));
 
-const { SickRecalcNotice } = await import("./SickRecalcNotice");
+const { SickRecalcNotice, SickConfirmationLapsedNotice } = await import("./SickRecalcNotice");
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -42,7 +42,9 @@ function render(shifts: Shift[]) {
 
 describe("SickRecalcNotice ausblenden / Prüfhinweis", () => {
   it("Ausblenden versteckt nur die Anzeige; neue Vorschau zeigt ihn wieder", () => {
-    preview = [{ month: "2026-12", days: 18, before: 2325, after: 975, reviewDays: 0 }];
+    preview = [
+      { month: "2026-12", days: 18, before: 2325, after: 975, reviewDays: 0, separateDays: 0 },
+    ];
     const a: Shift[] = [];
     render(a);
     expect(q("sick-recalc-hide")?.textContent).toBe(tl("de", "sickRecalc.hide"));
@@ -51,20 +53,70 @@ describe("SickRecalcNotice ausblenden / Prüfhinweis", () => {
     expect(onConfirm).not.toHaveBeenCalled();
     render([]); // gleiche Vorschau (neuer Array-Bezug) → bleibt ausgeblendet
     expect(q("sick-recalc-notice")).toBeNull();
-    preview = [{ month: "2026-12", days: 19, before: 2400, after: 975, reviewDays: 0 }];
+    preview = [
+      { month: "2026-12", days: 19, before: 2400, after: 975, reviewDays: 0, separateDays: 0 },
+    ];
     render([]);
     expect(q("sick-recalc-notice")).not.toBeNull();
   });
 
   it("reviewDays > 0 → Prüfhinweis am Monat", () => {
     preview = [
-      { month: "2026-12", days: 3, before: 225, after: 75, reviewDays: 2 },
-      { month: "2027-01", days: 1, before: 75, after: 0, reviewDays: 0 },
+      { month: "2026-12", days: 3, before: 225, after: 75, reviewDays: 2, separateDays: 0 },
+      { month: "2027-01", days: 1, before: 75, after: 0, reviewDays: 0, separateDays: 0 },
     ];
     render([]);
     act(() => q("sick-recalc-review")!.click());
     const hints = container.querySelectorAll('[data-testid="sick-recalc-review-days"]');
     expect(hints).toHaveLength(1);
     expect(hints[0]!.textContent).toBe(tl("de", "sickRecalc.reviewDays", { count: 2 }));
+  });
+});
+
+describe("D4/D5 (Owner R4)", () => {
+  it("separateDays > 0 → 'möglicherweise verschiedene Erkrankungen' am Monat (N19)", () => {
+    preview = [
+      { month: "2026-12", days: 2, before: 225, after: 75, reviewDays: 2, separateDays: 2 },
+    ];
+    render([]);
+    act(() => q("sick-recalc-review")!.click());
+    expect(q("sick-recalc-separate-days")!.textContent).toBe(
+      tl("de", "sickRecalc.separateDays", { count: 2 }),
+    );
+    expect(q("sick-recalc-review-days")!.textContent).toBe(
+      tl("de", "sickRecalc.reviewDays", { count: 2 }),
+    );
+  });
+
+  it("geänderte separateDays bei gleichen Beträgen → Hinweis erscheint wieder", () => {
+    preview = [
+      { month: "2026-12", days: 2, before: 225, after: 75, reviewDays: 2, separateDays: 0 },
+    ];
+    render([]);
+    act(() => q("sick-recalc-hide")!.click());
+    expect(q("sick-recalc-notice")).toBeNull();
+    preview = [
+      { month: "2026-12", days: 2, before: 225, after: 75, reviewDays: 2, separateDays: 2 },
+    ];
+    render([]);
+    expect(q("sick-recalc-notice")).not.toBeNull();
+  });
+
+  it("aufgehobene Bestätigung: Hinweis mit Monaten, Schließen ruft onDismiss", () => {
+    const onDismiss = vi.fn();
+    act(() =>
+      root.render(createElement(SickConfirmationLapsedNotice, { months: ["2026-12"], onDismiss })),
+    );
+    expect(q("sick-confirmation-lapsed")).not.toBeNull();
+    expect(q("sick-confirmation-lapsed-months")!.textContent).toContain("2026");
+    act(() => q("sick-confirmation-lapsed-dismiss")!.click());
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it("keine aufgehobenen Monate → kein Hinweis", () => {
+    act(() =>
+      root.render(createElement(SickConfirmationLapsedNotice, { months: [], onDismiss: () => {} })),
+    );
+    expect(q("sick-confirmation-lapsed")).toBeNull();
   });
 });

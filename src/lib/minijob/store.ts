@@ -6,6 +6,7 @@ import { normalizeDashboard } from "./dashboard";
 import { isPlainRecord } from "./payload";
 import {
   SICK_RULE_CONTINUOUS,
+  sanitizeLapsedMonths,
   sanitizeSickConfirmations,
   withCurrentSickConfirmations,
 } from "./sick-confirmation";
@@ -239,6 +240,11 @@ export function normalize(input: Partial<AppData>): AppData {
     const confirmations = sanitizeSickConfirmations(settings.sickContinuousConfirmations);
     if (confirmations.length) settings.sickContinuousConfirmations = confirmations;
     else delete settings.sickContinuousConfirmations;
+  }
+  if (settings.sickConfirmationsLapsed !== undefined) {
+    const lapsed = sanitizeLapsedMonths(settings.sickConfirmationsLapsed);
+    if (lapsed.length) settings.sickConfirmationsLapsed = lapsed;
+    else delete settings.sickConfirmationsLapsed;
   }
   if (Array.isArray(settings.workCodes)) {
     settings.workCodes = settings.workCodes.filter((item): item is WorkCodeDef =>
@@ -510,6 +516,22 @@ export function saveShifts(list: Shift[]) {
 
 export function deleteShift(id: string) {
   commit({ ...state, shifts: state.shifts.filter((s) => s.id !== id) });
+}
+
+/**
+ * D3 (Owner R4): Entfernen + Anlegen in EINEM Schritt (z. B. Abwesenheits-
+ * zeitraum ändern). Kein Zwischenstand, in dem O-2-Bestätigungen fälschlich
+ * aufgehoben würden.
+ */
+export function applyShiftChanges(removeIds: readonly string[], upserts: Shift[]) {
+  const remove = new Set(removeIds);
+  const learned = learnObjectsFromShifts(upserts, state.objects);
+  const map = new Map(state.shifts.filter((s) => !remove.has(s.id)).map((s) => [s.id, s]));
+  for (const s of learned.shifts) map.set(s.id, s);
+  const shifts = [...map.values()].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  let settings = state.settings;
+  for (const s of learned.shifts) settings = withLearnedCatalogs(settings, s);
+  commit({ ...state, shifts, objects: learned.objects, settings });
 }
 
 /* ---------- Jobs ---------- */

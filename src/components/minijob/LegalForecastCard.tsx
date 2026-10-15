@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
+import { o4MonthLabel } from "@/components/minijob/LimitCard";
 import { formatEuro } from "@/lib/minijob/calc";
 import { evaluateRollingWarning } from "@/lib/minijob/legal";
 import type { Rolling12ForecastResult } from "@/lib/minijob/legal/rolling";
@@ -13,6 +14,8 @@ interface LegalForecastCardProps {
    * und die Summe zur Information.
    */
   multipleMinijobs?: boolean;
+  /** D6: Monate im Rückblickzeitraum, die den Hinweis auslösen. */
+  affectedMonths?: readonly string[];
 }
 
 /**
@@ -20,7 +23,11 @@ interface LegalForecastCardProps {
  * It deliberately distinguishes projected income from actual income and
  * does not classify a forecast exceedance as legally permissible.
  */
-export function LegalForecastCard({ forecast, multipleMinijobs }: LegalForecastCardProps) {
+export function LegalForecastCard({
+  forecast,
+  multipleMinijobs,
+  affectedMonths,
+}: LegalForecastCardProps) {
   const { t } = useT();
   if (multipleMinijobs) {
     return (
@@ -41,6 +48,16 @@ export function LegalForecastCard({ forecast, multipleMinijobs }: LegalForecastC
             {t("limit.multipleMinijobsHint")}
           </p>
         </div>
+        {affectedMonths?.length ? (
+          <p className="mt-2 text-xs text-muted-foreground" data-testid="forecast-o4-months">
+            {t("limit.multipleMinijobsMonths", {
+              months: affectedMonths.map(o4MonthLabel).join(", "),
+            })}
+          </p>
+        ) : null}
+        <p className="mt-1 text-xs text-muted-foreground" data-testid="forecast-o4-basis">
+          {t("limit.multipleMinijobsForecastBasis")}
+        </p>
         <p className="mt-2 text-xs text-muted-foreground tabular-nums">
           {t("limit.multipleMinijobsSum", { amount: formatEuro(forecast.projectedEarnings) })}
         </p>

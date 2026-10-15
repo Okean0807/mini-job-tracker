@@ -34,7 +34,9 @@ export function SickRecalcNotice({
   const [hiddenFor, setHiddenFor] = useState<string | null>(null);
   const previewKey = useMemo(
     () =>
-      preview.map((m) => `${m.month}:${m.days}:${m.before}:${m.after}:${m.reviewDays}`).join("|"),
+      preview
+        .map((m) => `${m.month}:${m.days}:${m.before}:${m.after}:${m.reviewDays}:${m.separateDays}`)
+        .join("|"),
     [preview],
   );
 
@@ -81,6 +83,11 @@ export function SickRecalcNotice({
                         after: formatEuro(m.after),
                       })}
                     </span>
+                    {m.separateDays > 0 ? (
+                      <span className="block" data-testid="sick-recalc-separate-days">
+                        {t("sickRecalc.separateDays", { count: m.separateDays })}
+                      </span>
+                    ) : null}
                     {m.reviewDays > 0 ? (
                       <span className="block" data-testid="sick-recalc-review-days">
                         {t("sickRecalc.reviewDays", { count: m.reviewDays })}
@@ -138,6 +145,49 @@ export function SickRecalcNotice({
             </Button>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * D5 (Owner R4): Eine O-2-Bestätigung wurde aufgehoben, weil sich die
+ * zugrunde liegenden Krankheitstage geändert haben (Eingabe, Löschen, Import,
+ * Cloud-Stand). Nie still: Der Hinweis bleibt (auch nach Neustart), bis der
+ * Nutzer ihn schließt oder den Monat erneut bestätigt.
+ */
+export function SickConfirmationLapsedNotice({
+  months,
+  onDismiss,
+}: {
+  months: readonly string[];
+  onDismiss: () => void;
+}) {
+  const { t } = useT();
+  if (months.length === 0) return null;
+  const label = (key: string) => {
+    const [y, m] = key.split("-").map(Number);
+    return `${monthNames()[(m ?? 1) - 1] ?? key} ${y}`;
+  };
+  return (
+    <div
+      data-testid="sick-confirmation-lapsed"
+      className="mt-4 flex items-start gap-2 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200"
+    >
+      <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+      <div className="w-full space-y-2">
+        <p className="font-medium">{t("sickLapsed.title")}</p>
+        <p className="text-xs leading-relaxed" data-testid="sick-confirmation-lapsed-months">
+          {t("sickLapsed.body", { months: months.map(label).join(", ") })}
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          data-testid="sick-confirmation-lapsed-dismiss"
+          onClick={onDismiss}
+        >
+          {t("sickLapsed.dismiss")}
+        </Button>
       </div>
     </div>
   );

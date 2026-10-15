@@ -11,7 +11,13 @@
  * die die bestätigte Änderung nicht berühren (z. B. ein Arbeitseintrag nach der
  * Krankheit oder ein anderer Stundensatz), lassen die Bestätigung bestehen.
  */
-import { SICK_RULE_CONTINUOUS, continuousSickCase, monthKey, shiftPayroll } from "./payroll";
+import {
+  SICK_RULE_CONTINUOUS,
+  continuousSickCase,
+  isSickLegacyDiscrepancy,
+  monthKey,
+  shiftPayroll,
+} from "./payroll";
 import type { AppData, Job, Settings, Shift, ShiftKind, SickConfirmation } from "./types";
 
 export { SICK_RULE_CONTINUOUS };
@@ -55,7 +61,7 @@ export function sickMonthSignature(month: string, shifts: Shift[], jobs: Job[]):
     if (s.kind !== "krank" || s.sickCaseId || monthKey(s.date) !== month) continue;
     const job = jobs.find((j) => j.id === s.jobId);
     const p = shiftPayroll(s, { job, history: shifts });
-    if (p.notice !== "sick-legacy-over-limit") continue;
+    if (!isSickLegacyDiscrepancy(p)) continue;
     rows.push(`${s.id}|${s.jobId ?? ""}|${s.date}|${continuousSickCase(s, job, shifts).start}`);
   }
   if (!rows.length) return "";
@@ -76,6 +82,22 @@ export function sanitizeSickConfirmations(value: unknown): SickConfirmation[] {
     if (!byMonth.has(month)) byMonth.set(month, { month, signature });
   }
   return [...byMonth.values()].sort((a, b) => a.month.localeCompare(b.month));
+}
+
+/**
+ * D5 (Owner R4): Monate, deren Bestätigung wegen geänderter Daten aufgehoben
+ * wurde. Typprüfung: nur "YYYY-MM", sortiert, ohne Duplikate.
+ */
+export function sanitizeLapsedMonths(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const months = value.filter((m): m is string => typeof m === "string" && MONTH_RE.test(m));
+  return [...new Set(months)].sort();
+}
+
+/** Nach erneuter Bestätigung: diese Monate aus der Aufgehoben-Liste entfernen. */
+export function lapsedWithout(lapsed: unknown, months: readonly string[]): string[] {
+  const done = new Set(months);
+  return sanitizeLapsedMonths(lapsed).filter((m) => !done.has(m));
 }
 
 /** Monate gültig typisierter Bestätigungen (für Resolver und Exporte). */
@@ -125,7 +147,10 @@ function sameConfirmations(raw: unknown, list: SickConfirmation[]): boolean {
 
 /**
  * Nach jeder Datenänderung bzw. jedem Import (DECISIONS R3 Punkt 4):
- * ungültige oder nicht mehr aktuelle Bestätigungen entfernen. `previous`
+ * ungültige oder nicht mehr aktuelle Bestätigungen entfernen. Nie still (D5):
+ * jeder Monat, dessen Bestätigung aufgehoben wird, landet in
+ * `settings.sickConfirmationsLapsed` und wird angezeigt, bis der Nutzer den
+ * Hinweis schließt oder den Monat erneut bestätigt. `previous`
  * (letzter Stand) erlaubt, die Prüfung zu überspringen, wenn sich weder
  * Einträge, Jobs noch Bestätigungen geändert haben. Gibt dasselbe Objekt
  * zurück, wenn nichts zu ändern ist. Ein veraltetes Vorabversions-Feld
@@ -148,10 +173,25 @@ export function withCurrentSickConfirmations(data: AppData, previous?: AppData):
   }
   const valid = currentSickConfirmations(raw, data.shifts, data.jobs);
   if (!legacy && sameConfirmations(raw, valid)) return data;
+  const validMonths = new Set(valid.map((c) => c.month));
+  const dropped = sanitizeSickConfirmations(raw)
+    .map((c) => c.month)
+    .filter((m) => !validMonths.has(m));
+  // Unveröffentlichtes Vorabversions-Feld: dessen Monate ebenfalls melden.
+  const legacyMonths = legacy
+    ? sanitizeLapsedMonths(settingsRecord["sickContinuousConfirmedMonths"])
+    : [];
+  const lapsed = sanitizeLapsedMonths([
+    ...sanitizeLapsedMonths(settingsRecord["sickConfirmationsLapsed"]),
+    ...dropped,
+    ...legacyMonths,
+  ]);
   const settings = { ...settingsRecord };
   delete settings["sickContinuousConfirmedMonths"];
   if (valid.length) settings["sickContinuousConfirmations"] = valid;
   else delete settings["sickContinuousConfirmations"];
+  if (lapsed.length) settings["sickConfirmationsLapsed"] = lapsed;
+  else delete settings["sickConfirmationsLapsed"];
   return { ...data, settings: settings as unknown as Settings };
 }
 
