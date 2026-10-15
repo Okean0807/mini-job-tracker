@@ -114,16 +114,41 @@ describe("ShiftList Krankheitsfall-Hinweise", () => {
   });
 });
 
+/**
+ * Quelltext genau EINES JSX-Elements (vom öffnenden `<Name` bis zum ersten
+ * selbstschließenden `/>`). QA P3-R2-144-a: der frühere Regex lief über das
+ * Element hinaus bis in `<ShiftDialog history={shifts}>` (M144-10 überlebte).
+ */
+function jsxElement(src: string, name: string): string[] {
+  const out: string[] = [];
+  const re = new RegExp(`<${name}\\b`, "g");
+  for (const m of src.matchAll(re)) {
+    const end = src.indexOf("/>", m.index);
+    out.push(src.slice(m.index, end + 2));
+  }
+  return out;
+}
+
 describe("Dashboard-Verdrahtung (index.tsx)", () => {
   const src = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "../../routes/index.tsx"),
     "utf8",
   );
-  it("ShiftList bekommt history={shifts}", () => {
-    expect(src).toMatch(/<ShiftList[\s\S]*?history=\{shifts\}[\s\S]*?\/>/);
+  it("ShiftList bekommt history={shifts} (innerhalb des eigenen Elements)", () => {
+    const lists = jsxElement(src, "ShiftList");
+    expect(lists).toHaveLength(1);
+    expect(lists[0]).toMatch(/\bhistory=\{shifts\}/);
+    expect(lists[0]).not.toMatch(/<ShiftDialog/);
   });
-  it("ShiftDialog bekommt history={shifts}", () => {
-    expect(src).toMatch(/<ShiftDialog[\s\S]*?history=\{shifts\}[\s\S]*?\/>/);
+  it("ShiftDialog bekommt history={shifts} (innerhalb des eigenen Elements)", () => {
+    const dialogs = jsxElement(src, "ShiftDialog");
+    expect(dialogs).toHaveLength(1);
+    expect(dialogs[0]).toMatch(/\bhistory=\{shifts\}/);
+  });
+  it("jsxElement erkennt ein fehlendes history im ShiftList-Element (Selbsttest M144-10)", () => {
+    const mutated = src.replace(/(<ShiftList\b[\s\S]*?)\s*history=\{shifts\}/, "$1");
+    expect(mutated).not.toBe(src);
+    expect(jsxElement(mutated, "ShiftList")[0]).not.toMatch(/\bhistory=\{shifts\}/);
   });
   it("MonthCalendar bekommt alle shifts", () => {
     expect(src).toMatch(/<MonthCalendar[\s\S]*?shifts=\{shifts\}/);
