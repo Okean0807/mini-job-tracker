@@ -18,6 +18,13 @@
  * - Minijob: nur mit mindestens einem Eintrag im Zeitraum, der in seine
  *   Beschäftigungsdauer (startDate/endDate) fällt. Ein Minijob ohne Einträge
  *   im Zeitraum gilt als inaktiv – auch wenn er nicht archiviert ist.
+ * - Monatsbereich (QA P3-R2-145-a, Monat/Jahr-Konsistenz): zusätzlich zählt
+ *   ein Minijob, der im selben Kalenderjahr bis Monatsende Einträge hatte und
+ *   im Monat noch beschäftigt ist (nicht archiviert, kein endDate vor dem
+ *   Monat, kein startDate nach dem Monat) – z. B. erster Minijob ohne Einträge
+ *   in diesem Monat. Ohne Auswahl des "ersten" Minijobs (O1/O3) ist der
+ *   Monatsstatus dann nicht belastbar. Folge: Monats-Flag ⇒ Jahres-Flag.
+ *   Minijobs ganz ohne Einträge im Jahr zählen weiterhin nicht (P2-145-b).
  * - Hauptbeschäftigung: Eintrag im Zeitraum ODER nicht archiviert und
  *   Beschäftigungsdauer überschneidet den Zeitraum (HB wird oft nicht erfasst).
  *
@@ -64,19 +71,39 @@ function hasEntriesIn(job: Job, shifts: Shift[], period: LimitPeriod): boolean {
   );
 }
 
-function mainJobInvolved(job: Job, shifts: Shift[], period: LimitPeriod): boolean {
-  if (hasEntriesIn(job, shifts, period)) return true;
+/** Im Zeitraum noch beschäftigt (nicht archiviert, Dauer überschneidet den Zeitraum)? */
+function employedDuring(job: Job, period: LimitPeriod): boolean {
   if (job.archived) return false;
   if (job.startDate && job.startDate > period.to) return false;
   if (job.endDate && job.endDate < period.from) return false;
   return true;
 }
 
-/** true = Hauptbeschäftigung + mindestens zwei aktive Minijobs im Zeitraum. */
+function minijobInvolved(
+  job: Job,
+  shifts: Shift[],
+  period: LimitPeriod,
+  evidence: LimitPeriod | undefined,
+): boolean {
+  if (hasEntriesIn(job, shifts, period)) return true;
+  return !!evidence && employedDuring(job, period) && hasEntriesIn(job, shifts, evidence);
+}
+
+function mainJobInvolved(job: Job, shifts: Shift[], period: LimitPeriod): boolean {
+  if (hasEntriesIn(job, shifts, period)) return true;
+  return employedDuring(job, period);
+}
+
+/**
+ * true = Hauptbeschäftigung + mindestens zwei aktive Minijobs im Zeitraum.
+ * `evidence` (nur Monatsbereich): Zeitraum, in dem Einträge eines im Monat
+ * noch beschäftigten, aber eintragslosen Minijobs dessen Beteiligung belegen.
+ */
 export function multipleMinijobsWithMainJob(
   jobs: Job[],
   shifts: Shift[],
   period: LimitPeriod,
+  evidence?: LimitPeriod,
 ): boolean {
   const hasMain = jobs.some(
     (job) =>
@@ -84,7 +111,7 @@ export function multipleMinijobsWithMainJob(
   );
   if (!hasMain) return false;
   const activeMinijobs = jobs.filter(
-    (job) => employmentTypeOf(job) === "minijob" && hasEntriesIn(job, shifts, period),
+    (job) => employmentTypeOf(job) === "minijob" && minijobInvolved(job, shifts, period, evidence),
   );
   return activeMinijobs.length >= 2;
 }
@@ -108,7 +135,10 @@ export function limitReliabilityFlags(
   month: number,
 ): LimitReliabilityFlags {
   return {
-    month: multipleMinijobsWithMainJob(jobs, shifts, monthPeriod(year, month)),
+    month: multipleMinijobsWithMainJob(jobs, shifts, monthPeriod(year, month), {
+      from: yearPeriod(year).from,
+      to: monthPeriod(year, month).to,
+    }),
     year: multipleMinijobsWithMainJob(jobs, shifts, yearPeriod(year)),
     forecast: multipleMinijobsWithMainJob(jobs, shifts, rollingPeriod(year, month)),
   };
