@@ -1344,6 +1344,7 @@ function DataMigration({ shiftCount }: { shiftCount: number }) {
               bundesland: settings.bundesland,
               defaultRate: settings.defaultRate,
               supplements: settings.supplements,
+              sickContinuousConfirmed: settings.sickContinuousConfirmedMonths,
             });
             toast.success(t("set.migration.excelExported"));
           }}

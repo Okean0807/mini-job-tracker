@@ -18,15 +18,26 @@ export interface ExportContext {
   defaultRate?: number | undefined;
   /** Globale Zuschlagsregeln (greifen, wenn der Job keine eigenen hat) */
   supplements?: Supplements | undefined;
+  /**
+   * Alle bekannten Einträge (Krankheitsfälle, Arbeitsmuster, 13-Wochen-Schnitt).
+   * Ohne Angabe wird nur die exportierte Liste verwendet – dann beginnt ein
+   * Krankheitsfall, der vor dem Exportzeitraum startete, fälschlich neu
+   * (QA P1-144-a). Aufrufer mit Teilzeiträumen müssen die volle Historie geben.
+   */
+  history?: Shift[] | undefined;
+  /** Bestätigte Neuberechnungs-Monate (settings.sickContinuousConfirmedMonths, O-2). */
+  sickContinuousConfirmed?: readonly string[] | undefined;
 }
 
-function resolve(shift: Shift, ctx: ExportContext, history: Shift[] = []) {
+function resolve(shift: Shift, ctx: ExportContext, list: Shift[] = []) {
+  const history = ctx.history ?? list;
   const job = ctx.jobs.find((j) => j.id === shift.jobId);
   return shiftPayroll(shift, {
     job,
     supplements: ctx.supplements,
     holiday: isHoliday(shift.date, ctx.bundesland),
     defaultRate: ctx.defaultRate,
+    sickContinuousConfirmed: ctx.sickContinuousConfirmed,
     history,
   });
 }

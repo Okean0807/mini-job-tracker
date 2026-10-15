@@ -7,6 +7,12 @@ export interface ResolveOptions {
   holiday?: boolean;
   /** Standard-Stundenlohn als letzte Fallback-Ebene */
   defaultRate?: number | undefined;
+  /**
+   * Monate ("YYYY-MM"), für die der Nutzer die Neuberechnung nach der
+   * Krankheitsfall-Fortsetzungsregel bestätigt hat (O-2). Ohne Eintrag:
+   * bisheriges Verhalten + Hinweis, keine automatische Neuberechnung.
+   */
+  sickContinuousConfirmed?: readonly string[] | undefined;
 }
 
 /** Liefert Job + Zuschlagsregeln + Feiertagsinfo für eine Schicht. */
@@ -18,6 +24,7 @@ export function makeResolver(jobs: Job[], settings: Settings) {
       supplements: job?.supplements ?? settings.supplements,
       holiday: isHoliday(shift.date, settings.bundesland),
       defaultRate: settings.defaultRate,
+      sickContinuousConfirmed: settings.sickContinuousConfirmedMonths,
     };
   };
 }
