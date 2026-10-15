@@ -7,6 +7,12 @@ import { useT } from "@/lib/i18n";
 
 interface LegalForecastCardProps {
   forecast: Rolling12ForecastResult;
+  /**
+   * B3-1/O4: Hauptbeschäftigung + mehrere Minijobs im Prognosezeitraum.
+   * Dann kein Status ("OK"/überschritten) und keine Grenzwerte – nur Hinweis
+   * und die Summe zur Information.
+   */
+  multipleMinijobs?: boolean;
 }
 
 /**
@@ -14,8 +20,33 @@ interface LegalForecastCardProps {
  * It deliberately distinguishes projected income from actual income and
  * does not classify a forecast exceedance as legally permissible.
  */
-export function LegalForecastCard({ forecast }: LegalForecastCardProps) {
+export function LegalForecastCard({ forecast, multipleMinijobs }: LegalForecastCardProps) {
   const { t } = useT();
+  if (multipleMinijobs) {
+    return (
+      <section
+        className="rounded-2xl border bg-card p-4 shadow-card"
+        aria-label={t("legalForecast.title")}
+        data-testid="legal-forecast-multiple-minijobs"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t("legalForecast.title")}
+          </p>
+          <AlertTriangle className="size-5 shrink-0 text-amber-600" aria-hidden />
+        </div>
+        <div className="mt-3 space-y-1 rounded-xl border border-amber-500/40 bg-amber-500/5 p-2.5">
+          <p className="text-sm font-semibold">{t("limit.multipleMinijobs")}</p>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {t("limit.multipleMinijobsHint")}
+          </p>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground tabular-nums">
+          {t("limit.multipleMinijobsSum", { amount: formatEuro(forecast.projectedEarnings) })}
+        </p>
+      </section>
+    );
+  }
   const projected = forecast.projectedEarnings;
   const regular = forecast.regularLimit;
   const maximum = forecast.maximumAllowedIncome;
