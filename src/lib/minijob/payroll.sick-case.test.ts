@@ -138,7 +138,7 @@ describe("T1–T8", () => {
     expect(ps[30]!.notice).toBe("sick-case-ambiguous");
   });
 
-  it("T6: Wartezeit — Beginn 2026-11-01, krank ab 2026-11-10 für 60 Tage → 19 Wartetage, 23 bezahlt, 18 überschritten", () => {
+  it("T6 (documents CURRENT behaviour only – waiting days vs. 6 weeks is an OPEN legal question, UNVERIFIED): start 01.11., sick from 10.11. for 60 days → 19 waiting, 23 paid, 18 exceeded", () => {
     const job = makeJob([true, true, true, true, true, true, true], "2026-11-01");
     const ps = evaluate(sickRun("2026-11-10", 60), job);
     expect(count(ps, "sick-waiting")).toBe(19); // 10.11.–28.11.
@@ -253,5 +253,35 @@ describe("Randfälle", () => {
       shifts,
     );
     expect(count(ps, "sick-pay")).toBe(60);
+  });
+});
+
+describe("QA R1 gaps (M144-1, M144-2)", () => {
+  it("Stichtag selbst: am Tag `sickContinuousFrom` gilt bereits die neue Regel", () => {
+    const run = sickRun("2026-03-01", 45);
+    const cutoff = run[42]!.date; // Tag 43
+    const ps = evaluate(run, ALL_DAYS, run, { sickContinuousFrom: cutoff });
+    expect(ps[42]!.reason).toBe("sick-exceeded");
+    expect(ps[42]!.notice).toBeUndefined();
+    // Tag davor: Altverhalten (Tag 42 ist ohnehin bezahlt)
+    expect(ps[41]!.reason).toBe("sick-pay");
+    // Ein Tag später als Stichtag → Tag 43 noch Altverhalten + Hinweis
+    const later = evaluate(run, ALL_DAYS, run, { sickContinuousFrom: run[43]!.date });
+    expect(later[42]!.reason).toBe("sick-pay");
+    expect(later[42]!.notice).toBe("sick-legacy-over-limit");
+  });
+
+  it("mehrtägige Lücke im Hinweisfenster (2 leere Arbeitstage) → sick-case-ambiguous", () => {
+    // Plan Mo–Fr: krank Mi 04.11.; Do/Fr leer (regelmäßig); krank Mo 09.11.
+    const shifts = [entry("2026-11-04"), entry("2026-11-09")];
+    const res = continuousSickCase(shifts[1]!, MON_FRI, shifts);
+    expect(res).toEqual({ start: "2026-11-09", ambiguous: true });
+    const [, p] = evaluate(shifts, MON_FRI);
+    expect(p!.notice).toBe("sick-case-ambiguous");
+  });
+
+  it("Krankheit länger als 7 Tage vor der Lücke → kein Hinweis", () => {
+    const shifts = [entry("2026-11-02"), entry("2026-11-12")]; // dazwischen 9 leere Tage, Plan Mo–So
+    expect(continuousSickCase(shifts[1]!, ALL_DAYS, shifts).ambiguous).toBe(false);
   });
 });

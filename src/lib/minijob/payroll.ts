@@ -40,7 +40,15 @@ export const SICK_MAX_DAYS = 42;
  * Ab diesem Datum gilt die Fortsetzungsregel für Einträge ohne `sickCaseId`.
  * Frühere Tage werden NICHT automatisch neu berechnet (bisheriges Verhalten);
  * würde die neue Regel dort abweichen, wird nur `notice =
- * "sick-legacy-over-limit"` gesetzt. Stichtag = Owner-Entscheidung (offen).
+ * "sick-legacy-over-limit"` gesetzt.
+ *
+ * BLOCKED (Owner-Entscheidung O-1, offen): Der Wert ist ein PLATZHALTER und
+ * kein bestätigter Stichtag. Es gibt keine Quelle (Repo-Doku, Decisions,
+ * Release-Doku) für ein Datum. Jede Alternative ohne Datum ändert die
+ * Berechnungsbedeutung (neue Regel überall = automatische Neuberechnung
+ * vergangener Monate; nur Hinweis überall = Fehler bleibt bestehen;
+ * "vor dem aktuellen Monat" = Monatswerte ändern sich mit der Zeit).
+ * Nicht ohne Bestätigung des Owners mergen.
  */
 export const SICK_CONTINUOUS_RULE_FROM = "2026-11-01";
 /** Referenzzeitraum des Urlaubsentgelts (§ 11 BUrlG). */
@@ -433,6 +441,11 @@ export function shiftPayroll(shift: Shift, options: PayrollOptions = {}): ShiftP
     if (job?.startDate && daysBetween(job.startDate, shift.date) < SICK_WAITING_DAYS) {
       return unpaid("sick-waiting");
     }
+    // OFFENE RECHTSFRAGE (T6, UNVERIFIED, Owner/Beratung): Die 42 Tage werden
+    // ab Beginn der Arbeitsunfähigkeit gezählt – Wartetage innerhalb eines
+    // Falls verbrauchen also einen Teil der 6 Wochen (bisheriges Verhalten,
+    // unverändert). Ob die 6 Wochen stattdessen erst nach Ablauf der Wartezeit
+    // beginnen, ist NICHT entschieden; dies ist keine Regelaussage.
     let caseStart: string;
     let notice: SickCaseNotice | undefined;
     if (shift.sickCaseId) {
