@@ -43,6 +43,8 @@ import {
   HB,
   KF,
   LEGACY,
+  MJ_A,
+  MJ_B,
   SE,
   SHIFTS_HB,
   work,
@@ -105,7 +107,15 @@ function readYearKpis() {
   const limit = s.match(new RegExp(`${esc(t("stats.card.yearLimit"))}\\s*(\\d+) %`));
   const hint = s.includes(t("stats.card.yearLimitHint", { amount: norm(formatEuro(7236)) }));
   const earn = s.match(new RegExp(`${esc(t("stats.card.yearEarnings"))}\\s*([\\d.,]+ €)`));
-  return { limitPct: limit?.[1] ?? null, limitHint: hint, yearEarnings: earn?.[1] ?? null };
+  const o4Warning = new RegExp(
+    `${esc(t("stats.card.yearLimit"))}\\s*—\\s*${esc(t("limit.multipleMinijobs"))}`,
+  ).test(s);
+  return {
+    limitPct: limit?.[1] ?? null,
+    limitHint: hint,
+    yearEarnings: earn?.[1] ?? null,
+    o4Warning,
+  };
 }
 
 const FILTERS = [t("stats.allJobs"), "Minijob A", "Minijob B", "Hauptjob"];
@@ -138,9 +148,11 @@ describe("Statistik (Seite): Jahresgrenze unabhängig vom Job-Filter", () => {
       clickButton(f);
       return { filter: f, ...readYearKpis() };
     });
+    // B3-1/O4 (R2): HB + 2 aktive Minijobs → kein Prozentwert, Warnhinweis bei jedem Filter.
     for (const r of rows) {
-      expect(r.limitPct, r.filter).toBe("14"); // 1.020 € / 7.236 €
-      expect(r.limitHint, r.filter).toBe(true);
+      expect(r.limitPct, r.filter).toBeNull();
+      expect(r.limitHint, r.filter).toBe(false);
+      expect(r.o4Warning, r.filter).toBe(true);
     }
     // Darstellungswerte folgen weiterhin dem Filter.
     expect(rows.map((r) => r.yearEarnings)).toEqual([
@@ -149,6 +161,19 @@ describe("Statistik (Seite): Jahresgrenze unabhängig vom Job-Filter", () => {
       "480,00 €",
       "1.600,00 €",
     ]);
+  });
+
+  it("ohne Hauptbeschäftigung (2 Minijobs): Jahresgrenze 14 % bei Alle / Minijob A / Minijob B", () => {
+    setData({ jobs: [MJ_A, MJ_B], shifts: B4_SHIFTS.filter((s) => s.jobId !== "HB") });
+    render();
+    openTab(t("stats.tab.year"));
+    for (const f of FILTERS.slice(0, 3)) {
+      clickButton(f);
+      const r = readYearKpis();
+      expect(r.limitPct, f).toBe("14"); // 1.020 € / 7.236 €
+      expect(r.limitHint, f).toBe(true);
+      expect(r.o4Warning, f).toBe(false);
+    }
   });
 
   it("Jahresbericht-Export (PDF/XLSX) bleibt gefiltert; keine Bericht-Tab-UI", () => {
@@ -180,10 +205,14 @@ describe("Statistik (Seite): Jahresgrenze unabhängig vom Job-Filter", () => {
       const base = buildAnnualReport(shown, B4_JOBS, B4_SETTINGS, 2026, resolve);
       expect(vi.mocked(exportAnnualPdf)).toHaveBeenCalledTimes(1);
       expect(vi.mocked(exportAnnualXlsx)).toHaveBeenCalledTimes(1);
-      expect(vi.mocked(exportAnnualPdf).mock.calls[0]![0], label).toEqual(base);
-      expect(vi.mocked(exportAnnualXlsx).mock.calls[0]![0], label).toEqual(base);
-      // UI zeigt weiter die rechtliche Grenze aller Minijobs.
-      expect(readYearKpis().limitPct, label).toBe("14");
+      // Werte bleiben gefiltert; nur das O4-Flag kommt aus den ungefilterten Daten
+      // (Job-Filter ändert die Rechtslage nicht), damit der Export keinen % zeigt.
+      const expected = { ...base, multipleMinijobs: true };
+      expect(vi.mocked(exportAnnualPdf).mock.calls[0]![0], label).toEqual(expected);
+      expect(vi.mocked(exportAnnualXlsx).mock.calls[0]![0], label).toEqual(expected);
+      // UI: O4-Warnung statt Prozentwert, unabhängig vom Filter.
+      expect(readYearKpis().limitPct, label).toBeNull();
+      expect(readYearKpis().o4Warning, label).toBe(true);
     }
     // Gefilterter Export-Prozentsatz wie bisher (z. B. Minijob A ≈ 7 %), nicht der UI-Wert.
     clickButton("Minijob A");
