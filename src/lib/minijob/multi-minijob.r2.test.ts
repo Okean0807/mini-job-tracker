@@ -10,8 +10,10 @@ import { effectiveLimitShares, limitAlertLevel } from "./limit-alert";
 import {
   limitReliabilityFlags,
   monthPeriod,
+  multipleMinijobMonths,
   multipleMinijobsWithMainJob,
   rollingPeriod,
+  yearPeriod,
 } from "./multi-minijob";
 import { limitStatus } from "./notify";
 import { makeResolver } from "./resolve";
@@ -97,10 +99,19 @@ describe("P2-145-c: Flags je Bereich (betrachteter Monat vs. Jahr)", () => {
     expect(rollingPeriod(2026, 0)).toEqual({ from: "2025-02-01", to: "2026-01-31" });
   });
 
-  it("Prognose-Flag: zweiter Minijob nur im Vorjahresfenster → forecast=true, year=false", () => {
-    const s = [shift("a", "mj-a", "2026-02-10", 10), shift("b", "mj-b", "2025-11-10", 4)];
+  it("Prognose-Flag (DECISIONS R3 Punkt 7): nur Monate mit gleichzeitiger Aktivität zählen", () => {
     const mjB = { ...MJ_B, startDate: "2025-01-01" };
-    expect(limitReliabilityFlags([HB, MJ_A, mjB], s, 2026, 1)).toEqual({
+    // MJ-B nur im November 2025, MJ-A nur im Februar 2026 → nie gleichzeitig.
+    const sequential = [shift("a", "mj-a", "2026-02-10", 10), shift("b", "mj-b", "2025-11-10", 4)];
+    expect(limitReliabilityFlags([HB, MJ_A, mjB], sequential, 2026, 1)).toEqual({
+      month: false,
+      year: false,
+      forecast: false,
+    });
+    // Beide im November 2025 aktiv → Prognose-Fenster betroffen, Jahr 2026 nicht.
+    const mjA = { ...MJ_A, startDate: "2025-01-01" };
+    const concurrent = [...sequential, shift("a11", "mj-a", "2025-11-12", 4)];
+    expect(limitReliabilityFlags([HB, mjA, mjB], concurrent, 2026, 1)).toEqual({
       month: false,
       year: false,
       forecast: true,
@@ -174,35 +185,42 @@ describe("notify.limitStatus (store-basiert)", () => {
   });
 });
 
-describe("P3-R2-145-a: Monat/Jahr-Konsistenz, wenn ein Minijob im Monat ruht", () => {
-  // MJ-A (erster Minijob) Jan–Aug aktiv, im September KEINE Einträge, weiter beschäftigt;
-  // MJ-B arbeitet im September.
+describe("DECISIONS R3 Punkt 7: nur in DIESEM Monat aktive Minijobs (ersetzt P3-R2-145-a)", () => {
+  // MJ-A (erster Minijob) Jan + Aug aktiv, im September KEINE Einträge, weiter beschäftigt;
+  // MJ-B arbeitet nur im September.
   const shifts = [
     shift("a1", "mj-a", "2026-01-12", 10),
     shift("a8", "mj-a", "2026-08-12", 10),
     shift("b9", "mj-b", "2026-09-11", 10),
   ];
 
-  it("erster Minijob ruht im September → Monat zeigt ebenfalls O4 (wie Jahr/Prognose)", () => {
+  it("ruhender erster Minijob zählt im September nicht → Monat belastbar (false)", () => {
     expect(limitReliabilityFlags([HB, MJ_A, MJ_B], shifts, 2026, 8)).toEqual({
-      month: true,
-      year: true,
-      forecast: true,
+      month: false,
+      year: false,
+      forecast: false,
     });
   });
 
-  it("erster Minijob archiviert bzw. vor dem Monat beendet → Monat belastbar (false)", () => {
-    expect(
-      limitReliabilityFlags([HB, { ...MJ_A, archived: true }, MJ_B], shifts, 2026, 8).month,
-    ).toBe(false);
-    expect(
-      limitReliabilityFlags([HB, { ...MJ_A, endDate: "2026-08-31" }, MJ_B], shifts, 2026, 8).month,
-    ).toBe(false);
+  it("Jahr: nur Monate mit gleichzeitiger Aktivität (multipleMinijobMonths)", () => {
+    const withConcurrent = [...shifts, shift("a9", "mj-a", "2026-09-20", 2)];
+    expect(multipleMinijobMonths([HB, MJ_A, MJ_B], withConcurrent, yearPeriod(2026))).toEqual([
+      "2026-09",
+    ]);
+    expect(limitReliabilityFlags([HB, MJ_A, MJ_B], withConcurrent, 2026, 7)).toEqual({
+      month: false,
+      year: true,
+      forecast: false,
+    });
+    expect(limitReliabilityFlags([HB, MJ_A, MJ_B], withConcurrent, 2026, 8).month).toBe(true);
   });
 
-  it("Minijob, der erst nach dem Monat Einträge hat, zählt im Monat nicht", () => {
-    const s = [shift("b2", "mj-b", "2026-03-11", 10), shift("a10", "mj-a", "2026-10-12", 10)];
-    expect(limitReliabilityFlags([HB, MJ_A, MJ_B], s, 2026, 2).month).toBe(false);
+  it("Januar-Grenze (P3-R3-145-a): Vorjahres-Einträge belegen weder Monat noch Jahr noch Prognose", () => {
+    const mjA = { ...MJ_A, startDate: "2025-01-01" };
+    const s = [shift("a", "mj-a", "2025-12-12", 10), shift("b1", "mj-b", "2026-01-11", 10)];
+    expect(
+      limitReliabilityFlags([HB, mjA, { ...MJ_B, startDate: "2026-01-01" }], s, 2026, 0),
+    ).toEqual({ month: false, year: false, forecast: false });
   });
 
   it("Minijob ohne Einträge im Jahr zählt weiterhin nicht (P2-145-b bleibt)", () => {
@@ -211,25 +229,27 @@ describe("P3-R2-145-a: Monat/Jahr-Konsistenz, wenn ein Minijob im Monat ruht", (
     expect(limitReliabilityFlags([HB, idle, MJ_B], s, 2026, 8).month).toBe(false);
   });
 
-  it("Einträge nur im Vorjahr belegen den Monat nicht (Monat ⊆ Jahr)", () => {
-    const mjA = { ...MJ_A, startDate: "2025-01-01" };
-    const s = [shift("a", "mj-a", "2025-11-12", 10), shift("b9", "mj-b", "2026-09-11", 10)];
-    const flags = limitReliabilityFlags([HB, mjA, MJ_B], s, 2026, 8);
-    expect(flags.month).toBe(false);
-    expect(flags.year).toBe(false);
-  });
-
-  it("Invariante: Monats-Flag ⇒ Jahres-Flag für alle Monate", () => {
-    const jobsets = [
-      [HB, MJ_A, MJ_B],
-      [HB, { ...MJ_A, archived: true }, MJ_B],
-      [HB, { ...MJ_A, endDate: "2026-05-31" }, MJ_B],
-    ];
-    for (const jobs of jobsets) {
-      for (let m = 0; m < 12; m++) {
-        const f = limitReliabilityFlags(jobs, shifts, 2026, m);
-        if (f.month) expect(f.year, `month ${m}`).toBe(true);
+  it("Invariante: Monats-Flag ⇒ Jahres-Flag ⇒ mindestens ein betroffener Monat", () => {
+    const rnd = (() => {
+      let x = 12345;
+      return () => (x = (x * 1103515245 + 12345) % 2147483648) / 2147483648;
+    })();
+    for (let run = 0; run < 60; run++) {
+      const s: Shift[] = [];
+      for (let i = 0; i < 8; i++) {
+        const jobId = ["mj-a", "mj-b", "hb"][Math.floor(rnd() * 3)]!;
+        const m = 1 + Math.floor(rnd() * 12);
+        s.push(shift(`r${run}-${i}`, jobId, `2026-${String(m).padStart(2, "0")}-10`, 3));
       }
+      const jobs = [HB, MJ_A, { ...MJ_B, startDate: "2026-01-01" }];
+      const months = multipleMinijobMonths(jobs, s, yearPeriod(2026));
+      for (let m = 0; m < 12; m++) {
+        const f = limitReliabilityFlags(jobs, s, 2026, m);
+        const key = `2026-${String(m + 1).padStart(2, "0")}`;
+        expect(f.month, `${run}/${m}`).toBe(months.includes(key));
+        if (f.month) expect(f.year).toBe(true);
+      }
+      expect(limitReliabilityFlags(jobs, s, 2026, 0).year).toBe(months.length > 0);
     }
   });
 

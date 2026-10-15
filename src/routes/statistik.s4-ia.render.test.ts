@@ -26,7 +26,7 @@ vi.mock("@/lib/minijob/store", async (importOriginal) => {
 });
 
 import { tl } from "@/lib/i18n";
-import { buildAnnualReport } from "@/lib/minijob/annual";
+import { buildAnnualReport, withAllJobsO4 } from "@/lib/minijob/annual";
 import { exportAnnualPdf } from "@/lib/minijob/annual-export";
 import { formatEuro, shiftsInMonth } from "@/lib/minijob/calc";
 import { makeResolver } from "@/lib/minijob/resolve";
@@ -185,7 +185,12 @@ describe("S4 IA: Monat|Jahr Struktur", () => {
     const base = buildAnnualReport(shown, B4_JOBS, B4_SETTINGS, 2026, resolve);
     const exported = vi.mocked(exportAnnualPdf).mock.calls[0]![0];
     // Werte gefiltert; O4-Flag aus ungefilterten Daten (HB + 2 MJ) → Export ohne %.
-    expect(exported).toEqual({ ...base, multipleMinijobs: true });
+    expect(exported).toEqual({
+      ...base,
+      multipleMinijobs: true,
+      multipleMinijobMonths: withAllJobsO4(base, B4_JOBS, B4_SHIFTS, false).multipleMinijobMonths,
+      multipleMinijobsFromAllJobs: true,
+    });
     // Gefilterter Export (MA): limitShare folgt yearUsage(gefiltert), nicht der UI-Rechtsgrenze 14 %.
     expect(Math.round(exported.limitShare)).toBe(Math.round(base.limitShare));
     expect(Math.round(exported.limitShare)).toBeLessThan(14);

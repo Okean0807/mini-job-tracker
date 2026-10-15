@@ -33,7 +33,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useT } from "@/lib/i18n";
-import { buildAnnualReport } from "@/lib/minijob/annual";
+import { buildAnnualReport, withAllJobsO4 } from "@/lib/minijob/annual";
 import { exportAnnualPdf, exportAnnualXlsx } from "@/lib/minijob/annual-export";
 import { exportArbeitsnachweisPdf } from "@/lib/minijob/arbeitsnachweis";
 import {
@@ -181,12 +181,16 @@ function StatsPage() {
     [jobs, shifts, year],
   );
 
+  // DECISIONS R3 Punkt 5: Summen nach Filter, O4-Hinweis aus allen Daten + Erklärung.
   const annualReport = useMemo(
-    () => ({
-      ...buildAnnualReport(filtered, jobs, settings, year, resolve),
-      multipleMinijobs: yearMultiMinijob,
-    }),
-    [filtered, jobs, settings, year, resolve, yearMultiMinijob],
+    () =>
+      withAllJobsO4(
+        buildAnnualReport(filtered, jobs, settings, year, resolve),
+        jobs,
+        shifts,
+        jobFilter !== "alle",
+      ),
+    [filtered, jobs, settings, year, resolve, shifts, jobFilter],
   );
 
   const ctx = {

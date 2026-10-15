@@ -98,14 +98,26 @@ describe("P2-142-b: O4 im KI-Kontext", () => {
     expect(c.currentMonth.multipleMinijobsWithMainJob).toBe(false);
   });
 
-  it("Monat vs. Jahr: zweiter Minijob nur im März und Ende März beendet → Monat false, Jahr true", () => {
-    const shifts = [...SEPT.slice(0, 3), shift("b3", "mj-b", "2026-03-11", 4)];
+  it("Monat vs. Jahr: beide Minijobs im März aktiv, im September nur MJ-A → Monat false, Jahr true", () => {
+    const shifts = [
+      ...SEPT.slice(0, 3),
+      shift("a3", "mj-a", "2026-03-10", 4),
+      shift("b3", "mj-b", "2026-03-11", 4),
+    ];
     const c = ctx([HB, MJ_A, { ...MJ_B, endDate: "2026-03-31" }], shifts, NOW);
     expect(c.currentMonth.multipleMinijobsWithMainJob).toBe(false);
     expect(c.year.multipleMinijobsWithMainJob).toBe(true);
   });
 
-  it("P3-R2-145-a (wie #145): erster Minijob ruht im September, weiter beschäftigt → Monat true", () => {
+  it("DECISIONS R3 Punkt 7: nacheinander (nie gleichzeitig) aktive Minijobs → Jahr false", () => {
+    // MJ-B nur im März, MJ-A nur im September: in keinem Monat zwei aktive Minijobs.
+    const shifts = [...SEPT.slice(0, 3), shift("b3", "mj-b", "2026-03-11", 4)];
+    const c = ctx([HB, MJ_A, { ...MJ_B, endDate: "2026-03-31" }], shifts, NOW);
+    expect(c.currentMonth.multipleMinijobsWithMainJob).toBe(false);
+    expect(c.year.multipleMinijobsWithMainJob).toBe(false);
+  });
+
+  it("DECISIONS R3 Punkt 7 (ersetzt P3-R2-145-a): ruhender erster Minijob zählt im September nicht", () => {
     const shifts = [
       shift("h", "hb", "2026-09-09", 8),
       shift("a3", "mj-a", "2026-03-10", 10),
@@ -113,8 +125,9 @@ describe("P2-142-b: O4 im KI-Kontext", () => {
     ];
     const c = ctx([HB, MJ_A, MJ_B], shifts, NOW);
     expect(c.currentMonth.minijobEarnings).toBe(250);
-    expect(c.currentMonth.multipleMinijobsWithMainJob).toBe(true);
-    expect(c.year.multipleMinijobsWithMainJob).toBe(true);
+    expect(c.currentMonth.multipleMinijobsWithMainJob).toBe(false);
+    // März: nur MJ-A, September: nur MJ-B → kein Monat mit zwei aktiven Minijobs.
+    expect(c.year.multipleMinijobsWithMainJob).toBe(false);
   });
 
   it("ohne Minijob-Grenze: Flags false", () => {

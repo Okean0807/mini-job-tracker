@@ -44,12 +44,18 @@ describe("B3-1/O4 wiring", () => {
   it("Statistik: Jahreskachel und Jahresbericht nutzen den ungefilterten Flag", () => {
     const stats = read("statistik.tsx");
     expect(stats).toMatch(/multipleMinijobsWithMainJob\(jobs, shifts, yearPeriod\(year\)\)/);
-    expect(stats).toMatch(/multipleMinijobs: yearMultiMinijob/);
+    // DECISIONS R3 Punkt 5: Summen nach Filter, Flag/Monate aus ALLEN Einträgen + Erklärung.
+    expect(stats).toMatch(
+      /withAllJobsO4\(\s*buildAnnualReport\(filtered, jobs, settings, year, resolve\),\s*jobs,\s*shifts,\s*jobFilter !== "alle",?\s*\)/,
+    );
     expect(stats).toMatch(/yearMultiMinijob \? "—"/);
   });
   it("Jahresbericht-Karte und -Export zeigen bei Flag keinen Prozentwert", () => {
     expect(read("../components/minijob/AnnualReportCard.tsx")).toMatch(/report\.multipleMinijobs/);
     const exp = read("../lib/minijob/annual-export.ts");
-    expect(exp.match(/report\.multipleMinijobs/g)?.length).toBe(2);
+    // KPI-Wert, PDF-Hinweiszeile und O4-Zusatzzeilen (Monate/Filter-Erklärung).
+    expect(exp.match(/report\.multipleMinijobs\b/g)?.length).toBe(3);
+    expect(exp).toMatch(/\.\.\.annualO4Lines\(report\)/);
+    expect(exp).toMatch(/for \(const line of annualO4Lines\(report\)\)/);
   });
 });

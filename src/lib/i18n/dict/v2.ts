@@ -17,6 +17,10 @@ export const v2: Bundle = {
     "limit.multipleMinijobsHint":
       "Diese Karte kann mehrere Minijobs neben einer Hauptbeschäftigung nicht korrekt berücksichtigen und zeigt deshalb keinen Status. Neben einer Hauptbeschäftigung bleibt in der Regel nur der zuerst aufgenommene Minijob geringfügig; weitere werden mit der Hauptbeschäftigung zusammengerechnet. Bitte lass das prüfen (z. B. Minijob-Zentrale oder Krankenkasse).",
     "limit.multipleMinijobsSum": "Summe aller Minijobs (nur zur Information): {amount}",
+    "limit.multipleMinijobsMonths":
+      "Betroffene Monate (Hauptbeschäftigung + mindestens zwei in diesem Monat aktive Minijobs): {months}",
+    "limit.multipleMinijobsFilterNote":
+      "Hinweis trotz Filter: Die Summen zeigen nur den gewählten Job. Ob die Grenze belastbar bewertet werden kann, hängt aber von allen gleichzeitig ausgeübten Beschäftigungen ab – deshalb bleibt der Hinweis bestehen.",
     "limit.overExplain": "Eine Überschreitung kann steuer- und sozialversicherungsrechtlich relevant sein. Die genaue Behandlung hängt von deiner persönlichen Situation ab.",
     "limit.disclaimer": "Kein individueller Steuer- oder Rechtsrat. Die App berechnet keine Steuern oder Abgaben.",
 
@@ -113,6 +117,10 @@ export const v2: Bundle = {
     "limit.multipleMinijobsHint":
       "This card cannot correctly account for several minijobs alongside a main job and therefore shows no status. Alongside a main job, usually only the first minijob taken up stays marginal; further ones are added to the main job. Please have this checked (e.g. Minijob-Zentrale or your health insurer).",
     "limit.multipleMinijobsSum": "Total of all minijobs (for information only): {amount}",
+    "limit.multipleMinijobsMonths":
+      "Affected months (main job + at least two minijobs active in that month): {months}",
+    "limit.multipleMinijobsFilterNote":
+      "Notice despite the filter: the totals show only the selected job. Whether the limit can be assessed reliably depends on all jobs held at the same time, so the notice remains.",
     "limit.overExplain": "Exceeding the limit can matter for tax and social-security treatment. The exact outcome depends on your personal circumstances.",
     "limit.disclaimer": "Not individual tax or legal advice. The app does not calculate taxes or social contributions.",
 
@@ -209,6 +217,10 @@ export const v2: Bundle = {
     "limit.multipleMinijobsHint":
       "Эта карточка не может корректно учесть несколько миниджобов при основной работе, поэтому статус не показывается. При основной работе обычно только первый начатый миниджоб остаётся минимальным; остальные суммируются с основной работой. Пожалуйста, уточните (например, в Minijob-Zentrale или больничной кассе).",
     "limit.multipleMinijobsSum": "Сумма всех миниджобов (только для информации): {amount}",
+    "limit.multipleMinijobsMonths":
+      "Затронутые месяцы (основная работа + не менее двух миниджобов, активных в этом месяце): {months}",
+    "limit.multipleMinijobsFilterNote":
+      "Предупреждение несмотря на фильтр: суммы показывают только выбранную работу. Но можно ли надёжно оценить лимит, зависит от всех одновременных работ, поэтому предупреждение сохраняется.",
     "limit.overExplain": "Превышение лимита может иметь значение для налогов и соцстрахования. Точные последствия зависят от вашей ситуации.",
     "limit.disclaimer": "Это не индивидуальная налоговая или юридическая консультация. Приложение не рассчитывает налоги или взносы.",
 
@@ -305,6 +317,10 @@ export const v2: Bundle = {
     "limit.multipleMinijobsHint":
       "Bu kart, ana işin yanındaki birden fazla minijobu doğru hesaba katamaz ve bu nedenle durum göstermez. Ana işin yanında genellikle yalnızca ilk başlanan minijob muaf kalır; diğerleri ana işle toplanır. Lütfen kontrol ettirin (ör. Minijob-Zentrale veya sağlık sigortası).",
     "limit.multipleMinijobsSum": "Tüm minijobların toplamı (yalnızca bilgi için): {amount}",
+    "limit.multipleMinijobsMonths":
+      "Etkilenen aylar (ana iş + o ay en az iki aktif minijob): {months}",
+    "limit.multipleMinijobsFilterNote":
+      "Filtreye rağmen uyarı: Toplamlar yalnızca seçilen işi gösterir. Sınırın güvenilir değerlendirilip değerlendirilemeyeceği aynı anda yapılan tüm işlere bağlıdır; bu yüzden uyarı kalır.",
     "limit.overExplain": "Sınırın aşılması vergi ve sosyal güvenlik açısından önemli olabilir. Kesin sonuç kişisel durumuna bağlıdır.",
     "limit.disclaimer": "Bireysel vergi veya hukuk danışmanlığı değildir. Uygulama vergi veya prim hesaplamaz.",
 
@@ -401,6 +417,10 @@ export const v2: Bundle = {
     "limit.multipleMinijobsHint":
       "Ta karta nie może poprawnie uwzględnić kilku minijobów obok pracy głównej, dlatego nie pokazuje statusu. Obok pracy głównej zwykle tylko pierwszy podjęty minijob pozostaje zwolniony; kolejne są sumowane z pracą główną. Sprawdź to (np. w Minijob-Zentrale lub kasie chorych).",
     "limit.multipleMinijobsSum": "Suma wszystkich minijobów (tylko informacyjnie): {amount}",
+    "limit.multipleMinijobsMonths":
+      "Dotyczy miesięcy (praca główna + co najmniej dwa minijoby aktywne w danym miesiącu): {months}",
+    "limit.multipleMinijobsFilterNote":
+      "Uwaga mimo filtra: sumy pokazują tylko wybraną pracę. To, czy limit można wiarygodnie ocenić, zależy od wszystkich równoległych zatrudnień – dlatego uwaga pozostaje.",
     "limit.overExplain": "Przekroczenie limitu może mieć znaczenie podatkowe i ubezpieczeniowe. Dokładne skutki zależą od Twojej sytuacji.",
     "limit.disclaimer": "To nie jest indywidualna porada podatkowa ani prawna. Aplikacja nie oblicza podatków ani składek.",
 

@@ -1,5 +1,5 @@
 import { yearUsage } from "./limits";
-import { multipleMinijobsWithMainJob, yearPeriod } from "./multi-minijob";
+import { multipleMinijobMonths, yearPeriod } from "./multi-minijob";
 import { monthNames, shiftsInMonth, shiftsInYear } from "./calc";
 import { shiftPayroll } from "./payroll";
 import type { Resolver } from "./resolve";
@@ -53,6 +53,13 @@ export interface AnnualReport {
    * ist nicht belastbar und wird nicht als Prozent angezeigt.
    */
   multipleMinijobs?: boolean;
+  /** Monate ("YYYY-MM") mit HB + ≥ 2 in diesem Monat aktiven Minijobs (DECISIONS R3 Punkt 7). */
+  multipleMinijobMonths?: string[];
+  /**
+   * true = Bericht ist nach Job gefiltert, der O4-Hinweis stammt aber aus ALLEN
+   * relevanten Daten (DECISIONS R3 Punkt 5) – Erklärung wird angezeigt.
+   */
+  multipleMinijobsFromAllJobs?: boolean;
   bestMonth: AnnualMonth | null;
   bestDay: { date: string; hours: number; earnings: number } | null;
   months: AnnualMonth[];
@@ -180,11 +187,36 @@ export function buildAnnualReport(
     activeMonths,
     limit,
     limitShare: limit > 0 ? (legalEarnings / limit) * 100 : 0,
-    multipleMinijobs: multipleMinijobsWithMainJob(jobs, shifts, yearPeriod(year)),
+    ...o4YearFields(jobs, shifts, year),
     bestMonth,
     bestDay,
     months,
     jobs: jobRows,
     weekdayHours,
+  };
+}
+
+/** O4-Felder des Jahresberichts aus den übergebenen Einträgen (je Monat bestimmt). */
+function o4YearFields(jobs: Job[], shifts: Shift[], year: number) {
+  const months = multipleMinijobMonths(jobs, shifts, yearPeriod(year));
+  return { multipleMinijobs: months.length > 0, multipleMinijobMonths: months };
+}
+
+/**
+ * DECISIONS R3 Punkt 5: Summen bleiben nach Filter, der O4-Hinweis wird aus
+ * ALLEN Einträgen bestimmt (ein Job-Filter ändert die Rechtslage nicht).
+ * `filterActive` = Bericht zeigt nur einen Teil der Jobs → Erklärung anzeigen.
+ */
+export function withAllJobsO4(
+  report: AnnualReport,
+  jobs: Job[],
+  allShifts: Shift[],
+  filterActive: boolean,
+): AnnualReport {
+  const fields = o4YearFields(jobs, allShifts, report.year);
+  return {
+    ...report,
+    ...fields,
+    multipleMinijobsFromAllJobs: filterActive && fields.multipleMinijobs,
   };
 }

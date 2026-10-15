@@ -31,7 +31,7 @@ vi.mock("@/lib/minijob/store", async (importOriginal) => {
 });
 
 import { tl } from "@/lib/i18n";
-import { buildAnnualReport } from "@/lib/minijob/annual";
+import { buildAnnualReport, withAllJobsO4 } from "@/lib/minijob/annual";
 import { exportAnnualPdf, exportAnnualXlsx } from "@/lib/minijob/annual-export";
 import { formatEuro } from "@/lib/minijob/calc";
 import { makeResolver } from "@/lib/minijob/resolve";
@@ -207,7 +207,14 @@ describe("Statistik (Seite): Jahresgrenze unabhängig vom Job-Filter", () => {
       expect(vi.mocked(exportAnnualXlsx)).toHaveBeenCalledTimes(1);
       // Werte bleiben gefiltert; nur das O4-Flag kommt aus den ungefilterten Daten
       // (Job-Filter ändert die Rechtslage nicht), damit der Export keinen % zeigt.
-      const expected = { ...base, multipleMinijobs: true };
+      const expected = {
+        ...base,
+        multipleMinijobs: true,
+        multipleMinijobMonths: withAllJobsO4(base, B4_JOBS, B4_SHIFTS, false).multipleMinijobMonths,
+        // DECISIONS R3 Punkt 5: Erklärung nur, wenn der Bericht gefiltert ist.
+        multipleMinijobsFromAllJobs: jobId !== "alle",
+      };
+      expect(expected.multipleMinijobMonths?.length).toBeGreaterThan(0);
       expect(vi.mocked(exportAnnualPdf).mock.calls[0]![0], label).toEqual(expected);
       expect(vi.mocked(exportAnnualXlsx).mock.calls[0]![0], label).toEqual(expected);
       // UI: O4-Warnung statt Prozentwert, unabhängig vom Filter.

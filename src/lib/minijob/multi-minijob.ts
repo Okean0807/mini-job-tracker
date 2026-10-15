@@ -14,19 +14,20 @@
  * Mehrere Minijobs OHNE Hauptbeschäftigung: unverändert – ihre Entgelte werden
  * zusammengerechnet und gegen eine Grenze geprüft (SGB IV § 8 Abs. 2 Satz 1).
  *
- * Beteiligung (QA P2-145-b, Owner: inaktive Minijobs zählen nicht):
- * - Minijob: nur mit mindestens einem Eintrag im Zeitraum, der in seine
- *   Beschäftigungsdauer (startDate/endDate) fällt. Ein Minijob ohne Einträge
- *   im Zeitraum gilt als inaktiv – auch wenn er nicht archiviert ist.
- * - Monatsbereich (QA P3-R2-145-a, Monat/Jahr-Konsistenz): zusätzlich zählt
- *   ein Minijob, der im selben Kalenderjahr bis Monatsende Einträge hatte und
- *   im Monat noch beschäftigt ist (nicht archiviert, kein endDate vor dem
- *   Monat, kein startDate nach dem Monat) – z. B. erster Minijob ohne Einträge
- *   in diesem Monat. Ohne Auswahl des "ersten" Minijobs (O1/O3) ist der
- *   Monatsstatus dann nicht belastbar. Folge: Monats-Flag ⇒ Jahres-Flag.
- *   Minijobs ganz ohne Einträge im Jahr zählen weiterhin nicht (P2-145-b).
- * - Hauptbeschäftigung: Eintrag im Zeitraum ODER nicht archiviert und
- *   Beschäftigungsdauer überschneidet den Zeitraum (HB wird oft nicht erfasst).
+ * Beteiligung (Owner DECISIONS R3 Punkt 7, ersetzt die R3-QA-Regel
+ * "ruhender erster Minijob zählt im Monat"):
+ * - Der Status wird je KALENDERMONAT bestimmt. Ein Minijob zählt in einem
+ *   Monat nur, wenn er in diesem Monat mindestens einen Eintrag innerhalb
+ *   seiner Beschäftigungsdauer (startDate/endDate) hat. Ein ruhender
+ *   (eintragsloser) Minijob zählt in diesem Monat NICHT – auch wenn er nicht
+ *   archiviert ist oder in anderen Monaten gearbeitet wurde.
+ * - Hauptbeschäftigung: Eintrag im Monat ODER nicht archiviert und
+ *   Beschäftigungsdauer überschneidet den Monat (HB wird oft nicht erfasst).
+ * - Längere Zeiträume (Jahr, Jahresbericht, 12-Monats-Prognose): betroffen,
+ *   wenn mindestens EIN Kalendermonat im Zeitraum die Konstellation hat
+ *   (tatsächliche Aktivitätszeiträume, keine Annahme "ganzjährig aktiv").
+ *   Folge: Monats-Flag ⇒ Jahres-Flag; nacheinander (nicht gleichzeitig)
+ *   ausgeübte Minijobs lösen keinen Hinweis aus.
  *
  * Diese Datei ist die einzige Quelle der Regel; Dashboard, Statistik,
  * Jahresbericht, Benachrichtigungen und KI-Kontext verwenden sie.
@@ -79,41 +80,70 @@ function employedDuring(job: Job, period: LimitPeriod): boolean {
   return true;
 }
 
-function minijobInvolved(
-  job: Job,
-  shifts: Shift[],
-  period: LimitPeriod,
-  evidence: LimitPeriod | undefined,
-): boolean {
-  if (hasEntriesIn(job, shifts, period)) return true;
-  return !!evidence && employedDuring(job, period) && hasEntriesIn(job, shifts, evidence);
-}
-
 function mainJobInvolved(job: Job, shifts: Shift[], period: LimitPeriod): boolean {
   if (hasEntriesIn(job, shifts, period)) return true;
   return employedDuring(job, period);
 }
 
-/**
- * true = Hauptbeschäftigung + mindestens zwei aktive Minijobs im Zeitraum.
- * `evidence` (nur Monatsbereich): Zeitraum, in dem Einträge eines im Monat
- * noch beschäftigten, aber eintragslosen Minijobs dessen Beteiligung belegen.
- */
-export function multipleMinijobsWithMainJob(
-  jobs: Job[],
-  shifts: Shift[],
-  period: LimitPeriod,
-  evidence?: LimitPeriod,
-): boolean {
+/** Konstellation in genau einem Kalendermonat (`period` = monthPeriod). */
+function monthAffected(jobs: Job[], shifts: Shift[], period: LimitPeriod): boolean {
   const hasMain = jobs.some(
     (job) =>
       employmentTypeOf(job) === "hauptbeschaeftigung" && mainJobInvolved(job, shifts, period),
   );
   if (!hasMain) return false;
   const activeMinijobs = jobs.filter(
-    (job) => employmentTypeOf(job) === "minijob" && minijobInvolved(job, shifts, period, evidence),
+    (job) => employmentTypeOf(job) === "minijob" && hasEntriesIn(job, shifts, period),
   );
   return activeMinijobs.length >= 2;
+}
+
+/** Kalendermonate ("YYYY-MM"), die den Zeitraum schneiden (inklusive Ränder). */
+function monthsOverlapping(period: LimitPeriod): { key: string; period: LimitPeriod }[] {
+  const out: { key: string; period: LimitPeriod }[] = [];
+  let y = Number(period.from.slice(0, 4));
+  let m = Number(period.from.slice(5, 7)) - 1;
+  const endKey = period.to.slice(0, 7);
+  for (let guard = 0; guard < 1200; guard++) {
+    const key = `${y}-${pad(m + 1)}`;
+    if (key > endKey) break;
+    const mp = monthPeriod(y, m);
+    out.push({
+      key,
+      period: {
+        from: mp.from < period.from ? period.from : mp.from,
+        to: mp.to > period.to ? period.to : mp.to,
+      },
+    });
+    m += 1;
+    if (m > 11) {
+      m = 0;
+      y += 1;
+    }
+  }
+  return out;
+}
+
+/**
+ * Monate ("YYYY-MM") im Zeitraum mit Hauptbeschäftigung + mindestens zwei in
+ * DIESEM Monat aktiven Minijobs (DECISIONS R3 Punkt 7).
+ */
+export function multipleMinijobMonths(jobs: Job[], shifts: Shift[], period: LimitPeriod): string[] {
+  return monthsOverlapping(period)
+    .filter((m) => monthAffected(jobs, shifts, m.period))
+    .map((m) => m.key);
+}
+
+/**
+ * true = in mindestens einem Kalendermonat des Zeitraums Hauptbeschäftigung
+ * + mindestens zwei in diesem Monat aktive Minijobs.
+ */
+export function multipleMinijobsWithMainJob(
+  jobs: Job[],
+  shifts: Shift[],
+  period: LimitPeriod,
+): boolean {
+  return monthsOverlapping(period).some((m) => monthAffected(jobs, shifts, m.period));
 }
 
 /** Je Anzeige-Bereich: ist der Grenzstatus NICHT belastbar? */
@@ -135,10 +165,7 @@ export function limitReliabilityFlags(
   month: number,
 ): LimitReliabilityFlags {
   return {
-    month: multipleMinijobsWithMainJob(jobs, shifts, monthPeriod(year, month), {
-      from: yearPeriod(year).from,
-      to: monthPeriod(year, month).to,
-    }),
+    month: multipleMinijobsWithMainJob(jobs, shifts, monthPeriod(year, month)),
     year: multipleMinijobsWithMainJob(jobs, shifts, yearPeriod(year)),
     forecast: multipleMinijobsWithMainJob(jobs, shifts, rollingPeriod(year, month)),
   };
