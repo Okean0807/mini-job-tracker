@@ -67,4 +67,18 @@ describe("SheetJS version and write-only boundary", () => {
       { Datum: "Summe", Stunden: 5, Verdienst: 70, Notiz: "" },
     ]);
   });
+
+  // Korrektur zu 5ae8a48 (Commit-Text): Leere Strings werden NICHT anders
+  // behandelt als in 0.18.5. Verifiziert am 2026-10-16: json_to_sheet([{A:"x",N:""}])
+  // → write → read ergibt in 0.18.5 und 0.20.3 identisch [{"A":"x","N":""}];
+  // die Excel-Exporte aus dem Browser waren in beiden Versionen bytegleich.
+  it("leere Strings bleiben als leere Zelle erhalten (wie in 0.18.5)", () => {
+    const book = createXlsxBook();
+    appendXlsxSheet(book, createXlsxSheet([{ A: "x", N: "" }]), "S");
+    const back = XLSX.read(new Uint8Array(writeXlsx(book)), { type: "array" });
+    const rows = XLSX.utils
+      .sheet_to_json<Record<string, unknown>>(back.Sheets["S"]!)
+      .map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => k !== "__rowNum__")));
+    expect(rows).toEqual([{ A: "x", N: "" }]);
+  });
 });
