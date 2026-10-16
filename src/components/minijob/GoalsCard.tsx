@@ -1,5 +1,5 @@
 import { PiggyBank, Plus, Check } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { GoalDialog } from "@/components/minijob/GoalDialog";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ export function GoalsCard({ goals, jobs }: { goals: GoalProgress[]; jobs: Job[] 
   const { t } = useT();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Goal | null>(null);
+  const nameIdBase = useId();
 
   function openNew() {
     setEditing(null);
@@ -38,7 +39,7 @@ export function GoalsCard({ goals, jobs }: { goals: GoalProgress[]; jobs: Job[] 
         <p className="mt-3 text-sm text-muted-foreground">{t("goal.empty")}</p>
       ) : (
         <ul className="mt-3 space-y-4">
-          {goals.map((g) => (
+          {goals.map((g, i) => (
             <li key={g.goal.id}>
               <button
                 type="button"
@@ -47,7 +48,7 @@ export function GoalsCard({ goals, jobs }: { goals: GoalProgress[]; jobs: Job[] 
                 aria-label={g.goal.name}
               >
                 <div className="flex items-baseline justify-between gap-2 text-sm">
-                  <span className="truncate font-medium">
+                  <span id={`${nameIdBase}-${i}`} className="truncate font-medium">
                     {g.goal.name}
                     {g.job ? (
                       <span className="ml-1 text-xs text-muted-foreground">· {g.job.name}</span>
@@ -63,6 +64,7 @@ export function GoalsCard({ goals, jobs }: { goals: GoalProgress[]; jobs: Job[] 
                   </span>
                 </div>
                 <Progress
+                  aria-labelledby={`${nameIdBase}-${i}`}
                   value={Math.min(100, Math.round(g.share))}
                   className={cn("mt-1.5 h-2.5", g.reached && "[&>div]:bg-primary")}
                 />
