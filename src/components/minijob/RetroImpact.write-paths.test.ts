@@ -18,11 +18,12 @@
  */
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AbsenceDialog } from "./AbsenceDialog";
 import { ShiftDialog } from "./ShiftDialog";
 import { isoDate } from "@/lib/minijob/calc";
+import { retroImpact, type RetroImpact } from "@/lib/minijob/retro-impact";
 import { planAbsence } from "@/lib/minijob/service";
 import { withSickConfirmations } from "@/lib/minijob/sick-confirmation";
 import { DEMO_SCOPE } from "@/lib/minijob/storage-scope";
@@ -35,6 +36,17 @@ import {
   useAppData,
 } from "@/lib/minijob/store";
 import { DEFAULT_SETTINGS, type AppData, type Job, type Shift } from "@/lib/minijob/types";
+
+// Durchreichender Spy: alle Tests nutzen die echte Berechnung; nur der
+// AbsenceDialog-Anlege-Test (R8) setzt gezielt eine Auswirkung ein (siehe dort).
+vi.mock("@/lib/minijob/retro-impact", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/minijob/retro-impact")>();
+  return { ...actual, retroImpact: vi.fn(actual.retroImpact) };
+});
+
+const { retroImpact: realRetroImpact } = await vi.importActual<
+  typeof import("@/lib/minijob/retro-impact")
+>("@/lib/minijob/retro-impact");
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -160,6 +172,9 @@ beforeEach(() => {
   root = createRoot(container);
 });
 afterEach(() => {
+  // nicht verbrauchte eingesetzte Auswirkungen dürfen nicht in andere Tests wandern
+  vi.mocked(retroImpact).mockReset();
+  vi.mocked(retroImpact).mockImplementation(realRetroImpact);
   act(() => root.unmount());
   container.remove();
 });
@@ -267,12 +282,37 @@ describe("ShiftDialog: rückwirkendes SPEICHERN (R6)", () => {
 });
 
 describe("AbsenceDialog: rückwirkendes ANLEGEN (R8)", () => {
-  it("Urlaub 21.–22.11. → Vorher/Nachher; Abbrechen speichert nichts; Bestätigen legt genau 2 Tage an", () => {
+  /*
+   * Fixture-Änderung (V10-ABSENCE-HISTORICAL-SCHEDULE): Früher legte der Dialog
+   * Urlaub am 21./22.11. an, obwohl das Wochenende laut damals gültigem Plan frei
+   * war (Fehler: aktueller statt historischer Plan) – nur dadurch entstand die
+   * Rückwirkung. Mit korrektem Plan wird dort nichts angelegt (Test unten).
+   * Ein Anlegen ohne Entfernen kann mit gültigem Plan keine Kette beenden
+   * (Abwesenheiten nur an Plan-Arbeitstagen; ein leerer Plan-Arbeitstag beendet
+   * die Kette ohnehin; Krank-Zeiträume tragen eine eigene sickCaseId). Daher wird
+   * die Auswirkung hier gezielt eingesetzt; geprüft wird, dass der Anlege-Pfad
+   * die Vorschau mit dem echten Plan berechnet, vor Bestätigung nichts schreibt,
+   * bei Abbrechen nichts ändert und erst nach Bestätigung speichert.
+   */
+  const INJECTED: RetroImpact = {
+    months: [{ month: "2026-12", before: 675, after: 1725 }],
+    lapsedMonths: ["2026-12"],
+  };
+  const inject = () =>
+    vi.mocked(retroImpact).mockImplementationOnce((before, after, _jobs, _settings, ids) => {
+      const created = after.filter((s) => !before.some((b) => b.id === s.id));
+      expect(created.map((s) => s.date)).toEqual(["2027-01-11", "2027-01-12"]);
+      expect([...ids].sort()).toEqual(created.map((s) => s.id).sort());
+      return INJECTED;
+    });
+
+  it("Urlaub 11.–12.01.2027 mit Auswirkung → Vorher/Nachher; Abbrechen speichert nichts; Bestätigen legt genau 2 Tage an", () => {
     seedStore([JOB_PLAN_CHANGE], [...LEGACY_CHAIN, LATER_WORK]);
     const before = snapshot();
-    act(() => root.render(createElement(AbsenceHarness, { defaultFrom: "2026-11-21" })));
-    setValue(q("#absence-from") as HTMLInputElement, "2026-11-21");
-    setValue(q("#absence-to") as HTMLInputElement, "2026-11-22");
+    act(() => root.render(createElement(AbsenceHarness, { defaultFrom: "2027-01-11" })));
+    setValue(q("#absence-from") as HTMLInputElement, "2027-01-11");
+    setValue(q("#absence-to") as HTMLInputElement, "2027-01-12");
+    inject();
     click(tid("absence-save"));
 
     expect(tid("retro-impact-dialog")).not.toBeNull();
@@ -286,10 +326,23 @@ describe("AbsenceDialog: rückwirkendes ANLEGEN (R8)", () => {
     reload();
     expect(snapshot()).toBe(before);
 
+    inject();
     click(tid("absence-save"));
     click(tid("retro-impact-confirm"));
-    expect(datesOf("j1", "urlaub")).toEqual(["2026-11-21", "2026-11-22"]);
+    expect(datesOf("j1", "urlaub")).toEqual(["2027-01-11", "2027-01-12"]);
     expect(closed).toBe(1);
+  });
+
+  it("Urlaub am damals planfreien Wochenende 21.–22.11. → nichts angelegt, keine Rückfrage, Bestand unverändert", () => {
+    seedStore([JOB_PLAN_CHANGE], [...LEGACY_CHAIN, LATER_WORK]);
+    const before = snapshot();
+    act(() => root.render(createElement(AbsenceHarness, { defaultFrom: "2026-11-21" })));
+    setValue(q("#absence-from") as HTMLInputElement, "2026-11-21");
+    setValue(q("#absence-to") as HTMLInputElement, "2026-11-22");
+    click(tid("absence-save"));
+    expect(tid("retro-impact-dialog")).toBeNull();
+    expect(snapshot()).toBe(before);
+    expect(datesOf("j1", "urlaub")).toEqual([]);
   });
 });
 
