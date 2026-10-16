@@ -52,7 +52,10 @@ const monthEarn = (shifts: Shift[], month: string, settings = DEFAULT_SETTINGS) 
   ).earnings;
 
 describe("retroImpact (D3)", () => {
-  it("nachgetragene markierte Krankheitstage (R3-Probe 2.1): Dezember 1425 € → 0 € wird angezeigt", () => {
+  // v1.0 (t617u, D1): Die automatische Zusammenfassung neu erfasster
+  // (markierter) Ketten ist abgeschaltet. Nachträge/Löschungen/Bearbeitungen
+  // in solchen Ketten ändern daher die Beträge ANDERER Monate nicht still.
+  it("v1.0: nachgetragene markierte Krankheitstage ändern Dezember NICHT (keine automatische Zusammenfassung)", () => {
     const base = days("2026-11-16", "2026-12-31", weekday).map((d) => sick(d, true));
     const extra = days("2026-10-19", "2026-11-13", weekday).map((d) => sick(d, true));
     const after = [...extra, ...base];
@@ -63,47 +66,50 @@ describe("retroImpact (D3)", () => {
       DEFAULT_SETTINGS,
       extra.map((s) => s.id),
     );
-    const dec = impact.months.find((m) => m.month === "2026-12");
-    expect(dec).toEqual({
-      month: "2026-12",
-      before: monthEarn(base, "2026-12"),
-      after: monthEarn(after, "2026-12"),
-    });
-    expect(dec!.before).toBe(1425);
-    expect(dec!.after).toBe(0); // Nullsumme nach der Änderung
-    expect(needsRetroConfirmation(impact)).toBe(true);
+    // 23 Werktage × 75 € – ohne Bestätigung wie bisher bezahlt (Hinweis statt stiller Kürzung)
+    expect(monthEarn(base, "2026-12")).toBe(1725);
+    expect(monthEarn(after, "2026-12")).toBe(1725); // keine stille Nullsumme
+    expect(impact.months).toEqual([]);
   });
 
-  it("mehrere Monate betroffen: alle mit Vorher/Nachher, sortiert", () => {
-    const base = days("2026-11-16", "2027-01-29", weekday).map((d) => sick(d, true));
-    const extra = days("2026-10-05", "2026-11-13", weekday).map((d) => sick(d, true));
-    const impact = retroImpact(
-      base,
-      [...extra, ...base],
-      JOBS,
-      DEFAULT_SETTINGS,
-      extra.map((s) => s.id),
-    );
-    const months = impact.months.map((m) => m.month);
-    expect(months).toEqual([...months].sort());
-    expect(months).toEqual(["2026-11", "2026-12"]); // Januar war schon 0 € → unverändert
-    for (const m of impact.months) expect(m.before).not.toBe(m.after);
-  });
-
-  it("rückwirkend löschen: Kette wird kürzer → spätere Monate wieder bezahlt", () => {
+  it("v1.0: rückwirkend löschen/bearbeiten in markierter Kette → andere Monate unverändert", () => {
     const all = days("2026-10-19", "2026-12-31", weekday).map((d) => sick(d, true));
+    const removed = all.slice(0, 10).map((s) => s.id);
+    const afterDelete = all.filter((s) => !removed.includes(s.id));
+    expect(retroImpact(all, afterDelete, JOBS, DEFAULT_SETTINGS, removed).months).toEqual([]);
+    const first = all[0]!;
+    const edited = { ...first, kind: "arbeit" } as Shift;
+    const afterEdit = all.map((s) => (s.id === first.id ? edited : s));
+    expect(retroImpact(all, afterEdit, JOBS, DEFAULT_SETTINGS, [first.id]).months).toEqual([]);
+  });
+
+  // D3 bleibt für ausdrücklich zugeordnete Fälle (sickCaseId, vom Nutzer
+  // verknüpft) wirksam: dort verschiebt eine rückwirkende Änderung die 42 Tage.
+  const caseDay = (date: string): Shift => ({ ...sick(date, false), sickCaseId: "c1" }) as Shift;
+
+  it("explizit verknüpfter Fall: rückwirkend löschen → spätere Monate wieder bezahlt, mit Vorher/Nachher", () => {
+    const all = days("2026-10-19", "2026-12-31", weekday).map(caseDay);
     const removed = all.slice(0, 10).map((s) => s.id);
     const after = all.filter((s) => !removed.includes(s.id));
     const impact = retroImpact(all, after, JOBS, DEFAULT_SETTINGS, removed);
     const dec = impact.months.find((m) => m.month === "2026-12");
-    expect(dec).toBeDefined();
+    expect(dec).toEqual({
+      month: "2026-12",
+      before: monthEarn(all, "2026-12"),
+      after: monthEarn(after, "2026-12"),
+    });
     expect(dec!.after).toBeGreaterThan(dec!.before);
+    expect(needsRetroConfirmation(impact)).toBe(true);
+    const months = impact.months.map((m) => m.month);
+    expect(months).toEqual([...months].sort());
   });
 
-  it("rückwirkend bearbeiten: krank → arbeit am Kettenanfang verschiebt die 42-Tage-Grenze", () => {
-    const all = days("2026-10-19", "2026-12-31", weekday).map((d) => sick(d, true));
+  it("explizit verknüpfter Fall: krank → arbeit am Fallanfang verschiebt die 42-Tage-Grenze", () => {
+    const all = days("2026-10-19", "2026-12-31", weekday).map(caseDay);
     const first = all[0]!;
-    const edited = { ...first, kind: "arbeit" } as Shift;
+    const { sickCaseId: _drop, ...rest } = first;
+    void _drop;
+    const edited = { ...rest, kind: "arbeit" } as Shift;
     const after = all.map((s) => (s.id === first.id ? edited : s));
     const impact = retroImpact(all, after, JOBS, DEFAULT_SETTINGS, [first.id]);
     expect(impact.months.map((m) => m.month)).toEqual(["2026-11"]);

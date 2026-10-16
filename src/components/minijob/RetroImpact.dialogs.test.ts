@@ -46,7 +46,11 @@ function weekdays(from: string, to: string): string[] {
   }
   return out;
 }
-/** Neu erfasste Kette 19.10.–31.12. (Mo–Fr): ab Tag 43 automatisch unbezahlt. */
+/**
+ * Ausdrücklich verknüpfter Fall (sickCaseId) 19.10.–31.12. (Mo–Fr): ab Tag 43
+ * unbezahlt. v1.0 (t617u, D1): automatische Zusammenfassung unverknüpfter
+ * neu erfasster Ketten ist abgeschaltet, daher prüft D3 hier den verknüpften Fall.
+ */
 const CHAIN: Shift[] = weekdays("2026-10-19", "2026-12-31").map(
   (date) =>
     ({
@@ -55,7 +59,7 @@ const CHAIN: Shift[] = weekdays("2026-10-19", "2026-12-31").map(
       kind: "krank",
       date,
       ...day,
-      sickRule: "continuous",
+      sickCaseId: "c1",
       createdAt: "2026-12-31",
     }) as Shift,
 );

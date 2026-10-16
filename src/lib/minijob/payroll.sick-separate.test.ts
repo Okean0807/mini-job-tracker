@@ -176,7 +176,7 @@ describe("D4: Plan nur Montag, 8 Montage (R3-Probe 2.2)", () => {
 });
 
 describe("D4: Ketten ohne Lücke ≥ 6 – 42-Tage-Grenze unverändert", () => {
-  it("Mo–Fr, 9 Wochen neu erfasst: Wochenend-Lücken (2) werden weiter automatisch verbunden", () => {
+  it("Mo–Fr, 9 Wochen neu erfasst: v1.0 ohne automatische Zusammenfassung – Hinweis + O-2; nach Bestätigung 42-Tage-Grenze", () => {
     const all: string[] = [];
     for (let i = 0; i < 63; i += 1) {
       const d = addDays("2026-11-02", i);
@@ -184,10 +184,17 @@ describe("D4: Ketten ohne Lücke ≥ 6 – 42-Tage-Grenze unverändert", () => {
       if (wd >= 1 && wd <= 5) all.push(d);
     }
     const shifts = all.map((d) => sick(d, true));
+    // v1.0 (t617u): ohne Bestätigung keine automatische Zusammenfassung, alles
+    // wie bisher bezahlt; ab Tag 43 sichtbarer Hinweis (O-2-Abweichung).
     const ps = evalAll(shifts, MON_FRI);
-    const unpaid = shifts.filter((_, i) => !ps[i]!.paid).map((s) => s.date);
-    expect(unpaid[0]).toBe("2026-12-14"); // 02.11. + 42 Tage
-    expect(ps.some((p) => p.notice === "sick-case-possibly-separate")).toBe(false);
+    expect(ps.every((p) => p.paid)).toBe(true);
+    const flagged = shifts.filter((_, i) => isSickLegacyDiscrepancy(ps[i]!)).map((s) => s.date);
+    expect(flagged[0]).toBe("2026-12-14"); // 02.11. + 42 Tage
+    // Nach Bestätigung von Dezember (O-2): Fortsetzungsregel, erster unbezahlter Tag 14.12.
+    const confirmed = evalAll(shifts, MON_FRI, { sickContinuousConfirmed: ["2026-12"] });
+    const unpaid = shifts.filter((_, i) => !confirmed[i]!.paid).map((s) => s.date);
+    expect(unpaid[0]).toBe("2026-12-14");
+    expect(confirmed.some((p) => p.notice === "sick-case-possibly-separate")).toBe(false);
   });
 
   it("Markierung gemischt (ein Tag alt): keine automatische Zusammenfassung", () => {

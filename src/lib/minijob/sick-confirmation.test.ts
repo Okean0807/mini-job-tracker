@@ -114,12 +114,20 @@ describe("Herkunftsmerkmal (DECISIONS R3 Punkt 1)", () => {
     expect(sickRuleForSave("urlaub", undefined)).toBeUndefined();
   });
 
-  it("vollständig markierte Kette: Fortsetzungsregel ohne Bestätigung (Tag 43 nicht bezahlt)", () => {
+  it("v1.0 (t617u): vollständig markierte Kette – ohne Bestätigung keine automatische Zusammenfassung; Tag 43 erst nach O-2 unbezahlt", () => {
     const run = runFrom(2026, 10, 2, 60, { sickRule: "continuous" });
-    const p = (s: Shift) => shiftPayroll(s, { job: JOB, defaultRate: 15, history: run });
+    const p = (s: Shift, confirmed?: string[]) =>
+      shiftPayroll(s, {
+        job: JOB,
+        defaultRate: 15,
+        history: run,
+        ...(confirmed ? { sickContinuousConfirmed: confirmed } : {}),
+      });
     expect(p(run[41]!).reason).toBe("sick-pay");
-    expect(p(run[42]!).reason).toBe("sick-exceeded");
-    expect(p(run[42]!).notice).toBeUndefined();
+    expect(p(run[42]!).reason).toBe("sick-pay");
+    expect(p(run[42]!).notice).toBe("sick-legacy-over-limit");
+    const month = run[42]!.date.slice(0, 7);
+    expect(p(run[42]!, [month]).reason).toBe("sick-exceeded");
   });
 
   it("gemischte Kette (ein bisheriger Tag): bisheriges Verhalten + Hinweis, keine Änderung", () => {

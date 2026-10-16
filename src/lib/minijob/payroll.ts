@@ -88,6 +88,13 @@ export const SICK_LONG_GAP_DAYS = 3;
  * zusammengefasst wird.
  */
 export const SICK_SEPARATE_GAP_DAYS = 6;
+/**
+ * v1.0 Release-Einschränkung (Owner t617u): automatische Zusammenfassung von
+ * Krankheitsketten ohne Bestätigung ist abgeschaltet, bis D1 (Provenienz,
+ * Q-27 "neuer Zeitraum") durch eine unabhängige Clean-Room-Implementierung
+ * und QA geklärt ist. Zusammenfassung nur nach O-2-Bestätigung je Monat.
+ */
+export const SICK_AUTO_CONTINUOUS_ENABLED: boolean = false;
 /** Referenzzeitraum des Urlaubsentgelts (§ 11 BUrlG). */
 export const VACATION_REFERENCE_DAYS = 91;
 /** Mindestzahl an Arbeitstagen im Referenzzeitraum für eine belastbare Berechnung. */
@@ -611,7 +618,12 @@ export function shiftPayroll(shift: Shift, options: PayrollOptions = {}): ShiftP
       else if (presumed.longGap) notice = "sick-case-long-gap";
       // Automatisch nur für vollständig neu erfasste Ketten OHNE Lücke von
       // ≥ SICK_SEPARATE_GAP_DAYS Kalendertagen (D4); sonst nur nach Bestätigung.
-      const autoContinuous = presumed.marked && !presumed.separate;
+      // v1.0 SICHERE EINSCHRÄNKUNG (t617u, D1 Provenienz offen): Die automatische
+      // Zusammenfassung neu erfasster Ketten (Markierung `sickRule`) ist für v1.0
+      // ABGESCHALTET. Die Fortsetzungsregel wirkt nur in Monaten, die der Nutzer
+      // per O-2 (Vorher/Nachher, Abbrechen ändert nichts) bestätigt hat. Ohne
+      // Bestätigung: bisheriges Verhalten + Hinweis, keine stille Neuberechnung.
+      const autoContinuous = SICK_AUTO_CONTINUOUS_ENABLED && presumed.marked && !presumed.separate;
       if (autoContinuous || isSickRecalcConfirmed(shift.date, options.sickContinuousConfirmed)) {
         // Neu erfasster Zeitraum (DECISIONS R3 Punkt 1) oder bestätigter Monat (O-2).
         caseStart = presumed.start;
