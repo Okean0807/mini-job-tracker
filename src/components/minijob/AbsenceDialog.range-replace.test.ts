@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { AbsenceDialog } from "./AbsenceDialog";
 import { isoDate } from "@/lib/minijob/calc";
-import { payrollTotals } from "@/lib/minijob/payroll";
+import { payrollTotals, shiftPayroll } from "@/lib/minijob/payroll";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { absenceRangeChange } from "@/lib/minijob/retro-impact";
 import { planAbsence, shiftsAfterPlan } from "@/lib/minijob/service";
@@ -364,5 +364,147 @@ describe("Lib: planAbsence / absenceRangeChange", () => {
       after: 750,
       lostInRange: ["2026-09-12", "2026-09-13"],
     });
+  });
+});
+
+/**
+ * V10-ABS-PLAN-P2-1b (QA): Krank 03.08.–30.09.2026 (Mo–Fr, ein Fall), History-Eintrag ohne
+ * Plan-Daten ab 17.08. → vor dem 17.08. Plan unbekannt. Verlängern auf 02.10. darf den Fall
+ * NICHT teilen (sonst zweite 42-Tage-Frist: 40 statt 30 bezahlte Tage, 3000 statt 2250 €).
+ * Referenz gemessen auf 78ef353 (Zeitraum = ein Fall): 45 Krank-Tage, 1 Fall, 30 bezahlt
+ * (letzter 11.09.), 2250 €.
+ */
+describe("Krank-Zeitraum ersetzen bleibt EIN Krankheitsfall (QA P2-1b)", () => {
+  const JOB_QA = {
+    ...JOB_PLAIN,
+    weekHistory: [{ effectiveFrom: "2026-08-17" }],
+  } as unknown as Job;
+  const work = eachDay("2026-07-01", "2026-07-31", true).map(
+    (date) => ({ id: `w-${date}`, jobId: "j1", kind: "arbeit", date, ...d5 }) as Shift,
+  );
+  const sick = eachDay("2026-08-03", "2026-09-30", true).map(
+    (date) =>
+      ({ id: `k-${date}`, jobId: "j1", kind: "krank", date, ...d5, sickCaseId: "old" }) as Shift,
+  );
+  const REF_78EF353 = {
+    sickDays: 45,
+    caseIds: ["old"],
+    paidDays: 30,
+    lastPaid: "2026-09-11",
+    eur: 2250,
+  };
+  const summary = (jobs: Job[], shifts: Shift[], settings: AppData["settings"]) => {
+    const res = makeResolver(jobs, settings);
+    const k = shifts.filter((s) => s.kind === "krank").sort((a, b) => a.date.localeCompare(b.date));
+    const paid = k.filter((s) => shiftPayroll(s, { ...res(s), history: shifts }).paid);
+    return {
+      sickDays: k.length,
+      caseIds: [...new Set(k.map((s) => s.sickCaseId))],
+      paidDays: paid.length,
+      lastPaid: paid.at(-1)?.date,
+      eur: payrollTotals(k, res, shifts).earnings,
+    };
+  };
+
+  it("Lib: 03.08.–30.09. → 03.08.–02.10.: eine sickCaseId, 30 bezahlte Tage / 2250 € (= 78ef353)", () => {
+    const settings = { ...DEFAULT_SETTINGS, bundesland: "BE" };
+    const before = [...work, ...sick];
+    const d = { ...EMPTY_DATA, jobs: [JOB_QA], shifts: before, settings } as unknown as AppData;
+    expect(summary([JOB_QA], before, settings)).toEqual({ ...REF_78EF353, sickDays: 43 });
+    const plan = planAbsence(
+      JOB_QA,
+      "krank",
+      "2026-08-03",
+      "2026-10-02",
+      { jobId: "j1", kind: "krank", from: "2026-08-03", to: "2026-09-30" },
+      d,
+    );
+    // 03.–14.08. (unbekannt) bleiben stehen; 17.08.–02.10. nach Plan neu – alle im Fall "old"
+    expect(plan.created.map((s) => s.date)).toEqual(eachDay("2026-08-17", "2026-10-02", true));
+    expect(plan.created.every((s) => s.sickCaseId === "old")).toBe(true);
+    const after = shiftsAfterPlan(before, plan);
+    expect(summary([JOB_QA], after, settings)).toEqual(REF_78EF353);
+  });
+
+  it("Dialog (Kalendertage, wie früher nach Plan „alle Tage“ angelegt): Bestätigen speichert EINEN Fall, 30 bezahlte Tage / 2250 € (= 78ef353)", () => {
+    // Der Dialog bearbeitet einen kalendarisch zusammenhängenden Block → Altbestand an allen Tagen.
+    const sickCal = eachDay("2026-08-03", "2026-09-30").map(
+      (date) =>
+        ({ id: `k-${date}`, jobId: "j1", kind: "krank", date, ...d5, sickCaseId: "old" }) as Shift,
+    );
+    seed([JOB_QA], [...work, ...sickCal]);
+    const before = snapshot();
+    open("k-2026-08-03");
+    expect((q("#absence-to") as HTMLInputElement).value).toBe("2026-09-30");
+    setValue(q("#absence-to"), "2026-10-02");
+    click(tid("absence-save"));
+    expect(tid("retro-impact-dialog")).not.toBeNull();
+    expect(snapshot()).toBe(before);
+    // Abbrechen ändert nichts (auch nach Neuladen)
+    click(tid("retro-impact-cancel"));
+    expect(snapshot()).toBe(before);
+    reload();
+    expect(snapshot()).toBe(before);
+    expect(saved("krank")).toHaveLength(59);
+    click(tid("absence-save"));
+    expect(tid("retro-impact-dialog")).not.toBeNull();
+    // ersetzt 17.08.–30.09. (45 Tage) → 17.08.–02.10. Mo–Fr (35 Tage), Entgelt im selben Fall gleich
+    expect(rangeRow()?.getAttribute("data-days-before")).toBe("45");
+    expect(rangeRow()?.getAttribute("data-before")).toBe("1500.00");
+    expect(rangeRow()?.getAttribute("data-days-after")).toBe("35");
+    expect(rangeRow()?.getAttribute("data-after")).toBe("1500.00");
+    expect(tid("retro-impact-range-lost")?.getAttribute("data-days")?.split(",")).toHaveLength(12);
+    click(tid("retro-impact-confirm"));
+    const d = getData();
+    // 03.–16.08. (Plan unbekannt) bleiben; ab 17.08. nach Plan Mo–Fr bis 02.10.
+    expect(saved("krank").map((s) => s.date)).toEqual([
+      ...eachDay("2026-08-03", "2026-08-16"),
+      ...eachDay("2026-08-17", "2026-10-02", true),
+    ]);
+    const { sickDays, ...paid } = summary(d.jobs, d.shifts, d.settings);
+    expect(sickDays).toBe(49);
+    expect(paid).toEqual({ caseIds: ["old"], paidDays: 30, lastPaid: "2026-09-11", eur: 2250 });
+    reload();
+    expect(new Set(saved("krank").map((s) => s.sickCaseId))).toEqual(new Set(["old"]));
+    // Erneut unverändert speichern (03.08.–02.10.): keine Einträge/Beträge verloren
+    const afterSave = snapshot();
+    act(() => root.unmount());
+    root = createRoot(container);
+    // Block 03.–21.08. (behaltene unbekannte Tage + 17.–21.08.) unverändert speichern
+    open("k-2026-08-03");
+    expect((q("#absence-to") as HTMLInputElement).value).toBe("2026-08-21");
+    click(tid("absence-save"));
+    expect(tid("retro-impact-dialog")).toBeNull();
+    expect(snapshot()).toBe(afterSave);
+    const again = getData();
+    expect(summary(again.jobs, again.shifts, again.settings)).toEqual({
+      sickDays: 49,
+      caseIds: ["old"],
+      paidDays: 30,
+      lastPaid: "2026-09-11",
+      eur: 2250,
+    });
+  });
+
+  it("Lib: behaltene Einträge mit abweichender sickCaseId werden in denselben Fall übernommen", () => {
+    const mixed = sick.map((s) => (s.date === "2026-08-10" ? { ...s, sickCaseId: "x" } : s));
+    const d = {
+      ...EMPTY_DATA,
+      jobs: [JOB_QA],
+      shifts: [...work, ...mixed],
+      settings: DEFAULT_SETTINGS,
+    } as unknown as AppData;
+    const plan = planAbsence(
+      JOB_QA,
+      "krank",
+      "2026-08-03",
+      "2026-10-02",
+      { jobId: "j1", kind: "krank", from: "2026-08-03", to: "2026-09-30" },
+      d,
+    );
+    const after = shiftsAfterPlan(d.shifts, plan).filter((s) => s.kind === "krank");
+    expect(after).toHaveLength(45);
+    expect(new Set(after.map((s) => s.sickCaseId))).toEqual(new Set(["old"]));
+    expect(after.find((s) => s.date === "2026-08-10")?.id).toBe("k-2026-08-10");
   });
 });

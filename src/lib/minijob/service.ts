@@ -452,7 +452,33 @@ export function planAbsence(
   const gone = new Set(removeIds);
   const remaining = data.shifts.filter((s) => !gone.has(s.id));
   const created = generateAbsence(job, kind, from, to, data.settings.bundesland, remaining);
-  return { removeIds, created };
+  if (kind !== "krank" || !replace) return { removeIds, created };
+  // V10-ABS-PLAN-P2-1b: Ein ersetzter Krank-Zeitraum bleibt EIN Krankheitsfall (wie 78ef353):
+  // behaltene Einträge (unbekannter Plan) und neu angelegte Tage teilen eine sickCaseId.
+  const keptIds = new Set(removed.map((s) => s.id));
+  const kept = absenceRangeTargets(
+    data.shifts,
+    replace.jobId,
+    replace.kind,
+    replace.from,
+    replace.to,
+  ).filter((s) => !keptIds.has(s.id) && keep(s));
+  return unifySickCase(removeIds, created, kept);
+}
+
+/** Alle Tage eines Krank-Ersetzens auf eine sickCaseId bringen (nur innerhalb dieses Plans). */
+function unifySickCase(removeIds: string[], created: Shift[], kept: Shift[]): AbsencePlan {
+  if (!kept.length) return { removeIds, created };
+  const caseId = kept.find((s) => s.sickCaseId)?.sickCaseId ?? created[0]?.sickCaseId;
+  if (!caseId) return { removeIds, created };
+  const relabel = kept.filter((s) => s.sickCaseId !== caseId);
+  return {
+    removeIds: [...removeIds, ...relabel.map((s) => s.id)],
+    created: [
+      ...created.map((s) => ({ ...s, sickCaseId: caseId })),
+      ...relabel.map((s) => ({ ...s, sickCaseId: caseId })),
+    ],
+  };
 }
 
 /**
