@@ -15,6 +15,10 @@ import { MonthCalendar } from "@/components/minijob/MonthCalendar";
 import { AbsenceDialog } from "@/components/minijob/AbsenceDialog";
 import { ShiftDialog } from "@/components/minijob/ShiftDialog";
 import { ShiftList } from "@/components/minijob/ShiftList";
+import {
+  SickConfirmationLapsedNotice,
+  SickRecalcNotice,
+} from "@/components/minijob/SickRecalcNotice";
 import { StatCard } from "@/components/minijob/StatCard";
 import { WorkTimer } from "@/components/minijob/WorkTimer";
 import { Button } from "@/components/ui/button";
@@ -29,6 +33,11 @@ import {
 } from "@/lib/minijob/calc";
 import { sortProofShifts } from "@/lib/minijob/arbeitsnachweis";
 import { payrollTotals } from "@/lib/minijob/payroll";
+import {
+  lapsedWithout,
+  sanitizeLapsedMonths,
+  withSickConfirmations,
+} from "@/lib/minijob/sick-confirmation";
 import { activeWidgets, spanClass, widgetSize } from "@/lib/minijob/dashboard";
 import { goalsProgress } from "@/lib/minijob/goals";
 import { buildInsights } from "@/lib/minijob/insights";
@@ -37,10 +46,16 @@ import { legalIncomeForMonth } from "@/lib/minijob/service";
 import { isAbsenceKind, type AbsenceKind } from "@/lib/minijob/absence-range";
 import { monthTimeAccount } from "@/lib/minijob/fest-time-account";
 import { jobsApplyMinijobLimit, primaryWorkMode } from "@/lib/minijob/work-mode";
-import { limitAlertLevel } from "@/lib/minijob/limit-alert";
+import { effectiveLimitShares, limitAlertLevel } from "@/lib/minijob/limit-alert";
+import {
+  activityOptions,
+  limitReliabilityFlags,
+  limitReliabilityMonths,
+  statusUnreliable,
+} from "@/lib/minijob/multi-minijob";
 import { payPeriods } from "@/lib/minijob/payday";
 import { makeResolver } from "@/lib/minijob/resolve";
-import { useAppData } from "@/lib/minijob/store";
+import { updateSettings, useAppData } from "@/lib/minijob/store";
 import type { Shift, WidgetId } from "@/lib/minijob/types";
 
 export const Route = createFileRoute("/")({
@@ -119,7 +134,22 @@ function DashboardPage() {
   const limitShare = monthLimit.share;
   const yearShare = yearLimit.share;
   const appliesMinijobLimit = jobsApplyMinijobLimit(jobs);
-  const limitAlert = limitAlertLevel(appliesMinijobLimit, limitShare, yearShare);
+  // B3-1/O4: Flags für den BETRACHTETEN Monat/Jahr/Prognosezeitraum – jede
+  // Karte und der Banner nutzen den Flag ihres eigenen Zeitraums.
+  const multiMinijob = useMemo(
+    () => limitReliabilityFlags(jobs, shifts, year, month, activityOptions(settings)),
+    [jobs, shifts, year, month, settings],
+  );
+  const multiMinijobMonths = useMemo(
+    () => limitReliabilityMonths(jobs, shifts, year, month, activityOptions(settings)),
+    [jobs, shifts, year, month, settings],
+  );
+  const multiMinijobMonth = multiMinijob.month;
+  const multiMinijobYear = multiMinijob.year;
+  // Owner R5 (Variante B): "nicht sicher bestimmbar" unterdrückt den Status wie O4.
+  const unreliable = statusUnreliable(multiMinijob);
+  const limitAlert = limitAlertLevel(appliesMinijobLimit, limitShare, yearShare, unreliable);
+  const alertShares = effectiveLimitShares(limitShare, yearShare, unreliable);
   const workMode = primaryWorkMode(jobs, settings.activeJobId);
   const isFest = workMode === "fest";
   const isSelf = workMode === "selbststaendig";
@@ -187,11 +217,17 @@ function DashboardPage() {
             />
             <StatCard
               label={t("dash.limit")}
-              value={appliesMinijobLimit ? `${Math.round(limitShare)} %` : "—"}
+              value={
+                appliesMinijobLimit && !unreliable.month ? `${Math.round(limitShare)} %` : "—"
+              }
               hint={
-                appliesMinijobLimit
-                  ? t("dash.ofAmount", { amount: formatEuro(monthLimit.earningsLimit) })
-                  : t("limit.notApplicable")
+                !appliesMinijobLimit
+                  ? t("limit.notApplicable")
+                  : multiMinijobMonth
+                    ? t("limit.multipleMinijobs")
+                    : unreliable.month
+                      ? t("limit.o4Uncertain")
+                      : t("dash.ofAmount", { amount: formatEuro(monthLimit.earningsLimit) })
               }
               icon={Euro}
             />
@@ -206,9 +242,19 @@ function DashboardPage() {
         rate={settings.defaultRate}
         auto={settings.hoursLimitAuto || settings.hoursLimitMonthly <= 0}
         notApplicable={!appliesMinijobLimit}
+        multipleMinijobs={multiMinijobMonth}
+        o4Uncertain={!!multiMinijob.monthUncertain}
       />
     ),
-    legalForecast: <LegalForecastCard forecast={legalForecast.rolling} />,
+    legalForecast: (
+      <LegalForecastCard
+        forecast={legalForecast.rolling}
+        multipleMinijobs={multiMinijob.forecast}
+        affectedMonths={multiMinijobMonths.forecast}
+        o4Uncertain={!!multiMinijob.forecastUncertain}
+        uncertainMonths={multiMinijobMonths.forecastUncertain}
+      />
+    ),
     limitYear: (
       <LimitCard
         usage={yearLimit}
@@ -216,6 +262,11 @@ function DashboardPage() {
         rate={settings.defaultRate}
         auto={settings.hoursLimitAuto || settings.hoursLimitMonthly <= 0}
         notApplicable={!appliesMinijobLimit}
+        multipleMinijobs={multiMinijobYear}
+        affectedMonths={multiMinijobMonths.year}
+        causedByOtherMonths={multiMinijobYear && !multiMinijobMonth}
+        o4Uncertain={!!multiMinijob.yearUncertain}
+        uncertainMonths={multiMinijobMonths.yearUncertain}
       />
     ),
     payday: <PaydayCard periods={periods} />,
@@ -259,7 +310,13 @@ function DashboardPage() {
         <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
           {t("dash.entriesInMonth", { month: monthLabel })}
         </h2>
-        <ShiftList shifts={monthShifts} jobs={jobs} resolve={resolve} onSelect={openEdit} />
+        <ShiftList
+          shifts={monthShifts}
+          history={shifts}
+          jobs={jobs}
+          resolve={resolve}
+          onSelect={openEdit}
+        />
       </section>
     ),
   };
@@ -285,7 +342,7 @@ function DashboardPage() {
         <LimitBanner
           tone="over"
           text={
-            limitShare >= 100
+            alertShares.month >= 100
               ? t("dash.limitMonthOver", { amount: formatEuro(monthLimit.earningsLimit) })
               : t("dash.limitYearOver", { amount: formatEuro(yearLimit.earningsLimit) })
           }
@@ -295,7 +352,9 @@ function DashboardPage() {
       ) : limitAlert === "near" ? (
         <LimitBanner
           tone="near"
-          text={t("dash.limitNear", { percent: Math.round(Math.max(limitShare, yearShare)) })}
+          text={t("dash.limitNear", {
+            percent: Math.round(Math.max(alertShares.month, alertShares.year)),
+          })}
         />
       ) : null}
 
@@ -307,6 +366,27 @@ function DashboardPage() {
           </Button>
         </div>
       ) : null}
+
+      {/* O-2: Neuberechnung nur nach ausdrücklicher Bestätigung (DECISIONS R2/R3). */}
+      <SickConfirmationLapsedNotice
+        months={sanitizeLapsedMonths(settings.sickConfirmationsLapsed)}
+        onDismiss={() => updateSettings({ sickConfirmationsLapsed: [] })}
+      />
+      <SickRecalcNotice
+        shifts={shifts}
+        resolve={resolve}
+        onConfirm={(months) =>
+          updateSettings({
+            sickContinuousConfirmations: withSickConfirmations(
+              settings.sickContinuousConfirmations,
+              months,
+              shifts,
+              jobs,
+            ),
+            sickConfirmationsLapsed: lapsedWithout(settings.sickConfirmationsLapsed, months),
+          })
+        }
+      />
 
       {isFest && timeAccount ? (
         <div className="mt-4 grid grid-cols-2 items-start gap-3">
@@ -329,6 +409,7 @@ function DashboardPage() {
           resolve={resolve}
           monthUsage={monthLimit}
           yearUsage={yearLimit}
+          limitFlags={unreliable}
           onNewEntry={() => openNew(isoDate(new Date()))}
         />
       </div>
@@ -372,6 +453,7 @@ function DashboardPage() {
         settings={settings}
         objects={objects}
         onRequestAbsence={requestAbsence}
+        history={shifts}
       />
 
       <AbsenceDialog

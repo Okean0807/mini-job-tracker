@@ -2,6 +2,7 @@ import { isoDate, shiftHours } from "./calc";
 import { isHoliday } from "./holidays";
 import { newId } from "./store";
 import type { Job, Shift, ShiftKind } from "./types";
+import { absencePlanDay } from "./week-plan";
 
 /**
  * Jobs, die laut Wochenplan an `date` geplant, aber dort noch nicht erfasst
@@ -69,6 +70,11 @@ function localDate(iso: string): Date {
  * Erzeugt Abwesenheitseinträge (Urlaub / Krank) für einen Zeitraum.
  * Überspringt Tage, an denen für denselben Job bereits ein Eintrag existiert
  * (keine stillen Löschungen / Überschreibungen von Arbeit).
+ *
+ * Maßgeblich ist der Wochenplan, der AM JEWEILIGEN DATUM galt (weekHistory über
+ * `weekForDate`, dieselbe Quelle wie die Payroll) – nicht der aktuelle Plan.
+ * Ist der historische Plan für ein Datum unbekannt (ungültiger weekHistory-Eintrag),
+ * wird an diesem Tag nichts angelegt (kein Raten). Ohne jeden Plan (flex): Mo–Fr.
  */
 export function generateAbsence(
   job: Job,
@@ -89,10 +95,9 @@ export function generateAbsence(
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const date = isoDate(d);
     if (taken.has(date)) continue;
-    const weekdayIndex = (d.getDay() + 6) % 7;
-    const plan = job.week?.[weekdayIndex];
-    if (job.week && !plan?.active) continue;
-    if (!job.week && (d.getDay() === 0 || d.getDay() === 6)) continue;
+    const planDay = absencePlanDay(job, date);
+    if (planDay.status === "off" || planDay.status === "unknown") continue;
+    if (planDay.status === "no-plan" && (d.getDay() === 0 || d.getDay() === 6)) continue;
     result.push({
       id: newId(),
       jobId: job.id,
@@ -110,14 +115,16 @@ export function generateAbsence(
 /**
  * Zeiten eines Abwesenheitstags – gemeinsame Quelle für den Zeitraum-Dialog
  * (generateAbsence) und neue Abwesenheiten im Eintrags-Editor:
- * aktiver Wochenplan-Tag → dessen Beginn/Ende/Pause, sonst 09:00–17:00 ohne Pause.
+ * aktiver Tag des am Datum gültigen Wochenplans → dessen Beginn/Ende/Pause,
+ * sonst 09:00–17:00 ohne Pause.
  */
 export function absenceDayTimes(
-  job: Pick<Job, "week"> | undefined,
+  job: Pick<Job, "week" | "weekHistory"> | undefined,
   date: string,
 ): { start: string; end: string; breakMinutes: number } {
-  const plan = job?.week?.[(localDate(date).getDay() + 6) % 7];
-  if (plan?.active) {
+  const planDay = job ? absencePlanDay(job, date) : undefined;
+  const plan = planDay?.status === "work" ? planDay.day : undefined;
+  if (plan) {
     return { start: plan.start, end: plan.end, breakMinutes: plan.breakMinutes ?? 0 };
   }
   return { start: "09:00", end: "17:00", breakMinutes: 0 };

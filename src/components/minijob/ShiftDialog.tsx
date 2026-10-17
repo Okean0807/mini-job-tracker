@@ -27,18 +27,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/lib/i18n";
-import { formatEuro, isoDate, shiftBreakdown } from "@/lib/minijob/calc";
+import { formatDate, formatEuro, isoDate, shiftBreakdown } from "@/lib/minijob/calc";
 import {
   extrasSummaryParts,
   formatRateInput,
   formatWorkDuration,
   sanitizeRateInput,
 } from "@/lib/minijob/entry-format";
-import { shiftPayroll } from "@/lib/minijob/payroll";
+import { adjacentExplicitSickCase, shiftPayroll } from "@/lib/minijob/payroll";
+import { confirmedSickMonths, sickRuleForSave } from "@/lib/minijob/sick-confirmation";
 import { absenceDayTimes } from "@/lib/minijob/schedule";
 import { holidayName } from "@/lib/minijob/holidays";
 import { parseRateInput, suggestedRate } from "@/lib/minijob/rate";
 import { ObjectDialog } from "@/components/minijob/ObjectDialog";
+import { RetroImpactDialog } from "@/components/minijob/RetroImpactDialog";
+import { needsRetroConfirmation, retroImpact, type RetroImpact } from "@/lib/minijob/retro-impact";
+import { getData } from "@/lib/minijob/store";
 import { persistDialogShift, removeShift, getShift } from "@/lib/minijob/service";
 import {
   type Customer,
@@ -93,6 +97,11 @@ interface ShiftDialogProps {
   objects?: WorkObject[];
   /** When set, choosing Urlaub/Krank closes this dialog and opens AbsenceDialog (From–To). */
   onRequestAbsence?: (kind: "urlaub" | "krank" | "frei" | "sonstige", date: string) => void;
+  /**
+   * All known entries, so the absence preview evaluates sickness cases,
+   * work patterns and the 13-week average like the list (QA P2-144-b).
+   */
+  history?: Shift[];
 }
 
 const KINDS: ShiftKind[] = ["arbeit", "urlaub", "krank", "feiertag", "frei", "sonstige"];
@@ -123,6 +132,7 @@ export function ShiftDialog({
   settings,
   objects = [],
   onRequestAbsence,
+  history,
 }: ShiftDialogProps) {
   const { t, locale } = useT();
   const [jobId, setJobId] = useState<string | undefined>(undefined);
@@ -132,6 +142,9 @@ export function ShiftDialog({
   const [breakMinutes, setBreakMinutes] = useState("30");
   const [rate, setRate] = useState(String(settings.defaultRate));
   const [note, setNote] = useState("");
+  // DECISIONS R3 Punkt 1: Zuordnung zu einem angrenzenden Krankheitsfall nur
+  // nach ausdrücklicher Bestätigung (Standard: getrennt, nie automatisch).
+  const [sickLink, setSickLink] = useState(false);
   const [overtime, setOvertime] = useState(false);
   const [customerId, setCustomerId] = useState<string | undefined>(undefined);
   const [projectId, setProjectId] = useState<string | undefined>(undefined);
@@ -156,6 +169,8 @@ export function ShiftDialog({
   const [newCodeOpen, setNewCodeOpen] = useState(false);
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const [fieldError, setFieldError] = useState<{ start?: string; end?: string }>({});
+  // D3 (Owner R4): rückwirkende Auswirkung – erst nach Bestätigung speichern.
+  const [retro, setRetro] = useState<{ impact: RetroImpact; apply: () => void } | null>(null);
   const [entryDate, setEntryDate] = useState(date);
   const [objectId, setObjectId] = useState<string | undefined>(undefined);
   const [objectDialogOpen, setObjectDialogOpen] = useState(false);
@@ -239,6 +254,7 @@ export function ShiftDialog({
       ),
     );
     setNote(source?.note ?? "");
+    setSickLink(false);
     setOvertime(source?.overtime ?? false);
     setCustomerId(source?.customerId);
     setProjectId(source?.projectId);
@@ -304,6 +320,19 @@ export function ShiftDialog({
   const parsedRate = parseRateInput(rate);
   if (parsedRate !== undefined) draft.rate = parsedRate;
   if (jobId) draft.jobId = jobId;
+  // Krankheitstage: Herkunft (DECISIONS R3 Punkt 1) und Fallzuordnung wie beim Speichern.
+  const storedSource = resolvedShiftId
+    ? (getShift(resolvedShiftId) ?? shift ?? undefined)
+    : undefined;
+  const draftSickRule = sickRuleForSave(kind, storedSource);
+  if (draftSickRule) draft.sickRule = draftSickRule;
+  const keptSickCaseId = kind === "krank" ? storedSource?.sickCaseId : undefined;
+  const sickLinkCandidate =
+    kind === "krank" && !keptSickCaseId
+      ? adjacentExplicitSickCase(draft, job, history ?? [])
+      : undefined;
+  if (keptSickCaseId) draft.sickCaseId = keptSickCaseId;
+  else if (sickLinkCandidate && sickLink) draft.sickCaseId = sickLinkCandidate.caseId;
 
   // Work on a public holiday must pay hours×rate (optional surcharge). Kind "feiertag"
   // is only for not working. Preview uses payroll for absences and breakdown for work.
@@ -318,6 +347,8 @@ export function ShiftDialog({
     supplements: job?.supplements ?? settings.supplements,
     holiday: Boolean(holiday),
     defaultRate: settings.defaultRate,
+    sickContinuousConfirmed: confirmedSickMonths(settings),
+    ...(history ? { history } : {}),
   });
   const preview =
     kind === "arbeit"
@@ -456,6 +487,15 @@ export function ShiftDialog({
     const rateValue = parseRateInput(rate);
     if (rateValue !== undefined) next.rate = rateValue;
     if (jobId) next.jobId = jobId;
+    // Krankheitstage: Herkunftsmerkmal (DECISIONS R3 Punkt 1). Eine bestehende
+    // Fallzuordnung bleibt beim Bearbeiten erhalten (vorher ging sie verloren);
+    // eine neue Zuordnung nur nach ausdrücklicher Bestätigung.
+    const nextSickRule = sickRuleForSave(kind, existing ?? undefined);
+    if (nextSickRule) next.sickRule = nextSickRule;
+    if (kind === "krank") {
+      if (existing?.sickCaseId) next.sickCaseId = existing.sickCaseId;
+      else if (sickLink && sickLinkCandidate) next.sickCaseId = sickLinkCandidate.caseId;
+    }
     if (note.trim()) next.note = note.trim();
     if (overtime) next.overtime = true;
     if (customerId) next.customerId = customerId;
@@ -499,9 +539,41 @@ export function ShiftDialog({
     if (code && workCodeNote.trim()) next.workCodeNote = workCodeNote.trim();
     const noteSource = existing ?? shift;
     next.createdAt = noteSource?.createdAt ?? isoDate(new Date());
-    persistDialogShift(next, editingId);
-    toast.success(editingId ? t("shift.updated") : t("shift.saved"));
-    onOpenChange(false);
+    const apply = () => {
+      persistDialogShift(next, editingId);
+      toast.success(editingId ? t("shift.updated") : t("shift.saved"));
+      onOpenChange(false);
+    };
+    // D3: Ändert das Speichern die Bewertung ANDERER Einträge (anderer Monate)
+    // oder hebt es eine O-2-Bestätigung auf → erst Vorher/Nachher zeigen.
+    const data = getData();
+    const pendingId = editingId || "__retro-pending__";
+    const candidate = { ...next, id: pendingId };
+    const after = editingId
+      ? data.shifts.map((s) => (s.id === editingId ? candidate : s))
+      : [...data.shifts, candidate];
+    const impact = retroImpact(data.shifts, after, data.jobs, data.settings, [pendingId]);
+    if (needsRetroConfirmation(impact)) {
+      setRetro({ impact, apply });
+      return;
+    }
+    apply();
+  }
+
+  function deleteEntry(id: string) {
+    const apply = () => {
+      removeShift(id);
+      toast.success(t("shift.deleted"));
+      onOpenChange(false);
+    };
+    const data = getData();
+    const after = data.shifts.filter((s) => s.id !== id);
+    const impact = retroImpact(data.shifts, after, data.jobs, data.settings, [id]);
+    if (needsRetroConfirmation(impact)) {
+      setRetro({ impact, apply });
+      return;
+    }
+    apply();
   }
 
   const selfEmployed = job?.mode === "selbststaendig";
@@ -1325,6 +1397,7 @@ export function ShiftDialog({
                 className="rounded-xl bg-card p-3 text-sm"
                 data-testid="entry-absence-preview"
                 data-hours={preview.hours}
+                data-pay-reason={absencePreview.reason}
               >
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">{t("shift.duration")}</span>
@@ -1336,6 +1409,38 @@ export function ShiftDialog({
                     {formatEuro(preview.total, locale)}
                   </span>
                 </div>
+                {absencePreview.notice ? (
+                  <p
+                    className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400"
+                    data-testid="entry-absence-notice"
+                    data-notice={absencePreview.notice}
+                  >
+                    {t(`pay.notice.${absencePreview.notice}`)}
+                  </p>
+                ) : null}
+                {sickLinkCandidate ? (
+                  <label
+                    className="mt-2 flex items-start gap-2 text-xs"
+                    data-testid="entry-sick-link"
+                    data-case-start={sickLinkCandidate.start}
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 size-4"
+                      checked={sickLink}
+                      onChange={(e) => setSickLink(e.target.checked)}
+                    />
+                    <span>
+                      {t("sick.linkCase", {
+                        date: formatDate(sickLinkCandidate.start, locale),
+                      })}
+                    </span>
+                  </label>
+                ) : kind === "krank" && absencePreview.notice === "sick-case-ambiguous" ? (
+                  <p className="mt-1 text-xs" data-testid="entry-sick-ambiguous-help">
+                    {t("sick.ambiguousHelp")}
+                  </p>
+                ) : null}
               </div>
             ) : null}
 
@@ -1580,9 +1685,12 @@ export function ShiftDialog({
                 data-testid="entry-delete"
                 onClick={() => {
                   const id = editingIdRef.current ?? resolvedShiftId;
-                  if (id) removeShift(id);
-                  toast.success(t("shift.deleted"));
-                  onOpenChange(false);
+                  if (id) {
+                    deleteEntry(id);
+                  } else {
+                    toast.success(t("shift.deleted"));
+                    onOpenChange(false);
+                  }
                 }}
               >
                 <Trash2 className="size-4" /> {t("entry.deleteEntry")}
@@ -1605,6 +1713,16 @@ export function ShiftDialog({
           </div>
         </DialogContent>
       </Dialog>
+
+      <RetroImpactDialog
+        impact={retro?.impact ?? null}
+        onCancel={() => setRetro(null)}
+        onConfirm={() => {
+          const pending = retro;
+          setRetro(null);
+          pending?.apply();
+        }}
+      />
 
       <ObjectDialog
         open={objectDialogOpen}

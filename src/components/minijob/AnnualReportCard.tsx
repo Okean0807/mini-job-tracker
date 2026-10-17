@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n";
 import type { AnnualReport } from "@/lib/minijob/annual";
 import { exportAnnualPdf, exportAnnualXlsx } from "@/lib/minijob/annual-export";
-import { formatDate, formatEuro, formatHours, weekdayNames } from "@/lib/minijob/calc";
+import { formatDate, formatEuro, formatHours, monthNames, weekdayNames } from "@/lib/minijob/calc";
 
 export function AnnualReportCard({
   report,
@@ -90,12 +90,53 @@ export function AnnualReportCard({
           value={String(report.workDays)}
           hint={
             report.limit > 0
-              ? `${t("annual.kpi.limit")}: ${Math.round(report.limitShare)} %`
+              ? report.multipleMinijobs
+                ? `${t("annual.kpi.limit")}: ${t("limit.multipleMinijobs")}`
+                : report.o4UncertainMonths?.length
+                  ? `${t("annual.kpi.limit")}: ${t("limit.o4Uncertain")}`
+                : `${t("annual.kpi.limit")}: ${Math.round(report.limitShare)} %`
               : t("annual.kpi.bonus") + ": " + formatEuro(report.bonus)
           }
           icon={CalendarDays}
         />
       </div>
+
+      {report.limit > 0 && report.multipleMinijobs ? (
+        <div
+          data-testid="annual-o4-note"
+          className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-900 dark:text-amber-200"
+        >
+          <p className="font-medium">{t("limit.multipleMinijobs")}</p>
+          {report.multipleMinijobMonths?.length ? (
+            <p data-testid="annual-o4-months">
+              {t("limit.multipleMinijobsMonths", {
+                months: report.multipleMinijobMonths
+                  .map((key) => monthNames()[Number(key.slice(5, 7)) - 1] ?? key)
+                  .join(", "),
+              })}
+            </p>
+          ) : null}
+          {report.multipleMinijobsFromAllJobs ? (
+            <p data-testid="annual-o4-filter-note">{t("limit.multipleMinijobsFilterNote")}</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {report.limit > 0 && report.o4UncertainMonths?.length ? (
+        <div
+          data-testid="annual-o4-uncertain"
+          className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-900 dark:text-amber-200"
+        >
+          <p className="font-medium">{t("limit.o4Uncertain")}</p>
+          <p>
+            {t("limit.o4UncertainMonths", {
+              months: report.o4UncertainMonths
+                .map((key) => monthNames()[Number(key.slice(5, 7)) - 1] ?? key)
+                .join(", "),
+            })}
+          </p>
+        </div>
+      ) : null}
 
       <div className="rounded-2xl border bg-card p-4 shadow-card">
         <h2 className="mb-3 text-sm font-semibold">{t("annual.chart.earnings")}</h2>

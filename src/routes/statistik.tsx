@@ -33,7 +33,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useT } from "@/lib/i18n";
-import { buildAnnualReport } from "@/lib/minijob/annual";
+import { buildAnnualReport, withAllJobsO4 } from "@/lib/minijob/annual";
 import { exportAnnualPdf, exportAnnualXlsx } from "@/lib/minijob/annual-export";
 import { exportArbeitsnachweisPdf } from "@/lib/minijob/arbeitsnachweis";
 import {
@@ -47,7 +47,7 @@ import {
   shiftsInYear,
 } from "@/lib/minijob/calc";
 import { DOCUMENT_LOCALE, td } from "@/lib/minijob/document-i18n";
-import { exportPdf, exportXlsx } from "@/lib/minijob/export";
+import { exportPdf, exportXlsx, sickExportFields } from "@/lib/minijob/export";
 import { monthTimeAccount } from "@/lib/minijob/fest-time-account";
 import { payPeriods } from "@/lib/minijob/payday";
 import {
@@ -65,6 +65,12 @@ import {
   dailyXAxisTicks,
   formatDailyTooltipLine,
 } from "@/lib/minijob/stats-charts";
+import {
+  activityOptions,
+  multipleMinijobsWithMainJob,
+  uncertainMinijobMonths,
+  yearPeriod,
+} from "@/lib/minijob/multi-minijob";
 import { statsLegalYearUsage } from "@/lib/minijob/stats-legal";
 import { initialWeekForMonth } from "@/lib/minijob/stats-week";
 import { useAppData } from "@/lib/minijob/store";
@@ -174,9 +180,30 @@ function StatsPage() {
     [shifts, resolve, settings, year],
   );
 
+  // B3-1/O4: Flag aus den UNGEFILTERTEN Daten (Job-Filter ändert die Rechtslage nicht).
+  const yearMultiMinijob = useMemo(
+    () => multipleMinijobsWithMainJob(jobs, shifts, yearPeriod(year), activityOptions(settings)),
+    [jobs, shifts, year, settings],
+  );
+  // Owner R5 (Variante B): nicht sicher bestimmbar → kein Prozentstatus.
+  const yearO4Uncertain = useMemo(
+    () =>
+      !yearMultiMinijob &&
+      uncertainMinijobMonths(jobs, shifts, yearPeriod(year), activityOptions(settings)).length > 0,
+    [jobs, shifts, year, settings, yearMultiMinijob],
+  );
+
+  // DECISIONS R3 Punkt 5: Summen nach Filter, O4-Hinweis aus allen Daten + Erklärung.
   const annualReport = useMemo(
-    () => buildAnnualReport(filtered, jobs, settings, year, resolve),
-    [filtered, jobs, settings, year, resolve],
+    () =>
+      withAllJobsO4(
+        buildAnnualReport(filtered, jobs, settings, year, resolve),
+        jobs,
+        shifts,
+        jobFilter !== "alle",
+        activityOptions(settings),
+      ),
+    [filtered, jobs, settings, year, resolve, shifts, jobFilter],
   );
 
   const ctx = {
@@ -184,6 +211,8 @@ function StatsPage() {
     bundesland: settings.bundesland,
     defaultRate: settings.defaultRate,
     supplements: settings.supplements,
+    // Volle Historie (QA P1-144-a) + gleiche O-2-Bestätigungen wie in der App.
+    ...sickExportFields(settings, shifts),
   };
 
   function doExport(kind: "xlsx" | "pdf", list: Shift[], title: string) {
@@ -488,10 +517,20 @@ function StatsPage() {
                 />
                 <StatCard
                   label={t("stats.card.yearLimit")}
-                  value={`${Math.round(legalYearUsage.earningsShare)} %`}
-                  hint={`${t("stats.card.yearLimitHint", {
-                    amount: formatEuro(legalYearUsage.earningsLimit),
-                  })} · ${t("stats.kpi.yearLimitAll")}`}
+                  value={
+                    yearMultiMinijob || yearO4Uncertain
+                      ? "—"
+                      : `${Math.round(legalYearUsage.earningsShare)} %`
+                  }
+                  hint={
+                    yearMultiMinijob
+                      ? t("limit.multipleMinijobs")
+                      : yearO4Uncertain
+                        ? t("limit.o4Uncertain")
+                        : `${t("stats.card.yearLimitHint", {
+                            amount: formatEuro(legalYearUsage.earningsLimit),
+                          })} · ${t("stats.kpi.yearLimitAll")}`
+                  }
                   icon={Euro}
                 />
               </>

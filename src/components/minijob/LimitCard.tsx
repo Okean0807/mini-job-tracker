@@ -3,9 +3,14 @@ import { Gauge } from "lucide-react";
 
 import { Progress } from "@/components/ui/progress";
 import { useT } from "@/lib/i18n";
-import { formatEuro, formatHours } from "@/lib/minijob/calc";
+import { formatEuro, formatHours, monthNames } from "@/lib/minijob/calc";
 import type { LimitUsage } from "@/lib/minijob/limits";
 import { cn } from "@/lib/utils";
+
+/** "YYYY-MM" → "März 2026" (D6: betroffene Monate). */
+export function o4MonthLabel(key: string): string {
+  return `${monthNames()[Number(key.slice(5, 7)) - 1] ?? key} ${key.slice(0, 4)}`;
+}
 
 interface LimitCardProps {
   usage: LimitUsage;
@@ -14,9 +19,36 @@ interface LimitCardProps {
   auto: boolean;
   /** Self-employed: employee Minijob limit not applicable. */
   notApplicable?: boolean;
+  /**
+   * B3-1/O4: Hauptbeschäftigung + mehrere Minijobs. Die Karte zeigt dann nur
+   * einen Hinweis und die Summe zur Information – keinen Status/Anteil.
+   */
+  multipleMinijobs?: boolean;
+  /** D6: Monate ("YYYY-MM") im Zeitraum, die den Hinweis auslösen. */
+  affectedMonths?: readonly string[];
+  /** D6: true = der Hinweis entsteht nur durch ANDERE Monate des Zeitraums. */
+  causedByOtherMonths?: boolean;
+  /**
+   * Owner R5 (Variante B): Konstellation nicht sicher bestimmbar (bezahlte
+   * Abwesenheiten nur geschätzt / Bestätigung offen) → kein Status.
+   */
+  o4Uncertain?: boolean;
+  /** Monate ("YYYY-MM") mit unsicherem Status. */
+  uncertainMonths?: readonly string[];
 }
 
-export function LimitCard({ usage, scopeLabel, rate, auto, notApplicable }: LimitCardProps) {
+export function LimitCard({
+  usage,
+  scopeLabel,
+  rate,
+  auto,
+  notApplicable,
+  multipleMinijobs,
+  affectedMonths,
+  causedByOtherMonths,
+  o4Uncertain,
+  uncertainMonths,
+}: LimitCardProps) {
   const { t } = useT();
   const titleId = useId();
   if (notApplicable) {
@@ -30,6 +62,51 @@ export function LimitCard({ usage, scopeLabel, rate, auto, notApplicable }: Limi
         </div>
         <p className="mt-3 text-sm font-semibold">{t("limit.notApplicable")}</p>
         <p className="mt-1 text-xs text-muted-foreground">{t("limit.notApplicableHint")}</p>
+      </div>
+    );
+  }
+  if (multipleMinijobs || o4Uncertain) {
+    return (
+      <div
+        className="rounded-2xl border bg-card p-4 shadow-card"
+        data-testid={multipleMinijobs ? "limit-multiple-minijobs" : "limit-o4-uncertain"}
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t("limit.title")} · {scopeLabel}
+          </span>
+          <Gauge className="size-4 text-muted-foreground" />
+        </div>
+        <div className="mt-3 space-y-1 rounded-xl border border-amber-500/40 bg-amber-500/5 p-2.5">
+          <p className="text-sm font-semibold">
+            {t(multipleMinijobs ? "limit.multipleMinijobs" : "limit.o4Uncertain")}
+          </p>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {t(multipleMinijobs ? "limit.multipleMinijobsHint" : "limit.o4UncertainHint")}
+          </p>
+        </div>
+        {multipleMinijobs && affectedMonths?.length ? (
+          <p className="mt-2 text-xs text-muted-foreground" data-testid="limit-o4-months">
+            {t("limit.multipleMinijobsMonths", {
+              months: affectedMonths.map(o4MonthLabel).join(", "),
+            })}
+          </p>
+        ) : null}
+        {causedByOtherMonths ? (
+          <p className="mt-1 text-xs text-muted-foreground" data-testid="limit-o4-other-months">
+            {t("limit.multipleMinijobsOtherMonths")}
+          </p>
+        ) : null}
+        {uncertainMonths?.length ? (
+          <p className="mt-1 text-xs text-muted-foreground" data-testid="limit-o4-uncertain-months">
+            {t("limit.o4UncertainMonths", {
+              months: uncertainMonths.map(o4MonthLabel).join(", "),
+            })}
+          </p>
+        ) : null}
+        <p className="mt-2 text-xs text-muted-foreground tabular-nums">
+          {t("limit.multipleMinijobsSum", { amount: formatEuro(usage.earnings) })}
+        </p>
       </div>
     );
   }

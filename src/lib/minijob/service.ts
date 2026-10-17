@@ -18,6 +18,7 @@ import {
   sumHours,
   weekday,
 } from "./calc";
+import { eachIsoDateInclusive } from "./absence-range";
 import { goalsProgress, type GoalProgress } from "./goals";
 import { holidaysFor, isHoliday } from "./holidays";
 import { buildInsights, type Insights } from "./insights";
@@ -30,6 +31,7 @@ import { assessLegalIncome, type LegalIncomeAssessment } from "./legal";
 
 import { generateAbsence, generateFixedMonth, overtimeHours, weeklyPlanHours } from "./schedule";
 import {
+  applyShiftChanges as storeApplyShiftChanges,
   deleteShift as storeDeleteShift,
   getData,
   newId,
@@ -39,6 +41,7 @@ import {
   updateSupplements as storeUpdateSupplements,
 } from "./store";
 import type { AppData, Job, Settings, Shift, ShiftKind } from "./types";
+import { absencePlanDay } from "./week-plan";
 
 /* ---------------- Kontext ---------------- */
 
@@ -382,6 +385,142 @@ export function removeAbsenceRange(
   );
   for (const s of targets) storeDeleteShift(s.id);
   return targets.length;
+}
+
+/** Abwesenheiten (urlaub/krank) eines Jobs im Zeitraum – reine Auswahl, ändert nichts. */
+export function absenceRangeTargets(
+  shifts: Shift[],
+  jobId: string | undefined,
+  kind: ShiftKind,
+  from: string,
+  to: string,
+): Shift[] {
+  if (kind !== "urlaub" && kind !== "krank") return [];
+  const lo = from <= to ? from : to;
+  const hi = from <= to ? to : from;
+  return shifts.filter(
+    (s) => s.kind === kind && (s.jobId ?? "") === (jobId ?? "") && s.date >= lo && s.date <= hi,
+  );
+}
+
+/** D3 (Owner R4): geplante Änderung eines Abwesenheitszeitraums (noch nicht gespeichert). */
+export interface AbsencePlan {
+  removeIds: string[];
+  created: Shift[];
+}
+
+/**
+ * Plant Anlegen bzw. Ersetzen eines Abwesenheitszeitraums, OHNE zu speichern –
+ * damit vor dem Speichern die Auswirkung auf andere Einträge/Monate gezeigt
+ * und bestätigt werden kann. `replace` = bisheriger Zeitraum (Bearbeiten).
+ */
+export function planAbsence(
+  job: Job,
+  kind: ShiftKind,
+  from: string,
+  to: string,
+  replace?: { jobId: string | undefined; kind: ShiftKind; from: string; to: string },
+  data: AppData = getData(),
+): AbsencePlan {
+  const lo = from <= to ? from : to;
+  const hi = from <= to ? to : from;
+  const sameJob = replace ? (replace.jobId ?? job.id) === job.id : false;
+  // V10-ABS-PLAN-P2-1: Unverändert gespeichert (gleicher Job, gleiche Art, gleiche
+  // Daten) → nichts entfernen, nichts neu anlegen. Bestehende Einträge bleiben
+  // unverändert, auch an Tagen, die laut gültigem Plan frei oder unbekannt sind.
+  if (replace && sameJob && replace.kind === kind && replace.from === from && replace.to === to) {
+    return { removeIds: [], created: [] };
+  }
+  // Einträge gleicher Art im neuen Zeitraum, deren historischer Plan UNBEKANNT ist,
+  // bleiben stehen: kein Ersetzen nach einem geratenen Plan, keine stille Null.
+  const keep = (s: Shift) =>
+    sameJob &&
+    s.kind === kind &&
+    s.date >= lo &&
+    s.date <= hi &&
+    absencePlanDay(job, s.date).status === "unknown";
+  const removed = replace
+    ? absenceRangeTargets(
+        data.shifts,
+        replace.jobId,
+        replace.kind,
+        replace.from,
+        replace.to,
+      ).filter((s) => !keep(s))
+    : [];
+  const removeIds = removed.map((s) => s.id);
+  const gone = new Set(removeIds);
+  const remaining = data.shifts.filter((s) => !gone.has(s.id));
+  const created = generateAbsence(job, kind, from, to, data.settings.bundesland, remaining);
+  if (kind !== "krank" || !replace) return { removeIds, created };
+  // V10-ABS-PLAN-P2-1b: Ein ersetzter Krank-Zeitraum bleibt EIN Krankheitsfall (wie 78ef353):
+  // behaltene Einträge (unbekannter Plan) und neu angelegte Tage teilen eine sickCaseId.
+  const keptIds = new Set(removed.map((s) => s.id));
+  const kept = absenceRangeTargets(
+    data.shifts,
+    replace.jobId,
+    replace.kind,
+    replace.from,
+    replace.to,
+  ).filter((s) => !keptIds.has(s.id) && keep(s));
+  return unifySickCase(removeIds, created, kept);
+}
+
+/** Alle Tage eines Krank-Ersetzens auf eine sickCaseId bringen (nur innerhalb dieses Plans). */
+function unifySickCase(removeIds: string[], created: Shift[], kept: Shift[]): AbsencePlan {
+  if (!kept.length) return { removeIds, created };
+  const caseId = kept.find((s) => s.sickCaseId)?.sickCaseId ?? created[0]?.sickCaseId;
+  if (!caseId) return { removeIds, created };
+  const relabel = kept.filter((s) => s.sickCaseId !== caseId);
+  return {
+    removeIds: [...removeIds, ...relabel.map((s) => s.id)],
+    created: [
+      ...created.map((s) => ({ ...s, sickCaseId: caseId })),
+      ...relabel.map((s) => ({ ...s, sickCaseId: caseId })),
+    ],
+  };
+}
+
+/**
+ * Tage im Zeitraum, an denen wegen UNBEKANNTEM historischem Plan nichts angelegt
+ * wird (nur freie, noch nicht belegte Tage) – für einen eigenen Hinweis.
+ */
+export function unknownPlanDates(
+  job: Job,
+  from: string,
+  to: string,
+  shifts: Shift[] = getData().shifts,
+): string[] {
+  const taken = new Set(shifts.filter((s) => s.jobId === job.id).map((s) => s.date));
+  return eachIsoDateInclusive(from, to).filter(
+    (d) => !taken.has(d) && absencePlanDay(job, d).status === "unknown",
+  );
+}
+
+/** Plant das Löschen eines Abwesenheitszeitraums, OHNE zu speichern. */
+export function planAbsenceRemoval(
+  jobId: string | undefined,
+  kind: ShiftKind,
+  from: string,
+  to: string,
+  data: AppData = getData(),
+): AbsencePlan {
+  return {
+    removeIds: absenceRangeTargets(data.shifts, jobId, kind, from, to).map((s) => s.id),
+    created: [],
+  };
+}
+
+/** Geplante Abwesenheitsänderung in einem Schritt speichern. */
+export function applyAbsencePlan(plan: AbsencePlan): void {
+  if (!plan.removeIds.length && !plan.created.length) return;
+  storeApplyShiftChanges(plan.removeIds, plan.created);
+}
+
+/** Schichtbestand nach Anwendung eines Plans (für die Vorschau). */
+export function shiftsAfterPlan(shifts: Shift[], plan: AbsencePlan): Shift[] {
+  const gone = new Set(plan.removeIds);
+  return [...shifts.filter((s) => !gone.has(s.id)), ...plan.created];
 }
 
 /**
