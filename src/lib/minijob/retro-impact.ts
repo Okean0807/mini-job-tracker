@@ -32,6 +32,25 @@ export interface RetroImpact {
   months: RetroImpactMonth[];
   /** Monate, deren O-2-Bestätigung durch die Änderung aufgehoben würde (D5). */
   lapsedMonths: string[];
+  /**
+   * V10-ABS-PLAN-P2-1: Ersetzen eines Abwesenheitszeitraums – Tage und Entgelt der
+   * direkt ersetzten Einträge vorher/nachher (die `months` zeigen nur ANDERE Einträge).
+   */
+  range?: AbsenceRangeChange;
+}
+
+export interface AbsenceRangeChange {
+  /** Anzahl der entfernten Einträge / Entgelt dieser Einträge vor der Änderung. */
+  daysBefore: number;
+  before: number;
+  /** Anzahl der neu angelegten Einträge / deren Entgelt nach der Änderung. */
+  daysAfter: number;
+  after: number;
+  /**
+   * Daten innerhalb des NEUEN Zeitraums, deren bisheriger Eintrag entfällt, ohne dass
+   * dort wieder ein Eintrag entsteht (z. B. laut gültigem Plan freier Tag).
+   */
+  lostInRange: string[];
 }
 
 const EPSILON = 0.005;
@@ -101,7 +120,71 @@ export function retroImpact(
   return { months, lapsedMonths };
 }
 
+/**
+ * V10-ABS-PLAN-P2-1: Vorher/Nachher der direkt ersetzten Einträge eines
+ * Abwesenheitszeitraums (gleiche Bewertung wie überall: shiftPayroll + gültige
+ * Bestätigungen). Reine Berechnung.
+ */
+export function absenceRangeChange(
+  before: Shift[],
+  after: Shift[],
+  jobs: Job[],
+  settings: Pick<
+    Settings,
+    "sickContinuousConfirmations" | "supplements" | "bundesland" | "defaultRate"
+  >,
+  plan: { removeIds: readonly string[]; created: readonly Shift[] },
+  range: { from: string; to: string },
+): AbsenceRangeChange {
+  const resolverFor = (shifts: Shift[]) =>
+    makeResolver(jobs, {
+      ...(settings as Settings),
+      sickContinuousConfirmations: currentSickConfirmations(
+        settings.sickContinuousConfirmations,
+        shifts,
+        jobs,
+      ),
+    });
+  const gone = new Set(plan.removeIds);
+  const removed = before.filter((s) => gone.has(s.id));
+  const createdIds = new Set(plan.created.map((s) => s.id));
+  const created = after.filter((s) => createdIds.has(s.id));
+  const lo = range.from <= range.to ? range.from : range.to;
+  const hi = range.from <= range.to ? range.to : range.from;
+  const lostInRange = [
+    ...new Set(
+      removed
+        .filter(
+          (r) =>
+            r.date >= lo &&
+            r.date <= hi &&
+            !after.some((a) => a.date === r.date && (a.jobId ?? "") === (r.jobId ?? "")),
+        )
+        .map((r) => r.date),
+    ),
+  ].sort();
+  return {
+    daysBefore: removed.length,
+    before: payrollTotals(removed, resolverFor(before), before).earnings,
+    daysAfter: created.length,
+    after: payrollTotals(created, resolverFor(after), after).earnings,
+    lostInRange,
+  };
+}
+
+/** true = Ersetzen ändert Tage/Entgelt oder verwirft Einträge im Zeitraum. */
+export function rangeChangeMatters(range: AbsenceRangeChange | undefined): boolean {
+  if (!range) return false;
+  return (
+    range.daysBefore !== range.daysAfter ||
+    Math.abs(range.before - range.after) > EPSILON ||
+    range.lostInRange.length > 0
+  );
+}
+
 /** true = vor dem Speichern muss der Nutzer die Auswirkung bestätigen. */
 export function needsRetroConfirmation(impact: RetroImpact): boolean {
-  return impact.months.length > 0 || impact.lapsedMonths.length > 0;
+  return (
+    impact.months.length > 0 || impact.lapsedMonths.length > 0 || rangeChangeMatters(impact.range)
+  );
 }

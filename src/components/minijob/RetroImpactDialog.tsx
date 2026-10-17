@@ -22,6 +22,12 @@ export function monthLabel(key: string): string {
   return `${monthNames()[(m ?? 1) - 1] ?? key} ${y}`;
 }
 
+/** "YYYY-MM-DD" → "DD.MM." (ohne Date-Parsing, zeitzonenfest). */
+function dayLabel(iso: string): string {
+  const [, m, d] = iso.split("-");
+  return `${d}.${m}.`;
+}
+
 export function RetroImpactDialog({
   impact,
   onConfirm,
@@ -40,6 +46,33 @@ export function RetroImpactDialog({
           <AlertDialogTitle>{t("retro.title")}</AlertDialogTitle>
           <AlertDialogDescription>{t("retro.body")}</AlertDialogDescription>
         </AlertDialogHeader>
+        {impact?.range ? (
+          <div className="space-y-1 text-sm" data-testid="retro-impact-range">
+            <p
+              data-testid="retro-impact-range-row"
+              data-days-before={impact.range.daysBefore}
+              data-days-after={impact.range.daysAfter}
+              data-before={impact.range.before.toFixed(2)}
+              data-after={impact.range.after.toFixed(2)}
+            >
+              {t("retro.range", {
+                daysBefore: String(impact.range.daysBefore),
+                before: formatEuro(impact.range.before),
+                daysAfter: String(impact.range.daysAfter),
+                after: formatEuro(impact.range.after),
+              })}
+            </p>
+            {impact.range.lostInRange.length ? (
+              <p
+                className="text-amber-700 dark:text-amber-400"
+                data-testid="retro-impact-range-lost"
+                data-days={impact.range.lostInRange.join(",")}
+              >
+                {t("retro.rangeLost", { days: impact.range.lostInRange.map(dayLabel).join(", ") })}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         {impact?.months.length ? (
           <ul className="space-y-1 text-sm" data-testid="retro-impact-months">
             {impact.months.map((m) => (

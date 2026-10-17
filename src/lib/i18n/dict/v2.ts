@@ -96,6 +96,14 @@ export const v2: Bundle = {
       "Abbrechen",
     "retro.confirm":
       "Trotzdem speichern",
+    "retro.range":
+      "Dieser Zeitraum: bisher {daysBefore} Tage, {before} → neu {daysAfter} Tage, {after}",
+    "retro.rangeLost":
+      "Diese Einträge im Zeitraum entfallen ohne Ersatz (laut gültigem Wochenplan frei): {days}",
+    "absence.unchanged":
+      "Keine Änderung – der Zeitraum bleibt unverändert.",
+    "absence.unknownPlanSkipped":
+      "{count} Tag(e) nicht eingetragen: Für diese Tage ist der damals gültige Wochenplan nicht bekannt.",
     "sickLapsed.title":
       "Bestätigung aufgehoben – bitte erneut prüfen",
     "sickLapsed.body":
@@ -236,6 +244,14 @@ export const v2: Bundle = {
       "Cancel",
     "retro.confirm":
       "Save anyway",
+    "retro.range":
+      "This period: before {daysBefore} days, {before} → after {daysAfter} days, {after}",
+    "retro.rangeLost":
+      "These entries in the period are removed without replacement (day off in the valid schedule): {days}",
+    "absence.unchanged":
+      "No change – the period stays as it is.",
+    "absence.unknownPlanSkipped":
+      "{count} day(s) not added: the schedule valid on these days is unknown.",
     "sickLapsed.title":
       "Confirmation revoked – please review again",
     "sickLapsed.body":
@@ -376,6 +392,14 @@ export const v2: Bundle = {
       "Отмена",
     "retro.confirm":
       "Всё равно сохранить",
+    "retro.range":
+      "Этот период: было {daysBefore} дн., {before} → станет {daysAfter} дн., {after}",
+    "retro.rangeLost":
+      "Эти записи в периоде будут удалены без замены (выходной по действующему графику): {days}",
+    "absence.unchanged":
+      "Без изменений – период остаётся прежним.",
+    "absence.unknownPlanSkipped":
+      "Не добавлено дней: {count} – действовавший в эти дни график неизвестен.",
     "sickLapsed.title":
       "Подтверждение снято – проверьте ещё раз",
     "sickLapsed.body":
@@ -516,6 +540,14 @@ export const v2: Bundle = {
       "İptal",
     "retro.confirm":
       "Yine de kaydet",
+    "retro.range":
+      "Bu dönem: önce {daysBefore} gün, {before} → sonra {daysAfter} gün, {after}",
+    "retro.rangeLost":
+      "Dönemdeki bu kayıtlar yerine yenisi olmadan kaldırılır (geçerli plana göre izin günü): {days}",
+    "absence.unchanged":
+      "Değişiklik yok – dönem aynı kalıyor.",
+    "absence.unknownPlanSkipped":
+      "{count} gün eklenmedi: bu günlerde geçerli olan çalışma planı bilinmiyor.",
     "sickLapsed.title":
       "Onay kaldırıldı – lütfen tekrar kontrol edin",
     "sickLapsed.body":
@@ -656,6 +688,14 @@ export const v2: Bundle = {
       "Anuluj",
     "retro.confirm":
       "Zapisz mimo to",
+    "retro.range":
+      "Ten okres: wcześniej {daysBefore} dni, {before} → teraz {daysAfter} dni, {after}",
+    "retro.rangeLost":
+      "Te wpisy w okresie zostaną usunięte bez zastępstwa (dzień wolny wg obowiązującego planu): {days}",
+    "absence.unchanged":
+      "Bez zmian – okres pozostaje bez zmian.",
+    "absence.unknownPlanSkipped":
+      "Nie dodano {count} dni: plan pracy obowiązujący w te dni jest nieznany.",
     "sickLapsed.title":
       "Potwierdzenie cofnięte – sprawdź ponownie",
     "sickLapsed.body":

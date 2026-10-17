@@ -299,10 +299,30 @@ describe("AbsenceDialog: rückwirkendes ANLEGEN (R8)", () => {
     lapsedMonths: ["2026-12"],
   };
   const inject = () =>
-    vi.mocked(retroImpact).mockImplementationOnce((before, after, _jobs, _settings, ids) => {
+    vi.mocked(retroImpact).mockImplementationOnce((before, after, jobs, settings, ids) => {
+      // Echte Eingaben des Dialogs: Nachher = Vorher + genau die 2 neuen Tage.
       const created = after.filter((s) => !before.some((b) => b.id === s.id));
       expect(created.map((s) => s.date)).toEqual(["2027-01-11", "2027-01-12"]);
+      expect(after).toHaveLength(before.length + 2);
+      expect(before.every((b) => after.some((a) => a.id === b.id))).toBe(true);
       expect([...ids].sort()).toEqual(created.map((s) => s.id).sort());
+      // ECHTE Berechnung auf genau diesen Eingaben (QA P3-1): Invariante
+      // "Anlegen ohne Entfernen ⇒ keine Auswirkung auf andere Einträge".
+      const real = realRetroImpact(before, after, jobs, settings, ids);
+      expect(real).toEqual({ months: [], lapsedMonths: [] });
+      // Gegenprobe derselben echten Funktion: Löschen des ersten Kettentags wirkt
+      // auf Dezember (Kette beginnt später) – echte Werte, vorher ≠ nachher.
+      const firstSick = before.find((s) => s.id === "k-2026-11-02")!;
+      const removal = realRetroImpact(
+        before,
+        before.filter((s) => s.id !== firstSick.id),
+        jobs,
+        settings,
+        [firstSick.id],
+      );
+      expect(removal.months.map((m) => m.month)).toEqual(["2026-12"]);
+      expect(removal.months[0]!.after).not.toBeCloseTo(removal.months[0]!.before, 2);
+      expect(removal.lapsedMonths).toEqual(["2026-12"]);
       return INJECTED;
     });
 
@@ -376,11 +396,17 @@ describe("AbsenceDialog: Zeitraum BEARBEITEN ersetzt den alten (R9, R14)", () =>
     expect(closed).toBe(1);
   });
 
-  it("planAbsence (Lib): Ersetzen mit gleichen Daten entfernt 5 und legt 5 neu an", () => {
+  it("planAbsence (Lib): unverändert ersetzen → kein Eingriff; geänderter Zeitraum ersetzt vollständig", () => {
     const data = { ...EMPTY_DATA, jobs: [JOB_SIMPLE], shifts: VACATION } as unknown as AppData;
     const replace = { jobId: "j2", kind: "urlaub" as const, from: "2026-08-03", to: "2026-08-07" };
-    const plan = planAbsence(JOB_SIMPLE, "urlaub", "2026-08-03", "2026-08-07", replace, data);
+    // V10-ABS-PLAN-P2-1: unverändert gespeichert → nichts entfernen, nichts anlegen
+    expect(planAbsence(JOB_SIMPLE, "urlaub", "2026-08-03", "2026-08-07", replace, data)).toEqual({
+      removeIds: [],
+      created: [],
+    });
+    // überlappend verschoben: alle 5 alten entfernt, 5 neue (04.–07.08. + 10.08.)
+    const plan = planAbsence(JOB_SIMPLE, "urlaub", "2026-08-04", "2026-08-10", replace, data);
     expect(plan.removeIds.sort()).toEqual(VACATION.map((s) => s.id).sort());
-    expect(plan.created.map((s) => s.date)).toEqual(weekdays("2026-08-03", "2026-08-07"));
+    expect(plan.created.map((s) => s.date)).toEqual(weekdays("2026-08-04", "2026-08-10"));
   });
 });

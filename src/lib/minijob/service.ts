@@ -18,6 +18,7 @@ import {
   sumHours,
   weekday,
 } from "./calc";
+import { eachIsoDateInclusive } from "./absence-range";
 import { goalsProgress, type GoalProgress } from "./goals";
 import { holidaysFor, isHoliday } from "./holidays";
 import { buildInsights, type Insights } from "./insights";
@@ -40,6 +41,7 @@ import {
   updateSupplements as storeUpdateSupplements,
 } from "./store";
 import type { AppData, Job, Settings, Shift, ShiftKind } from "./types";
+import { absencePlanDay } from "./week-plan";
 
 /* ---------------- Kontext ---------------- */
 
@@ -420,14 +422,53 @@ export function planAbsence(
   replace?: { jobId: string | undefined; kind: ShiftKind; from: string; to: string },
   data: AppData = getData(),
 ): AbsencePlan {
+  const lo = from <= to ? from : to;
+  const hi = from <= to ? to : from;
+  const sameJob = replace ? (replace.jobId ?? job.id) === job.id : false;
+  // V10-ABS-PLAN-P2-1: Unverändert gespeichert (gleicher Job, gleiche Art, gleiche
+  // Daten) → nichts entfernen, nichts neu anlegen. Bestehende Einträge bleiben
+  // unverändert, auch an Tagen, die laut gültigem Plan frei oder unbekannt sind.
+  if (replace && sameJob && replace.kind === kind && replace.from === from && replace.to === to) {
+    return { removeIds: [], created: [] };
+  }
+  // Einträge gleicher Art im neuen Zeitraum, deren historischer Plan UNBEKANNT ist,
+  // bleiben stehen: kein Ersetzen nach einem geratenen Plan, keine stille Null.
+  const keep = (s: Shift) =>
+    sameJob &&
+    s.kind === kind &&
+    s.date >= lo &&
+    s.date <= hi &&
+    absencePlanDay(job, s.date).status === "unknown";
   const removed = replace
-    ? absenceRangeTargets(data.shifts, replace.jobId, replace.kind, replace.from, replace.to)
+    ? absenceRangeTargets(
+        data.shifts,
+        replace.jobId,
+        replace.kind,
+        replace.from,
+        replace.to,
+      ).filter((s) => !keep(s))
     : [];
   const removeIds = removed.map((s) => s.id);
   const gone = new Set(removeIds);
   const remaining = data.shifts.filter((s) => !gone.has(s.id));
   const created = generateAbsence(job, kind, from, to, data.settings.bundesland, remaining);
   return { removeIds, created };
+}
+
+/**
+ * Tage im Zeitraum, an denen wegen UNBEKANNTEM historischem Plan nichts angelegt
+ * wird (nur freie, noch nicht belegte Tage) – für einen eigenen Hinweis.
+ */
+export function unknownPlanDates(
+  job: Job,
+  from: string,
+  to: string,
+  shifts: Shift[] = getData().shifts,
+): string[] {
+  const taken = new Set(shifts.filter((s) => s.jobId === job.id).map((s) => s.date));
+  return eachIsoDateInclusive(from, to).filter(
+    (d) => !taken.has(d) && absencePlanDay(job, d).status === "unknown",
+  );
 }
 
 /** Plant das Löschen eines Abwesenheitszeitraums, OHNE zu speichern. */

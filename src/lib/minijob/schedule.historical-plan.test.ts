@@ -261,20 +261,24 @@ describe("erneutes Anlegen / Bearbeiten: keine Duplikate, bestehende Daten unver
     expect(getData().shifts.find((s) => s.id === "legacy-sa")).toEqual(legacy);
   });
 
-  it("planAbsence Ersetzen mit gleichen Daten: gleiche Tage neu, keine Duplikate", () => {
+  it("planAbsence: unverändert ersetzen → kein Eingriff; geändert → nach historischem Plan, keine Duplikate", () => {
     const j = job(MON_ONLY, MON_FRI);
     const existing = generateAbsence(j, "krank", "2026-09-07", "2026-09-11", "BE");
     const replace = { jobId: "j1", kind: "krank" as const, from: "2026-09-07", to: "2026-09-11" };
-    const plan = planAbsence(
-      j,
-      "krank",
-      "2026-09-07",
-      "2026-09-11",
-      replace,
-      dataWith([j], existing),
-    );
+    const data = dataWith([j], existing);
+    expect(planAbsence(j, "krank", "2026-09-07", "2026-09-11", replace, data)).toEqual({
+      removeIds: [],
+      created: [],
+    });
+    const plan = planAbsence(j, "krank", "2026-09-08", "2026-09-14", replace, data);
     expect(plan.removeIds.sort()).toEqual(existing.map((s) => s.id).sort());
-    expect(dates(plan.created)).toEqual(WEEK_0907);
+    expect(dates(plan.created)).toEqual([
+      "2026-09-08",
+      "2026-09-09",
+      "2026-09-10",
+      "2026-09-11",
+      "2026-09-14",
+    ]);
     for (const s of plan.created) {
       const p = shiftPayroll(s, { job: j, history: plan.created });
       expect(p.paid).toBe(true);

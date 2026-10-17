@@ -19,12 +19,18 @@ import {
   type AbsenceKind,
 } from "@/lib/minijob/absence-range";
 import { RetroImpactDialog } from "@/components/minijob/RetroImpactDialog";
-import { needsRetroConfirmation, retroImpact, type RetroImpact } from "@/lib/minijob/retro-impact";
+import {
+  absenceRangeChange,
+  needsRetroConfirmation,
+  retroImpact,
+  type RetroImpact,
+} from "@/lib/minijob/retro-impact";
 import {
   applyAbsencePlan,
   planAbsence,
   planAbsenceRemoval,
   shiftsAfterPlan,
+  unknownPlanDates,
   type AbsencePlan,
 } from "@/lib/minijob/service";
 import { getData } from "@/lib/minijob/store";
@@ -92,7 +98,7 @@ export function AbsenceDialog({
    * D3: Plan berechnen, Auswirkung auf ANDERE Einträge prüfen; bei Auswirkung
    * erst nach Bestätigung speichern (in einem Schritt), sonst sofort.
    */
-  function guarded(plan: AbsencePlan, done: () => void) {
+  function guarded(plan: AbsencePlan, done: () => void, replaced?: { from: string; to: string }) {
     const apply = () => {
       applyAbsencePlan(plan);
       done();
@@ -106,11 +112,30 @@ export function AbsenceDialog({
       data.settings,
       [...plan.removeIds, ...plan.created.map((s) => s.id)],
     );
+    // V10-ABS-PLAN-P2-1: Ersetzen eines Zeitraums – eigene Tage/Beträge vorher/nachher;
+    // verändert sich Anzahl oder Entgelt bzw. entfallen Einträge im Zeitraum → Rückfrage.
+    if (replaced && plan.removeIds.length > 0) {
+      impact.range = absenceRangeChange(
+        data.shifts,
+        shiftsAfterPlan(data.shifts, plan),
+        data.jobs,
+        data.settings,
+        plan,
+        replaced,
+      );
+    }
     if (needsRetroConfirmation(impact)) {
       setRetro({ impact, apply });
       return;
     }
     apply();
+  }
+
+  /** P3: Tage ohne bekannten historischen Plan werden nicht angelegt – eigener Hinweis. */
+  function warnUnknown() {
+    if (!job) return;
+    const unknown = unknownPlanDates(job, from, to, getData().shifts);
+    if (unknown.length) toast.warning(t("absence.unknownPlanSkipped", { count: unknown.length }));
   }
 
   function save() {
@@ -124,14 +149,39 @@ export function AbsenceDialog({
         from: prev.from,
         to: prev.to,
       });
-      guarded(plan, () => toast.success(t("absence.updated", { count: plan.created.length })));
+      if (plan.removeIds.length === 0 && plan.created.length === 0) {
+        // Unverändert gespeichert bzw. nichts anlegbar: keine Datenänderung.
+        const unknown = unknownPlanDates(job, from, to, getData().shifts);
+        toast.message(
+          unknown.length
+            ? t("absence.unknownPlanSkipped", { count: unknown.length })
+            : t("absence.unchanged"),
+        );
+        onOpenChange(false);
+        return;
+      }
+      guarded(
+        plan,
+        () => {
+          toast.success(t("absence.updated", { count: plan.created.length }));
+          warnUnknown();
+        },
+        { from, to },
+      );
     } else {
       const plan = planAbsence(job, kind, from, to);
       guarded(plan, () => {
+        const unknown = unknownPlanDates(job, from, to, getData().shifts);
         if (plan.created.length === 0) {
-          toast.message(t("absence.noneCreated"));
+          toast.message(
+            unknown.length
+              ? t("absence.unknownPlanSkipped", { count: unknown.length })
+              : t("absence.noneCreated"),
+          );
         } else {
           toast.success(t("absence.created", { count: plan.created.length }));
+          if (unknown.length)
+            toast.warning(t("absence.unknownPlanSkipped", { count: unknown.length }));
         }
       });
     }
