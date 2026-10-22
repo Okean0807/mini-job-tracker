@@ -115,6 +115,13 @@ export function AbsenceDialog({
   }, [open, invalid, kind, job, from, to, seed, shifts]);
   const linkCandidate = sickPreview?.linkCandidate;
   const linkCaseId = sickLink && linkCandidate ? linkCandidate.caseId : undefined;
+  // QA-Delta P2-1: Trennung wegen ≥ 6-Tage-Lücke so anzeigen, wie gespeichert würde (inkl. Haken).
+  const sickSplit = useMemo(() => {
+    if (!linkCaseId || !job) return sickPreview?.split;
+    return planAbsence(job, kind, from, to, replaceTarget(), undefined, { linkCaseId }).sickCase
+      ?.split;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sickPreview, linkCaseId, job, kind, from, to, seed, shifts]);
 
   /**
    * D3: Plan berechnen, Auswirkung auf ANDERE Einträge prüfen; bei Auswirkung
@@ -153,7 +160,11 @@ export function AbsenceDialog({
       impact.cases = {
         before: sickCaseCount(data.shifts, job.id),
         after: sickCaseCount(after, job.id),
-        ...(plan.sickCase.mode === "new" ? { newCaseStart: plan.sickCase.start } : {}),
+        ...(plan.sickCase.split
+          ? { newCaseStart: plan.sickCase.split.start }
+          : plan.sickCase.mode === "new"
+            ? { newCaseStart: plan.sickCase.start }
+            : {}),
       };
     }
     if (needsRetroConfirmation(impact)) {
@@ -309,6 +320,17 @@ export function AbsenceDialog({
                         })
                       : t("absence.sickCaseNew", { date: formatDate(sickPreview.start, locale) })}
                 </p>
+                {sickSplit ? (
+                  <p
+                    data-testid="absence-sick-split"
+                    data-start={sickSplit.start}
+                    className="text-amber-700"
+                  >
+                    {t("absence.sickCaseSplit", {
+                      date: formatDate(sickSplit.start, locale),
+                    })}
+                  </p>
+                ) : null}
                 {linkCandidate ? (
                   <>
                     <p

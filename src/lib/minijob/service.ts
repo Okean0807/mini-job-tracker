@@ -439,6 +439,8 @@ export interface AbsenceSickCase {
   caseId: string;
   start: string;
   linkCandidate?: SickCaseNeighbour;
+  /** QA-Delta P2-1: durch die Änderung entsteht eine Lücke ≥ 6 Tage → Fall ab `start` getrennt. */
+  split?: { start: string };
 }
 
 /**
@@ -447,6 +449,91 @@ export interface AbsenceSickCase {
  * und bestätigt werden kann. `replace` = bisheriger Zeitraum (Bearbeiten).
  */
 export function planAbsence(
+  job: Job,
+  kind: ShiftKind,
+  from: string,
+  to: string,
+  replace?: { jobId: string | undefined; kind: ShiftKind; from: string; to: string },
+  data: AppData = getData(),
+  options: { linkCaseId?: string | undefined } = {},
+): AbsencePlan {
+  const plan = planAbsenceCore(job, kind, from, to, replace, data, options);
+  return kind === "krank" ? splitAtNewSeparateGaps(job, plan, data.shifts) : plan;
+}
+
+/**
+ * V10-LATEBLOCK-CASE (QA-Delta P2-1, Regel W-1/K-05): Entsteht durch die Änderung IM Fall
+ * eine Lücke von ≥ SICK_SEPARATE_GAP_DAYS leeren Kalendertagen (zwischen zwei Tagen des
+ * Falls liegt KEIN Eintrag des Jobs), bleibt der Fall nie einer – auch nicht per Haken. Der frühere Teil behält die
+ * sickCaseId, jeder Teil nach einer NEUEN Lücke bekommt eine neue (bestehende Einträge
+ * werden nur innerhalb dieses Plans umgeschrieben, also erst nach Bestätigung gespeichert).
+ * Lücken, die schon vorher bestanden, bleiben unangetastet.
+ */
+function splitAtNewSeparateGaps(job: Job, plan: AbsencePlan, shifts: Shift[]): AbsencePlan {
+  const ofJob = (list: Shift[]) => list.filter((s) => (s.jobId ?? "") === job.id);
+  const gone = new Set(plan.removeIds);
+  const caseIds = new Set(
+    [
+      ...shifts.filter((s) => gone.has(s.id) && s.kind === "krank").map((s) => s.sickCaseId),
+      ...plan.created.filter((s) => s.kind === "krank").map((s) => s.sickCaseId),
+    ].filter((id): id is string => Boolean(id)),
+  );
+  const after = ofJob(shiftsAfterPlan(shifts, plan));
+  const occupied = new Set(after.map((s) => s.date));
+  /** Anzahl Tage strikt zwischen a und b, wenn ALLE leer sind (sonst 0: keine Lücke). */
+  const emptyBetween = (a: string, b: string) => {
+    let n = 0;
+    for (let d = addDays(a, 1); d < b; d = addDays(d, 1)) {
+      if (occupied.has(d)) return 0;
+      n += 1;
+    }
+    return n;
+  };
+  const removeIds = [...plan.removeIds];
+  const created = [...plan.created];
+  let split: { start: string } | undefined;
+  for (const caseId of caseIds) {
+    const beforeDates = ofJob(shifts)
+      .filter((s) => s.kind === "krank" && s.sickCaseId === caseId)
+      .map((s) => s.date);
+    const days = after
+      .filter((s) => s.kind === "krank" && s.sickCaseId === caseId)
+      .sort((x, y) => x.date.localeCompare(y.date));
+    let current = caseId;
+    for (let i = 1; i < days.length; i++) {
+      const a = days[i - 1]!.date;
+      const b = days[i]!.date;
+      const isNewGap =
+        emptyBetween(a, b) >= SICK_SEPARATE_GAP_DAYS && beforeDates.some((d) => d > a && d < b);
+      if (isNewGap) {
+        current = newId();
+        split ??= { start: b };
+      }
+      if (current === caseId) continue;
+      const entry = { ...days[i]!, sickCaseId: current };
+      const idx = created.findIndex((s) => s.id === entry.id);
+      if (idx >= 0) created[idx] = entry;
+      else {
+        removeIds.push(entry.id);
+        created.push(entry);
+      }
+    }
+  }
+  if (!split) return plan;
+  const result: AbsencePlan = { removeIds, created };
+  const ownId = created.find((s) => s.kind === "krank" && s.sickCaseId)?.sickCaseId;
+  const prevCase = plan.sickCase;
+  if (ownId) {
+    const start = caseStartIn(shiftsAfterPlan(shifts, result), ownId) ?? "";
+    result.sickCase =
+      prevCase && prevCase.caseId === ownId
+        ? { ...prevCase, start, split }
+        : { mode: "new", caseId: ownId, start, split };
+  }
+  return result;
+}
+
+function planAbsenceCore(
   job: Job,
   kind: ShiftKind,
   from: string,

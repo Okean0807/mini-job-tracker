@@ -561,3 +561,122 @@ describe("Dialog: Fallanzeige vor dem Speichern, Rückfrage, Haken (echter Store
     expect(savedSummary()).toEqual(R(2, 45, 36, "2026-10-05", 2700));
   });
 });
+
+/**
+ * QA-Delta P2-1 (V10_LATEBLOCK_DELTA_QA_R1, Regel W-1/K-05): Eine Änderung, die IM Fall eine
+ * Lücke von ≥ 6 leeren Kalendertagen erzeugt, wird nie still gespeichert und bleibt nie ein
+ * Fall (auch nicht per Haken). Die späteren Blöcke bekommen erst im bestätigten Speichern eine
+ * neue sickCaseId; Abbrechen ändert nichts.
+ */
+describe("Lücke ≥ 6 Tage im Fall durch Verkürzen (QA-Delta P2-1)", () => {
+  const before = [...work, ...sick];
+  const MID = { jobId: "j1", kind: "krank" as const, from: "2026-09-14", to: "2026-09-18" };
+  const casesOf = (shifts: Shift[]) => {
+    const by = new Map<string, string[]>();
+    for (const s of shifts
+      .filter((x) => x.kind === "krank")
+      .sort((a, b) => a.date.localeCompare(b.date))) {
+      by.set(s.sickCaseId ?? "-", [...(by.get(s.sickCaseId ?? "-") ?? []), s.date]);
+    }
+    return [...by.entries()].map(([id, d]) => ({
+      old: id === "old",
+      days: d.length,
+      from: d[0],
+      to: d.at(-1),
+    }));
+  };
+  const M5_CASES = [
+    { old: true, days: 31, from: "2026-08-03", to: "2026-09-14" },
+    { old: false, days: 10, from: "2026-09-21", to: "2026-10-02" },
+  ];
+
+  it("M5 14.–18.09. → 14.09. (Lücke 15.–20.09. = 6 Tage): getrennt, 2 / 41 / 40 / 02.10. / 3000 €; Haken ändert nichts", () => {
+    for (const link of [undefined, "old"]) {
+      const { p, after, result } = plan(JOB_PLAIN, before, "2026-09-14", "2026-09-14", MID, link);
+      expect(p.sickCase?.split).toEqual({ start: "2026-09-21" });
+      expect(casesOf(after)).toEqual(M5_CASES);
+      expect(result).toEqual(R(2, 41, 40, "2026-10-02", 3000));
+    }
+  });
+
+  it("M6 14.–18.09. → 18.09. (Lücke 12.–17.09. = 6 Tage): 18.09. gehört zum späteren, eigenen Fall: 2 / 41 / 41 / 02.10. / 3075 €", () => {
+    const { p, after, result } = plan(JOB_PLAIN, before, "2026-09-18", "2026-09-18", MID);
+    expect(p.sickCase).toMatchObject({ mode: "new", start: "2026-09-18" });
+    expect(p.sickCase?.split).toEqual({ start: "2026-09-18" });
+    expect(casesOf(after)).toEqual([
+      { old: true, days: 30, from: "2026-08-03", to: "2026-09-11" },
+      { old: false, days: 11, from: "2026-09-18", to: "2026-10-02" },
+    ]);
+    expect(result).toEqual(R(2, 41, 41, "2026-10-02", 3075));
+  });
+
+  it("Regelgrenze 5 Tage (14.–18.09. → 14.–15.09., Lücke 16.–20.09.): keine Zwangstrennung; ohne Haken wie 3ebd240, mit Haken ein Fall", () => {
+    const off = plan(JOB_PLAIN, before, "2026-09-14", "2026-09-15", MID);
+    expect(off.p.sickCase?.split).toBeUndefined();
+    expect(off.p.sickCase?.linkCandidate?.caseId).toBe("old");
+    expect(off.result).toEqual(R(2, 42, 32, "2026-09-15", 2400));
+    const on = plan(JOB_PLAIN, before, "2026-09-14", "2026-09-15", MID, "old");
+    expect(on.p.sickCase?.split).toBeUndefined();
+    expect(on.p.sickCase?.mode).toBe("linked");
+    expect(on.result).toEqual(R(1, 42, 30, "2026-09-11", 2250));
+  });
+
+  it("Lücke, die schon VORHER bestand, wird nicht angefasst (keine Änderung vergangener Zeiträume)", () => {
+    const holey = before.filter((s) => !(s.date >= "2026-09-14" && s.date <= "2026-09-18"));
+    expect(summary([JOB_PLAIN], holey, SETTINGS)).toEqual(R(1, 40, 30, "2026-09-11", 2250));
+    const late = { ...MID, from: "2026-09-28", to: "2026-10-02" };
+    const { p, result } = plan(JOB_PLAIN, holey, "2026-09-28", "2026-10-05", late);
+    expect(p.sickCase?.split).toBeUndefined();
+    expect(p.sickCase?.mode).toBe("continued");
+    expect(result).toEqual(R(1, 41, 30, "2026-09-11", 2250));
+  });
+
+  it("Dialog M5: Hinweis vor dem Speichern, Rückfrage „1 → 2 Fälle, neuer Fall ab 21.09.“ mit Tagen/€; Abbrechen + Neuladen ändern nichts; Bestätigen → 2 / 41 / 40 / 3000 €", () => {
+    seed([JOB_PLAIN], before);
+    const snap = snapshot();
+    open("k-2026-09-14");
+    expect((q("#absence-to") as HTMLInputElement).value).toBe("2026-09-18");
+    setValue(q("#absence-to"), "2026-09-14");
+    expect(tid("absence-sick-split")?.getAttribute("data-start")).toBe("2026-09-21");
+    expect(tid("absence-sick-split")?.textContent).toContain("21.09.2026");
+    click(tid("absence-save"));
+    expect(tid("retro-impact-dialog")).not.toBeNull();
+    expect(snapshot()).toBe(snap);
+    expect(tid("retro-impact-cases-row")?.getAttribute("data-before")).toBe("1");
+    expect(tid("retro-impact-cases-row")?.getAttribute("data-after")).toBe("2");
+    expect(tid("retro-impact-new-case")?.getAttribute("data-start")).toBe("2026-09-21");
+    // betroffen: Block 14.–18.09. (5) + umgeschriebene 21.09.–02.10. (10); vorher alle jenseits 42 Tage
+    expect(rangeRow()?.getAttribute("data-days-before")).toBe("15");
+    expect(rangeRow()?.getAttribute("data-before")).toBe("0.00");
+    expect(rangeRow()?.getAttribute("data-days-after")).toBe("11");
+    expect(rangeRow()?.getAttribute("data-after")).toBe("750.00");
+    click(tid("retro-impact-cancel"));
+    expect(snapshot()).toBe(snap);
+    reload();
+    expect(snapshot()).toBe(snap);
+    expect(savedSummary()).toEqual(BEFORE);
+    click(tid("absence-save"));
+    click(tid("retro-impact-confirm"));
+    expect(savedSummary()).toEqual(R(2, 41, 40, "2026-10-02", 3000));
+    expect(casesOf(getData().shifts)).toEqual(M5_CASES);
+    reload();
+    expect(savedSummary()).toEqual(R(2, 41, 40, "2026-10-02", 3000));
+  });
+
+  it("Dialog: auch MIT Haken bleibt es bei 6-Tage-Lücke kein Fall (11.09. leer, 14.–18.09. → 14.09.): Rückfrage 1 → 2, 2 / 40 / 39 / 2925 €", () => {
+    seed(
+      [JOB_PLAIN],
+      before.filter((s) => s.date !== "2026-09-11"),
+    );
+    open("k-2026-09-14");
+    setValue(q("#absence-to"), "2026-09-14");
+    expect(tid("absence-sick-ambiguous")?.getAttribute("data-boundary")).toBe("ambiguous");
+    click(linkBox());
+    expect(caseInfo()?.getAttribute("data-mode")).toBe("linked");
+    expect(tid("absence-sick-split")?.getAttribute("data-start")).toBe("2026-09-21");
+    click(tid("absence-save"));
+    expect(tid("retro-impact-cases-row")?.getAttribute("data-after")).toBe("2");
+    click(tid("retro-impact-confirm"));
+    expect(savedSummary()).toEqual(R(2, 40, 39, "2026-10-02", 2925));
+  });
+});

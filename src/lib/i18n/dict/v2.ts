@@ -114,6 +114,8 @@ export const v2: Bundle = {
       "Unklare Grenze zum Krankheitsfall ab {date}: Dazwischen liegt ein leerer Arbeitstag oder der damalige Wochenplan ist unbekannt. Ohne Haken beginnt ein neuer Krankheitsfall.",
     "absence.sickCaseLink":
       "Zum Krankheitsfall ab {date} hinzufügen (nur wenn es dieselbe Erkrankung ist).",
+    "absence.sickCaseSplit":
+      "Durch diese Änderung entsteht im Krankheitsfall eine Lücke von mindestens 6 Tagen: Die Krankheitstage ab {date} werden ein eigener Krankheitsfall (auch mit Haken).",
     "absence.sickCaseAdjacent":
       "Schließt direkt an den Krankheitsfall ab {date} an (dazwischen nur planmäßig freie Tage). Ein neuer Zeitraum wird nie automatisch zugeordnet: Ohne Haken beginnt ein neuer Krankheitsfall.",
     "retro.cases":
@@ -278,6 +280,8 @@ export const v2: Bundle = {
       "Unclear boundary to the sick-leave case from {date}: there is an empty workday in between or the schedule at that time is unknown. Without the checkbox a new sick-leave case starts.",
     "absence.sickCaseLink":
       "Add to the sick-leave case from {date} (only if it is the same illness).",
+    "absence.sickCaseSplit":
+      "This change creates a gap of at least 6 days in the sick-leave case: the sick days from {date} become a separate sick-leave case (even with the checkbox).",
     "absence.sickCaseAdjacent":
       "Directly follows the sick-leave case from {date} (only scheduled days off in between). A new period is never assigned automatically: without the checkbox a new sick-leave case starts.",
     "retro.cases":
@@ -442,6 +446,8 @@ export const v2: Bundle = {
       "Неясная граница со случаем болезни с {date}: между ними пустой рабочий день или график того времени неизвестен. Без отметки начнётся новый случай болезни.",
     "absence.sickCaseLink":
       "Добавить к случаю болезни с {date} (только если это то же заболевание).",
+    "absence.sickCaseSplit":
+      "Это изменение создаёт в случае болезни перерыв не менее 6 дней: дни болезни с {date} станут отдельным случаем болезни (даже с отметкой).",
     "absence.sickCaseAdjacent":
       "Непосредственно продолжает случай болезни с {date} (между ними только плановые выходные). Новый период никогда не присоединяется автоматически: без отметки начнётся новый случай болезни.",
     "retro.cases":
@@ -606,6 +612,8 @@ export const v2: Bundle = {
       "{date} tarihinden başlayan hastalık vakasıyla sınır belirsiz: arada boş bir iş günü var veya o zamanki çalışma planı bilinmiyor. İşaretlenmezse yeni bir hastalık vakası başlar.",
     "absence.sickCaseLink":
       "{date} tarihinden başlayan hastalık vakasına ekle (yalnızca aynı hastalıksa).",
+    "absence.sickCaseSplit":
+      "Bu değişiklik hastalık vakasında en az 6 günlük bir boşluk oluşturur: {date} tarihinden itibaren hastalık günleri ayrı bir hastalık vakası olur (işaretlense bile).",
     "absence.sickCaseAdjacent":
       "{date} tarihinden başlayan hastalık vakasının hemen ardından geliyor (arada yalnızca planlı izin günleri var). Yeni bir dönem asla otomatik olarak eklenmez: İşaretlenmezse yeni bir hastalık vakası başlar.",
     "retro.cases":
@@ -770,6 +778,8 @@ export const v2: Bundle = {
       "Niejasna granica z przypadkiem choroby od {date}: pomiędzy jest pusty dzień roboczy albo ówczesny plan pracy jest nieznany. Bez zaznaczenia zacznie się nowy przypadek choroby.",
     "absence.sickCaseLink":
       "Dodaj do przypadku choroby od {date} (tylko jeśli to ta sama choroba).",
+    "absence.sickCaseSplit":
+      "Ta zmiana tworzy w przypadku choroby przerwę co najmniej 6 dni: dni choroby od {date} staną się osobnym przypadkiem choroby (nawet z zaznaczeniem).",
     "absence.sickCaseAdjacent":
       "Bezpośrednio następuje po przypadku choroby od {date} (pomiędzy tylko planowe dni wolne). Nowy okres nigdy nie jest przypisywany automatycznie: bez zaznaczenia zacznie się nowy przypadek choroby.",
     "retro.cases":
