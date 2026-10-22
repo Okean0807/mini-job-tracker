@@ -19,7 +19,7 @@ import { AbsenceDialog } from "./AbsenceDialog";
 import { isoDate } from "@/lib/minijob/calc";
 import { payrollTotals, shiftPayroll } from "@/lib/minijob/payroll";
 import { makeResolver } from "@/lib/minijob/resolve";
-import { planAbsence, shiftsAfterPlan } from "@/lib/minijob/service";
+import { planAbsence, shiftsAfterPlan, sickSplitImpact } from "@/lib/minijob/service";
 import { DEMO_SCOPE } from "@/lib/minijob/storage-scope";
 import {
   activateScope,
@@ -678,5 +678,262 @@ describe("Lücke ≥ 6 Tage im Fall durch Verkürzen (QA-Delta P2-1)", () => {
     expect(tid("retro-impact-cases-row")?.getAttribute("data-after")).toBe("2");
     click(tid("retro-impact-confirm"));
     expect(savedSummary()).toEqual(R(2, 40, 39, "2026-10-02", 2925));
+  });
+});
+
+/**
+ * t653u (QA R2b P2-R2b-1, Regel W-1/K-05): unklare linke Grenze (11.09. leer) + neue Lücke
+ * 15.–20.09. (6 leere Kalendertage) rechts vom bearbeiteten Block. Die späteren Blöcke ab 21.09.
+ * bleiben weder ohne noch mit Haken still im alten Fall: Sie werden – wie bei jeder neuen
+ * 6-Tage-Lücke (4c76a20) – ein eigener Fall. Ohne Haken ist 14.09. ein neuer Fall (Regel (b)),
+ * mit Haken gehört 14.09. zum Fall ab 03.08. (Regel H bleibt: Zuordnung nur per Haken).
+ * Echte Berechnung, echter Store, keine Spies.
+ */
+describe("t653u: unklare Grenze + neue Lücke ≥ 6 Tage → spätere Blöcke nie still im alten Fall", () => {
+  const before = [...work, ...sick].filter((s) => s.date !== "2026-09-11");
+  const MID = { jobId: "j1", kind: "krank" as const, from: "2026-09-14", to: "2026-09-18" };
+  /** Fälle nach Datum: id "old" bleibt "old", jede andere id als "neu ab <Beginn>". */
+  const casesOf = (shifts: Shift[]) => {
+    const by = new Map<string, string[]>();
+    for (const s of shifts
+      .filter((x) => x.kind === "krank")
+      .sort((a, b) => a.date.localeCompare(b.date))) {
+      by.set(s.sickCaseId ?? "-", [...(by.get(s.sickCaseId ?? "-") ?? []), s.date]);
+    }
+    return [...by.entries()].map(([id, d]) => ({
+      case: id === "old" ? "old" : id === "-" ? "-" : `neu ab ${d[0]}`,
+      days: d.length,
+      from: d[0],
+      to: d.at(-1),
+    }));
+  };
+  const BEFORE_P2 = R(1, 44, 29, "2026-09-10", 2175);
+  const OFF_CASES = [
+    { case: "old", days: 29, from: "2026-08-03", to: "2026-09-10" },
+    { case: "neu ab 2026-09-14", days: 1, from: "2026-09-14", to: "2026-09-14" },
+    { case: "neu ab 2026-09-21", days: 10, from: "2026-09-21", to: "2026-10-02" },
+  ];
+  const ON_CASES = [
+    { case: "old", days: 30, from: "2026-08-03", to: "2026-09-14" },
+    { case: "neu ab 2026-09-21", days: 10, from: "2026-09-21", to: "2026-10-02" },
+  ];
+
+  it("Ausgangslage: 1 Fall / 44 / 29 / 10.09. / 2175 €", () => {
+    expect(summary([JOB_PLAIN], before, SETTINGS)).toEqual(BEFORE_P2);
+  });
+
+  it("OHNE Haken: 14.09. neuer Fall, 21.09.–02.10. eigener Fall (nicht mehr still „old“): 3 / 40 / 40 / 02.10. / 3000 €", () => {
+    const { p, after, result } = plan(JOB_PLAIN, before, "2026-09-14", "2026-09-14", MID);
+    expect(p.sickCase).toMatchObject({
+      mode: "new",
+      start: "2026-09-14",
+      split: { start: "2026-09-21" },
+      linkCandidate: { caseId: "old", start: "2026-08-03", boundary: "ambiguous" },
+    });
+    expect(casesOf(after)).toEqual(OFF_CASES);
+    // 14.09. und der abgetrennte Teil sind verschiedene Fälle (dazwischen 6 leere Tage)
+    const id14 = after.find((s) => s.date === "2026-09-14")!.sickCaseId;
+    const id21 = after.find((s) => s.date === "2026-09-21")!.sickCaseId;
+    expect(id14).not.toBe("old");
+    expect(id21).not.toBe("old");
+    expect(id21).not.toBe(id14);
+    expect(after.filter((s) => s.sickCaseId === id21).map((s) => s.date)).toEqual(
+      eachDay("2026-09-21", "2026-10-02", true),
+    );
+    expect(result).toEqual(R(3, 40, 40, "2026-10-02", 3000));
+  });
+
+  it("MIT Haken (unverändert): 14.09. zum Fall ab 03.08., 21.09.–02.10. eigener Fall: 2 / 40 / 39 / 02.10. / 2925 €", () => {
+    const { p, after, result } = plan(JOB_PLAIN, before, "2026-09-14", "2026-09-14", MID, "old");
+    expect(p.sickCase).toMatchObject({
+      mode: "linked",
+      caseId: "old",
+      split: { start: "2026-09-21" },
+    });
+    expect(casesOf(after)).toEqual(ON_CASES);
+    expect(result).toEqual(R(2, 40, 39, "2026-10-02", 2925));
+  });
+
+  it("Vorher/Nachher für die Rückfrage (sickSplitImpact): Fälle / Tage / bezahlt / € und Block → Fall", () => {
+    const off = plan(JOB_PLAIN, before, "2026-09-14", "2026-09-14", MID);
+    const offImpact = sickSplitImpact("j1", before, off.after, [JOB_PLAIN], SETTINGS);
+    expect(offImpact.before).toEqual({ cases: 1, days: 44, paidDays: 29, eur: 2175 });
+    expect(offImpact.after).toEqual({ cases: 3, days: 40, paidDays: 40, eur: 3000 });
+    expect(offImpact.moves).toEqual([
+      {
+        from: "2026-09-14",
+        to: "2026-09-14",
+        days: 1,
+        fromCaseStart: "2026-08-03",
+        toCaseStart: "2026-09-14",
+        toCaseNew: true,
+      },
+      {
+        from: "2026-09-21",
+        to: "2026-10-02",
+        days: 10,
+        fromCaseStart: "2026-08-03",
+        toCaseStart: "2026-09-21",
+        toCaseNew: true,
+      },
+    ]);
+    const on = plan(JOB_PLAIN, before, "2026-09-14", "2026-09-14", MID, "old");
+    const onImpact = sickSplitImpact("j1", before, on.after, [JOB_PLAIN], SETTINGS);
+    expect(onImpact.after).toEqual({ cases: 2, days: 40, paidDays: 39, eur: 2925 });
+    expect(onImpact.moves).toEqual([
+      {
+        from: "2026-09-21",
+        to: "2026-10-02",
+        days: 10,
+        fromCaseStart: "2026-08-03",
+        toCaseStart: "2026-09-21",
+        toCaseNew: true,
+      },
+    ]);
+  });
+
+  it("Arbeit am 17.09. in der Lücke: keine Trennung (Lauf 15.–16. / 18.–20.), wie bisher 2 / 40 / 30 / 14.09. / 2250 €", () => {
+    const withWork = [
+      ...before,
+      { id: "w-2026-09-17", jobId: "j1", kind: "arbeit", date: "2026-09-17", ...d5 } as Shift,
+    ];
+    const { p, after, result } = plan(JOB_PLAIN, withWork, "2026-09-14", "2026-09-14", MID);
+    expect(p.sickCase?.split).toBeUndefined();
+    expect(after.find((s) => s.date === "2026-09-21")?.sickCaseId).toBe("old");
+    expect(result).toEqual(R(2, 40, 30, "2026-09-14", 2250));
+  });
+
+  it("Bestehender Krank-Tag eines ANDEREN Falls (21.09., nicht aus dieser Änderung) schließt die Lücke wie bisher: keine Trennung, 22.09.–02.10. bleibt „old“", () => {
+    const base = [...work, ...sick]
+      .filter((s) => s.date !== "2026-09-21")
+      .concat([sickDay("2026-09-21", "x")]);
+    const { p, after } = plan(JOB_PLAIN, base, "2026-09-14", "2026-09-14", MID);
+    expect(p.sickCase?.split).toBeUndefined();
+    expect(after.find((s) => s.date === "2026-09-14")?.sickCaseId).toBe("old");
+    expect(after.find((s) => s.date === "2026-09-21")?.sickCaseId).toBe("x");
+    expect(
+      after.filter((s) => s.kind === "krank" && s.date >= "2026-09-22").map((s) => s.sickCaseId),
+    ).toEqual(Array(9).fill("old"));
+  });
+
+  it("Grenze 5 Tage (14.–18.09. → 14.–15.09., Lücke 16.–20.09.), 11.09. leer: keine Trennung", () => {
+    const { p, after } = plan(JOB_PLAIN, before, "2026-09-14", "2026-09-15", MID);
+    expect(p.sickCase?.split).toBeUndefined();
+    expect(after.find((s) => s.date === "2026-09-21")?.sickCaseId).toBe("old");
+  });
+
+  it("Regression: neuer Fall MITTEN im Fall ohne leere 6 Tage (A2/„mittlerer Block“) wird nicht getrennt", () => {
+    const mid = { ...LATE, from: "2026-09-14", to: "2026-09-18" };
+    const { p, after } = plan(JOB_PLAIN, [...work, ...sick], "2026-09-14", "2026-09-16", mid);
+    expect(p.sickCase?.split).toBeUndefined();
+    expect(after.find((s) => s.date === "2026-09-21")?.sickCaseId).toBe("old");
+  });
+
+  it("Dialog OHNE Haken: Hinweis vor dem Speichern; Rückfrage 1 → 3 mit Vorher/Nachher (Fälle/Tage/bezahlt/€) und Block → Fall; Abbrechen + Neuladen ändern nichts; Bestätigen → 3 / 40 / 40 / 3000 €", () => {
+    seed([JOB_PLAIN], before);
+    const snap = snapshot();
+    open("k-2026-09-14");
+    setValue(q("#absence-to"), "2026-09-14");
+    expect(tid("absence-sick-ambiguous")?.getAttribute("data-boundary")).toBe("ambiguous");
+    expect(linkBox()?.checked).toBe(false);
+    expect(caseInfo()?.getAttribute("data-mode")).toBe("new");
+    expect(caseInfo()?.getAttribute("data-start")).toBe("2026-09-14");
+    expect(tid("absence-sick-split")?.getAttribute("data-start")).toBe("2026-09-21");
+    click(tid("absence-save"));
+    expect(tid("retro-impact-dialog")).not.toBeNull();
+    expect(snapshot()).toBe(snap);
+    expect(tid("retro-impact-cases-row")?.getAttribute("data-before")).toBe("1");
+    expect(tid("retro-impact-cases-row")?.getAttribute("data-after")).toBe("3");
+    expect(tid("retro-impact-new-case")?.getAttribute("data-start")).toBe("2026-09-21");
+    const totals = tid("retro-impact-split-totals");
+    expect(totals?.getAttribute("data-before")).toBe("1/44/29/2175.00");
+    expect(totals?.getAttribute("data-after")).toBe("3/40/40/3000.00");
+    expect(totals?.textContent).toContain("Krankheitsfälle 1 → 3");
+    expect(totals?.textContent).toContain("Krankheitstage 44 → 40");
+    expect(totals?.textContent).toContain("bezahlt 29 → 40 Tage");
+    const moves = [...document.querySelectorAll('[data-testid="retro-impact-split-move"]')];
+    expect(
+      moves.map((m) => [
+        m.getAttribute("data-from"),
+        m.getAttribute("data-to"),
+        m.getAttribute("data-days"),
+        m.getAttribute("data-from-case"),
+        m.getAttribute("data-to-case"),
+        m.getAttribute("data-to-new"),
+      ]),
+    ).toEqual([
+      ["2026-09-14", "2026-09-14", "1", "2026-08-03", "2026-09-14", "1"],
+      ["2026-09-21", "2026-10-02", "10", "2026-08-03", "2026-09-21", "1"],
+    ]);
+    expect(moves[1]?.textContent).toBe(
+      "21.09.–02.10. (10 Tage): Fall ab 03.08. → neuer Fall ab 21.09.",
+    );
+    click(tid("retro-impact-cancel"));
+    expect(tid("retro-impact-split")).toBeNull();
+    expect(snapshot()).toBe(snap);
+    reload();
+    expect(snapshot()).toBe(snap);
+    expect(savedSummary()).toEqual(BEFORE_P2);
+    click(tid("absence-save"));
+    click(tid("retro-impact-confirm"));
+    expect(savedSummary()).toEqual(R(3, 40, 40, "2026-10-02", 3000));
+    expect(casesOf(getData().shifts)).toEqual(OFF_CASES);
+    reload();
+    expect(savedSummary()).toEqual(R(3, 40, 40, "2026-10-02", 3000));
+    expect(casesOf(getData().shifts)).toEqual(OFF_CASES);
+  });
+
+  it("Dialog MIT Haken: Rückfrage 1 → 2, Vorher/Nachher 1/44/29/2175 → 2/40/39/2925, nur 21.09.–02.10. wechselt; Abbrechen ändert nichts; Bestätigen → 2 / 40 / 39 / 2925 €", () => {
+    seed([JOB_PLAIN], before);
+    const snap = snapshot();
+    open("k-2026-09-14");
+    setValue(q("#absence-to"), "2026-09-14");
+    click(linkBox());
+    expect(caseInfo()?.getAttribute("data-mode")).toBe("linked");
+    expect(tid("absence-sick-split")?.getAttribute("data-start")).toBe("2026-09-21");
+    click(tid("absence-save"));
+    expect(tid("retro-impact-cases-row")?.getAttribute("data-after")).toBe("2");
+    expect(tid("retro-impact-split-totals")?.getAttribute("data-before")).toBe("1/44/29/2175.00");
+    expect(tid("retro-impact-split-totals")?.getAttribute("data-after")).toBe("2/40/39/2925.00");
+    const moves = [...document.querySelectorAll('[data-testid="retro-impact-split-move"]')];
+    expect(moves.map((m) => [m.getAttribute("data-from"), m.getAttribute("data-to-case")])).toEqual(
+      [["2026-09-21", "2026-09-21"]],
+    );
+    click(tid("retro-impact-cancel"));
+    expect(snapshot()).toBe(snap);
+    reload();
+    expect(snapshot()).toBe(snap);
+    click(tid("absence-save"));
+    click(tid("retro-impact-confirm"));
+    expect(savedSummary()).toEqual(R(2, 40, 39, "2026-10-02", 2925));
+    expect(casesOf(getData().shifts)).toEqual(ON_CASES);
+  });
+
+  it("Dialog M5 (11.09. belegt): Rückfrage zeigt jetzt auch Vorher/Nachher 1/45/30/2250 → 2/41/40/3000 und 21.09.–02.10. → neuer Fall", () => {
+    seed([JOB_PLAIN], [...work, ...sick]);
+    open("k-2026-09-14");
+    setValue(q("#absence-to"), "2026-09-14");
+    click(tid("absence-save"));
+    expect(tid("retro-impact-split-totals")?.getAttribute("data-before")).toBe("1/45/30/2250.00");
+    expect(tid("retro-impact-split-totals")?.getAttribute("data-after")).toBe("2/41/40/3000.00");
+    const moves = [...document.querySelectorAll('[data-testid="retro-impact-split-move"]')];
+    expect(moves.map((m) => [m.getAttribute("data-from"), m.getAttribute("data-to")])).toEqual([
+      ["2026-09-21", "2026-10-02"],
+    ]);
+  });
+
+  it("Ohne Trennung (A, H) keine Trennungs-Box in der Rückfrage", () => {
+    seed([JOB_PLAIN], [...work, ...sick]);
+    open("k-2026-09-28");
+    setValue(q("#absence-to"), "2026-10-05");
+    click(tid("absence-save"));
+    expect(tid("retro-impact-dialog")).not.toBeNull();
+    expect(tid("retro-impact-split")).toBeNull();
+    click(tid("retro-impact-cancel"));
+    open(undefined, "2026-10-05");
+    setValue(q("#absence-to"), "2026-10-09");
+    click(tid("absence-save"));
+    expect(tid("retro-impact-dialog")).not.toBeNull();
+    expect(tid("retro-impact-split")).toBeNull();
   });
 });

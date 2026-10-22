@@ -32,8 +32,10 @@ import {
   planAbsence,
   planAbsenceRemoval,
   shiftsAfterPlan,
+  sickSplitImpact,
   unknownPlanDates,
   type AbsencePlan,
+  type SickSplitImpact,
 } from "@/lib/minijob/service";
 import { getData } from "@/lib/minijob/store";
 import type { Job, Shift, ShiftKind } from "@/lib/minijob/types";
@@ -73,7 +75,11 @@ export function AbsenceDialog({
   const [to, setTo] = useState("");
   const editing = Boolean(seed && isAbsenceKind(seed.kind));
   // D3 (Owner R4): rückwirkende Auswirkung – erst nach Bestätigung speichern.
-  const [retro, setRetro] = useState<{ impact: RetroImpact; apply: () => void } | null>(null);
+  const [retro, setRetro] = useState<{
+    impact: RetroImpact;
+    apply: () => void;
+    split?: SickSplitImpact | undefined;
+  } | null>(null);
   // V10-LATEBLOCK-CASE (DECISIONS R3): unklare Fallgrenze → Zuordnung nur per Haken (Standard aus).
   const [sickLink, setSickLink] = useState(false);
 
@@ -167,8 +173,20 @@ export function AbsenceDialog({
             : {}),
       };
     }
-    if (needsRetroConfirmation(impact)) {
-      setRetro({ impact, apply });
+    // t653u (W-1/K-05): Trennung wegen neuer Lücke ≥ 6 Tage → immer Rückfrage mit
+    // Fällen / Tagen / bezahlten Tagen / € vorher–nachher und Block → Fall.
+    const split =
+      plan.sickCase?.split && job
+        ? sickSplitImpact(
+            job.id,
+            data.shifts,
+            shiftsAfterPlan(data.shifts, plan),
+            data.jobs,
+            data.settings,
+          )
+        : undefined;
+    if (split || needsRetroConfirmation(impact)) {
+      setRetro({ impact, apply, split });
       return;
     }
     apply();
@@ -391,6 +409,7 @@ export function AbsenceDialog({
       </Dialog>
       <RetroImpactDialog
         impact={retro?.impact ?? null}
+        sickSplit={retro?.split}
         onCancel={() => setRetro(null)}
         onConfirm={() => {
           const pending = retro;

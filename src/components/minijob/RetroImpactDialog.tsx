@@ -16,6 +16,7 @@ import {
 import { useT } from "@/lib/i18n";
 import { formatEuro, monthNames } from "@/lib/minijob/calc";
 import type { RetroImpact } from "@/lib/minijob/retro-impact";
+import type { SickSplitImpact } from "@/lib/minijob/service";
 
 export function monthLabel(key: string): string {
   const [y, m] = key.split("-").map(Number);
@@ -32,9 +33,12 @@ export function RetroImpactDialog({
   impact,
   onConfirm,
   onCancel,
+  sickSplit,
 }: {
   /** null = geschlossen */
   impact: RetroImpact | null;
+  /** t653u: Trennung eines Krankheitsfalls (Lücke ≥ 6 Tage) – Vorher/Nachher + Block → Fall. */
+  sickSplit?: SickSplitImpact | undefined;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -94,6 +98,56 @@ export function RetroImpactDialog({
                 {t("retro.newCase", { date: dayLabel(impact.cases.newCaseStart) })}
               </p>
             ) : null}
+          </div>
+        ) : null}
+        {impact && sickSplit ? (
+          <div
+            className="space-y-1 rounded-md border border-amber-300 p-2 text-sm text-amber-800 dark:text-amber-300"
+            data-testid="retro-impact-split"
+          >
+            <p className="font-medium">{t("retro.splitTitle")}</p>
+            <p
+              data-testid="retro-impact-split-totals"
+              data-before={`${sickSplit.before.cases}/${sickSplit.before.days}/${sickSplit.before.paidDays}/${sickSplit.before.eur.toFixed(2)}`}
+              data-after={`${sickSplit.after.cases}/${sickSplit.after.days}/${sickSplit.after.paidDays}/${sickSplit.after.eur.toFixed(2)}`}
+            >
+              {t("retro.splitTotals", {
+                casesBefore: String(sickSplit.before.cases),
+                casesAfter: String(sickSplit.after.cases),
+                daysBefore: String(sickSplit.before.days),
+                daysAfter: String(sickSplit.after.days),
+                paidBefore: String(sickSplit.before.paidDays),
+                paidAfter: String(sickSplit.after.paidDays),
+                eurBefore: formatEuro(sickSplit.before.eur),
+                eurAfter: formatEuro(sickSplit.after.eur),
+              })}
+            </p>
+            <ul className="space-y-0.5">
+              {sickSplit.moves.map((m) => (
+                <li
+                  key={m.from}
+                  data-testid="retro-impact-split-move"
+                  data-from={m.from}
+                  data-to={m.to}
+                  data-days={m.days}
+                  data-from-case={m.fromCaseStart}
+                  data-to-case={m.toCaseStart}
+                  data-to-new={m.toCaseNew ? "1" : "0"}
+                >
+                  {t("retro.splitMove", {
+                    range:
+                      m.from === m.to ? dayLabel(m.from) : `${dayLabel(m.from)}–${dayLabel(m.to)}`,
+                    days: String(m.days),
+                    fromCase: m.fromCaseStart
+                      ? t("retro.splitCase", { date: dayLabel(m.fromCaseStart) })
+                      : t("retro.splitNoCase"),
+                    toCase: t(m.toCaseNew ? "retro.splitNewCase" : "retro.splitCase", {
+                      date: dayLabel(m.toCaseStart),
+                    }),
+                  })}
+                </li>
+              ))}
+            </ul>
           </div>
         ) : null}
         {impact?.months.length ? (

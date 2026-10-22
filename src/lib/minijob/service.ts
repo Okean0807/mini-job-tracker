@@ -479,15 +479,44 @@ function splitAtNewSeparateGaps(job: Job, plan: AbsencePlan, shifts: Shift[]): A
     ].filter((id): id is string => Boolean(id)),
   );
   const after = ofJob(shiftsAfterPlan(shifts, plan));
-  const occupied = new Set(after.map((s) => s.date));
-  /** Anzahl Tage strikt zwischen a und b, wenn ALLE leer sind (sonst 0: keine Lücke). */
-  const emptyBetween = (a: string, b: string) => {
-    let n = 0;
+  const byDate = new Map<string, Shift[]>();
+  for (const s of after) byDate.set(s.date, [...(byDate.get(s.date) ?? []), s]);
+  const ownIds = new Set(plan.created.map((s) => s.id));
+  /**
+   * NEUE Lücke ≥ SICK_SEPARATE_GAP_DAYS zwischen zwei Tagen a < b des Falls `caseId`?
+   * Gezählt werden LEERE Kalendertage (kein Eintrag des Jobs). Zwischen a und b dürfen außer
+   * leeren Tagen nur Krank-Tage DIESER Änderung liegen, die einem ANDEREN Fall zugeordnet
+   * werden (t653u: unklare linke Grenze → bearbeiteter Block = neuer Fall). Jeder andere
+   * Eintrag (Arbeit, Urlaub, Bestand) schließt die Lücke wie bisher. „Neu“ = in einem leeren
+   * Lauf ≥ 6 Tage lagen vor der Änderung Tage dieses Falls (alte Lücken bleiben unangetastet).
+   */
+  const newGapBetween = (a: string, b: string, caseId: string, beforeDates: string[]) => {
+    let runStart: string | undefined;
+    let run = 0;
+    let found = false;
+    const closeRun = (end: string) => {
+      if (runStart !== undefined && run >= SICK_SEPARATE_GAP_DAYS) {
+        const lo = runStart;
+        if (beforeDates.some((d) => d >= lo && d < end)) found = true;
+      }
+      runStart = undefined;
+      run = 0;
+    };
     for (let d = addDays(a, 1); d < b; d = addDays(d, 1)) {
-      if (occupied.has(d)) return 0;
-      n += 1;
+      const entries = byDate.get(d) ?? [];
+      if (!entries.length) {
+        runStart ??= d;
+        run += 1;
+        continue;
+      }
+      const otherCaseOfThisEdit = entries.every(
+        (s) => s.kind === "krank" && ownIds.has(s.id) && !!s.sickCaseId && s.sickCaseId !== caseId,
+      );
+      if (!otherCaseOfThisEdit) return false;
+      closeRun(d);
     }
-    return n;
+    closeRun(b);
+    return found;
   };
   const removeIds = [...plan.removeIds];
   const created = [...plan.created];
@@ -503,8 +532,7 @@ function splitAtNewSeparateGaps(job: Job, plan: AbsencePlan, shifts: Shift[]): A
     for (let i = 1; i < days.length; i++) {
       const a = days[i - 1]!.date;
       const b = days[i]!.date;
-      const isNewGap =
-        emptyBetween(a, b) >= SICK_SEPARATE_GAP_DAYS && beforeDates.some((d) => d > a && d < b);
+      const isNewGap = newGapBetween(a, b, caseId, beforeDates);
       if (isNewGap) {
         current = newId();
         split ??= { start: b };
@@ -531,6 +559,111 @@ function splitAtNewSeparateGaps(job: Job, plan: AbsencePlan, shifts: Shift[]): A
         : { mode: "new", caseId: ownId, start, split };
   }
   return result;
+}
+
+/** t653u: Kennzahlen der Krankheitstage eines Jobs (Fälle / Tage / bezahlt / €). */
+export interface SickCaseFigures {
+  cases: number;
+  days: number;
+  paidDays: number;
+  eur: number;
+}
+
+/** t653u: zusammenhängende Krank-Tage, die durch die Änderung einem anderen Fall angehören. */
+export interface SickCaseMove {
+  from: string;
+  to: string;
+  days: number;
+  /** Beginn des bisherigen Falls (leer: Tag war vorher nicht krank). */
+  fromCaseStart: string;
+  /** Beginn des Falls nach der Änderung. */
+  toCaseStart: string;
+  /** Zielfall gab es vorher nicht. */
+  toCaseNew: boolean;
+}
+
+export interface SickSplitImpact {
+  before: SickCaseFigures;
+  after: SickCaseFigures;
+  moves: SickCaseMove[];
+}
+
+function sickCaseFigures(
+  jobId: string,
+  shifts: Shift[],
+  jobs: Job[],
+  settings: Settings,
+): SickCaseFigures {
+  const resolve = makeResolver(jobs, settings);
+  const sick = shifts.filter((s) => s.kind === "krank" && (s.jobId ?? "") === jobId);
+  return {
+    cases: new Set(sick.map((s) => s.sickCaseId ?? "-")).size,
+    days: sick.length,
+    paidDays: sick.filter((s) => shiftPayroll(s, { ...resolve(s), history: shifts }).paid).length,
+    eur: payrollTotals(sick, resolve, shifts).earnings,
+  };
+}
+
+/**
+ * t653u (W-1/K-05): Vorher/Nachher für die Rückfrage, wenn eine Änderung einen Fall wegen
+ * einer neuen Lücke ≥ 6 Tage trennt: Fälle, Krank-Tage, bezahlte Tage, € und welche Blöcke
+ * in welchen Fall wechseln. Rein rechnend, speichert nichts.
+ */
+export function sickSplitImpact(
+  jobId: string,
+  before: Shift[],
+  after: Shift[],
+  jobs: Job[],
+  settings: Settings,
+): SickSplitImpact {
+  const sickOf = (list: Shift[]) =>
+    list
+      .filter((s) => s.kind === "krank" && (s.jobId ?? "") === jobId)
+      .sort((a, b) => a.date.localeCompare(b.date));
+  const caseStarts = (list: Shift[]) => {
+    const m = new Map<string, string>();
+    for (const s of list) if (s.sickCaseId && !m.has(s.sickCaseId)) m.set(s.sickCaseId, s.date);
+    return m;
+  };
+  const sickBefore = sickOf(before);
+  const sickAfter = sickOf(after);
+  const startsBefore = caseStarts(sickBefore);
+  const startsAfter = caseStarts(sickAfter);
+  const caseOnBefore = new Map(sickBefore.map((s) => [s.date, s.sickCaseId ?? ""]));
+  const moves: SickCaseMove[] = [];
+  let prevIdx = -2;
+  sickAfter.forEach((s, idx) => {
+    const fromId = caseOnBefore.get(s.date) ?? "";
+    const toId = s.sickCaseId ?? "";
+    if (!toId || fromId === toId) return;
+    const fromCaseStart = fromId ? (startsBefore.get(fromId) ?? "") : "";
+    const toCaseStart = startsAfter.get(toId) ?? "";
+    const last = moves.at(-1);
+    if (
+      last &&
+      prevIdx === idx - 1 &&
+      last.fromCaseStart === fromCaseStart &&
+      last.toCaseStart === toCaseStart
+    ) {
+      last.to = s.date;
+      last.days += 1;
+    } else {
+      moves.push({
+        from: s.date,
+        to: s.date,
+        days: 1,
+        fromCaseStart,
+        toCaseStart,
+        toCaseNew: !startsBefore.has(toId),
+      });
+    }
+    prevIdx = idx;
+  });
+  return {
+    before: sickCaseFigures(jobId, before, jobs, settings),
+    after: sickCaseFigures(jobId, after, jobs, settings),
+    moves,
+  };
 }
 
 function planAbsenceCore(

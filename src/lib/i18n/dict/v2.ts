@@ -120,6 +120,13 @@ export const v2: Bundle = {
       "Schließt direkt an den Krankheitsfall ab {date} an (dazwischen nur planmäßig freie Tage). Ein neuer Zeitraum wird nie automatisch zugeordnet: Ohne Haken beginnt ein neuer Krankheitsfall.",
     "retro.cases":
       "Krankheitsfälle: bisher {before} → neu {after}",
+    "retro.splitTitle": "Krankheitsfall wird getrennt (Lücke von mindestens 6 leeren Tagen):",
+    "retro.splitTotals":
+      "Krankheitsfälle {casesBefore} → {casesAfter} · Krankheitstage {daysBefore} → {daysAfter} · bezahlt {paidBefore} → {paidAfter} Tage · {eurBefore} → {eurAfter}",
+    "retro.splitMove": "{range} ({days} Tage): {fromCase} → {toCase}",
+    "retro.splitCase": "Fall ab {date}",
+    "retro.splitNewCase": "neuer Fall ab {date}",
+    "retro.splitNoCase": "bisher kein Krankheitstag",
     "retro.newCase":
       "Neuer Krankheitsfall ab {date}: Seine Krankheitstage werden getrennt vom bisherigen Fall gezählt.",
     "sickLapsed.title":
@@ -286,6 +293,13 @@ export const v2: Bundle = {
       "Directly follows the sick-leave case from {date} (only scheduled days off in between). A new period is never assigned automatically: without the checkbox a new sick-leave case starts.",
     "retro.cases":
       "Sick-leave cases: before {before} → now {after}",
+    "retro.splitTitle": "Sick-leave case is split (gap of at least 6 empty days):",
+    "retro.splitTotals":
+      "Sick-leave cases {casesBefore} → {casesAfter} · sick days {daysBefore} → {daysAfter} · paid {paidBefore} → {paidAfter} days · {eurBefore} → {eurAfter}",
+    "retro.splitMove": "{range} ({days} days): {fromCase} → {toCase}",
+    "retro.splitCase": "case from {date}",
+    "retro.splitNewCase": "new case from {date}",
+    "retro.splitNoCase": "previously no sick day",
     "retro.newCase":
       "New sick-leave case from {date}: its sick days are counted separately from the existing case.",
     "sickLapsed.title":
@@ -452,6 +466,13 @@ export const v2: Bundle = {
       "Непосредственно продолжает случай болезни с {date} (между ними только плановые выходные). Новый период никогда не присоединяется автоматически: без отметки начнётся новый случай болезни.",
     "retro.cases":
       "Случаи болезни: было {before} → станет {after}",
+    "retro.splitTitle": "Случай болезни разделяется (перерыв не менее 6 пустых дней):",
+    "retro.splitTotals":
+      "Случаи болезни {casesBefore} → {casesAfter} · дни болезни {daysBefore} → {daysAfter} · оплачено {paidBefore} → {paidAfter} дн. · {eurBefore} → {eurAfter}",
+    "retro.splitMove": "{range} ({days} дн.): {fromCase} → {toCase}",
+    "retro.splitCase": "случай с {date}",
+    "retro.splitNewCase": "новый случай с {date}",
+    "retro.splitNoCase": "раньше не день болезни",
     "retro.newCase":
       "Новый случай болезни с {date}: его дни болезни считаются отдельно от прежнего случая.",
     "sickLapsed.title":
@@ -618,6 +639,13 @@ export const v2: Bundle = {
       "{date} tarihinden başlayan hastalık vakasının hemen ardından geliyor (arada yalnızca planlı izin günleri var). Yeni bir dönem asla otomatik olarak eklenmez: İşaretlenmezse yeni bir hastalık vakası başlar.",
     "retro.cases":
       "Hastalık vakaları: önce {before} → şimdi {after}",
+    "retro.splitTitle": "Hastalık vakası bölünüyor (en az 6 boş günlük boşluk):",
+    "retro.splitTotals":
+      "Hastalık vakaları {casesBefore} → {casesAfter} · hastalık günleri {daysBefore} → {daysAfter} · ödenen {paidBefore} → {paidAfter} gün · {eurBefore} → {eurAfter}",
+    "retro.splitMove": "{range} ({days} gün): {fromCase} → {toCase}",
+    "retro.splitCase": "{date} tarihli vaka",
+    "retro.splitNewCase": "{date} tarihli yeni vaka",
+    "retro.splitNoCase": "önceden hastalık günü değil",
     "retro.newCase":
       "{date} tarihinden itibaren yeni hastalık vakası: hastalık günleri mevcut vakadan ayrı sayılır.",
     "sickLapsed.title":
@@ -784,6 +812,13 @@ export const v2: Bundle = {
       "Bezpośrednio następuje po przypadku choroby od {date} (pomiędzy tylko planowe dni wolne). Nowy okres nigdy nie jest przypisywany automatycznie: bez zaznaczenia zacznie się nowy przypadek choroby.",
     "retro.cases":
       "Przypadki choroby: wcześniej {before} → teraz {after}",
+    "retro.splitTitle": "Przypadek choroby zostaje podzielony (przerwa co najmniej 6 pustych dni):",
+    "retro.splitTotals":
+      "Przypadki choroby {casesBefore} → {casesAfter} · dni choroby {daysBefore} → {daysAfter} · płatne {paidBefore} → {paidAfter} dni · {eurBefore} → {eurAfter}",
+    "retro.splitMove": "{range} ({days} dni): {fromCase} → {toCase}",
+    "retro.splitCase": "przypadek od {date}",
+    "retro.splitNewCase": "nowy przypadek od {date}",
+    "retro.splitNoCase": "wcześniej nie dzień choroby",
     "retro.newCase":
       "Nowy przypadek choroby od {date}: jego dni choroby są liczone osobno od dotychczasowego przypadku.",
     "sickLapsed.title":
