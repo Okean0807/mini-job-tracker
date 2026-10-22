@@ -23,7 +23,14 @@ import { goalsProgress, type GoalProgress } from "./goals";
 import { holidaysFor, isHoliday } from "./holidays";
 import { buildInsights, type Insights } from "./insights";
 import { monthUsage, monthlyHoursLimit, yearUsage, yearlyLimitOf, type LimitUsage } from "./limits";
-import { payrollTotals, shiftPayroll, type PayrollTotals, type ShiftPayroll } from "./payroll";
+import {
+  payrollTotals,
+  shiftPayroll,
+  SICK_SEPARATE_GAP_DAYS,
+  type PayrollTotals,
+  type ShiftPayroll,
+} from "./payroll";
+import { addDays } from "./date-key";
 import { payPeriod, payPeriods, paydayFor, type PayPeriod } from "./payday";
 import { effectiveShiftRate, resolveRate, suggestedRate, type RateSource } from "./rate";
 import { makeResolver, type ResolveOptions, type Resolver } from "./resolve";
@@ -407,6 +414,31 @@ export function absenceRangeTargets(
 export interface AbsencePlan {
   removeIds: string[];
   created: Shift[];
+  /** V10-LATEBLOCK-CASE: Krankheitsfall der neu angelegten Krank-Tage (nur Krank). */
+  sickCase?: AbsenceSickCase;
+}
+
+/** Benachbarter, ausdrücklich zugeordneter Krankheitsfall (mit sickCaseId). */
+export interface SickCaseNeighbour {
+  caseId: string;
+  /** Erster Tag dieses Falls. */
+  start: string;
+  /** "continuous": nur planmäßig freie Tage dazwischen; "ambiguous": unklare Grenze. */
+  boundary: "continuous" | "ambiguous";
+}
+
+/**
+ * V10-LATEBLOCK-CASE: Fallzuordnung eines Krank-Zeitraums.
+ * - "continued": bearbeiteter Block gehörte schon zu diesem Fall und schließt lückenlos an
+ *   (dazwischen nur laut gültigem Plan sicher freie Tage) → dieselbe sickCaseId.
+ * - "linked": unklare Grenze, vom Nutzer ausdrücklich zugeordnet.
+ * - "new": neuer Fall; bei unklarer Grenze steht der Kandidat in `linkCandidate`.
+ */
+export interface AbsenceSickCase {
+  mode: "new" | "continued" | "linked";
+  caseId: string;
+  start: string;
+  linkCandidate?: SickCaseNeighbour;
 }
 
 /**
@@ -421,6 +453,7 @@ export function planAbsence(
   to: string,
   replace?: { jobId: string | undefined; kind: ShiftKind; from: string; to: string },
   data: AppData = getData(),
+  options: { linkCaseId?: string | undefined } = {},
 ): AbsencePlan {
   const lo = from <= to ? from : to;
   const hi = from <= to ? to : from;
@@ -452,18 +485,113 @@ export function planAbsence(
   const gone = new Set(removeIds);
   const remaining = data.shifts.filter((s) => !gone.has(s.id));
   const created = generateAbsence(job, kind, from, to, data.settings.bundesland, remaining);
-  if (kind !== "krank" || !replace) return { removeIds, created };
+  if (kind !== "krank") return { removeIds, created };
   // V10-ABS-PLAN-P2-1b: Ein ersetzter Krank-Zeitraum bleibt EIN Krankheitsfall (wie 78ef353):
   // behaltene Einträge (unbekannter Plan) und neu angelegte Tage teilen eine sickCaseId.
   const keptIds = new Set(removed.map((s) => s.id));
-  const kept = absenceRangeTargets(
-    data.shifts,
-    replace.jobId,
-    replace.kind,
-    replace.from,
-    replace.to,
-  ).filter((s) => !keptIds.has(s.id) && keep(s));
-  return unifySickCase(removeIds, created, kept);
+  const kept = replace
+    ? absenceRangeTargets(
+        data.shifts,
+        replace.jobId,
+        replace.kind,
+        replace.from,
+        replace.to,
+      ).filter((s) => !keptIds.has(s.id) && keep(s))
+    : [];
+  if (kept.length) {
+    return withSickCase(unifySickCase(removeIds, created, kept), data.shifts, "continued");
+  }
+  if (!created.length) return { removeIds, created };
+  // V10-LATEBLOCK-CASE (DECISIONS R3): Grenze zum benachbarten Fall prüfen.
+  //  - lückenlos (nur laut gültigem Plan sicher freie Tage dazwischen) → derselbe Fall;
+  //  - unklar (leerer Arbeitstag oder unbekannter Plan dazwischen) → nur nach Bestätigung;
+  //  - ≥ SICK_SEPARATE_GAP_DAYS leere Tage, andere Einträge, Einträge ohne sickCaseId → nie.
+  //  - Automatisch NUR beim Bearbeiten eines Blocks, der schon zu diesem Fall gehörte
+  //    (der Block behält seinen Fall); ein NEUER Zeitraum neben einem Fall wird nie still
+  //    zugeordnet → Hinweis + Entscheidung (Haken) vor dem Speichern.
+  const dates = created.map((s) => s.date).sort();
+  const prev = sickCaseBoundary(job, dates[0]!, -1, remaining);
+  const next = sickCaseBoundary(job, dates[dates.length - 1]!, 1, remaining);
+  const ownCase =
+    replace && sameJob && replace.kind === "krank" ? singleSickCaseId(removed) : undefined;
+  const sides = [prev, next].filter((b) => b !== undefined);
+  const own = sides.filter((b) => b.caseId === ownCase);
+  // eigener Fall: lückenlos auf allen angrenzenden Seiten dieses Falls → bleibt derselbe Fall
+  if (own.length && own.every((b) => b.kind === "continuous")) {
+    return withSickCase(relabel(removeIds, created, ownCase!), data.shifts, "continued");
+  }
+  const candidate = own[0] ?? sides[0];
+  if (candidate && options.linkCaseId === candidate.caseId) {
+    return withSickCase(relabel(removeIds, created, candidate.caseId), data.shifts, "linked");
+  }
+  const plan = withSickCase({ removeIds, created }, data.shifts, "new");
+  if (candidate && plan.sickCase) {
+    plan.sickCase.linkCandidate = {
+      caseId: candidate.caseId,
+      start: caseStartIn(remaining, candidate.caseId) ?? "",
+      boundary: candidate.kind,
+    };
+  }
+  return plan;
+}
+
+/** Gemeinsame sickCaseId aller Einträge (nur wenn alle dieselbe, nicht leere ID tragen). */
+function singleSickCaseId(entries: Shift[]): string | undefined {
+  const ids = new Set(entries.map((s) => s.sickCaseId));
+  const [id] = [...ids];
+  return ids.size === 1 && id ? id : undefined;
+}
+
+/**
+ * Nächster Krankheitsfall vor (step −1) bzw. nach (step +1) `date`: läuft über LEERE Tage.
+ * Nur laut gültigem (historischem) Plan sicher freie Tage halten die Grenze lückenlos;
+ * ein leerer Arbeitstag oder unbekannter Plan macht sie unklar. Kein Rückgriff auf
+ * Schätzungen aus der Payroll.
+ */
+function sickCaseBoundary(
+  job: Job,
+  date: string,
+  step: -1 | 1,
+  shifts: Shift[],
+): { kind: "continuous" | "ambiguous"; caseId: string } | undefined {
+  let ambiguous = false;
+  let empty = 0;
+  for (let d = addDays(date, step); ; d = addDays(d, step)) {
+    const entries = shifts.filter((s) => (s.jobId ?? "") === job.id && s.date === d);
+    if (entries.length) {
+      if (!entries.every((s) => s.kind === "krank")) return undefined;
+      const ids = new Set(entries.map((s) => s.sickCaseId));
+      const [id] = [...ids];
+      // Einträge ohne sickCaseId (Bestand/D1) oder gemischte Fälle: nicht anfassen.
+      if (ids.size !== 1 || !id) return undefined;
+      return { kind: ambiguous ? "ambiguous" : "continuous", caseId: id };
+    }
+    empty += 1;
+    if (empty >= SICK_SEPARATE_GAP_DAYS) return undefined;
+    if (absencePlanDay(job, d).status !== "off") ambiguous = true;
+  }
+}
+
+function caseStartIn(shifts: Shift[], caseId: string): string | undefined {
+  return shifts
+    .filter((s) => s.kind === "krank" && s.sickCaseId === caseId)
+    .map((s) => s.date)
+    .sort()[0];
+}
+
+function relabel(removeIds: string[], created: Shift[], caseId: string): AbsencePlan {
+  return { removeIds, created: created.map((s) => ({ ...s, sickCaseId: caseId })) };
+}
+
+function withSickCase(
+  plan: AbsencePlan,
+  shifts: Shift[],
+  mode: AbsenceSickCase["mode"],
+): AbsencePlan {
+  const caseId = plan.created.find((s) => s.kind === "krank" && s.sickCaseId)?.sickCaseId;
+  if (!caseId) return plan;
+  const start = caseStartIn(shiftsAfterPlan(shifts, plan), caseId) ?? "";
+  return { ...plan, sickCase: { mode: mode, caseId, start } };
 }
 
 /** Alle Tage eines Krank-Ersetzens auf eine sickCaseId bringen (nur innerhalb dieses Plans). */

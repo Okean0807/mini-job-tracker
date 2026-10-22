@@ -104,6 +104,22 @@ export const v2: Bundle = {
       "Keine Änderung – der Zeitraum bleibt unverändert.",
     "absence.unknownPlanSkipped":
       "{count} Tag(e) nicht eingetragen: Für diese Tage ist der damals gültige Wochenplan nicht bekannt.",
+    "absence.sickCaseNew":
+      "Krank: Neuer Krankheitsfall ab {date}.",
+    "absence.sickCaseContinued":
+      "Krank: Gehört lückenlos zum Krankheitsfall ab {date} (dazwischen nur planmäßig freie Tage).",
+    "absence.sickCaseLinked":
+      "Krank: Wird dem Krankheitsfall ab {date} zugeordnet (von dir bestätigt).",
+    "absence.sickCaseAmbiguous":
+      "Unklare Grenze zum Krankheitsfall ab {date}: Dazwischen liegt ein leerer Arbeitstag oder der damalige Wochenplan ist unbekannt. Ohne Haken beginnt ein neuer Krankheitsfall.",
+    "absence.sickCaseLink":
+      "Zum Krankheitsfall ab {date} hinzufügen (nur wenn es dieselbe Erkrankung ist).",
+    "absence.sickCaseAdjacent":
+      "Schließt direkt an den Krankheitsfall ab {date} an (dazwischen nur planmäßig freie Tage). Ein neuer Zeitraum wird nie automatisch zugeordnet: Ohne Haken beginnt ein neuer Krankheitsfall.",
+    "retro.cases":
+      "Krankheitsfälle: bisher {before} → neu {after}",
+    "retro.newCase":
+      "Neuer Krankheitsfall ab {date}: Seine Krankheitstage werden getrennt vom bisherigen Fall gezählt.",
     "sickLapsed.title":
       "Bestätigung aufgehoben – bitte erneut prüfen",
     "sickLapsed.body":
@@ -252,6 +268,22 @@ export const v2: Bundle = {
       "No change – the period stays as it is.",
     "absence.unknownPlanSkipped":
       "{count} day(s) not added: the schedule valid on these days is unknown.",
+    "absence.sickCaseNew":
+      "Sick: new sick-leave case from {date}.",
+    "absence.sickCaseContinued":
+      "Sick: continues the sick-leave case from {date} without a gap (only scheduled days off in between).",
+    "absence.sickCaseLinked":
+      "Sick: added to the sick-leave case from {date} (confirmed by you).",
+    "absence.sickCaseAmbiguous":
+      "Unclear boundary to the sick-leave case from {date}: there is an empty workday in between or the schedule at that time is unknown. Without the checkbox a new sick-leave case starts.",
+    "absence.sickCaseLink":
+      "Add to the sick-leave case from {date} (only if it is the same illness).",
+    "absence.sickCaseAdjacent":
+      "Directly follows the sick-leave case from {date} (only scheduled days off in between). A new period is never assigned automatically: without the checkbox a new sick-leave case starts.",
+    "retro.cases":
+      "Sick-leave cases: before {before} → now {after}",
+    "retro.newCase":
+      "New sick-leave case from {date}: its sick days are counted separately from the existing case.",
     "sickLapsed.title":
       "Confirmation revoked – please review again",
     "sickLapsed.body":
@@ -400,6 +432,22 @@ export const v2: Bundle = {
       "Без изменений – период остаётся прежним.",
     "absence.unknownPlanSkipped":
       "Не добавлено дней: {count} – действовавший в эти дни график неизвестен.",
+    "absence.sickCaseNew":
+      "Больничный: новый случай болезни с {date}.",
+    "absence.sickCaseContinued":
+      "Больничный: продолжает без перерыва случай болезни с {date} (между ними только плановые выходные).",
+    "absence.sickCaseLinked":
+      "Больничный: относится к случаю болезни с {date} (подтверждено вами).",
+    "absence.sickCaseAmbiguous":
+      "Неясная граница со случаем болезни с {date}: между ними пустой рабочий день или график того времени неизвестен. Без отметки начнётся новый случай болезни.",
+    "absence.sickCaseLink":
+      "Добавить к случаю болезни с {date} (только если это то же заболевание).",
+    "absence.sickCaseAdjacent":
+      "Непосредственно продолжает случай болезни с {date} (между ними только плановые выходные). Новый период никогда не присоединяется автоматически: без отметки начнётся новый случай болезни.",
+    "retro.cases":
+      "Случаи болезни: было {before} → станет {after}",
+    "retro.newCase":
+      "Новый случай болезни с {date}: его дни болезни считаются отдельно от прежнего случая.",
     "sickLapsed.title":
       "Подтверждение снято – проверьте ещё раз",
     "sickLapsed.body":
@@ -548,6 +596,22 @@ export const v2: Bundle = {
       "Değişiklik yok – dönem aynı kalıyor.",
     "absence.unknownPlanSkipped":
       "{count} gün eklenmedi: bu günlerde geçerli olan çalışma planı bilinmiyor.",
+    "absence.sickCaseNew":
+      "Hastalık: {date} tarihinden itibaren yeni hastalık vakası.",
+    "absence.sickCaseContinued":
+      "Hastalık: {date} tarihinden başlayan hastalık vakasının kesintisiz devamı (arada yalnızca planlı izin günleri var).",
+    "absence.sickCaseLinked":
+      "Hastalık: {date} tarihinden başlayan hastalık vakasına eklenir (senin onayınla).",
+    "absence.sickCaseAmbiguous":
+      "{date} tarihinden başlayan hastalık vakasıyla sınır belirsiz: arada boş bir iş günü var veya o zamanki çalışma planı bilinmiyor. İşaretlenmezse yeni bir hastalık vakası başlar.",
+    "absence.sickCaseLink":
+      "{date} tarihinden başlayan hastalık vakasına ekle (yalnızca aynı hastalıksa).",
+    "absence.sickCaseAdjacent":
+      "{date} tarihinden başlayan hastalık vakasının hemen ardından geliyor (arada yalnızca planlı izin günleri var). Yeni bir dönem asla otomatik olarak eklenmez: İşaretlenmezse yeni bir hastalık vakası başlar.",
+    "retro.cases":
+      "Hastalık vakaları: önce {before} → şimdi {after}",
+    "retro.newCase":
+      "{date} tarihinden itibaren yeni hastalık vakası: hastalık günleri mevcut vakadan ayrı sayılır.",
     "sickLapsed.title":
       "Onay kaldırıldı – lütfen tekrar kontrol edin",
     "sickLapsed.body":
@@ -696,6 +760,22 @@ export const v2: Bundle = {
       "Bez zmian – okres pozostaje bez zmian.",
     "absence.unknownPlanSkipped":
       "Nie dodano {count} dni: plan pracy obowiązujący w te dni jest nieznany.",
+    "absence.sickCaseNew":
+      "Choroba: nowy przypadek choroby od {date}.",
+    "absence.sickCaseContinued":
+      "Choroba: bez przerwy kontynuuje przypadek choroby od {date} (pomiędzy tylko planowe dni wolne).",
+    "absence.sickCaseLinked":
+      "Choroba: zostanie przypisana do przypadku choroby od {date} (potwierdzone przez Ciebie).",
+    "absence.sickCaseAmbiguous":
+      "Niejasna granica z przypadkiem choroby od {date}: pomiędzy jest pusty dzień roboczy albo ówczesny plan pracy jest nieznany. Bez zaznaczenia zacznie się nowy przypadek choroby.",
+    "absence.sickCaseLink":
+      "Dodaj do przypadku choroby od {date} (tylko jeśli to ta sama choroba).",
+    "absence.sickCaseAdjacent":
+      "Bezpośrednio następuje po przypadku choroby od {date} (pomiędzy tylko planowe dni wolne). Nowy okres nigdy nie jest przypisywany automatycznie: bez zaznaczenia zacznie się nowy przypadek choroby.",
+    "retro.cases":
+      "Przypadki choroby: wcześniej {before} → teraz {after}",
+    "retro.newCase":
+      "Nowy przypadek choroby od {date}: jego dni choroby są liczone osobno od dotychczasowego przypadku.",
     "sickLapsed.title":
       "Potwierdzenie cofnięte – sprawdź ponownie",
     "sickLapsed.body":

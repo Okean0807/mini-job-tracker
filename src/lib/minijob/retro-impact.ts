@@ -37,6 +37,27 @@ export interface RetroImpact {
    * direkt ersetzten Einträge vorher/nachher (die `months` zeigen nur ANDERE Einträge).
    */
   range?: AbsenceRangeChange;
+  /**
+   * V10-LATEBLOCK-CASE: Anzahl der Krankheitsfälle (sickCaseId) des Jobs vorher/nachher –
+   * nur gesetzt, wenn ein Krank-Zeitraum bearbeitet wird oder an einen Fall grenzt.
+   */
+  cases?: SickCaseCountChange;
+}
+
+export interface SickCaseCountChange {
+  before: number;
+  after: number;
+  /** Erster Tag des neu entstehenden Falls (wenn einer entsteht). */
+  newCaseStart?: string;
+}
+
+/** Anzahl verschiedener Krankheitsfälle (sickCaseId) eines Jobs; Einträge ohne ID zählen nicht. */
+export function sickCaseCount(shifts: readonly Shift[], jobId: string): number {
+  return new Set(
+    shifts
+      .filter((s) => s.kind === "krank" && (s.jobId ?? "") === jobId && s.sickCaseId)
+      .map((s) => s.sickCaseId),
+  ).size;
 }
 
 export interface AbsenceRangeChange {
@@ -185,6 +206,9 @@ export function rangeChangeMatters(range: AbsenceRangeChange | undefined): boole
 /** true = vor dem Speichern muss der Nutzer die Auswirkung bestätigen. */
 export function needsRetroConfirmation(impact: RetroImpact): boolean {
   return (
-    impact.months.length > 0 || impact.lapsedMonths.length > 0 || rangeChangeMatters(impact.range)
+    impact.months.length > 0 ||
+    impact.lapsedMonths.length > 0 ||
+    rangeChangeMatters(impact.range) ||
+    (impact.cases !== undefined && impact.cases.before !== impact.cases.after)
   );
 }

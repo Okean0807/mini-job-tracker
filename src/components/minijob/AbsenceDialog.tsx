@@ -13,6 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useT } from "@/lib/i18n";
+import { formatDate } from "@/lib/minijob/calc";
 import {
   contiguousAbsenceRange,
   isAbsenceKind,
@@ -22,6 +23,7 @@ import { RetroImpactDialog } from "@/components/minijob/RetroImpactDialog";
 import {
   absenceRangeChange,
   needsRetroConfirmation,
+  sickCaseCount,
   retroImpact,
   type RetroImpact,
 } from "@/lib/minijob/retro-impact";
@@ -63,7 +65,7 @@ export function AbsenceDialog({
   defaultKind = "urlaub",
   activeJobId,
 }: AbsenceDialogProps) {
-  const { t } = useT();
+  const { t, locale } = useT();
   const activeJobs = useMemo(() => jobs.filter((j) => !j.archived), [jobs]);
   const [jobId, setJobId] = useState<string | undefined>(undefined);
   const [kind, setKind] = useState<AbsenceKind>("urlaub");
@@ -72,9 +74,12 @@ export function AbsenceDialog({
   const editing = Boolean(seed && isAbsenceKind(seed.kind));
   // D3 (Owner R4): rückwirkende Auswirkung – erst nach Bestätigung speichern.
   const [retro, setRetro] = useState<{ impact: RetroImpact; apply: () => void } | null>(null);
+  // V10-LATEBLOCK-CASE (DECISIONS R3): unklare Fallgrenze → Zuordnung nur per Haken (Standard aus).
+  const [sickLink, setSickLink] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    setSickLink(false);
     const fallbackJob =
       activeJobs.find((j) => j.id === (seed?.jobId ?? activeJobId)) ?? activeJobs[0];
     setJobId(fallbackJob?.id);
@@ -93,6 +98,23 @@ export function AbsenceDialog({
 
   const job = activeJobs.find((j) => j.id === jobId);
   const invalid = !job || !from || !to || from > to;
+
+  /** Bisheriger Block beim Bearbeiten (für planAbsence `replace`). */
+  function replaceTarget() {
+    if (!(editing && seed && isAbsenceKind(seed.kind)) || !job) return undefined;
+    const prev = contiguousAbsenceRange(seed, shifts);
+    return { jobId: seed.jobId ?? job.id, kind: seed.kind, from: prev.from, to: prev.to };
+  }
+
+  // V10-LATEBLOCK-CASE: Fallzuordnung VOR dem Speichern anzeigen (neuer Fall / lückenlos /
+  // unklar mit Haken). Gleiche Berechnung wie beim Speichern (planAbsence).
+  const sickPreview = useMemo(() => {
+    if (!open || invalid || kind !== "krank" || !job) return undefined;
+    return planAbsence(job, kind, from, to, replaceTarget()).sickCase;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, invalid, kind, job, from, to, seed, shifts]);
+  const linkCandidate = sickPreview?.linkCandidate;
+  const linkCaseId = sickLink && linkCandidate ? linkCandidate.caseId : undefined;
 
   /**
    * D3: Plan berechnen, Auswirkung auf ANDERE Einträge prüfen; bei Auswirkung
@@ -124,6 +146,16 @@ export function AbsenceDialog({
         replaced,
       );
     }
+    // V10-LATEBLOCK-CASE: Ändert sich die Zahl der Krankheitsfälle (Bearbeiten oder Zeitraum
+    // neben einem Fall), erklärt die Rückfrage das – inkl. Beginn eines neuen Falls.
+    if (plan.sickCase && job && (replaced || plan.sickCase.linkCandidate)) {
+      const after = shiftsAfterPlan(data.shifts, plan);
+      impact.cases = {
+        before: sickCaseCount(data.shifts, job.id),
+        after: sickCaseCount(after, job.id),
+        ...(plan.sickCase.mode === "new" ? { newCaseStart: plan.sickCase.start } : {}),
+      };
+    }
     if (needsRetroConfirmation(impact)) {
       setRetro({ impact, apply });
       return;
@@ -142,13 +174,7 @@ export function AbsenceDialog({
     if (!job || invalid) return;
     if (editing && seed && isAbsenceKind(seed.kind)) {
       // Drop previous contiguous block (possibly other kind) then write the new range.
-      const prev = contiguousAbsenceRange(seed, shifts);
-      const plan = planAbsence(job, kind, from, to, {
-        jobId: seed.jobId ?? job.id,
-        kind: seed.kind,
-        from: prev.from,
-        to: prev.to,
-      });
+      const plan = planAbsence(job, kind, from, to, replaceTarget(), undefined, { linkCaseId });
       if (plan.removeIds.length === 0 && plan.created.length === 0) {
         // Unverändert gespeichert bzw. nichts anlegbar: keine Datenänderung.
         const unknown = unknownPlanDates(job, from, to, getData().shifts);
@@ -169,7 +195,7 @@ export function AbsenceDialog({
         { from, to },
       );
     } else {
-      const plan = planAbsence(job, kind, from, to);
+      const plan = planAbsence(job, kind, from, to, undefined, undefined, { linkCaseId });
       guarded(plan, () => {
         const unknown = unknownPlanDates(job, from, to, getData().shifts);
         if (plan.created.length === 0) {
@@ -267,6 +293,57 @@ export function AbsenceDialog({
                 />
               </div>
             </div>
+
+            {sickPreview ? (
+              <div className="grid gap-1.5 rounded-lg border p-2 text-xs">
+                <p
+                  data-testid="absence-sick-case"
+                  data-mode={linkCaseId ? "linked" : sickPreview.mode}
+                  data-start={linkCaseId ? linkCandidate?.start : sickPreview.start}
+                >
+                  {linkCaseId && linkCandidate
+                    ? t("absence.sickCaseLinked", { date: formatDate(linkCandidate.start, locale) })
+                    : sickPreview.mode === "continued"
+                      ? t("absence.sickCaseContinued", {
+                          date: formatDate(sickPreview.start, locale),
+                        })
+                      : t("absence.sickCaseNew", { date: formatDate(sickPreview.start, locale) })}
+                </p>
+                {linkCandidate ? (
+                  <>
+                    <p
+                      data-testid="absence-sick-ambiguous"
+                      data-boundary={linkCandidate.boundary}
+                      className="text-amber-700"
+                    >
+                      {t(
+                        linkCandidate.boundary === "continuous"
+                          ? "absence.sickCaseAdjacent"
+                          : "absence.sickCaseAmbiguous",
+                        { date: formatDate(linkCandidate.start, locale) },
+                      )}
+                    </p>
+                    <label
+                      className="flex items-start gap-2"
+                      data-testid="absence-sick-link"
+                      data-case-start={linkCandidate.start}
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 size-4"
+                        checked={sickLink}
+                        onChange={(e) => setSickLink(e.target.checked)}
+                      />
+                      <span>
+                        {t("absence.sickCaseLink", {
+                          date: formatDate(linkCandidate.start, locale),
+                        })}
+                      </span>
+                    </label>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
 
             <p className="text-xs text-muted-foreground">{t("absence.hint")}</p>
           </div>

@@ -73,6 +73,29 @@ export function RetroImpactDialog({
             ) : null}
           </div>
         ) : null}
+        {impact?.cases && impact.cases.before !== impact.cases.after ? (
+          <div className="space-y-1 text-sm" data-testid="retro-impact-cases">
+            <p
+              data-testid="retro-impact-cases-row"
+              data-before={impact.cases.before}
+              data-after={impact.cases.after}
+            >
+              {t("retro.cases", {
+                before: String(impact.cases.before),
+                after: String(impact.cases.after),
+              })}
+            </p>
+            {impact.cases.newCaseStart ? (
+              <p
+                className="text-amber-700 dark:text-amber-400"
+                data-testid="retro-impact-new-case"
+                data-start={impact.cases.newCaseStart}
+              >
+                {t("retro.newCase", { date: dayLabel(impact.cases.newCaseStart) })}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         {impact?.months.length ? (
           <ul className="space-y-1 text-sm" data-testid="retro-impact-months">
             {impact.months.map((m) => (
