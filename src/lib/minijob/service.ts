@@ -481,16 +481,15 @@ function splitAtNewSeparateGaps(job: Job, plan: AbsencePlan, shifts: Shift[]): A
   const after = ofJob(shiftsAfterPlan(shifts, plan));
   const byDate = new Map<string, Shift[]>();
   for (const s of after) byDate.set(s.date, [...(byDate.get(s.date) ?? []), s]);
-  const ownIds = new Set(plan.created.map((s) => s.id));
   /**
-   * NEUE Lücke ≥ SICK_SEPARATE_GAP_DAYS zwischen zwei Tagen a < b des Falls `caseId`?
-   * Gezählt werden LEERE Kalendertage (kein Eintrag des Jobs). Zwischen a und b dürfen außer
-   * leeren Tagen nur Krank-Tage DIESER Änderung liegen, die einem ANDEREN Fall zugeordnet
-   * werden (t653u: unklare linke Grenze → bearbeiteter Block = neuer Fall). Jeder andere
-   * Eintrag (Arbeit, Urlaub, Bestand) schließt die Lücke wie bisher. „Neu“ = in einem leeren
-   * Lauf ≥ 6 Tage lagen vor der Änderung Tage dieses Falls (alte Lücken bleiben unangetastet).
+   * NEUE Lücke ≥ SICK_SEPARATE_GAP_DAYS zwischen zwei Tagen a < b des Falls `caseId` (W-1/K-05)?
+   * Gezählt wird jeder zusammenhängende Lauf LEERER Kalendertage (kein Eintrag des Jobs)
+   * strikt zwischen a und b. Jeder Eintrag (Arbeit, Urlaub, Krank-Tag eines anderen Falls,
+   * auch dieser Änderung) BEENDET nur den laufenden Lauf; er hebt eine Lücke ≥ 6 davor oder
+   * danach nicht auf (QA R3 P2-1: N9–N12). „Neu“ = im leeren Lauf ≥ 6 Tage lagen vor der
+   * Änderung Tage dieses Falls (alte Lücken bleiben unangetastet).
    */
-  const newGapBetween = (a: string, b: string, caseId: string, beforeDates: string[]) => {
+  const newGapBetween = (a: string, b: string, beforeDates: string[]) => {
     let runStart: string | undefined;
     let run = 0;
     let found = false;
@@ -503,16 +502,11 @@ function splitAtNewSeparateGaps(job: Job, plan: AbsencePlan, shifts: Shift[]): A
       run = 0;
     };
     for (let d = addDays(a, 1); d < b; d = addDays(d, 1)) {
-      const entries = byDate.get(d) ?? [];
-      if (!entries.length) {
+      if (!byDate.get(d)?.length) {
         runStart ??= d;
         run += 1;
         continue;
       }
-      const otherCaseOfThisEdit = entries.every(
-        (s) => s.kind === "krank" && ownIds.has(s.id) && !!s.sickCaseId && s.sickCaseId !== caseId,
-      );
-      if (!otherCaseOfThisEdit) return false;
       closeRun(d);
     }
     closeRun(b);
@@ -532,7 +526,7 @@ function splitAtNewSeparateGaps(job: Job, plan: AbsencePlan, shifts: Shift[]): A
     for (let i = 1; i < days.length; i++) {
       const a = days[i - 1]!.date;
       const b = days[i]!.date;
-      const isNewGap = newGapBetween(a, b, caseId, beforeDates);
+      const isNewGap = newGapBetween(a, b, beforeDates);
       if (isNewGap) {
         current = newId();
         split ??= { start: b };

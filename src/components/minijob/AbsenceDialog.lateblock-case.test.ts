@@ -803,17 +803,160 @@ describe("t653u: unklare Grenze + neue Lücke ≥ 6 Tage → spätere Blöcke ni
     expect(result).toEqual(R(2, 40, 30, "2026-09-14", 2250));
   });
 
-  it("Bestehender Krank-Tag eines ANDEREN Falls (21.09., nicht aus dieser Änderung) schließt die Lücke wie bisher: keine Trennung, 22.09.–02.10. bleibt „old“", () => {
+  it("Bestehender Krank-Tag eines ANDEREN Falls (21.09.) beendet die Lücke 15.–20.09. (6 leere Tage) nur, hebt sie nicht auf (W-1, QA R3): 22.09.–02.10. eigener Fall, 3 / 41 / 40 / 02.10. / 3000 €", () => {
+    // Bis 0d76159 erwartet: keine Trennung, 22.09.–02.10. bleibt „old“ (2 / 41 / 31 / 21.09. / 2325 €).
     const base = [...work, ...sick]
       .filter((s) => s.date !== "2026-09-21")
       .concat([sickDay("2026-09-21", "x")]);
-    const { p, after } = plan(JOB_PLAIN, base, "2026-09-14", "2026-09-14", MID);
-    expect(p.sickCase?.split).toBeUndefined();
+    expect(summary([JOB_PLAIN], base, SETTINGS)).toEqual(R(2, 45, 31, "2026-09-21", 2325));
+    const { p, after, result } = plan(JOB_PLAIN, base, "2026-09-14", "2026-09-14", MID);
+    expect(p.sickCase?.split).toEqual({ start: "2026-09-22" });
+    // 14.09. hängt lückenlos (nur Wochenende) an 11.09. → „continued“ ist hier zutreffend.
+    expect(p.sickCase?.mode).toBe("continued");
     expect(after.find((s) => s.date === "2026-09-14")?.sickCaseId).toBe("old");
     expect(after.find((s) => s.date === "2026-09-21")?.sickCaseId).toBe("x");
-    expect(
-      after.filter((s) => s.kind === "krank" && s.date >= "2026-09-22").map((s) => s.sickCaseId),
-    ).toEqual(Array(9).fill("old"));
+    const later = after.filter((s) => s.kind === "krank" && s.date >= "2026-09-22");
+    expect(later).toHaveLength(9);
+    expect(new Set(later.map((s) => s.sickCaseId)).size).toBe(1);
+    expect(["old", "x"]).not.toContain(later[0]?.sickCaseId);
+    expect(casesOf(after)).toEqual([
+      { case: "old", days: 31, from: "2026-08-03", to: "2026-09-14" },
+      { case: "neu ab 2026-09-21", days: 1, from: "2026-09-21", to: "2026-09-21" },
+      { case: "neu ab 2026-09-22", days: 9, from: "2026-09-22", to: "2026-10-02" },
+    ]);
+    expect(result).toEqual(R(3, 41, 40, "2026-10-02", 3000));
+  });
+
+  /** QA R3 P2-1/P2-2: jeder Eintrag BEENDET den leeren Lauf nur; 15.–20.09. bleibt 6 leere Tage. */
+  const L = before;
+  const entry = (date: string, kind: string) =>
+    ({ id: `x-${date}`, jobId: "j1", kind, date, ...d5 }) as Shift;
+  const N_OLD = { case: "old", days: 29, from: "2026-08-03", to: "2026-09-10" };
+  const N_LATE = { case: "neu ab 2026-09-21", days: 10, from: "2026-09-21", to: "2026-10-02" };
+  const N_14 = { case: "neu ab 2026-09-14", days: 1, from: "2026-09-14", to: "2026-09-14" };
+
+  it("N9 Krank-Tag eines anderen Falls (c3) am Sa 12.09., 14.–18.09. → 14.09.: 21.09.–02.10. eigener Fall, 4 / 41 / 40 / 02.10. / 3000 € (vorher 3 / 41 / 30 / 14.09. / 2250 €)", () => {
+    const base = [...L, { ...entry("2026-09-12", "krank"), sickCaseId: "c3", rate: 15 } as Shift];
+    expect(summary([JOB_PLAIN], base, SETTINGS)).toEqual(R(2, 45, 29, "2026-09-10", 2175));
+    const { p, after, result } = plan(JOB_PLAIN, base, "2026-09-14", "2026-09-14", MID);
+    expect(p.sickCase?.mode).toBe("new");
+    expect(p.sickCase?.split).toEqual({ start: "2026-09-21" });
+    expect(after.find((s) => s.date === "2026-09-12")?.sickCaseId).toBe("c3");
+    expect(casesOf(after)).toEqual([
+      N_OLD,
+      { case: "neu ab 2026-09-12", days: 1, from: "2026-09-12", to: "2026-09-12" },
+      N_14,
+      N_LATE,
+    ]);
+    expect(result).toEqual(R(4, 41, 40, "2026-10-02", 3000));
+  });
+
+  it("N9 mit Haken (zu c3): 14.09. → c3, 21.09.–02.10. trotzdem eigener Fall, 3 / 41 / 40 / 02.10. / 3000 €", () => {
+    const base = [...L, { ...entry("2026-09-12", "krank"), sickCaseId: "c3", rate: 15 } as Shift];
+    const { p, after, result } = plan(JOB_PLAIN, base, "2026-09-14", "2026-09-14", MID, "c3");
+    expect(p.sickCase?.mode).toBe("linked");
+    expect(p.sickCase?.split).toEqual({ start: "2026-09-21" });
+    expect(after.find((s) => s.date === "2026-09-14")?.sickCaseId).toBe("c3");
+    expect(casesOf(after)).toEqual([
+      N_OLD,
+      { case: "neu ab 2026-09-12", days: 2, from: "2026-09-12", to: "2026-09-14" },
+      N_LATE,
+    ]);
+    expect(result).toEqual(R(3, 41, 40, "2026-10-02", 3000));
+  });
+
+  it("N10 Arbeit am Sa 12.09., 14.–18.09. → 14.09.: 3 / 40 / 40 / 02.10. / 3000 € (vorher 2 / 40 / 30 / 14.09. / 2250 €)", () => {
+    const base = [...L, entry("2026-09-12", "arbeit")];
+    expect(summary([JOB_PLAIN], base, SETTINGS)).toEqual(BEFORE_P2);
+    const { p, after, result } = plan(JOB_PLAIN, base, "2026-09-14", "2026-09-14", MID);
+    expect(p.sickCase?.mode).toBe("new");
+    expect(p.sickCase?.split).toEqual({ start: "2026-09-21" });
+    expect(casesOf(after)).toEqual([N_OLD, N_14, N_LATE]);
+    expect(result).toEqual(R(3, 40, 40, "2026-10-02", 3000));
+  });
+
+  it("N11 Arbeit am 11.09., 14.–18.09. → 14.09.: 3 / 40 / 40 / 02.10. / 3000 € (vorher 2 / 40 / 30 / 14.09. / 2250 €)", () => {
+    const base = [...L, entry("2026-09-11", "arbeit")];
+    expect(summary([JOB_PLAIN], base, SETTINGS)).toEqual(BEFORE_P2);
+    const { p, after, result } = plan(JOB_PLAIN, base, "2026-09-14", "2026-09-14", MID);
+    expect(p.sickCase?.mode).toBe("new");
+    expect(p.sickCase?.split).toEqual({ start: "2026-09-21" });
+    expect(casesOf(after)).toEqual([N_OLD, N_14, N_LATE]);
+    expect(result).toEqual(R(3, 40, 40, "2026-10-02", 3000));
+  });
+
+  it("N12 Arbeit am 11.09., 14.–18.09. → 18.09. (Lücke 12.–17.09.): nicht „lückenlos“, 18.09.–02.10. eigener Fall, 2 / 40 / 40 / 02.10. / 3000 € (vorher 1 / 40 / 29 / 10.09. / 2175 €, „continued“)", () => {
+    const base = [...L, entry("2026-09-11", "arbeit")];
+    const { p, after, result } = plan(JOB_PLAIN, base, "2026-09-18", "2026-09-18", MID);
+    expect(p.sickCase?.mode).toBe("new");
+    expect(p.sickCase?.start).toBe("2026-09-18");
+    expect(p.sickCase?.split).toEqual({ start: "2026-09-18" });
+    expect(casesOf(after)).toEqual([
+      N_OLD,
+      { case: "neu ab 2026-09-18", days: 11, from: "2026-09-18", to: "2026-10-02" },
+    ]);
+    expect(result).toEqual(R(2, 40, 40, "2026-10-02", 3000));
+  });
+
+  it("N12 Dialog: kein „lückenlos“-Text bei 6-Tage-Lücke; Anzeige „neuer Fall ab 18.09.“; Rückfrage 1 → 2; Abbrechen ändert nichts; Bestätigen → 2 / 40 / 40 / 3000 €", () => {
+    seed([JOB_PLAIN], [...L, entry("2026-09-11", "arbeit")]);
+    const snap = snapshot();
+    open("k-2026-09-14");
+    setValue(q("#absence-from"), "2026-09-18");
+    setValue(q("#absence-to"), "2026-09-18");
+    expect(caseInfo()?.getAttribute("data-mode")).toBe("new");
+    expect(caseInfo()?.getAttribute("data-start")).toBe("2026-09-18");
+    expect(caseInfo()?.textContent).not.toContain("lückenlos");
+    expect(document.body.textContent).not.toContain("lückenlos");
+    expect(tid("absence-sick-split")?.getAttribute("data-start")).toBe("2026-09-18");
+    click(tid("absence-save"));
+    expect(tid("retro-impact-dialog")).not.toBeNull();
+    expect(document.body.textContent).not.toContain("lückenlos");
+    expect(tid("retro-impact-cases-row")?.getAttribute("data-after")).toBe("2");
+    expect(tid("retro-impact-split-totals")?.getAttribute("data-before")).toBe("1/44/29/2175.00");
+    expect(tid("retro-impact-split-totals")?.getAttribute("data-after")).toBe("2/40/40/3000.00");
+    click(tid("retro-impact-cancel"));
+    expect(snapshot()).toBe(snap);
+    reload();
+    expect(snapshot()).toBe(snap);
+    click(tid("absence-save"));
+    click(tid("retro-impact-confirm"));
+    expect(savedSummary()).toEqual(R(2, 40, 40, "2026-10-02", 3000));
+    reload();
+    expect(savedSummary()).toEqual(R(2, 40, 40, "2026-10-02", 3000));
+  });
+
+  it("U6: der einzige frühere Falltag ist der ERSTE Tag des neuen 6-Tage-Laufs (15.09. frei, Lücke 16.–20.09. bestand schon): Trennung ab 21.09., 2 / 41 / 40 / 02.10. / 3000 €", () => {
+    const base = [...work, ...sick].filter(
+      (s) => !["2026-09-16", "2026-09-17", "2026-09-18"].includes(s.date),
+    );
+    expect(summary([JOB_PLAIN], base, SETTINGS)).toEqual(R(1, 42, 30, "2026-09-11", 2250));
+    const range = { ...MID, from: "2026-09-14", to: "2026-09-15" };
+    const { p, after, result } = plan(JOB_PLAIN, base, "2026-09-14", "2026-09-14", range);
+    expect(p.sickCase?.split).toEqual({ start: "2026-09-21" });
+    expect(casesOf(after)).toEqual([
+      { case: "old", days: 31, from: "2026-08-03", to: "2026-09-14" },
+      N_LATE,
+    ]);
+    expect(result).toEqual(R(2, 41, 40, "2026-10-02", 3000));
+  });
+
+  it("Kurzer neuer Lauf (17.–20.09., 4 Tage), Arbeit 21.09., dahinter schon bestehende 6-Tage-Lücke (22.–27.09.): Läufe werden getrennt gezählt, keine Trennung", () => {
+    const base = [...work, ...sick]
+      .filter(
+        (s) =>
+          !["2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24", "2026-09-25"].includes(s.date),
+      )
+      .concat([
+        { id: "x-2026-09-21", jobId: "j1", kind: "arbeit", date: "2026-09-21", ...d5 } as Shift,
+      ]);
+    const { p, after, result } = plan(JOB_PLAIN, base, "2026-09-14", "2026-09-16", MID);
+    expect(p.sickCase?.split).toBeUndefined();
+    expect(p.sickCase?.mode).toBe("continued");
+    expect(casesOf(after)).toEqual([
+      { case: "old", days: 38, from: "2026-08-03", to: "2026-10-02" },
+    ]);
+    expect(result).toEqual(R(1, 38, 30, "2026-09-11", 2250));
   });
 
   it("Grenze 5 Tage (14.–18.09. → 14.–15.09., Lücke 16.–20.09.), 11.09. leer: keine Trennung", () => {
