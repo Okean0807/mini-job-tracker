@@ -197,8 +197,8 @@ describe("source wiring (all entry points gated)", () => {
   const features = readFileSync(join(here, "../../lib/config/features.ts"), "utf8");
 
   it("flags default to disabled unless env is exactly 'true'", () => {
-    expect(features).toMatch(/import\.meta\.env\["VITE_GEO_ENABLED"\] === "true"/);
-    expect(features).toMatch(/import\.meta\.env\["VITE_VOICE_ENABLED"\] === "true"/);
+    expect(features).toMatch(/import\.meta\.env\.VITE_GEO_ENABLED === "true"/);
+    expect(features).toMatch(/import\.meta\.env\.VITE_VOICE_ENABLED === "true"/);
   });
 
   it("ShiftDialog mic, voice(), GPS block and capture are flag-gated", () => {
