@@ -1,4 +1,11 @@
 import { yearUsage } from "./limits";
+import {
+  activityOptions,
+  multipleMinijobMonths,
+  uncertainMinijobMonths,
+  yearPeriod,
+  type ActivityOptions,
+} from "./multi-minijob";
 import { monthNames, shiftsInMonth, shiftsInYear } from "./calc";
 import { shiftPayroll } from "./payroll";
 import type { Resolver } from "./resolve";
@@ -47,6 +54,23 @@ export interface AnnualReport {
   activeMonths: number;
   limit: number;
   limitShare: number;
+  /**
+   * B3-1/O4: Hauptbeschäftigung + mehrere Minijobs im Jahr → `limitShare`
+   * ist nicht belastbar und wird nicht als Prozent angezeigt.
+   */
+  multipleMinijobs?: boolean;
+  /** Monate ("YYYY-MM") mit HB + ≥ 2 in diesem Monat aktiven Minijobs (DECISIONS R3 Punkt 7). */
+  multipleMinijobMonths?: string[];
+  /**
+   * Owner R5 (Variante B): Monate, in denen die Konstellation wegen unsicherer
+   * bezahlter Abwesenheiten nicht sicher bestimmbar ist.
+   */
+  o4UncertainMonths?: string[];
+  /**
+   * true = Bericht ist nach Job gefiltert, der O4-Hinweis stammt aber aus ALLEN
+   * relevanten Daten (DECISIONS R3 Punkt 5) – Erklärung wird angezeigt.
+   */
+  multipleMinijobsFromAllJobs?: boolean;
   bestMonth: AnnualMonth | null;
   bestDay: { date: string; hours: number; earnings: number } | null;
   months: AnnualMonth[];
@@ -174,10 +198,42 @@ export function buildAnnualReport(
     activeMonths,
     limit,
     limitShare: limit > 0 ? (legalEarnings / limit) * 100 : 0,
+    ...o4YearFields(jobs, shifts, year, activityOptions(settings)),
     bestMonth,
     bestDay,
     months,
     jobs: jobRows,
     weekdayHours,
+  };
+}
+
+/** O4-Felder des Jahresberichts aus den übergebenen Einträgen (je Monat bestimmt). */
+function o4YearFields(jobs: Job[], shifts: Shift[], year: number, options: ActivityOptions) {
+  const months = multipleMinijobMonths(jobs, shifts, yearPeriod(year), options);
+  const uncertain = uncertainMinijobMonths(jobs, shifts, yearPeriod(year), options);
+  return {
+    multipleMinijobs: months.length > 0,
+    multipleMinijobMonths: months,
+    o4UncertainMonths: uncertain,
+  };
+}
+
+/**
+ * DECISIONS R3 Punkt 5: Summen bleiben nach Filter, der O4-Hinweis wird aus
+ * ALLEN Einträgen bestimmt (ein Job-Filter ändert die Rechtslage nicht).
+ * `filterActive` = Bericht zeigt nur einen Teil der Jobs → Erklärung anzeigen.
+ */
+export function withAllJobsO4(
+  report: AnnualReport,
+  jobs: Job[],
+  allShifts: Shift[],
+  filterActive: boolean,
+  options: ActivityOptions = {},
+): AnnualReport {
+  const fields = o4YearFields(jobs, allShifts, report.year, options);
+  return {
+    ...report,
+    ...fields,
+    multipleMinijobsFromAllJobs: filterActive && fields.multipleMinijobs,
   };
 }

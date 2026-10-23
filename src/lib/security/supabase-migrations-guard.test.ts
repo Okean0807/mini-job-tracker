@@ -18,6 +18,11 @@ const EXPECTED = [
   "20260930192406_p1_ai_rate_limit.sql",
   "20260930192446_p1_security_definer_execute_hardening.sql",
   "20260930192515_p1_rls_performance_hardening.sql",
+  // C-1: applied to production by merging this file into main (Supabase GitHub integration).
+  "20261012160000_p2_documents_no_direct_client_write.sql",
+  // F-1: moved from supabase/pending after the isolated PG 17.6 author DB run (t604);
+  // applied to production only when merged into main.
+  "20261014100000_p2_ai_rate_limit_server_clock.sql",
 ];
 
 // Pinned SHA-256 of migration file bytes.
@@ -41,6 +46,12 @@ const PINNED_SHA256: Record<string, string> = {
     "06cf41f6f3476f72a4aa3e915b31f09af7c8606535c24e63a475c9c571d18419",
   "20260930192515_p1_rls_performance_hardening.sql":
     "d9f99e9f075da2c14847105e73a13ae97be4a6b605703e440de818905a779ae5",
+  // byte-identical to the QA-reviewed supabase/pending file at 4bbab7a
+  "20261012160000_p2_documents_no_direct_client_write.sql":
+    "e990bda08787f279ddb6fbf3e616c450d4a9bd1ea76e3a16c33bc9ea81c342bf",
+  // the exact bytes exercised by scripts/db-tests/f1_isolated_run.sh (PG 17.6, t604)
+  "20261014100000_p2_ai_rate_limit_server_clock.sql":
+    "f6ea596997a98430c298916de8873809c3991a4875bab017b47f3566c30d30da",
 };
 
 const read = (f: string) => readFileSync(resolve(MIGRATIONS_DIR, f));
@@ -48,7 +59,7 @@ const read = (f: string) => readFileSync(resolve(MIGRATIONS_DIR, f));
 describe("supabase migrations guard (must mirror production history)", () => {
   const files = readdirSync(MIGRATIONS_DIR).sort();
 
-  it("contains exactly the 9 expected migration files", () => {
+  it("contains exactly the 11 expected migration files", () => {
     expect(files).toEqual(EXPECTED);
   });
 
@@ -72,6 +83,17 @@ describe("supabase migrations guard (must mirror production history)", () => {
       expect(files).toContain(f);
       expect(createHash("sha256").update(read(f)).digest("hex")).toBe(hash);
     }
+  });
+
+  it("20261012160000 only drops the two direct-write policies", () => {
+    const sql = read("20261012160000_p2_documents_no_direct_client_write.sql")
+      .toString("utf8")
+      .split("\n")
+      .filter((l) => l.trim() && !l.trim().startsWith("--"));
+    expect(sql).toEqual([
+      'drop policy if exists "Users upload own document files" on storage.objects;',
+      'drop policy if exists "Users update own document files" on storage.objects;',
+    ]);
   });
 
   it("192515 keeps its policy statements", () => {

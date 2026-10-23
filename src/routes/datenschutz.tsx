@@ -29,6 +29,11 @@ function DatenschutzPage() {
           <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
             <li>Arbeitszeiten, Schichten, Pausen, Stunden und Verdienstangaben.</li>
             <li>Angaben zu Arbeitgebern, Jobs, Zahlungen und Abwesenheiten.</li>
+            <li>
+              Krankheitstage (Abwesenheitsart „krank“) – das sind Angaben mit Gesundheitsbezug. Die
+              App hat kein Feld für Diagnosen; bitte keine Diagnosen in Notizen, Dokumente,
+              Dokumentnamen oder KI-Fragen eintragen.
+            </li>
             <li>Von Nutzern hochgeladene Dokumente einschließlich technischer Metadaten.</li>
             <li>Kontodaten und App-Daten bei aktivierter Cloud-Synchronisierung.</li>
             <li>Bei einer KI-Anfrage der dafür ausgewählte App-Kontext.</li>

@@ -26,7 +26,7 @@ vi.mock("@/lib/minijob/store", async (importOriginal) => {
 });
 
 import { tl } from "@/lib/i18n";
-import { buildAnnualReport } from "@/lib/minijob/annual";
+import { buildAnnualReport, withAllJobsO4 } from "@/lib/minijob/annual";
 import { exportAnnualPdf } from "@/lib/minijob/annual-export";
 import { formatEuro, shiftsInMonth } from "@/lib/minijob/calc";
 import { makeResolver } from "@/lib/minijob/resolve";
@@ -148,8 +148,20 @@ describe("S4 IA: Monat|Jahr Struktur", () => {
     expect(tabLabels()).toEqual([t("stats.tab.week"), t("stats.tab.month"), t("stats.tab.year")]);
   });
 
-  it("C1: Jahr zeigt Jahresgrenze-KPI + Jahresbericht-Export; Details zugeklappt", () => {
+  it("C1-O4: HB + 2 Minijobs → Jahresgrenze-KPI zeigt Warnung statt Prozent", () => {
     setData();
+    render();
+    openTab(t("stats.tab.year"));
+    expect(text()).toContain(`${t("stats.card.yearLimit")}—${t("limit.multipleMinijobs")}`);
+    expect(text()).not.toContain(t("stats.kpi.yearLimitAll"));
+  });
+
+  it("C1: Jahr zeigt Jahresgrenze-KPI + Jahresbericht-Export; Details zugeklappt", () => {
+    // Ohne Hauptbeschäftigung (kein O4-Fall), damit der reguläre KPI sichtbar ist.
+    setData({
+      jobs: B4_JOBS.filter((j) => j.id !== "HB"),
+      shifts: B4_SHIFTS.filter((s) => s.jobId !== "HB"),
+    });
     render();
     openTab(t("stats.tab.year"));
     expect(text()).toContain(t("stats.card.yearLimit"));
@@ -172,7 +184,13 @@ describe("S4 IA: Monat|Jahr Struktur", () => {
     const shown = B4_SHIFTS.filter((s) => s.jobId === "MA");
     const base = buildAnnualReport(shown, B4_JOBS, B4_SETTINGS, 2026, resolve);
     const exported = vi.mocked(exportAnnualPdf).mock.calls[0]![0];
-    expect(exported).toEqual(base);
+    // Werte gefiltert; O4-Flag aus ungefilterten Daten (HB + 2 MJ) → Export ohne %.
+    expect(exported).toEqual({
+      ...base,
+      multipleMinijobs: true,
+      multipleMinijobMonths: withAllJobsO4(base, B4_JOBS, B4_SHIFTS, false).multipleMinijobMonths,
+      multipleMinijobsFromAllJobs: true,
+    });
     // Gefilterter Export (MA): limitShare folgt yearUsage(gefiltert), nicht der UI-Rechtsgrenze 14 %.
     expect(Math.round(exported.limitShare)).toBe(Math.round(base.limitShare));
     expect(Math.round(exported.limitShare)).toBeLessThan(14);

@@ -1373,3 +1373,81 @@ describe("orders sync (v1.1)", () => {
     expect(workFingerprint(local)).not.toContain("o-new");
   });
 });
+
+/* ---------- N14 (R4): O-2-Bestätigungen bei Cloud-Wiederherstellung ---------- */
+
+describe("applyRemote: lokale O-2-Bestätigungen (N14, Verhaltenstest)", () => {
+  const sickJob = {
+    id: "jk",
+    name: "Krank-Job",
+    color: "#000",
+    mode: "fest",
+    rate: 15,
+    startDate: "2025-01-01",
+    week: Array.from({ length: 7 }, () => ({
+      active: true,
+      start: "09:00",
+      end: "14:00",
+      breakMinutes: 0,
+    })),
+  };
+  const run = Array.from({ length: 61 }, (_, i) => {
+    const d = new Date(2026, 10, 1 + i);
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    return {
+      id: `k-${iso}`,
+      jobId: "jk",
+      kind: "krank",
+      date: iso,
+      start: "09:00",
+      end: "14:00",
+      breakMinutes: 0,
+    };
+  });
+  const remoteData = () => ({ ...makeData(0), jobs: [sickJob], shifts: run }) as unknown as AppData;
+
+  it("passende lokale Bestätigung überlebt die Wiederherstellung", async () => {
+    const { withSickConfirmations, currentSickConfirmations } = await import("./sick-confirmation");
+    const conf = withSickConfirmations(undefined, ["2026-12"], run as never, [sickJob] as never);
+    expect(conf).toHaveLength(1);
+    local = {
+      ...makeData(0),
+      settings: { autoBackup: true, onboarded: true, sickContinuousConfirmations: conf },
+    } as unknown as AppData;
+    cloud.remote = { payload: remoteData(), updated_at: new Date().toISOString() };
+
+    const { initCloudSync } = await loadModule();
+    initCloudSync();
+    await settle();
+
+    expect(replaced).toHaveLength(1);
+    const restored = replaced[0]!;
+    expect(restored.settings.sickContinuousConfirmations).toEqual(conf);
+    expect(
+      currentSickConfirmations(
+        restored.settings.sickContinuousConfirmations,
+        restored.shifts,
+        restored.jobs,
+      ),
+    ).toEqual(conf);
+  });
+
+  it("nicht mehr passende lokale Bestätigung wird danach aufgehoben – nie still (D5)", async () => {
+    const { withCurrentSickConfirmations } = await import("./sick-confirmation");
+    const stale = [{ month: "2026-12", signature: "9:00000000" }];
+    local = {
+      ...makeData(0),
+      settings: { autoBackup: true, onboarded: true, sickContinuousConfirmations: stale },
+    } as unknown as AppData;
+    cloud.remote = { payload: remoteData(), updated_at: new Date().toISOString() };
+
+    const { initCloudSync } = await loadModule();
+    initCloudSync();
+    await settle();
+
+    expect(replaced).toHaveLength(1);
+    const committed = withCurrentSickConfirmations(replaced[0]!);
+    expect(committed.settings.sickContinuousConfirmations).toBeUndefined();
+    expect(committed.settings.sickConfirmationsLapsed).toEqual(["2026-12"]);
+  });
+});

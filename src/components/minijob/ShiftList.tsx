@@ -12,12 +12,14 @@ import { cn } from "@/lib/utils";
 
 interface ShiftListProps {
   shifts: Shift[];
+  /** Alle Einträge (für Krankheitsfälle über Monatsgrenzen); Default = shifts. */
+  history?: Shift[];
   jobs: Job[];
   resolve: (shift: Shift) => ResolveOptions;
   onSelect: (shift: Shift) => void;
 }
 
-export function ShiftList({ shifts, jobs, resolve, onSelect }: ShiftListProps) {
+export function ShiftList({ shifts, history, jobs, resolve, onSelect }: ShiftListProps) {
   const { t } = useT();
 
   if (shifts.length === 0) {
@@ -34,7 +36,7 @@ export function ShiftList({ shifts, jobs, resolve, onSelect }: ShiftListProps) {
       {shifts.map((s) => {
         const options = resolve(s);
         const b = shiftBreakdown(s, options);
-        const pay = shiftPayroll(s, { ...options, history: shifts });
+        const pay = shiftPayroll(s, { ...options, history: history ?? shifts });
         const job = jobs.find((j) => j.id === s.jobId);
         const rate = effectiveShiftRate(s, { job, defaultRate: options.defaultRate });
         const street = streetHouseLine(s);
@@ -75,6 +77,15 @@ export function ShiftList({ shifts, jobs, resolve, onSelect }: ShiftListProps) {
                     {`${pay.paid ? t("pay.absencePaid") : t("pay.absenceUnpaid")} · ${t(`pay.reason.${pay.reason}`)}`}
                     {pay.paid ? ` · ${formatHours(pay.paidAbsenceHours)} ${t("pay.absenceHours")}` : ""}
                     {pay.estimated ? ` · ${t("pay.estimate")}` : ""}
+                  </p>
+                ) : null}
+                {pay.notice ? (
+                  <p
+                    className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-400"
+                    data-testid="shift-pay-notice"
+                    data-notice={pay.notice}
+                  >
+                    {t(`pay.notice.${pay.notice}`)}
                   </p>
                 ) : null}
                 {s.note ? <p className="mt-1 truncate text-xs text-muted-foreground">{s.note}</p> : null}

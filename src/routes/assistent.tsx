@@ -34,6 +34,7 @@ import {
 } from "@/lib/minijob/ai-chat-history";
 import { buildAssistantContext } from "@/lib/minijob/ai-context";
 import { getData } from "@/lib/minijob/store";
+import { VOICE_ENABLED } from "@/lib/config/features";
 import { listenOnce, voiceSupported } from "@/lib/minijob/voice";
 
 export const Route = createFileRoute("/assistent")({
@@ -175,6 +176,8 @@ function AssistantPage() {
   }
 
   async function speak() {
+    // L4: build-time switch; with VOICE_ENABLED=false this is constant-false dead code.
+    if (!VOICE_ENABLED) return;
     try {
       const text = await listenOnce();
       setQuestion(text);
@@ -354,7 +357,7 @@ function AssistantPage() {
                 }
               }}
             />
-            {voiceSupported() ? (
+            {VOICE_ENABLED && voiceSupported() ? (
               <Button variant="outline" size="icon" onClick={speak} aria-label={t("ai.voiceInput")}>
                 <Mic className="size-4" />
               </Button>

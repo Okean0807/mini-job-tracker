@@ -25,6 +25,45 @@ function docFormatHours(v: number): string {
 }
 
 
+/** O4-Zusatzzeilen (betroffene Monate, Filter-Erklärung) – DECISIONS R3 Punkt 5/7. */
+export function annualO4Lines(report: AnnualReport): string[] {
+  return annualO4Rows(report).map((row) => row.text);
+}
+
+/** Owner R5: O4-Zeilen mit passender Bezeichnung (Mehrfachbeschäftigung / nicht sicher bestimmbar). */
+export function annualO4Rows(report: AnnualReport): { label: string; text: string }[] {
+  if (!(report.limit > 0)) return [];
+  const rows: { label: string; text: string }[] = [];
+  // Owner R5 (Variante B): unsichere Monate ausdrücklich nennen.
+  if (report.o4UncertainMonths?.length) {
+    rows.push({
+      label: td("limit.o4Uncertain"),
+      text: td("limit.o4UncertainMonths", {
+        months: report.o4UncertainMonths
+          .map((key) => docMonthLabel(Number(key.slice(5, 7)) - 1))
+          .join(", "),
+      }),
+    });
+  }
+  return [...rows, ...annualO4MultipleLines(report).map((text) => ({ label: td("limit.multipleMinijobs"), text }))];
+}
+
+function annualO4MultipleLines(report: AnnualReport): string[] {
+  const lines: string[] = [];
+  if (!report.multipleMinijobs) return lines;
+  if (report.multipleMinijobMonths?.length) {
+    lines.push(
+      td("limit.multipleMinijobsMonths", {
+        months: report.multipleMinijobMonths
+          .map((key) => docMonthLabel(Number(key.slice(5, 7)) - 1))
+          .join(", "),
+      }),
+    );
+  }
+  if (report.multipleMinijobsFromAllJobs) lines.push(td("limit.multipleMinijobsFilterNote"));
+  return lines;
+}
+
 function kpis(report: AnnualReport) {
   return [
     { label: td("annual.kpi.earnings"), value: formatEuro(report.earnings, DOCUMENT_LOCALE) },
@@ -36,7 +75,14 @@ function kpis(report: AnnualReport) {
     { label: td("annual.kpi.avgDay"), value: formatHours(report.avgDayHours, DOCUMENT_LOCALE) },
     {
       label: td("annual.kpi.limit"),
-      value: report.limit > 0 ? `${Math.round(report.limitShare)} %` : "–",
+      value:
+        report.limit > 0
+          ? report.multipleMinijobs
+            ? td("limit.multipleMinijobs")
+            : report.o4UncertainMonths?.length
+              ? td("limit.o4Uncertain")
+              : `${Math.round(report.limitShare)} %`
+          : "–",
     },
   ];
 }
@@ -199,8 +245,13 @@ export function exportAnnualPdf(report: AnnualReport) {
       ? `${td("annual.best.day")}: ${formatDate(report.bestDay.date, DOCUMENT_LOCALE)} · ${formatEuro(report.bestDay.earnings, DOCUMENT_LOCALE)}`
       : null,
     report.limit > 0
-      ? `${td("annual.kpi.limit")}: ${formatEuro(report.earnings, DOCUMENT_LOCALE)} / ${formatEuro(report.limit, DOCUMENT_LOCALE)} (${Math.round(report.limitShare)} %)`
+      ? report.multipleMinijobs
+        ? `${td("annual.kpi.limit")}: ${td("limit.multipleMinijobs")} – ${td("limit.multipleMinijobsHint")}`
+        : report.o4UncertainMonths?.length
+          ? `${td("annual.kpi.limit")}: ${td("limit.o4Uncertain")} – ${td("limit.o4UncertainHint")}`
+          : `${td("annual.kpi.limit")}: ${formatEuro(report.earnings, DOCUMENT_LOCALE)} / ${formatEuro(report.limit, DOCUMENT_LOCALE)} (${Math.round(report.limitShare)} %)`
       : null,
+    ...annualO4Lines(report),
   ].filter(Boolean) as string[];
 
   if (highlights.length > 0) {
@@ -211,7 +262,14 @@ export function exportAnnualPdf(report: AnnualReport) {
     doc.text(td("annual.best.title"), 14, lastY + 10);
     doc.setFontSize(8);
     doc.setTextColor(...GREY);
-    highlights.forEach((line, i) => doc.text(line, 14, lastY + 16 + i * 5));
+    // Lange Hinweiszeilen (O4) umbrechen statt über den Seitenrand zu laufen.
+    const width = doc.internal.pageSize.getWidth() - 28;
+    let lineY = lastY + 16;
+    for (const line of highlights) {
+      const wrapped = doc.splitTextToSize(line, width) as string[];
+      doc.text(wrapped, 14, lineY);
+      lineY += wrapped.length * 4 + 1;
+    }
   }
 
   const filename = `${title}.pdf`;
@@ -247,6 +305,12 @@ export function exportAnnualXlsx(report: AnnualReport) {
         : "–",
     },
   );
+  for (const row of annualO4Rows(report)) {
+    overview.push({
+      [td("annual.table.metric")]: row.label,
+      [td("annual.table.value")]: row.text,
+    });
+  }
   const overviewSheet = createXlsxSheet(overview);
   overviewSheet["!cols"] = [{ wch: 28 }, { wch: 24 }];
   appendXlsxSheet(book, overviewSheet, td("annual.sheet.overview"));

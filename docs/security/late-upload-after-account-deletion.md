@@ -1,6 +1,9 @@
 # Late upload after account deletion (design note)
 
-Status: proposal. Migration is in `supabase/pending/` and is NOT applied.
+Status: migration `20261012160000_p2_documents_no_direct_client_write.sql` is in
+`supabase/migrations/` (C-1). It takes effect in production only after merge to `main`
+and the regular migration apply; production state is recorded below with the date of
+each read-only check.
 
 ## Facts (read-only, Production `jauzsejxdfpnlgdtohuv`, 2026-10-12)
 

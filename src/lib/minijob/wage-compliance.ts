@@ -59,3 +59,29 @@ export function findWageViolations(
     })
     .filter(({ result }) => !result.compliant);
 }
+
+/**
+ * QA P3-INT-143-c: Hinweis für Bestände, deren Standard-Stundenlohn unter dem
+ * allgemeinen gesetzlichen Mindestlohn liegt (z. B. Erststart 2026 mit 13,90 €
+ * und Stichtag 01.01.2027 mit 14,60 €). Gespeicherte Sätze werden NIE
+ * automatisch geändert; geprüft werden nur heute und der nächste 1. Januar
+ * (nur hinterlegte Regelversionen, keine erfundenen Werte).
+ */
+export function defaultRateBelowMinimum(
+  defaultRate: number,
+  today: string,
+): { from: string; minimum: number } | undefined {
+  const nextJan = `${Number(today.slice(0, 4)) + 1}-01-01`;
+  for (const date of [today, nextJan]) {
+    let minimum: number;
+    try {
+      minimum = minimumWageFor(date);
+    } catch {
+      continue;
+    }
+    if (Number.isFinite(defaultRate) && defaultRate + 0.0001 < minimum) {
+      return { from: date, minimum };
+    }
+  }
+  return undefined;
+}
