@@ -400,7 +400,7 @@ export interface Settings {
   biometricCredentialId?: string;
   autoBackup: boolean;
   language: Lang;
-  /** Premium freigeschaltet (mehrere Jobs, KI, Cloud, Excel) */
+  /** Altfeld (frühere Selbstfreischaltung). v1.0: ohne Wirkung, siehe premium.ts ALL_FEATURES_FREE. */
   premium?: boolean;
   onboarded: boolean;
   /**
