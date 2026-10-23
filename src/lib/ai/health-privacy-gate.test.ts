@@ -117,10 +117,7 @@ describe("checkContext: server does not trust client context", () => {
     ["unknown key (forged absence notes)", JSON.stringify({ absences: [{ note: "x" }] })],
     ["unknown nested key", JSON.stringify({ jobs: [{ name: "A", sickNote: "x" }] })],
     ["oversized string", JSON.stringify({ jobs: [{ name: "x".repeat(501) }] })],
-    [
-      "too deep",
-      JSON.stringify({ jobs: [[[[[[[{ name: "A" }]]]]]]] }),
-    ],
+    ["too deep", JSON.stringify({ jobs: [[[[[[[{ name: "A" }]]]]]]] })],
   ])("fails closed on unexpected shape (%s)", (_label, ctx) => {
     const r = checkContext(ctx);
     expect(r.allowed).toBe(false);
@@ -133,11 +130,23 @@ describe("checkContext: server does not trust client context", () => {
   it("blocks personal health info hidden in allow-listed free text (job name)", () => {
     const ctx = JSON.stringify({ jobs: [{ id: "j1", name: "AU wegen Grippe – Dr. Beispiel" }] });
     const r = checkContext(ctx);
-    expect(r).toMatchObject({ allowed: false, code: HEALTH_DATA_BLOCKED, reason: "context_personal_health" });
+    expect(r).toMatchObject({
+      allowed: false,
+      code: HEALTH_DATA_BLOCKED,
+      reason: "context_personal_health",
+    });
   });
 
   it("allow-list covers every key of the context payload type", () => {
-    for (const k of ["currentDate", "settings", "currentMonth", "year", "historicalYears", "months", "jobs"]) {
+    for (const k of [
+      "currentDate",
+      "settings",
+      "currentMonth",
+      "year",
+      "historicalYears",
+      "months",
+      "jobs",
+    ]) {
       expect(ALLOWED_CONTEXT_KEYS.has(k)).toBe(true);
     }
   });
@@ -163,8 +172,10 @@ describe("checkAiPrivacy", () => {
 
   it("allows general question with valid context", () => {
     const ctx = buildAssistantContext(emptyData(), new Date("2026-03-15T12:00:00Z"));
-    expect(checkAiPrivacy({ question: "Lohnfortzahlung im Krankheitsfall", context: ctx })).toEqual({
-      allowed: true,
-    });
+    expect(checkAiPrivacy({ question: "Lohnfortzahlung im Krankheitsfall", context: ctx })).toEqual(
+      {
+        allowed: true,
+      },
+    );
   });
 });
