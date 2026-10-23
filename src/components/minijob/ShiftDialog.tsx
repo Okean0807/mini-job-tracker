@@ -68,6 +68,7 @@ import {
   normalizeWorkCode,
   snapshotWorkCodeLabel,
 } from "@/lib/minijob/catalog";
+import { GEO_ENABLED, VOICE_ENABLED } from "@/lib/config/features";
 import { listenOnce, parseVoice, voiceSupported } from "@/lib/minijob/voice";
 import {
   applyReverseOrKeep,
@@ -387,6 +388,8 @@ export function ShiftDialog({
   }
 
   async function voice() {
+    // L4: build-time switch; with VOICE_ENABLED=false this is constant-false dead code.
+    if (!VOICE_ENABLED) return;
     try {
       const text = await listenOnce();
       const parsed = parseVoice(text);
@@ -631,7 +634,7 @@ export function ShiftDialog({
     <div className="grid gap-1">
       <div className="flex items-center justify-between">
         <Label htmlFor="notiz">{t("label.note")}</Label>
-        {voiceSupported() ? (
+        {VOICE_ENABLED && voiceSupported() ? (
           <Button type="button" variant="ghost" className="h-11" onClick={voice}>
             <Mic className="size-4" /> {t("shift.voice")}
           </Button>
@@ -1606,7 +1609,9 @@ export function ShiftDialog({
                     </div>
                   ) : null}
 
-                  {isWork ? (
+                  {/* L3: without GEO_ENABLED only already-stored legacy GPS is shown, with a remove
+                      button so users can delete it; no capture / Nominatim path is rendered. */}
+                  {isWork && (GEO_ENABLED || gps) ? (
                     <div className="grid gap-2" data-testid="worklog-geo-controls">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-sm font-medium">{t("worklog.gps")}</p>
@@ -1625,38 +1630,42 @@ export function ShiftDialog({
                         </p>
                       ) : null}
                       <div className="flex gap-2">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          className="h-11 bg-card px-3.5"
-                          disabled={gpsBusy}
-                          onClick={async () => {
-                            setGpsBusy(true);
-                            try {
-                              const pos = await currentPosition();
-                              setGps(pos);
-                              const previous = { street, houseNo, zip, city };
-                              const reverse = await reverseGeocodeGerman(pos.lat, pos.lng);
-                              if (reverse) {
-                                const next = applyReverseOrKeep(previous, reverse);
-                                setStreet(next.street ?? "");
-                                setHouseNo(next.houseNo ?? "");
-                                setZip(next.zip ?? "");
-                                setCity(next.city ?? "");
-                                toast.success(t("worklog.gpsAddressOk"));
-                              } else {
-                                toast.message(t("worklog.gpsAddressFail"));
+                        {GEO_ENABLED ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="h-11 bg-card px-3.5"
+                            data-testid="worklog-geo-capture"
+                            disabled={gpsBusy}
+                            onClick={async () => {
+                              if (!GEO_ENABLED) return;
+                              setGpsBusy(true);
+                              try {
+                                const pos = await currentPosition();
+                                setGps(pos);
+                                const previous = { street, houseNo, zip, city };
+                                const reverse = await reverseGeocodeGerman(pos.lat, pos.lng);
+                                if (reverse) {
+                                  const next = applyReverseOrKeep(previous, reverse);
+                                  setStreet(next.street ?? "");
+                                  setHouseNo(next.houseNo ?? "");
+                                  setZip(next.zip ?? "");
+                                  setCity(next.city ?? "");
+                                  toast.success(t("worklog.gpsAddressOk"));
+                                } else {
+                                  toast.message(t("worklog.gpsAddressFail"));
+                                }
+                              } catch {
+                                toast.error(t("worklog.gpsError"));
+                              } finally {
+                                setGpsBusy(false);
                               }
-                            } catch {
-                              toast.error(t("worklog.gpsError"));
-                            } finally {
-                              setGpsBusy(false);
-                            }
-                          }}
-                        >
-                          <MapPin className="size-4" />
-                          {gpsBusy ? t("worklog.gpsLookingUp") : t("worklog.gpsAdd")}
-                        </Button>
+                            }}
+                          >
+                            <MapPin className="size-4" />
+                            {gpsBusy ? t("worklog.gpsLookingUp") : t("worklog.gpsAdd")}
+                          </Button>
+                        ) : null}
                         {gps ? (
                           <Button
                             type="button"
