@@ -28,7 +28,10 @@ vi.mock("@/integrations/supabase/auth-middleware", () => ({ requireSupabaseAuth:
 import { askAssistant } from "@/lib/ai.functions";
 import { HEALTH_DATA_BLOCKED, CONTEXT_INVALID } from "@/lib/ai/health-privacy-gate";
 
-type Invoke = (opts: { data: unknown; context: unknown }) => Promise<{ answer?: unknown; blocked?: unknown; code?: unknown }>;
+type Invoke = (opts: {
+  data: unknown;
+  context: unknown;
+}) => Promise<{ answer?: unknown; blocked?: unknown; code?: unknown }>;
 const invoke = askAssistant as unknown as Invoke;
 
 const GEMINI_HOST = "generativelanguage.googleapis.com";
@@ -104,7 +107,9 @@ describe("askAssistant L1 privacy gate (integration, mocked Gemini + Tavily)", (
   });
 
   it("blocks health data smuggled in context (job name) with 0 provider calls", async () => {
-    const context = JSON.stringify({ jobs: [{ id: "j1", name: "Krankgeschrieben wegen Migräne" }] });
+    const context = JSON.stringify({
+      jobs: [{ id: "j1", name: "Krankgeschrieben wegen Migräne" }],
+    });
     const res = await invoke({
       data: { question: "Wie hoch ist die Minijob-Grenze 2026?", context },
       context: ctx(),
