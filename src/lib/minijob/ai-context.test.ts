@@ -112,6 +112,7 @@ describe("buildAssistantContext", () => {
     expect(Object.keys(parsed).sort()).toEqual([
       "currentDate",
       "currentMonth",
+      "forecast",
       "historicalYears",
       "jobs",
       "months",
@@ -212,5 +213,53 @@ describe("historical AI context", () => {
     const data = makeData();
     const parsed = JSON.parse(buildAssistantContext(data, new Date(2026, 8, 15)));
     expect(parsed.historicalYears.map((x: { year: number }) => x.year)).toEqual([2024, 2025, 2026]);
+  });
+});
+
+describe("buildAssistantContext — forecast separates facts from projections", () => {
+  const now = new Date(2026, 9, 15); // Thu Oct 15, 2026
+
+  it("zero entries: no data-based forecast, no projection, limit is headroom only", () => {
+    const parsed = JSON.parse(buildAssistantContext(makeData(), now));
+    const f = parsed.forecast;
+
+    expect(f.dataBasedForecastPossible).toBe(false);
+    expect(f.recordedToDate).toEqual({ entriesCount: 0, hours: 0, earnings: 0 });
+    expect(f.plannedAfterToday).toEqual({ entriesCount: 0, hours: 0, earnings: 0 });
+    expect(f.paceProjection).toBeNull();
+    // Headroom equals the configured limit (dynamic, not hardcoded).
+    expect(f.remainingLimitAmount).toBe(parsed.settings.legalMonthlyLimit);
+    expect(f.daysInMonth).toBe(31);
+    expect(f.daysElapsed).toBe(15);
+    expect(f.remainingWeekdays).toBe(11); // Oct 16–31, 2026: Mon–Fri only
+    const rules = f.rules.join(" ");
+    expect(rules).toMatch(/keine datenbasierte Prognose möglich/);
+    expect(rules).toMatch(/Annahme/);
+    expect(rules).toMatch(/Erfinde keine Schichten/);
+  });
+
+  it("recorded hours: facts, planned entries and pace projection are reported separately", () => {
+    const data = makeData({
+      shifts: [
+        makeShift({ date: "2026-10-01", start: "09:00", end: "12:00" }), // 3h, recorded
+        makeShift({ date: "2026-10-15", start: "09:00", end: "11:00" }), // 2h, today = recorded
+        makeShift({ date: "2026-10-20", start: "09:00", end: "13:00" }), // 4h, planned
+      ],
+      settings: { ...DEFAULT_SETTINGS, defaultRate: 15 },
+      jobs: [{ id: "j1", name: "Laden", color: "#0d9488", mode: "flex", rate: 15 }],
+    });
+    const parsed = JSON.parse(buildAssistantContext(data, now));
+    const f = parsed.forecast;
+
+    expect(parsed.settings.hourlyRate).toBe(15);
+    expect(f.dataBasedForecastPossible).toBe(true);
+    expect(f.recordedToDate).toEqual({ entriesCount: 2, hours: 5, earnings: 75 });
+    expect(f.plannedAfterToday).toEqual({ entriesCount: 1, hours: 4, earnings: 60 });
+    expect(f.paceProjection).toEqual({ hours: 10.33, earnings: 155 }); // 5h/15d × 31d
+    expect(f.remainingLimitAmount).toBe(
+      Number((parsed.settings.legalMonthlyLimit - parsed.currentMonth.earnings).toFixed(2)),
+    );
+    expect(parsed.currentMonth.earnings).toBe(135);
+    expect(f.rules.join(" ")).toMatch(/'Erfasst'.*'Geplant'.*'Hochrechnung'/);
   });
 });

@@ -5,6 +5,7 @@ import { AiGuardError } from "@/lib/ai-guard";
 import {
   buildGenerateContentUrl,
   buildGenerationConfig,
+  buildSystemInstruction,
   extractSourcesFromGrounding,
   GeminiProvider,
   GROUNDING_UNAVAILABLE_NOTE,
@@ -528,5 +529,16 @@ describe("GeminiProvider.ask request body (thinking config)", () => {
     process.env["GEMINI_MODEL"] = "gemini-2.5-pro";
     await new GeminiProvider().ask({ question: "Hallo?", context: "{}" });
     expect(sentBody()).not.toHaveProperty("generationConfig");
+  });
+});
+
+describe("buildSystemInstruction — forecast honesty", () => {
+  it("requires the forecast block and forbids invented data or limit-as-income", () => {
+    const text = buildSystemInstruction("Deutsch");
+    expect(text).toMatch(/forecast\.rules/);
+    expect(text).toMatch(/keine datenbasierte Prognose möglich/);
+    expect(text).toMatch(/nie als erwarteten Verdienst/);
+    expect(text).toMatch(/Erfinde niemals Schichten, Arbeitsstunden oder Verdienste/);
+    expect(text).not.toMatch(/13[,.]90|603/);
   });
 });

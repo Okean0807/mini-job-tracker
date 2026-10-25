@@ -59,7 +59,54 @@ export type AssistantContextPayload = {
     employmentType: ResolvedEmploymentType;
     minijobLimitApplies: boolean;
   }>;
+  /**
+   * Current-month forecast inputs, computed here so the model never has to
+   * guess: recorded facts, future-dated entries and the pace projection are
+   * kept apart, and `dataBasedForecastPossible` is false without entries.
+   */
+  forecast: {
+    dataBasedForecastPossible: boolean;
+    /** Entries dated up to and including today (actual recorded work). */
+    recordedToDate: PeriodTotals;
+    /** Entries the user already entered for later this month (planned, not yet worked). */
+    plannedAfterToday: PeriodTotals;
+    /** Linear pace from recordedToDate over the whole month; null without recorded entries. */
+    paceProjection: { hours: number; earnings: number } | null;
+    /** Monthly limit minus this month's entered earnings — headroom, not expected income. */
+    remainingLimitAmount: number | null;
+    daysElapsed: number;
+    daysInMonth: number;
+    /** Mon–Fri days after today in this month (calendar only, not a work schedule). */
+    remainingWeekdays: number;
+    rules: string[];
+  };
 };
+
+type PeriodTotals = { entriesCount: number; hours: number; earnings: number };
+
+const round2 = (n: number) => Number(n.toFixed(2));
+
+const FORECAST_RULES_WITH_DATA = [
+  "Trenne strikt: 'Erfasst' = forecast.recordedToDate (Fakten), 'Geplant' = forecast.plannedAfterToday (eingetragen, noch nicht gearbeitet), 'Hochrechnung' = forecast.paceProjection (Schätzung bei gleichem Tempo).",
+  "remainingLimitAmount ist nur der verbleibende Spielraum bis zur Grenze, kein erwarteter Verdienst.",
+  "Erfinde keine Schichten, Stunden oder Verdienste.",
+];
+
+const FORECAST_RULES_NO_DATA = [
+  "Für diesen Monat sind keine Einträge erfasst: Sage ausdrücklich, dass keine datenbasierte Prognose möglich ist.",
+  "Setze den verbleibenden Spielraum (remainingLimitAmount) nicht als erwarteten Verdienst an und rechne ihn nicht auf Stunden hoch, als wären sie gearbeitet.",
+  "Eine Beispielrechnung ist nur erlaubt, wenn sie als 'Annahme' gekennzeichnet ist und die angenommenen Stunden, den Stundenlohn (settings.hourlyRate) und die verbleibenden Werktage (remainingWeekdays) nennt; es gibt keinen hinterlegten Dienstplan.",
+  "Erfinde keine Schichten, Stunden oder Verdienste.",
+];
+
+function remainingWeekdaysAfter(now: Date, daysInMonth: number): number {
+  let count = 0;
+  for (let d = now.getDate() + 1; d <= daysInMonth; d++) {
+    const day = new Date(now.getFullYear(), now.getMonth(), d).getDay();
+    if (day !== 0 && day !== 6) count++;
+  }
+  return count;
+}
 
 /** Build a JSON string context for the KI assistant from live store data. */
 export function buildAssistantContext(data: AppData, now: Date = new Date()): string {
@@ -80,6 +127,29 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
 
   const currentList = shiftsInMonth(data.shifts, year, month);
   const currentTotals = payrollTotals(currentList, resolve, data.shifts);
+
+  const recordedList = currentList.filter((s) => s.date <= currentDate);
+  const plannedList = currentList.filter((s) => s.date > currentDate);
+  const periodTotals = (list: typeof currentList): PeriodTotals => {
+    const totals = payrollTotals(list, resolve, data.shifts);
+    return {
+      entriesCount: list.length,
+      hours: round2(totals.workedHours),
+      earnings: round2(totals.earnings),
+    };
+  };
+  const recordedToDate = periodTotals(recordedList);
+  const plannedAfterToday = periodTotals(plannedList);
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daysElapsed = now.getDate();
+  const paceProjection =
+    recordedToDate.entriesCount > 0
+      ? {
+          hours: round2((recordedToDate.hours / daysElapsed) * daysInMonth),
+          earnings: round2((recordedToDate.earnings / daysElapsed) * daysInMonth),
+        }
+      : null;
+  const dataBasedForecastPossible = currentList.length > 0;
 
   const yearList = shiftsInYear(data.shifts, year);
   const yearTotals = payrollTotals(yearList, resolve, data.shifts);
@@ -151,6 +221,18 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
     historicalYears,
     months,
     jobs,
+    forecast: {
+      dataBasedForecastPossible,
+      recordedToDate,
+      plannedAfterToday,
+      paceProjection,
+      remainingLimitAmount:
+        legalMonthly == null ? null : round2(Math.max(0, legalMonthly - currentTotals.earnings)),
+      daysElapsed,
+      daysInMonth,
+      remainingWeekdays: remainingWeekdaysAfter(now, daysInMonth),
+      rules: dataBasedForecastPossible ? FORECAST_RULES_WITH_DATA : FORECAST_RULES_NO_DATA,
+    },
   };
 
   return JSON.stringify(payload);

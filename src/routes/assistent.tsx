@@ -4,6 +4,7 @@ import { History, Mic, Plus, Send, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { AiMarkdown } from "@/components/minijob/AiMarkdown";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -312,10 +313,10 @@ function AssistantPage() {
                   className={
                     m.role === "user"
                       ? "ml-auto max-w-[85%] rounded-2xl bg-primary px-4 py-2 text-sm text-primary-foreground"
-                      : "mr-auto max-w-[90%] whitespace-pre-wrap rounded-2xl border bg-card px-4 py-2 text-sm shadow-card"
+                      : "mr-auto max-w-[90%] rounded-2xl border bg-card px-4 py-2 text-sm shadow-card"
                   }
                 >
-                  {m.text}
+                  {m.role === "ai" ? <AiMarkdown text={m.text} /> : m.text}
                   {m.role === "ai" && m.sources && m.sources.length > 0 ? (
                     <div className="mt-2 border-t border-border/60 pt-2 text-xs text-muted-foreground">
                       <span className="font-medium">{t("ai.sources")}</span>
