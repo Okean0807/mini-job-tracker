@@ -40,6 +40,21 @@ describe("oauthRedirectTo", () => {
     );
     expect(oauthRedirectTo("https://example.com/")).toBe("https://example.com/einstellungen");
   });
+
+  it("keeps each Vercel Preview deployment on its own hostname (never localhost)", () => {
+    for (const origin of [
+      "https://mini-job-tracker-1bwz7esd3-okean0807.vercel.app",
+      "https://mini-job-tracker-git-claude-minijob-companion-410db0-okean0807.vercel.app",
+    ]) {
+      const target = oauthRedirectTo(origin);
+      expect(target).toBe(`${origin}/einstellungen`);
+      expect(target).not.toContain("localhost");
+    }
+  });
+
+  it("keeps local development on localhost with its port", () => {
+    expect(oauthRedirectTo("http://localhost:8080")).toBe("http://localhost:8080/einstellungen");
+  });
 });
 
 describe("bindAuthSession", () => {
