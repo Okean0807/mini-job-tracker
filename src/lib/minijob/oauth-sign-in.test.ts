@@ -45,6 +45,22 @@ describe("signInWithOAuthProvider", () => {
     vi.unstubAllGlobals();
   });
 
+  it("on a Preview deployment, redirectTo is that deployment's /einstellungen", async () => {
+    const preview = "https://mini-job-tracker-1bwz7esd3-okean0807.vercel.app";
+    vi.stubGlobal("window", { location: { origin: preview } });
+    vi.resetModules();
+    const { signInWithOAuthProvider } = await import("./oauth-sign-in");
+    await signInWithOAuthProvider("google");
+    expect(signInWithOAuth).toHaveBeenCalledWith({
+      provider: "google",
+      options: {
+        redirectTo: `${preview}/einstellungen`,
+        skipBrowserRedirect: false,
+      },
+    });
+    vi.unstubAllGlobals();
+  });
+
   it("propagates supabase errors", async () => {
     signInWithOAuth.mockResolvedValue({ data: { url: null, provider: "google" }, error: new Error("provider disabled") });
     const { signInWithOAuthProvider } = await import("./oauth-sign-in");
