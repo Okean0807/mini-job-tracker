@@ -63,6 +63,7 @@ export type AssistantContextPayload = {
    * Current-month forecast inputs, computed here so the model never has to
    * guess: recorded facts, future-dated entries and the pace projection are
    * kept apart, and `dataBasedForecastPossible` is false without entries.
+   * The app stores no work schedule, so nothing here describes future workdays.
    */
   forecast: {
     dataBasedForecastPossible: boolean;
@@ -70,14 +71,21 @@ export type AssistantContextPayload = {
     recordedToDate: PeriodTotals;
     /** Entries the user already entered for later this month (planned, not yet worked). */
     plannedAfterToday: PeriodTotals;
-    /** Linear pace from recordedToDate over the whole month; null without recorded entries. */
+    /** recordedToDate + plannedAfterToday: everything the user has entered for this month. */
+    enteredTotal: { hours: number; earnings: number };
+    /**
+     * Linear pace from recordedToDate over the whole month. Only when entries are
+     * recorded and none are planned — planned entries already are the user's own plan.
+     */
     paceProjection: { hours: number; earnings: number } | null;
     /** Monthly limit minus this month's entered earnings — headroom, not expected income. */
     remainingLimitAmount: number | null;
     daysElapsed: number;
     daysInMonth: number;
-    /** Mon–Fri days after today in this month (calendar only, not a work schedule). */
-    remainingWeekdays: number;
+    /** Mon–Fri days after today in this month — calendar only, never the user's workdays. */
+    calendarWeekdaysRemaining: number;
+    /** The app stores no work schedule; future working days are unknown. */
+    workScheduleKnown: false;
     rules: string[];
   };
 };
@@ -86,17 +94,22 @@ type PeriodTotals = { entriesCount: number; hours: number; earnings: number };
 
 const round2 = (n: number) => Number(n.toFixed(2));
 
+const FORECAST_RULES_COMMON = [
+  "remainingLimitAmount ist nur die Obergrenze bis zur Minijob-Grenze, kein erwarteter Verdienst.",
+  "calendarWeekdaysRemaining sind nur verbleibende Kalender-Werktage, nicht die Arbeitstage des Nutzers. Die App kennt keinen Dienstplan (workScheduleKnown=false); stelle sie nie als Arbeitstage dar und rechne nicht mit ihnen.",
+  "Erfinde keine Schichten, Stunden pro Tag, Arbeitstage oder Verdienste.",
+  "Eine Beispielrechnung nur mit Stunden, die der Nutzer selbst genannt hat: Stunden × settings.hourlyRate, gekennzeichnet als 'Beispiel – keine Prognose'.",
+];
+
 const FORECAST_RULES_WITH_DATA = [
-  "Trenne strikt: 'Erfasst' = forecast.recordedToDate (Fakten), 'Geplant' = forecast.plannedAfterToday (eingetragen, noch nicht gearbeitet), 'Hochrechnung' = forecast.paceProjection (Schätzung bei gleichem Tempo).",
-  "remainingLimitAmount ist nur der verbleibende Spielraum bis zur Grenze, kein erwarteter Verdienst.",
-  "Erfinde keine Schichten, Stunden oder Verdienste.",
+  "Rechne nur mit den erfassten Daten und kennzeichne jede Zahl: 'Erfasst' = forecast.recordedToDate (bereits gearbeitet), 'Geplant' = forecast.plannedAfterToday (vom Nutzer eingetragen, noch nicht gearbeitet), 'Erfasst + geplant' = forecast.enteredTotal, 'Hochrechnung' = forecast.paceProjection (nur falls vorhanden; gleiches Tempo wie bisher, keine Zusage).",
+  ...FORECAST_RULES_COMMON,
 ];
 
 const FORECAST_RULES_NO_DATA = [
-  "Für diesen Monat sind keine Einträge erfasst: Sage ausdrücklich, dass keine datenbasierte Prognose möglich ist.",
-  "Setze den verbleibenden Spielraum (remainingLimitAmount) nicht als erwarteten Verdienst an und rechne ihn nicht auf Stunden hoch, als wären sie gearbeitet.",
-  "Eine Beispielrechnung ist nur erlaubt, wenn sie als 'Annahme' gekennzeichnet ist und die angenommenen Stunden, den Stundenlohn (settings.hourlyRate) und die verbleibenden Werktage (remainingWeekdays) nennt; es gibt keinen hinterlegten Dienstplan.",
-  "Erfinde keine Schichten, Stunden oder Verdienste.",
+  "Für diesen Monat sind weder erfasste noch geplante Schichten eingetragen: Sage ausdrücklich, dass sich aus den vorhandenen Daten keine persönliche Prognose berechnen lässt.",
+  "Wähle keine angenommenen Stunden oder Tage selbst. Frage stattdessen, wie viele Stunden der Nutzer diesen Monat voraussichtlich arbeitet, oder schlage vor, geplante Schichten in der App einzutragen.",
+  ...FORECAST_RULES_COMMON,
 ];
 
 function remainingWeekdaysAfter(now: Date, daysInMonth: number): number {
@@ -143,7 +156,7 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const daysElapsed = now.getDate();
   const paceProjection =
-    recordedToDate.entriesCount > 0
+    recordedToDate.entriesCount > 0 && plannedAfterToday.entriesCount === 0
       ? {
           hours: round2((recordedToDate.hours / daysElapsed) * daysInMonth),
           earnings: round2((recordedToDate.earnings / daysElapsed) * daysInMonth),
@@ -225,12 +238,17 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
       dataBasedForecastPossible,
       recordedToDate,
       plannedAfterToday,
+      enteredTotal: {
+        hours: round2(recordedToDate.hours + plannedAfterToday.hours),
+        earnings: round2(recordedToDate.earnings + plannedAfterToday.earnings),
+      },
       paceProjection,
       remainingLimitAmount:
         legalMonthly == null ? null : round2(Math.max(0, legalMonthly - currentTotals.earnings)),
       daysElapsed,
       daysInMonth,
-      remainingWeekdays: remainingWeekdaysAfter(now, daysInMonth),
+      calendarWeekdaysRemaining: remainingWeekdaysAfter(now, daysInMonth),
+      workScheduleKnown: false,
       rules: dataBasedForecastPossible ? FORECAST_RULES_WITH_DATA : FORECAST_RULES_NO_DATA,
     },
   };

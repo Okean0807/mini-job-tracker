@@ -216,50 +216,135 @@ describe("historical AI context", () => {
   });
 });
 
-describe("buildAssistantContext — forecast separates facts from projections", () => {
+describe("buildAssistantContext — forecast separates facts, plans, projections and examples", () => {
   const now = new Date(2026, 9, 15); // Thu Oct 15, 2026
+  const forecastOf = (data: AppData) => JSON.parse(buildAssistantContext(data, now));
+  const rate15 = {
+    settings: { ...DEFAULT_SETTINGS, defaultRate: 15 },
+    jobs: [{ id: "j1", name: "Laden", color: "#0d9488", mode: "flex" as const, rate: 15 }],
+  };
 
-  it("zero entries: no data-based forecast, no projection, limit is headroom only", () => {
-    const parsed = JSON.parse(buildAssistantContext(makeData(), now));
+  it("no recorded or planned shifts: no personal forecast, no invented hours or earnings", () => {
+    const parsed = forecastOf(makeData());
     const f = parsed.forecast;
 
     expect(f.dataBasedForecastPossible).toBe(false);
     expect(f.recordedToDate).toEqual({ entriesCount: 0, hours: 0, earnings: 0 });
     expect(f.plannedAfterToday).toEqual({ entriesCount: 0, hours: 0, earnings: 0 });
+    expect(f.enteredTotal).toEqual({ hours: 0, earnings: 0 });
     expect(f.paceProjection).toBeNull();
-    // Headroom equals the configured limit (dynamic, not hardcoded).
+    // No field carries an assumed schedule, hours per day or expected income.
+    expect(Object.keys(f).sort()).toEqual([
+      "calendarWeekdaysRemaining",
+      "dataBasedForecastPossible",
+      "daysElapsed",
+      "daysInMonth",
+      "enteredTotal",
+      "paceProjection",
+      "plannedAfterToday",
+      "recordedToDate",
+      "remainingLimitAmount",
+      "rules",
+      "workScheduleKnown",
+    ]);
+    // The configured limit is only a ceiling.
     expect(f.remainingLimitAmount).toBe(parsed.settings.legalMonthlyLimit);
-    expect(f.daysInMonth).toBe(31);
-    expect(f.daysElapsed).toBe(15);
-    expect(f.remainingWeekdays).toBe(11); // Oct 16–31, 2026: Mon–Fri only
+
     const rules = f.rules.join(" ");
-    expect(rules).toMatch(/keine datenbasierte Prognose möglich/);
-    expect(rules).toMatch(/Annahme/);
-    expect(rules).toMatch(/Erfinde keine Schichten/);
+    expect(rules).toMatch(/keine persönliche Prognose berechnen/);
+    expect(rules).toMatch(/Wähle keine angenommenen Stunden oder Tage selbst/);
+    expect(rules).toMatch(/Frage stattdessen, wie viele Stunden/);
+    expect(rules).toMatch(/nur mit Stunden, die der Nutzer selbst genannt hat/);
+    expect(rules).toMatch(/'Beispiel – keine Prognose'/);
+    expect(rules).toMatch(/nur die Obergrenze/);
+    expect(rules).not.toMatch(/'Annahme'/);
   });
 
-  it("recorded hours: facts, planned entries and pace projection are reported separately", () => {
-    const data = makeData({
-      shifts: [
-        makeShift({ date: "2026-10-01", start: "09:00", end: "12:00" }), // 3h, recorded
-        makeShift({ date: "2026-10-15", start: "09:00", end: "11:00" }), // 2h, today = recorded
-        makeShift({ date: "2026-10-20", start: "09:00", end: "13:00" }), // 4h, planned
-      ],
-      settings: { ...DEFAULT_SETTINGS, defaultRate: 15 },
-      jobs: [{ id: "j1", name: "Laden", color: "#0d9488", mode: "flex", rate: 15 }],
-    });
-    const parsed = JSON.parse(buildAssistantContext(data, now));
+  it("calendar weekdays are calendar-only, never confirmed workdays", () => {
+    const f = forecastOf(makeData()).forecast;
+    expect(f.calendarWeekdaysRemaining).toBe(11); // Oct 16–31, 2026: Mon–Fri only
+    expect(f.workScheduleKnown).toBe(false);
+    expect(f).not.toHaveProperty("remainingWeekdays");
+    const rules = f.rules.join(" ");
+    expect(rules).toMatch(/nur verbleibende Kalender-Werktage, nicht die Arbeitstage/);
+    expect(rules).toMatch(/kennt keinen Dienstplan/);
+    expect(rules).toMatch(/rechne nicht mit ihnen/);
+  });
+
+  it("recorded shifts only: recorded facts plus a pace projection from that data", () => {
+    const parsed = forecastOf(
+      makeData({
+        ...rate15,
+        shifts: [
+          makeShift({ date: "2026-10-01", start: "09:00", end: "12:00" }), // 3h
+          makeShift({ date: "2026-10-15", start: "09:00", end: "11:00" }), // 2h, today
+        ],
+      }),
+    );
     const f = parsed.forecast;
 
     expect(parsed.settings.hourlyRate).toBe(15);
     expect(f.dataBasedForecastPossible).toBe(true);
     expect(f.recordedToDate).toEqual({ entriesCount: 2, hours: 5, earnings: 75 });
-    expect(f.plannedAfterToday).toEqual({ entriesCount: 1, hours: 4, earnings: 60 });
+    expect(f.plannedAfterToday).toEqual({ entriesCount: 0, hours: 0, earnings: 0 });
+    expect(f.enteredTotal).toEqual({ hours: 5, earnings: 75 });
     expect(f.paceProjection).toEqual({ hours: 10.33, earnings: 155 }); // 5h/15d × 31d
     expect(f.remainingLimitAmount).toBe(
-      Number((parsed.settings.legalMonthlyLimit - parsed.currentMonth.earnings).toFixed(2)),
+      Number((parsed.settings.legalMonthlyLimit - 75).toFixed(2)),
     );
+    expect(f.rules.join(" ")).toMatch(/'Erfasst'.*'Geplant'.*'Erfasst \+ geplant'.*'Hochrechnung'/);
+  });
+
+  it("planned future shifts: reported as planned, summed with recorded, no extra extrapolation", () => {
+    const parsed = forecastOf(
+      makeData({
+        ...rate15,
+        shifts: [
+          makeShift({ date: "2026-10-01", start: "09:00", end: "12:00" }), // 3h recorded
+          makeShift({ date: "2026-10-20", start: "09:00", end: "13:00" }), // 4h planned
+          makeShift({ date: "2026-10-27", start: "10:00", end: "12:00" }), // 2h planned
+        ],
+      }),
+    );
+    const f = parsed.forecast;
+
+    expect(f.dataBasedForecastPossible).toBe(true);
+    expect(f.recordedToDate).toEqual({ entriesCount: 1, hours: 3, earnings: 45 });
+    expect(f.plannedAfterToday).toEqual({ entriesCount: 2, hours: 6, earnings: 90 });
+    expect(f.enteredTotal).toEqual({ hours: 9, earnings: 135 });
+    expect(f.paceProjection).toBeNull();
     expect(parsed.currentMonth.earnings).toBe(135);
-    expect(f.rules.join(" ")).toMatch(/'Erfasst'.*'Geplant'.*'Hochrechnung'/);
+    expect(f.remainingLimitAmount).toBe(
+      Number((parsed.settings.legalMonthlyLimit - 135).toFixed(2)),
+    );
+  });
+
+  it("planned shifts without recorded work still count as data (no pace projection)", () => {
+    const f = forecastOf(
+      makeData({
+        ...rate15,
+        shifts: [makeShift({ date: "2026-10-22", start: "09:00", end: "12:00" })],
+      }),
+    ).forecast;
+    expect(f.dataBasedForecastPossible).toBe(true);
+    expect(f.recordedToDate.entriesCount).toBe(0);
+    expect(f.plannedAfterToday).toEqual({ entriesCount: 1, hours: 3, earnings: 45 });
+    expect(f.paceProjection).toBeNull();
+  });
+
+  it("uses configured rate and limit, never hardcoded personal values", () => {
+    const custom = forecastOf(
+      makeData({
+        settings: { ...DEFAULT_SETTINGS, defaultRate: 21.5 },
+        jobs: [{ id: "j1", name: "Büro", color: "#0d9488", mode: "flex", rate: 21.5 }],
+        shifts: [makeShift({ date: "2026-10-02", start: "09:00", end: "11:00" })], // 2h
+      }),
+    );
+    expect(custom.settings.hourlyRate).toBe(21.5);
+    expect(custom.forecast.recordedToDate.earnings).toBe(43);
+    expect(custom.forecast.remainingLimitAmount).toBe(
+      Number((custom.settings.legalMonthlyLimit - 43).toFixed(2)),
+    );
+    expect(JSON.stringify(custom.forecast.rules)).not.toMatch(/13[,.]90|603|208/);
   });
 });

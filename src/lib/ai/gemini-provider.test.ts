@@ -536,7 +536,11 @@ describe("buildSystemInstruction — forecast honesty", () => {
   it("requires the forecast block and forbids invented data or limit-as-income", () => {
     const text = buildSystemInstruction("Deutsch");
     expect(text).toMatch(/forecast\.rules/);
-    expect(text).toMatch(/keine datenbasierte Prognose möglich/);
+    expect(text).toMatch(/keine persönliche Prognose berechnen/);
+    expect(text).toMatch(/wähle keine angenommenen Stunden oder Tage selbst/);
+    expect(text).toMatch(/frage nach den erwarteten Stunden/);
+    expect(text).toMatch(/ein Beispiel ist nie eine Prognose/);
+    expect(text).toMatch(/Kalender-Werktage sind keine Arbeitstage/);
     expect(text).toMatch(/nie als erwarteten Verdienst/);
     expect(text).toMatch(/Erfinde niemals Schichten, Arbeitsstunden oder Verdienste/);
     expect(text).not.toMatch(/13[,.]90|603/);
