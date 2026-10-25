@@ -74,10 +74,16 @@ export type AssistantContextPayload = {
     /** recordedToDate + plannedAfterToday: everything the user has entered for this month. */
     enteredTotal: { hours: number; earnings: number };
     /**
-     * Linear pace from recordedToDate over the whole month. Only when entries are
-     * recorded and none are planned — planned entries already are the user's own plan.
+     * Linear pace from recordedToDate over the whole month. Only with at least
+     * MIN_RECORDED_DAYS_FOR_PROJECTION distinct recorded workdays and nothing
+     * planned — planned entries already are the user's own plan.
      */
     paceProjection: { hours: number; earnings: number } | null;
+    /** How paceProjection was calculated; null when there is none. */
+    paceProjectionMethod: string | null;
+    /** Why paceProjection is null; null when a projection exists. */
+    paceProjectionUnavailableReason:
+      "no_recorded_entries" | "too_few_recorded_days" | "planned_entries_present" | null;
     /** Monthly limit minus this month's entered earnings — headroom, not expected income. */
     remainingLimitAmount: number | null;
     daysElapsed: number;
@@ -94,6 +100,15 @@ type PeriodTotals = { entriesCount: number; hours: number; earnings: number };
 
 const round2 = (n: number) => Number(n.toFixed(2));
 
+/** Fewer distinct recorded workdays than this give no monthly pace projection. */
+const MIN_RECORDED_DAYS_FOR_PROJECTION = 2;
+
+const PACE_PROJECTION_METHOD =
+  "Erfasste Stunden bzw. Verdienst ÷ bisher vergangene Kalendertage des Monats × Tage im Monat (gleiches Tempo wie bisher; keine Zusage, kein Dienstplan).";
+
+const FORECAST_RULE_TOO_FEW_DAYS =
+  "Es gibt erst zu wenige erfasste Arbeitstage und keine geplanten Schichten: Sage ausdrücklich, dass eine verlässliche Monatsprognose noch nicht möglich ist, und nenne keine hochgerechneten Monatswerte. Nenne nur Erfasst und remainingLimitAmount; frage nach den erwarteten Stunden oder schlage vor, geplante Schichten einzutragen.";
+
 const FORECAST_RULES_COMMON = [
   "remainingLimitAmount ist nur die Obergrenze bis zur Minijob-Grenze, kein erwarteter Verdienst.",
   "calendarWeekdaysRemaining sind nur verbleibende Kalender-Werktage, nicht die Arbeitstage des Nutzers. Die App kennt keinen Dienstplan (workScheduleKnown=false); stelle sie nie als Arbeitstage dar und rechne nicht mit ihnen.",
@@ -102,7 +117,7 @@ const FORECAST_RULES_COMMON = [
 ];
 
 const FORECAST_RULES_WITH_DATA = [
-  "Rechne nur mit den erfassten Daten und kennzeichne jede Zahl: 'Erfasst' = forecast.recordedToDate (bereits gearbeitet), 'Geplant' = forecast.plannedAfterToday (vom Nutzer eingetragen, noch nicht gearbeitet), 'Erfasst + geplant' = forecast.enteredTotal, 'Hochrechnung' = forecast.paceProjection (nur falls vorhanden; gleiches Tempo wie bisher, keine Zusage).",
+  "Rechne nur mit den erfassten Daten und kennzeichne jede Zahl: 'Erfasst' = forecast.recordedToDate (bereits gearbeitet), 'Geplant' = forecast.plannedAfterToday (vom Nutzer eingetragen, noch nicht gearbeitet), 'Erfasst + geplant' = forecast.enteredTotal, 'Hochrechnung' = forecast.paceProjection (nur falls nicht null; nenne dabei die Methode aus forecast.paceProjectionMethod und dass es keine Zusage ist). Ist paceProjection null, nenne keine Monatshochrechnung.",
   ...FORECAST_RULES_COMMON,
 ];
 
@@ -155,8 +170,17 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
   const plannedAfterToday = periodTotals(plannedList);
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const daysElapsed = now.getDate();
+  const recordedDays = new Set(recordedList.map((s) => s.date)).size;
+  const paceProjectionUnavailableReason =
+    recordedToDate.entriesCount === 0
+      ? ("no_recorded_entries" as const)
+      : plannedAfterToday.entriesCount > 0
+        ? ("planned_entries_present" as const)
+        : recordedDays < MIN_RECORDED_DAYS_FOR_PROJECTION
+          ? ("too_few_recorded_days" as const)
+          : null;
   const paceProjection =
-    recordedToDate.entriesCount > 0 && plannedAfterToday.entriesCount === 0
+    paceProjectionUnavailableReason === null
       ? {
           hours: round2((recordedToDate.hours / daysElapsed) * daysInMonth),
           earnings: round2((recordedToDate.earnings / daysElapsed) * daysInMonth),
@@ -243,13 +267,19 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
         earnings: round2(recordedToDate.earnings + plannedAfterToday.earnings),
       },
       paceProjection,
+      paceProjectionMethod: paceProjection ? PACE_PROJECTION_METHOD : null,
+      paceProjectionUnavailableReason,
       remainingLimitAmount:
         legalMonthly == null ? null : round2(Math.max(0, legalMonthly - currentTotals.earnings)),
       daysElapsed,
       daysInMonth,
       calendarWeekdaysRemaining: remainingWeekdaysAfter(now, daysInMonth),
       workScheduleKnown: false,
-      rules: dataBasedForecastPossible ? FORECAST_RULES_WITH_DATA : FORECAST_RULES_NO_DATA,
+      rules: !dataBasedForecastPossible
+        ? FORECAST_RULES_NO_DATA
+        : paceProjectionUnavailableReason === "too_few_recorded_days"
+          ? [FORECAST_RULE_TOO_FEW_DAYS, ...FORECAST_RULES_WITH_DATA]
+          : FORECAST_RULES_WITH_DATA,
     },
   };
 

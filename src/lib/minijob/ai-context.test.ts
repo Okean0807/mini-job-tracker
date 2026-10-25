@@ -241,12 +241,16 @@ describe("buildAssistantContext — forecast separates facts, plans, projections
       "daysInMonth",
       "enteredTotal",
       "paceProjection",
+      "paceProjectionMethod",
+      "paceProjectionUnavailableReason",
       "plannedAfterToday",
       "recordedToDate",
       "remainingLimitAmount",
       "rules",
       "workScheduleKnown",
     ]);
+    expect(f.paceProjectionUnavailableReason).toBe("no_recorded_entries");
+    expect(f.paceProjectionMethod).toBeNull();
     // The configured limit is only a ceiling.
     expect(f.remainingLimitAmount).toBe(parsed.settings.legalMonthlyLimit);
 
@@ -271,6 +275,52 @@ describe("buildAssistantContext — forecast separates facts, plans, projections
     expect(rules).toMatch(/rechne nicht mit ihnen/);
   });
 
+  it("one recorded shift, nothing planned: no monthly projection, recorded and headroom unchanged", () => {
+    // Preview case: Oct 25, one 4 h shift at the configured rate, no planned shifts.
+    const parsed = JSON.parse(
+      buildAssistantContext(
+        makeData({
+          settings: { ...DEFAULT_SETTINGS, defaultRate: 13.9 },
+          jobs: [{ id: "j1", name: "Laden", color: "#0d9488", mode: "flex", rate: 13.9 }],
+          shifts: [makeShift({ date: "2026-10-03", start: "09:00", end: "13:00" })], // 4h
+        }),
+        new Date(2026, 9, 25),
+      ),
+    );
+    const f = parsed.forecast;
+
+    expect(f.dataBasedForecastPossible).toBe(true);
+    expect(f.recordedToDate).toEqual({ entriesCount: 1, hours: 4, earnings: 55.6 });
+    expect(f.enteredTotal).toEqual({ hours: 4, earnings: 55.6 });
+    expect(f.remainingLimitAmount).toBe(
+      Number((parsed.settings.legalMonthlyLimit - 55.6).toFixed(2)),
+    );
+    // Previously 4 h / 25 d × 31 d = 4.96 h, €68.94 — no longer produced.
+    expect(f.paceProjection).toBeNull();
+    expect(f.paceProjectionMethod).toBeNull();
+    expect(f.paceProjectionUnavailableReason).toBe("too_few_recorded_days");
+    expect(JSON.stringify(f)).not.toMatch(/4\.96|68\.94/);
+    const rules = f.rules.join(" ");
+    expect(f.rules[0]).toMatch(/verlässliche Monatsprognose noch nicht möglich/);
+    expect(rules).toMatch(/nenne keine hochgerechneten Monatswerte/);
+    expect(rules).toMatch(/Ist paceProjection null, nenne keine Monatshochrechnung/);
+  });
+
+  it("several shifts on the same day still count as one recorded day (no projection)", () => {
+    const f = forecastOf(
+      makeData({
+        ...rate15,
+        shifts: [
+          makeShift({ id: "a", date: "2026-10-05", start: "08:00", end: "10:00" }),
+          makeShift({ id: "b", date: "2026-10-05", start: "14:00", end: "16:00" }),
+        ],
+      }),
+    ).forecast;
+    expect(f.recordedToDate.entriesCount).toBe(2);
+    expect(f.paceProjection).toBeNull();
+    expect(f.paceProjectionUnavailableReason).toBe("too_few_recorded_days");
+  });
+
   it("recorded shifts only: recorded facts plus a pace projection from that data", () => {
     const parsed = forecastOf(
       makeData({
@@ -289,6 +339,10 @@ describe("buildAssistantContext — forecast separates facts, plans, projections
     expect(f.plannedAfterToday).toEqual({ entriesCount: 0, hours: 0, earnings: 0 });
     expect(f.enteredTotal).toEqual({ hours: 5, earnings: 75 });
     expect(f.paceProjection).toEqual({ hours: 10.33, earnings: 155 }); // 5h/15d × 31d
+    expect(f.paceProjectionUnavailableReason).toBeNull();
+    expect(f.paceProjectionMethod).toMatch(/÷ bisher vergangene Kalendertage .* × Tage im Monat/);
+    expect(f.paceProjectionMethod).toMatch(/keine Zusage/);
+    expect(f.rules.join(" ")).not.toMatch(/verlässliche Monatsprognose noch nicht möglich/);
     expect(f.remainingLimitAmount).toBe(
       Number((parsed.settings.legalMonthlyLimit - 75).toFixed(2)),
     );
@@ -313,6 +367,7 @@ describe("buildAssistantContext — forecast separates facts, plans, projections
     expect(f.plannedAfterToday).toEqual({ entriesCount: 2, hours: 6, earnings: 90 });
     expect(f.enteredTotal).toEqual({ hours: 9, earnings: 135 });
     expect(f.paceProjection).toBeNull();
+    expect(f.paceProjectionUnavailableReason).toBe("planned_entries_present");
     expect(parsed.currentMonth.earnings).toBe(135);
     expect(f.remainingLimitAmount).toBe(
       Number((parsed.settings.legalMonthlyLimit - 135).toFixed(2)),
