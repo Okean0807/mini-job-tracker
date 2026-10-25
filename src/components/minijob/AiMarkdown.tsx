@@ -5,7 +5,8 @@
  * so any `<script>`, `<img onerror>` or raw HTML in a model answer is rendered
  * as escaped text. Supported: headings (#), bullet/numbered lists, **bold**,
  * __bold__, *italic*, `code`, paragraphs and line breaks. Links stay plain text
- * (sources are rendered separately from allowlisted URLs).
+ * (sources are rendered separately from allowlisted URLs). LaTeX math is
+ * converted to plain text first.
  */
 import { Fragment, type ReactNode } from "react";
 
@@ -71,10 +72,55 @@ function parseBlocks(text: string): Block[] {
   return blocks.filter((b) => b.kind !== "p" || b.lines.length > 0);
 }
 
+const LATEX_SYMBOLS: Record<string, string> = {
+  times: "×",
+  cdot: "·",
+  div: "÷",
+  approx: "≈",
+  le: "≤",
+  leq: "≤",
+  ge: "≥",
+  geq: "≥",
+  neq: "≠",
+  euro: "€",
+  "%": "%",
+};
+
+/** Turn the inside of a LaTeX math span into readable plain text. */
+function mathToText(math: string): string {
+  // German decimals are often written as 111{,}20.
+  let out = math.replace(/\{([,.])\}/g, "$1");
+  for (let i = 0; i < 4 && /\\frac\s*\{/.test(out); i++) {
+    out = out.replace(/\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, "$1 ÷ $2");
+  }
+  out = out
+    .replace(/\\(?:text|textbf|mathrm|mathbf|operatorname)\s*\{([^{}]*)\}/g, "$1")
+    .replace(/\\(?:left|right)\b/g, "")
+    .replace(/\\(?:[,;:! ]|quad|qquad)/g, " ")
+    .replace(/\\\\/g, " ")
+    .replace(/\\([a-zA-Z]+|%)/g, (_, name: string) => LATEX_SYMBOLS[name] ?? name)
+    .replace(/[{}]/g, "");
+  return out.replace(/[ \t]+/g, " ").trim();
+}
+
+/**
+ * KI answers sometimes contain LaTeX ($$…$$, \[…\], \(…\), $…\cmd…$). It is not
+ * rendered as math here; convert it to plain text so no raw markup is shown.
+ * Single `$…$` only counts as math when it contains a backslash command, so
+ * ordinary dollar amounts stay untouched.
+ */
+function latexToPlainText(text: string): string {
+  return text
+    .replace(/\$\$([\s\S]+?)\$\$/g, (_, m: string) => mathToText(m))
+    .replace(/\\\[([\s\S]+?)\\\]/g, (_, m: string) => mathToText(m))
+    .replace(/\\\(([\s\S]+?)\\\)/g, (_, m: string) => mathToText(m))
+    .replace(/\$([^$\n]*\\[a-zA-Z][^$\n]*)\$/g, (_, m: string) => mathToText(m));
+}
+
 export function AiMarkdown({ text }: { text: string }) {
   return (
     <div className="space-y-2">
-      {parseBlocks(text).map((block, i) => {
+      {parseBlocks(latexToPlainText(text)).map((block, i) => {
         const key = `b${i}`;
         if (block.kind === "heading") {
           return (

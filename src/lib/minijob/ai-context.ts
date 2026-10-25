@@ -81,6 +81,10 @@ export type AssistantContextPayload = {
     paceProjection: { hours: number; earnings: number } | null;
     /** How paceProjection was calculated; null when there is none. */
     paceProjectionMethod: string | null;
+    /** Plain-text calculation with the actual numbers (no LaTeX); null without projection. */
+    paceProjectionExplanation: string | null;
+    /** Distinct recorded workdays the projection is based on (the sample size). */
+    paceProjectionBasisDays: number;
     /** Why paceProjection is null; null when a projection exists. */
     paceProjectionUnavailableReason:
       "no_recorded_entries" | "too_few_recorded_days" | "planned_entries_present" | null;
@@ -104,7 +108,25 @@ const round2 = (n: number) => Number(n.toFixed(2));
 const MIN_RECORDED_DAYS_FOR_PROJECTION = 2;
 
 const PACE_PROJECTION_METHOD =
-  "Erfasste Stunden bzw. Verdienst ÷ bisher vergangene Kalendertage des Monats × Tage im Monat (gleiches Tempo wie bisher; keine Zusage, kein Dienstplan).";
+  "Grobe statistische Hochrechnung: erfasster Verdienst ÷ bisher vergangene Kalendertage des Monats × Tage im Monat. Setzt gleiches Tempo wie bisher voraus; keine Zusage, kein erwarteter Verdienst, kein Dienstplan.";
+
+/** de-DE number with two decimals, e.g. 137.89 -> "137,89". */
+const de2 = (n: number) => n.toFixed(2).replace(".", ",");
+
+function paceExplanation(
+  earnings: number,
+  daysElapsed: number,
+  daysInMonth: number,
+  projected: number,
+  basisDays: number,
+): string {
+  // At the minimum allowed basis the sample is, by definition, the smallest one we project from.
+  const sample = basisDays <= MIN_RECORDED_DAYS_FOR_PROJECTION ? ", sehr kleine Datenbasis" : "";
+  return (
+    `${de2(earnings)} € ÷ ${daysElapsed} bisher vergangene Kalendertage × ${daysInMonth} Tage im Monat ≈ ${de2(projected)} € ` +
+    `(grobe statistische Hochrechnung aus nur ${basisDays} erfassten Arbeitstagen${sample}; keine Zusage und kein erwarteter Verdienst).`
+  );
+}
 
 const FORECAST_RULE_TOO_FEW_DAYS =
   "Es gibt erst zu wenige erfasste Arbeitstage und keine geplanten Schichten: Sage ausdrücklich, dass eine verlässliche Monatsprognose noch nicht möglich ist, und nenne keine hochgerechneten Monatswerte. Nenne nur Erfasst und remainingLimitAmount; frage nach den erwarteten Stunden oder schlage vor, geplante Schichten einzutragen.";
@@ -117,7 +139,8 @@ const FORECAST_RULES_COMMON = [
 ];
 
 const FORECAST_RULES_WITH_DATA = [
-  "Rechne nur mit den erfassten Daten und kennzeichne jede Zahl: 'Erfasst' = forecast.recordedToDate (bereits gearbeitet), 'Geplant' = forecast.plannedAfterToday (vom Nutzer eingetragen, noch nicht gearbeitet), 'Erfasst + geplant' = forecast.enteredTotal, 'Hochrechnung' = forecast.paceProjection (nur falls nicht null; nenne dabei die Methode aus forecast.paceProjectionMethod und dass es keine Zusage ist). Ist paceProjection null, nenne keine Monatshochrechnung.",
+  "Rechne nur mit den erfassten Daten und kennzeichne jede Zahl: 'Erfasst' = forecast.recordedToDate (bereits gearbeitet), 'Geplant' = forecast.plannedAfterToday (vom Nutzer eingetragen, noch nicht gearbeitet), 'Erfasst + geplant' = forecast.enteredTotal, 'Hochrechnung' = forecast.paceProjection (nur falls nicht null). Ist paceProjection null, nenne keine Monatshochrechnung.",
+  "Eine Hochrechnung heißt immer 'grobe Hochrechnung': Nenne die Datenbasis (paceProjectionBasisDays erfasste Arbeitstage; steht in paceProjectionExplanation 'sehr kleine Datenbasis', sage ausdrücklich, dass es eine sehr kleine Stichprobe ist) und erkläre die Rechnung mit forecast.paceProjectionExplanation im Klartext. Stelle sie nie als verlässliche Schätzung, Zusage oder erwarteten Verdienst dar.",
   ...FORECAST_RULES_COMMON,
 ];
 
@@ -268,6 +291,16 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
       },
       paceProjection,
       paceProjectionMethod: paceProjection ? PACE_PROJECTION_METHOD : null,
+      paceProjectionExplanation: paceProjection
+        ? paceExplanation(
+            recordedToDate.earnings,
+            daysElapsed,
+            daysInMonth,
+            paceProjection.earnings,
+            recordedDays,
+          )
+        : null,
+      paceProjectionBasisDays: recordedDays,
       paceProjectionUnavailableReason,
       remainingLimitAmount:
         legalMonthly == null ? null : round2(Math.max(0, legalMonthly - currentTotals.earnings)),

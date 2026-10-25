@@ -44,3 +44,27 @@ describe("AiMarkdown — KI answer rendering", () => {
     expect(out).toContain("monthly_limit_value");
   });
 });
+
+describe("AiMarkdown — LaTeX in KI answers becomes readable text", () => {
+  it("converts the Preview formula ($$\\text…\\frac…$$) to plain text, no raw markup", () => {
+    const out = html(
+      "**Grobe Hochrechnung:**\n$$\\text{Hochrechnung} = \\frac{111{,}20\\ €}{25} \\times 31 \\approx 137{,}89\\ €$$",
+    );
+    expect(out).toContain("<strong>Grobe Hochrechnung:</strong>");
+    expect(out).toContain("Hochrechnung = 111,20 € ÷ 25 × 31 ≈ 137,89 €");
+    expect(out).not.toMatch(/\$|\\|\\text|\\frac|[{}]/);
+  });
+
+  it("handles \\( … \\) and \\[ … \\] spans and inline $…\\cmd…$", () => {
+    expect(html("Rechnung: \\(8 \\cdot 13{,}90\\) €")).toContain("Rechnung: 8 · 13,90 €");
+    expect(html("\\[ a \\leq b \\]")).toContain("a ≤ b");
+    expect(html("ca. $55{,}60 \\div 25$ pro Tag")).toContain("ca. 55,60 ÷ 25 pro Tag");
+  });
+
+  it("leaves plain dollar amounts alone and keeps HTML inside math escaped", () => {
+    expect(html("Kosten: 5 $ und 10 $")).toContain("Kosten: 5 $ und 10 $");
+    const out = html("$$\\text{<script>alert(1)</script>}$$");
+    expect(out).not.toMatch(/<script/i);
+    expect(out).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+  });
+});

@@ -241,6 +241,8 @@ describe("buildAssistantContext — forecast separates facts, plans, projections
       "daysInMonth",
       "enteredTotal",
       "paceProjection",
+      "paceProjectionBasisDays",
+      "paceProjectionExplanation",
       "paceProjectionMethod",
       "paceProjectionUnavailableReason",
       "plannedAfterToday",
@@ -251,6 +253,7 @@ describe("buildAssistantContext — forecast separates facts, plans, projections
     ]);
     expect(f.paceProjectionUnavailableReason).toBe("no_recorded_entries");
     expect(f.paceProjectionMethod).toBeNull();
+    expect(f.paceProjectionExplanation).toBeNull();
     // The configured limit is only a ceiling.
     expect(f.remainingLimitAmount).toBe(parsed.settings.legalMonthlyLimit);
 
@@ -304,6 +307,67 @@ describe("buildAssistantContext — forecast separates facts, plans, projections
     expect(f.rules[0]).toMatch(/verlässliche Monatsprognose noch nicht möglich/);
     expect(rules).toMatch(/nenne keine hochgerechneten Monatswerte/);
     expect(rules).toMatch(/Ist paceProjection null, nenne keine Monatshochrechnung/);
+  });
+
+  it("two recorded days: projection is labelled a rough extrapolation with a plain-text calculation", () => {
+    // Preview case 2: Oct 25, two different days, 8 h total at the configured rate.
+    const parsed = JSON.parse(
+      buildAssistantContext(
+        makeData({
+          settings: { ...DEFAULT_SETTINGS, defaultRate: 13.9 },
+          jobs: [{ id: "j1", name: "Laden", color: "#0d9488", mode: "flex", rate: 13.9 }],
+          shifts: [
+            makeShift({ date: "2026-10-03", start: "09:00", end: "13:00" }), // 4h
+            makeShift({ date: "2026-10-10", start: "09:00", end: "13:00" }), // 4h
+          ],
+        }),
+        new Date(2026, 9, 25),
+      ),
+    );
+    const f = parsed.forecast;
+
+    // Unchanged facts.
+    expect(f.recordedToDate).toEqual({ entriesCount: 2, hours: 8, earnings: 111.2 });
+    expect(f.remainingLimitAmount).toBe(
+      Number((parsed.settings.legalMonthlyLimit - 111.2).toFixed(2)),
+    );
+    // Same threshold and formula as before: 111,20 € ÷ 25 × 31.
+    expect(f.paceProjectionUnavailableReason).toBeNull();
+    expect(f.paceProjection.earnings).toBe(137.89);
+    expect(f.paceProjectionBasisDays).toBe(2);
+    expect(f.paceProjectionExplanation).toBe(
+      "111,20 € ÷ 25 bisher vergangene Kalendertage × 31 Tage im Monat ≈ 137,89 € " +
+        "(grobe statistische Hochrechnung aus nur 2 erfassten Arbeitstagen, sehr kleine Datenbasis; keine Zusage und kein erwarteter Verdienst).",
+    );
+    expect(f.paceProjectionMethod).toMatch(/^Grobe statistische Hochrechnung/);
+    expect(f.paceProjectionMethod).toMatch(/kein erwarteter Verdienst/);
+    for (const text of [f.paceProjectionExplanation, f.paceProjectionMethod]) {
+      expect(text).not.toMatch(/\$|\\/); // no LaTeX
+    }
+    const rules = f.rules.join(" ");
+    expect(rules).toMatch(/heißt immer 'grobe Hochrechnung'/);
+    expect(rules).toMatch(/sehr kleine Stichprobe/);
+  });
+
+  it("more recorded days: same rough-projection wording, but no 'very small' claim", () => {
+    const f = forecastOf(
+      makeData({
+        ...rate15,
+        shifts: [
+          makeShift({ date: "2026-10-01", start: "09:00", end: "11:00" }),
+          makeShift({ date: "2026-10-06", start: "09:00", end: "11:00" }),
+          makeShift({ date: "2026-10-12", start: "09:00", end: "11:00" }),
+        ],
+      }),
+    ).forecast;
+    expect(f.paceProjectionBasisDays).toBe(3);
+    expect(f.paceProjectionExplanation).toMatch(
+      /grobe statistische Hochrechnung aus nur 3 erfassten/,
+    );
+    expect(f.paceProjectionExplanation).not.toMatch(/sehr kleine Datenbasis/);
+    expect(f.rules.join(" ")).toMatch(
+      /nie als verlässliche Schätzung, Zusage oder erwarteten Verdienst/,
+    );
   });
 
   it("several shifts on the same day still count as one recorded day (no projection)", () => {

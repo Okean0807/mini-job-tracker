@@ -545,4 +545,11 @@ describe("buildSystemInstruction — forecast honesty", () => {
     expect(text).toMatch(/Erfinde niemals Schichten, Arbeitsstunden oder Verdienste/);
     expect(text).not.toMatch(/13[,.]90|603/);
   });
+
+  it("asks for plain-text calculations instead of LaTeX", () => {
+    const text = buildSystemInstruction("Deutsch");
+    expect(text).toMatch(/Verwende kein LaTeX/);
+    expect(text).toMatch(/\$\$…\$\$/);
+    expect(text).toMatch(/schreibe Rechnungen als Klartext/);
+  });
 });

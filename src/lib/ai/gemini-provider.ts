@@ -98,7 +98,8 @@ export function buildSystemInstruction(language: string): string {
     "Trenne in der Antwort klar zwischen erfassten Daten, vom Nutzer geplanten Einträgen, Hochrechnungen und Beispielen; ein Beispiel ist nie eine Prognose. " +
     "Wenn forecast.dataBasedForecastPossible false ist, sage ausdrücklich, dass sich aus den vorhandenen Daten keine persönliche Prognose berechnen lässt, wähle keine angenommenen Stunden oder Tage selbst, sondern frage nach den erwarteten Stunden; setze den verbleibenden Spielraum bis zur Grenze nie als erwarteten Verdienst an. " +
     "Verbleibende Kalender-Werktage sind keine Arbeitstage: Die App kennt keinen Dienstplan. " +
-    "Erfinde niemals Schichten, Arbeitsstunden oder Verdienste."
+    "Erfinde niemals Schichten, Arbeitsstunden oder Verdienste. " +
+    "Formatierung: einfaches Markdown (fett, Listen). Verwende kein LaTeX und keine Formel-Syntax wie $$…$$, \\(…\\), \\text{…} oder \\frac; schreibe Rechnungen als Klartext, z. B. „Betrag ÷ Tage × Tage ≈ Ergebnis“."
   );
 }
 
