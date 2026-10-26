@@ -4,7 +4,13 @@
  * confuse forecast / other months with the current period.
  */
 import { MONTHS_DE, isoDate, shiftsInMonth, shiftsInYear } from "./calc";
-import { employmentTypeOf, isMinijobEmployment, monthlyHoursLimitFor } from "./legal";
+import {
+  employmentTypeOf,
+  isMinijobEmployment,
+  monthlyHoursLimitFor,
+  multipleMinijobsBesideMainJob,
+  type MultipleMinijobsNotice,
+} from "./legal";
 import { minijobHoursLimits, monthUsage, monthlyLimitOf, yearlyLimitOf } from "./limits";
 import { payrollTotals } from "./payroll";
 import { makeResolver } from "./resolve";
@@ -64,6 +70,11 @@ export type AssistantContextPayload = {
      */
     monthlyHoursLimit: number | null;
   }>;
+  /**
+   * Several Minijobs next to a Hauptbeschäftigung (legal/employment.ts). Job ids
+   * refer to jobs[]; no extra personal data. The limit calculation is unchanged.
+   */
+  minijobStatus: MultipleMinijobsNotice & { rules: string[] };
   /**
    * Current-month forecast inputs, computed here so the model never has to
    * guess: recorded facts, future-dated entries and the pace projection are
@@ -161,6 +172,24 @@ const FORECAST_RULES_NO_DATA = [
   "Wähle keine angenommenen Stunden oder Tage selbst. Frage stattdessen, wie viele Stunden der Nutzer diesen Monat voraussichtlich arbeitet, oder schlage vor, geplante Schichten in der App einzutragen.",
   ...FORECAST_RULES_COMMON,
 ];
+
+const MINIJOB_STATUS_RULES = [
+  "Neben einer Hauptbeschäftigung bleibt in der Regel nur der zeitlich zuerst aufgenommene Minijob geringfügig; weitere Minijobs werden mit der Hauptbeschäftigung zusammengerechnet und können versicherungspflichtig sein. Behaupte daher nicht, dass alle Jobs Minijobs bleiben.",
+  "Die Minijob-Summe der App (forecast.minijobEarningsEntered, remainingLimitAmount) rechnet alle Minijobs zusammen; sage, dass diese Kombination aus Hauptbeschäftigung und mehreren Minijobs nach den Regeln der Sozialversicherung geprüft werden muss (Arbeitgeber oder Minijob-Zentrale).",
+];
+const MINIJOB_STATUS_RULE_KNOWN =
+  "minijobStatus order_known: firstJobId ist nur nach Beginndatum voraussichtlich der erste Minijob – nenne ihn als 'voraussichtlich', nicht als sicher.";
+const MINIJOB_STATUS_RULE_UNKNOWN =
+  "minijobStatus order_unknown: Beginndaten fehlen oder sind gleich – sage, dass offen ist, welcher Minijob der erste ist, und empfehle, die Beginndaten in der App einzutragen.";
+
+function minijobStatusFor(
+  notice: MultipleMinijobsNotice,
+): AssistantContextPayload["minijobStatus"] {
+  if (notice.status === "none") return { ...notice, rules: [] };
+  const specific =
+    notice.status === "order_known" ? MINIJOB_STATUS_RULE_KNOWN : MINIJOB_STATUS_RULE_UNKNOWN;
+  return { ...notice, rules: [...MINIJOB_STATUS_RULES, specific] };
+}
 
 function remainingWeekdaysAfter(now: Date, daysInMonth: number): number {
   let count = 0;
@@ -317,6 +346,7 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
     historicalYears,
     months,
     jobs,
+    minijobStatus: minijobStatusFor(multipleMinijobsBesideMainJob(data.jobs, currentDate)),
     forecast: {
       dataBasedForecastPossible,
       recordedToDate,

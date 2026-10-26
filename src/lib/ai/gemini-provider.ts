@@ -95,6 +95,7 @@ export function buildSystemInstruction(language: string): string {
     "Unterscheide bundesweite Regeln von betrieblichen/tariflichen Regelungen. " +
     "Du erhältst die Arbeitszeit-Daten des Nutzers als JSON-Zusammenfassung: nutze sie für persönliche Berechnungen, nenne Zahlen mit Einheit (Stunden bzw. Euro) und weise auf Trends, Muster oder die Minijob-Grenze hin. " +
     "Für Prognosen des laufenden Monats nutze ausschließlich den Block forecast der Datenbasis und befolge forecast.rules. " +
+    "Befolge außerdem minijobStatus.rules, wenn vorhanden. " +
     "Trenne in der Antwort klar zwischen erfassten Daten, vom Nutzer geplanten Einträgen, Hochrechnungen und Beispielen; ein Beispiel ist nie eine Prognose. " +
     "Wenn forecast.dataBasedForecastPossible false ist, sage ausdrücklich, dass sich aus den vorhandenen Daten keine persönliche Prognose berechnen lässt, wähle keine angenommenen Stunden oder Tage selbst, sondern frage nach den erwarteten Stunden; setze den verbleibenden Spielraum bis zur Grenze nie als erwarteten Verdienst an. " +
     "Verbleibende Kalender-Werktage sind keine Arbeitstage: Die App kennt keinen Dienstplan. " +

@@ -115,6 +115,7 @@ describe("buildAssistantContext", () => {
       "forecast",
       "historicalYears",
       "jobs",
+      "minijobStatus",
       "months",
       "settings",
       "year",
