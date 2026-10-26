@@ -42,16 +42,31 @@ export class AiGuardError extends Error {
   }
 }
 
+/** Frage länger als MAX_QUESTION_CHARS – der Nutzer kann das selbst beheben. */
+export const QUESTION_TOO_LONG_MESSAGE = `Die Frage ist zu lang (höchstens ${MAX_QUESTION_CHARS} Zeichen). Bitte kürzer formulieren.`;
+/** App-Kontext bzw. Gesamtanfrage über dem Budget. */
+export const PAYLOAD_TOO_LARGE_MESSAGE =
+  "Anfrage zu groß – die App-Daten sind für eine KI-Anfrage zu umfangreich.";
+
+/** Nur reine Längenüberschreitungen gelten als „zu groß“; alles andere ist ungültig. */
+function sizeViolation(issues: z.ZodIssue[]): "question" | "payload" | null {
+  if (issues.length === 0 || !issues.every((i) => i.code === "too_big")) return null;
+  return issues.every((i) => i.path[0] === "question") ? "question" : "payload";
+}
+
 export function parseAskAssistantInput(input: unknown): AskAssistantInput {
   const parsed = askAssistantSchema.safeParse(input);
   if (!parsed.success) {
     // Keine Zod-Details nach außen geben.
+    const size = sizeViolation(parsed.error.issues);
+    if (size === "question") throw new AiGuardError("payload_too_large", QUESTION_TOO_LONG_MESSAGE);
+    if (size === "payload") throw new AiGuardError("payload_too_large", PAYLOAD_TOO_LARGE_MESSAGE);
     throw new AiGuardError("invalid_payload", "Ungültige Anfrage.");
   }
   const data = parsed.data;
   const total = data.question.length + data.context.length + (data.language?.length ?? 0);
   if (total > MAX_TOTAL_CHARS) {
-    throw new AiGuardError("payload_too_large", "Anfrage zu groß – bitte Zeitraum einschränken.");
+    throw new AiGuardError("payload_too_large", PAYLOAD_TOO_LARGE_MESSAGE);
   }
   return data;
 }
