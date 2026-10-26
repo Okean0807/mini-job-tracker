@@ -5,6 +5,7 @@ import { AiGuardError } from "@/lib/ai-guard";
 import {
   buildGenerateContentUrl,
   buildGenerationConfig,
+  buildSystemInstruction,
   extractSourcesFromGrounding,
   GeminiProvider,
   GROUNDING_UNAVAILABLE_NOTE,
@@ -528,5 +529,22 @@ describe("GeminiProvider.ask request body (thinking config)", () => {
     process.env["GEMINI_MODEL"] = "gemini-2.5-pro";
     await new GeminiProvider().ask({ question: "Hallo?", context: "{}" });
     expect(sentBody()).not.toHaveProperty("generationConfig");
+  });
+});
+
+describe("buildSystemInstruction — formatting and O4 rules", () => {
+  it("asks for plain-text calculations instead of LaTeX", () => {
+    const text = buildSystemInstruction("Deutsch");
+    expect(text).toMatch(/Verwende kein LaTeX/);
+    expect(text).toMatch(/\$\$…\$\$/);
+    expect(text).toMatch(/schreibe Rechnungen als Klartext/);
+  });
+
+  it("keeps the O4 / minijobEarnings rules", () => {
+    const text = buildSystemInstruction("Deutsch");
+    expect(text).toMatch(/ausschließlich minijobEarnings\/minijobHours/);
+    expect(text).toMatch(/Wenn multipleMinijobsWithMainJob true ist/);
+    expect(text).toMatch(/Wenn minijobActivityUncertain true ist/);
+    expect(text).toMatch(/Historischer Gesamtverdienst ist KEIN Minijob-Einkommen/);
   });
 });

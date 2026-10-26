@@ -100,7 +100,8 @@ export function buildSystemInstruction(language: string): string {
     "months und historicalYears sind Gesamtsummen ALLER Jobs (inklusive Hauptbeschäftigung); jobs enthält Gesamtsummen je einzelnem Job über alle Zeiträume (nicht nach Monat oder Jahr aufgeteilt, daher nicht grenzrelevant). " +
     "Historischer Gesamtverdienst ist KEIN Minijob-Einkommen: stelle ihn niemals als Minijob-Verdienst dar und ziehe daraus keinen kategorischen Schluss, die Minijob-Grenze sei überschritten oder eingehalten. " +
     "Für vergangene Monate und Jahre liegt kein grenzrelevanter Minijob-Wert vor. Wenn für einen Zeitraum kein getrennter Minijob-Wert (minijobEarnings) vorliegt, sage ausdrücklich, dass sich anhand dieser Daten nicht bestimmen lässt, ob die Minijob-Grenze überschritten wurde. " +
-    "Für Prognosen nutze Durchschnitte der vorhandenen Monate und kennzeichne sie als Schätzung. Wenn Daten fehlen, sage das offen."
+    "Für Prognosen nutze Durchschnitte der vorhandenen Monate und kennzeichne sie als Schätzung. Wenn Daten fehlen, sage das offen. " +
+    "Formatierung: einfaches Markdown (fett, Listen). Verwende kein LaTeX und keine Formel-Syntax wie $$…$$, \\(…\\), \\text{…} oder \\frac; schreibe Rechnungen als Klartext, z. B. „Betrag ÷ Tage × Tage ≈ Ergebnis“."
   );
 }
 
