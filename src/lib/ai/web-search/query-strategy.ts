@@ -59,7 +59,7 @@ function detectTopicDomains(question: string): string[] {
   const q = question.toLowerCase();
 
   if (
-    /mindestlohn|lohnuntergrenze|mindest\-?lohnkommission/.test(q)
+    /mindestlohn|lohnuntergrenze|mindest-?lohnkommission/.test(q)
   ) {
     return [...MINDESTLOHN_DOMAINS];
   }
