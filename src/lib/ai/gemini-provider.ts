@@ -100,6 +100,14 @@ export function buildSystemInstruction(language: string): string {
     "months und historicalYears sind Gesamtsummen ALLER Jobs (inklusive Hauptbeschäftigung); jobs enthält Gesamtsummen je einzelnem Job über alle Zeiträume (nicht nach Monat oder Jahr aufgeteilt, daher nicht grenzrelevant). " +
     "Historischer Gesamtverdienst ist KEIN Minijob-Einkommen: stelle ihn niemals als Minijob-Verdienst dar und ziehe daraus keinen kategorischen Schluss, die Minijob-Grenze sei überschritten oder eingehalten. " +
     "Für vergangene Monate und Jahre liegt kein grenzrelevanter Minijob-Wert vor. Wenn für einen Zeitraum kein getrennter Minijob-Wert (minijobEarnings) vorliegt, sage ausdrücklich, dass sich anhand dieser Daten nicht bestimmen lässt, ob die Minijob-Grenze überschritten wurde. " +
+    "Datenbasis der Summen: currentMonth.hours, currentMonth.earnings, currentMonth.entriesCount, year.hours, year.earnings, das laufende Jahr in historicalYears, der aktuelle und spätere Monate in months sowie jobs können auch Einträge enthalten, die nach currentDate datiert sind. " +
+    "Diese Werte geben die in der App erfassten Einträge wieder, nicht zwingend bereits geleistete Arbeit oder bereits erhaltenes Geld. " +
+    "Beschreibe nach currentDate datierte Einträge niemals als erledigte Arbeit oder als erhaltenes Einkommen. " +
+    "currentMonth.minijobEarnings, currentMonth.minijobHours, year.minijobEarnings und year.minijobHours berücksichtigen nur Einträge mit Datum bis einschließlich currentDate. " +
+    "hours sind gearbeitete Stunden; earnings können auch Vergütung für Abwesenheiten enthalten. Gehe nicht davon aus, dass beide Felder dieselbe Grundlage haben. " +
+    "Treffen die Kennzeichen multipleMinijobsWithMainJob oder minijobActivityUncertain zu, triff aus den betroffenen Minijob-Werten keine endgültige Aussage zum Stand der Minijob-Grenze. " +
+    "Schätze, ergänze oder folgere keinen geplanten Minijob-Verdienst, auch nicht aus expectedAdditional. " +
+    "Wenn aus den Daten nicht hervorgeht, ob ein Eintrag geplant oder bereits erledigt ist, sage das ausdrücklich und rate nicht. " +
     "Für Prognosen nutze Durchschnitte der vorhandenen Monate und kennzeichne sie als Schätzung. Wenn Daten fehlen, sage das offen. " +
     "Formatierung: einfaches Markdown (fett, Listen). Verwende kein LaTeX und keine Formel-Syntax wie $$…$$, \\(…\\), \\text{…} oder \\frac; schreibe Rechnungen als Klartext, z. B. „Betrag ÷ Tage × Tage ≈ Ergebnis“."
   );

@@ -13,6 +13,11 @@ import type { AppData, ResolvedEmploymentType, WorkMode } from "./types";
 import { jobsApplyMinijobLimit, primaryWorkMode } from "./work-mode";
 
 export type AssistantContextPayload = {
+  /**
+   * "Today" (ISO date). Reference for the recorded/planned split below: entries dated
+   * after it are future-dated (planned), the rest are recorded. See the Datenbasis
+   * paragraph of buildSystemInstruction (ai/gemini-provider.ts).
+   */
   currentDate: string;
   settings: {
     hourlyRate: number;
@@ -26,12 +31,25 @@ export type AssistantContextPayload = {
     year: number;
     month: number;
     monthName: string;
-    /** All jobs incl. Hauptbeschäftigung / self-employment — NOT the limit-relevant value. */
+    /**
+     * All jobs incl. Hauptbeschäftigung / self-employment — NOT the limit-relevant value.
+     * Whole calendar month: INCLUDES entries dated after currentDate (planned), so it
+     * mixes recorded and planned entries (N1). Worked hours only; paid absences are not
+     * part of it (payrollTotals.workedHours), unlike `earnings`.
+     */
     hours: number;
-    /** All jobs incl. Hauptbeschäftigung / self-employment — NOT the limit-relevant value. */
+    /**
+     * All jobs incl. Hauptbeschäftigung / self-employment — NOT the limit-relevant value.
+     * Whole calendar month: INCLUDES entries dated after currentDate (planned). May
+     * include pay for absences (payrollTotals.earnings), so its basis differs from `hours`.
+     */
     earnings: number;
-    /** Minijob-only, limit-relevant income up to today (null if no Minijob limit applies). */
+    /**
+     * Minijob-only, limit-relevant income up to and including currentDate (null if no
+     * Minijob limit applies). Excludes future-dated entries (monthUsage).
+     */
     minijobEarnings: number | null;
+    /** Worked hours of the Minijob-only value above: up to and including currentDate. */
     minijobHours: number | null;
     /**
      * B3-1/O4 (same rule as the UI, multi-minijob.ts): Hauptbeschäftigung plus
@@ -44,24 +62,36 @@ export type AssistantContextPayload = {
      * determined (paid status of absences estimated / pending confirmation).
      */
     minijobActivityUncertain: boolean;
+    /** Number of entries of the whole month, INCLUDING those dated after currentDate. */
     entriesCount: number;
   };
   year: {
     year: number;
+    /** Whole year, all jobs: INCLUDES entries dated after currentDate (see currentMonth.hours). */
     hours: number;
+    /** Whole year, all jobs: INCLUDES entries dated after currentDate (see currentMonth.earnings). */
     earnings: number;
+    /** Minijob-only, up to and including currentDate (yearUsage); no future-dated entries. */
     minijobEarnings: number | null;
     minijobHours: number | null;
     /** B3-1/O4 for the whole year (see currentMonth). */
     multipleMinijobsWithMainJob: boolean;
     minijobActivityUncertain: boolean;
   };
-  /** Recent historical months, including zero-activity years, for period-aware questions. */
+  /**
+   * Recent historical months, including zero-activity years, for period-aware questions.
+   * All jobs, whole years. Earlier years are complete; the CURRENT year equals year.hours /
+   * year.earnings and therefore also includes entries dated after currentDate.
+   */
   historicalYears: Array<{
     year: number;
     hours: number;
     earnings: number;
   }>;
+  /**
+   * Months of the current year that have entries, all jobs, whole months. The current and
+   * later months INCLUDE entries dated after currentDate (N2: no Minijob split).
+   */
   months: Array<{
     year: number;
     month: number;
@@ -70,6 +100,10 @@ export type AssistantContextPayload = {
     earnings: number;
     entriesCount: number;
   }>;
+  /**
+   * Per job, over ALL periods (not split by month or year), INCLUDING entries dated after
+   * currentDate; not limit-relevant.
+   */
   jobs: Array<{
     id: string;
     name: string;
