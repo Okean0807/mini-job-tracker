@@ -1,8 +1,11 @@
 name: Vitest
 
 on:
+  # Every branch is checked on push, so feature branches get results before a PR exists.
   push:
-    branches: [main]
+    branches: ["**"]
+  # PRs from this repository are already covered by the push run on the same head
+  # commit (checks attach to the commit); only fork PRs need their own run (job `if`).
   pull_request:
     branches: [main]
 
@@ -12,6 +15,7 @@ concurrency:
 
 jobs:
   unit:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -20,5 +24,7 @@ jobs:
           bun-version: latest
       - name: Install
         run: bun install --frozen-lockfile
+      - name: Typecheck
+        run: bunx tsc --noEmit
       - name: Test
         run: bun run test
