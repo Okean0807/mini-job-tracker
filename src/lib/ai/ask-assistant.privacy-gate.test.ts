@@ -56,7 +56,10 @@ const VALID_CONTEXT = JSON.stringify({
 beforeEach(() => {
   vi.stubEnv("GEMINI_API_KEY", "test-gemini-key-not-real");
   vi.stubEnv("TAVILY_API_KEY", "test-tavily-key-not-real");
-  rpcSpy = vi.fn(async () => ({ data: [{ allowed: true, retry_after_seconds: 0 }], error: null }));
+  // Same shape as supabase-js: rpc() returns a builder; the handler passes its deadline via abortSignal().
+  rpcSpy = vi.fn(() => ({
+    abortSignal: async () => ({ data: [{ allowed: true, retry_after_seconds: 0 }], error: null }),
+  }));
   fetchSpy = vi.fn(async (url: unknown) => {
     const u = String(url);
     if (u.includes(TAVILY_HOST)) {
