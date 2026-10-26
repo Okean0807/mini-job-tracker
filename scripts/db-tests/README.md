@@ -51,3 +51,13 @@ RLS run additionally prints `RLS_ASSERT_OK relrowsecurity=true policies=0` and
 | 2026-10-15 | 17.6 | `f1_isolated_run.sh` (author run, t604) | see commit 08e3874 |
 | 2026-10-26 | 16.15 (Ubuntu) | `f1_isolated_run.sh` | 39 PASS / 0 FAIL, old bypass reproduced |
 | 2026-10-26 | 16.15 (Ubuntu) | F-1 + RLS + `rls_assert.sql` | 39 PASS / 0 FAIL, RLS on, 0 policies |
+| 2026-10-26 | 17.6 (server from npm `@embedded-postgres/linux-x64@17.6.0-beta.15`, psql 16.15) | `f1_isolated_run.sh` | 39 PASS / 0 FAIL, old bypass reproduced |
+| 2026-10-26 | 17.6 (same) | F-1 + RLS + `rls_assert.sql` | 39 PASS / 0 FAIL, RLS on, 0 policies |
+| 2026-10-26 | 17.6 (same) | fail-closed checks | RLS disabled → 1, extra policy → 1, `EXPECT_VERSION=17.5` → 3, root → 2 |
+
+## What the RLS run does and does not prove
+
+It proves that `consume_ai_rate_limit` (SECURITY DEFINER, owner `postgres`) keeps
+working with RLS enabled and no policies, and that RLS is really on. It does **not**
+prove the direct-table privileges of `anon`/`authenticated` (the owner bypasses RLS);
+that needs a separate test that queries `ai_rate_limits` as those roles.
