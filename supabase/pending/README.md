@@ -3,6 +3,12 @@
 Files here are NOT part of the Supabase migration chain and are NOT applied by
 Supabase Branching / `db push`.
 
+F-1 (`consume_ai_rate_limit` server clock) is no longer pending: it lives in
+`supabase/migrations/20261014100000_p2_ai_rate_limit_server_clock.sql` (same bytes
+as `release/v1.0-integration` @ 08e3874) and reaches production only when merged
+into `main`. Live state 2026-10-26 (read-only catalog check): NOT applied in
+production (function still windows on the caller's `p_now_ms`).
+
 - `20260930220000_p1_ai_rate_limit_rls.sql` — enables RLS on `public.ai_rate_limits`.
   Verified 2026-10-11 and re-verified 2026-10-12 (read-only catalog check, see docs/security/ai-rate-limits-rls-audit.md): NOT applied in production
   (`relrowsecurity = false`). Table privileges for anon/authenticated are revoked,

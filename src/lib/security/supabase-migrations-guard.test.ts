@@ -18,6 +18,9 @@ const EXPECTED = [
   "20260930192406_p1_ai_rate_limit.sql",
   "20260930192446_p1_security_definer_execute_hardening.sql",
   "20260930192515_p1_rls_performance_hardening.sql",
+  // F-1: same bytes as release/v1.0-integration @ 08e3874 (isolated PG 17.6 author
+  // DB run, t604); applied to production only when merged into main.
+  "20261014100000_p2_ai_rate_limit_server_clock.sql",
 ];
 
 // Pinned SHA-256 of migration file bytes.
@@ -41,6 +44,9 @@ const PINNED_SHA256: Record<string, string> = {
     "06cf41f6f3476f72a4aa3e915b31f09af7c8606535c24e63a475c9c571d18419",
   "20260930192515_p1_rls_performance_hardening.sql":
     "d9f99e9f075da2c14847105e73a13ae97be4a6b605703e440de818905a779ae5",
+  // the exact bytes exercised by scripts/db-tests/f1_isolated_run.sh (PG 17.6, t604)
+  "20261014100000_p2_ai_rate_limit_server_clock.sql":
+    "f6ea596997a98430c298916de8873809c3991a4875bab017b47f3566c30d30da",
 };
 
 const read = (f: string) => readFileSync(resolve(MIGRATIONS_DIR, f));
@@ -48,7 +54,7 @@ const read = (f: string) => readFileSync(resolve(MIGRATIONS_DIR, f));
 describe("supabase migrations guard (must mirror production history)", () => {
   const files = readdirSync(MIGRATIONS_DIR).sort();
 
-  it("contains exactly the 9 expected migration files", () => {
+  it("contains exactly the 10 expected migration files", () => {
     expect(files).toEqual(EXPECTED);
   });
 
