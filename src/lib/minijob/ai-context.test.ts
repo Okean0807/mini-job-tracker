@@ -240,6 +240,7 @@ describe("buildAssistantContext — forecast separates facts, plans, projections
       "daysElapsed",
       "daysInMonth",
       "enteredTotal",
+      "minijobEarningsEntered",
       "paceProjection",
       "paceProjectionBasisDays",
       "paceProjectionExplanation",

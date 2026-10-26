@@ -5,10 +5,11 @@
  */
 import { MONTHS_DE, isoDate, shiftsInMonth, shiftsInYear } from "./calc";
 import { employmentTypeOf, isMinijobEmployment, monthlyHoursLimitFor } from "./legal";
-import { monthlyHoursLimit, monthlyLimitOf, yearlyLimitOf } from "./limits";
+import { monthUsage, monthlyLimitOf, yearlyLimitOf } from "./limits";
 import { payrollTotals } from "./payroll";
+import { effectiveHourlyFromMonthly } from "./rate";
 import { makeResolver } from "./resolve";
-import type { AppData, ResolvedEmploymentType, WorkMode } from "./types";
+import type { AppData, Job, ResolvedEmploymentType, WorkMode } from "./types";
 import { jobsApplyMinijobLimit, primaryWorkMode } from "./work-mode";
 
 export type AssistantContextPayload = {
@@ -58,6 +59,11 @@ export type AssistantContextPayload = {
     /** Aufgelöste Beschäftigungsart; "unknown" = Altbestand fest, Art noch nicht gewählt. */
     employmentType: ResolvedEmploymentType;
     minijobLimitApplies: boolean;
+    /**
+     * Minijobs only: monthly limit ÷ this job's own hourly rate (informative).
+     * null for non-Minijobs, without a usable rate, or when no limit applies.
+     */
+    monthlyHoursLimit: number | null;
   }>;
   /**
    * Current-month forecast inputs, computed here so the model never has to
@@ -88,7 +94,13 @@ export type AssistantContextPayload = {
     /** Why paceProjection is null; null when a projection exists. */
     paceProjectionUnavailableReason:
       "no_recorded_entries" | "too_few_recorded_days" | "planned_entries_present" | null;
-    /** Monthly limit minus this month's entered earnings — headroom, not expected income. */
+    /**
+     * This month's entered Minijob earnings (all Minijobs combined, recorded +
+     * planned) as counted by the legal engine (limits.monthUsage). Earnings from
+     * Hauptbeschäftigung and other non-Minijob jobs are not included.
+     */
+    minijobEarningsEntered: number | null;
+    /** Monthly limit minus minijobEarningsEntered — headroom, not expected income. */
     remainingLimitAmount: number | null;
     daysElapsed: number;
     daysInMonth: number;
@@ -133,6 +145,7 @@ const FORECAST_RULE_TOO_FEW_DAYS =
 
 const FORECAST_RULES_COMMON = [
   "remainingLimitAmount ist nur die Obergrenze bis zur Minijob-Grenze, kein erwarteter Verdienst.",
+  "Für die Minijob-Grenze zählt nur forecast.minijobEarningsEntered (alle Minijobs zusammen). Verdienst aus Hauptbeschäftigung oder anderen Nicht-Minijobs (jobs[].minijobLimitApplies=false) zählt nicht zur Grenze, auch wenn er in recordedToDate enthalten ist.",
   "calendarWeekdaysRemaining sind nur verbleibende Kalender-Werktage, nicht die Arbeitstage des Nutzers. Die App kennt keinen Dienstplan (workScheduleKnown=false); stelle sie nie als Arbeitstage dar und rechne nicht mit ihnen.",
   "Erfinde keine Schichten, Stunden pro Tag, Arbeitstage oder Verdienste.",
   "Eine Beispielrechnung nur mit Stunden, die der Nutzer selbst genannt hat: Stunden × settings.hourlyRate, gekennzeichnet als 'Beispiel – keine Prognose'.",
@@ -170,9 +183,36 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
   const limitApplies = jobsApplyMinijobLimit(data.jobs);
   const workMode = primaryWorkMode(data.jobs, data.settings.activeJobId);
   const legalMonthly = limitApplies ? monthlyLimitOf(data.settings, year, month) : null;
-  const autoHours = limitApplies
-    ? monthlyHoursLimit(data.settings, year, month) ||
-      monthlyHoursLimitFor(currentDate, hourlyRate)
+  // Hours limits come from each Minijob's effective rate; settings.defaultRate is
+  // only used where the job itself has no rate (as in payroll). Several Minijobs with different
+  // rates have no shared hours limit — the combined earnings limit is what counts.
+  const minijobHoursLimit = (job: Job): number | null => {
+    if (!legalMonthly || !isMinijobEmployment(job)) return null;
+    // Same fallback as the payroll/limits engine: job rate, monthly-derived, default.
+    const rate =
+      typeof job.rate === "number"
+        ? job.rate
+        : (effectiveHourlyFromMonthly(job) ?? data.settings.defaultRate);
+    return rate && rate > 0 ? round2(legalMonthly / rate) : null;
+  };
+  const activeMinijobs = data.jobs.filter((j) => !j.archived && isMinijobEmployment(j));
+  const minijobHoursLimits = new Set(
+    activeMinijobs.map((j) => minijobHoursLimit(j)).filter((h): h is number => h !== null),
+  );
+  const manualHours =
+    !data.settings.hoursLimitAuto && data.settings.hoursLimitMonthly > 0
+      ? data.settings.hoursLimitMonthly
+      : null;
+  const autoHours = !limitApplies
+    ? null
+    : (manualHours ??
+      (activeMinijobs.length === 0
+        ? monthlyHoursLimitFor(currentDate, hourlyRate) // onboarding: no jobs yet
+        : minijobHoursLimits.size === 1
+          ? [...minijobHoursLimits][0]!
+          : null));
+  const minijobMonth = limitApplies
+    ? monthUsage(data.shifts, resolve, data.settings, year, month, currentDate)
     : null;
   const annual = limitApplies ? yearlyLimitOf(data.settings, year) : null;
 
@@ -252,6 +292,7 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
       earnings: Number(totals.earnings.toFixed(2)),
       employmentType: employmentTypeOf(job),
       minijobLimitApplies: isMinijobEmployment(job),
+      monthlyHoursLimit: minijobHoursLimit(job),
     };
   });
 
@@ -302,8 +343,11 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
         : null,
       paceProjectionBasisDays: recordedDays,
       paceProjectionUnavailableReason,
+      minijobEarningsEntered: minijobMonth ? round2(minijobMonth.projectedEarnings) : null,
       remainingLimitAmount:
-        legalMonthly == null ? null : round2(Math.max(0, legalMonthly - currentTotals.earnings)),
+        legalMonthly == null || !minijobMonth
+          ? null
+          : round2(Math.max(0, legalMonthly - minijobMonth.projectedEarnings)),
       daysElapsed,
       daysInMonth,
       calendarWeekdaysRemaining: remainingWeekdaysAfter(now, daysInMonth),
