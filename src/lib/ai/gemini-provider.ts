@@ -51,6 +51,21 @@ export function buildGenerateContentUrl(model: string): string {
   return `${GEMINI_API_BASE}/${encodeURIComponent(id)}:generateContent`;
 }
 
+/**
+ * Gemini 3.x models think by default (MEDIUM/HIGH), which can push a single
+ * generateContent call past the 30 s server budget. `thinkingLevel: "low"` is the
+ * documented low-latency setting for that family. Other model families get no
+ * thinkingConfig, so their request stays exactly as before (and cannot 400 on an
+ * unsupported field).
+ */
+export function buildGenerationConfig(model: string): Record<string, unknown> | undefined {
+  const id = normalizeGeminiModelId(model);
+  if (/^gemini-3([.-]|$)/.test(id)) {
+    return { thinkingConfig: { thinkingLevel: "low" } };
+  }
+  return undefined;
+}
+
 /** Single config helper — never log or return the API key. */
 export function resolveGeminiConfig(env: Record<string, string | undefined> = process.env): {
   apiKey: string | undefined;
@@ -247,6 +262,8 @@ export class GeminiProvider implements AIProvider {
         },
       ],
     };
+    const generationConfig = buildGenerationConfig(model);
+    if (generationConfig) body["generationConfig"] = generationConfig;
 
     let response: Response;
     try {

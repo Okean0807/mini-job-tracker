@@ -4,6 +4,7 @@ import { AiGuardError } from "@/lib/ai-guard";
 
 import {
   buildGenerateContentUrl,
+  buildGenerationConfig,
   extractSourcesFromGrounding,
   GeminiProvider,
   GROUNDING_UNAVAILABLE_NOTE,
@@ -447,5 +448,85 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
       code: "unavailable",
       message: expect.stringMatching(/rechtzeitig/i),
     });
+  });
+});
+
+describe("buildGenerationConfig (bounded thinking latency)", () => {
+  it("Gemini 3.x models get thinkingLevel low", () => {
+    for (const model of [
+      "gemini-3.6-flash",
+      "gemini-3.5-flash-lite",
+      "models/gemini-3-pro",
+      '"gemini-3.6-flash"',
+    ]) {
+      expect(buildGenerationConfig(model), model).toEqual({
+        thinkingConfig: { thinkingLevel: "low" },
+      });
+    }
+  });
+
+  it("deprecated 2.5 ids are remapped to 3.x and therefore also bounded", () => {
+    expect(buildGenerationConfig("gemini-2.5-flash")).toEqual({
+      thinkingConfig: { thinkingLevel: "low" },
+    });
+  });
+
+  it("other families get no generationConfig (request unchanged, no unsupported field)", () => {
+    for (const model of ["gemini-2.5-pro", "gemini-2.0-flash", "gemini-30-x", "custom-model"]) {
+      expect(buildGenerationConfig(model), model).toBeUndefined();
+    }
+  });
+});
+
+describe("GeminiProvider.ask request body (thinking config)", () => {
+  const originalKey = process.env["GEMINI_API_KEY"];
+  const originalModel = process.env["GEMINI_MODEL"];
+  const okResponse = () =>
+    new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "OK" }] } }] }), {
+      status: 200,
+    });
+
+  beforeEach(() => {
+    process.env["GEMINI_API_KEY"] = "test-key-not-real";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(async () => okResponse()),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    if (originalKey === undefined) delete process.env["GEMINI_API_KEY"];
+    else process.env["GEMINI_API_KEY"] = originalKey;
+    if (originalModel === undefined) delete process.env["GEMINI_MODEL"];
+    else process.env["GEMINI_MODEL"] = originalModel;
+  });
+
+  const sentBody = () => {
+    const [, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
+    return JSON.parse(String(init.body)) as Record<string, unknown>;
+  };
+
+  it("default model sends thinkingLevel low and keeps prompt structure", async () => {
+    delete process.env["GEMINI_MODEL"];
+    const result = await new GeminiProvider().ask({
+      question: "Wie viele Stunden?",
+      context: "{}",
+    });
+    expect(result.answer).toBe("OK");
+    const body = sentBody();
+    expect(body["generationConfig"]).toEqual({ thinkingConfig: { thinkingLevel: "low" } });
+    expect(JSON.stringify(body)).not.toMatch(/thinkingBudget/);
+    expect(body["contents"]).toBeDefined();
+    expect(body["systemInstruction"]).toBeDefined();
+  });
+
+  it("non-3.x model sends no generationConfig", async () => {
+    process.env["GEMINI_MODEL"] = "gemini-2.5-pro";
+    await new GeminiProvider().ask({ question: "Hallo?", context: "{}" });
+    expect(sentBody()).not.toHaveProperty("generationConfig");
   });
 });
