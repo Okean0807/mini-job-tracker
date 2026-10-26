@@ -5,7 +5,10 @@ import { formatEuro, formatHours, isoDate, shiftHours } from "@/lib/minijob/calc
 import { payPeriods } from "@/lib/minijob/payday";
 import { jobsPlannedOn } from "@/lib/minijob/schedule";
 import { limitAlertLevel } from "@/lib/minijob/limit-alert";
-import { jobsNeedingEmploymentType } from "@/lib/minijob/legal/employment";
+import {
+  jobsNeedingEmploymentType,
+  multipleMinijobsBesideMainJob,
+} from "@/lib/minijob/legal/employment";
 import { jobsApplyMinijobLimit } from "@/lib/minijob/work-mode";
 import { findWageViolations } from "@/lib/minijob/wage-compliance";
 import type { Job, Payment, Settings, Shift } from "@/lib/minijob/types";
@@ -42,6 +45,9 @@ export function TodayImportantCard({
   const nearLimit =
     limitAlertLevel(jobsApplyMinijobLimit(jobs), monthUsage.share, yearUsage.share) !== null;
   const needsEmploymentType = jobsNeedingEmploymentType(jobs);
+  // Hinweis, keine Rechtsfolge: die Grenzberechnung bleibt unverändert.
+  const multiMinijobs = multipleMinijobsBesideMainJob(jobs, today);
+  const jobName = (id: string) => jobs.find((j) => j.id === id)?.name ?? id;
   const monthStart = `${today.slice(0, 7)}-01`;
   const wageViolations = findWageViolations(shifts, jobs, settings.defaultRate, (s) => s.date >= monthStart && s.date <= today);
   const hasNoJob = jobs.length === 0;
@@ -54,7 +60,8 @@ export function TodayImportantCard({
     overdue <= 0.005 &&
     !hasPlannedToday &&
     wageViolations.length === 0 &&
-    needsEmploymentType.length === 0;
+    needsEmploymentType.length === 0 &&
+    multiMinijobs.status === "none";
 
   return (
     <section className="col-span-2 rounded-2xl border bg-card p-4 shadow-card" aria-labelledby="today-important-title">
@@ -80,6 +87,20 @@ export function TodayImportantCard({
             title={t("dash.todayEmploymentType", {
               names: needsEmploymentType.map((j) => j.name).join(", "),
             })}
+            href="/jobs"
+          />
+        ) : null}
+        {multiMinijobs.status !== "none" ? (
+          <ActionRow
+            icon={<AlertTriangle className="size-4" />}
+            title={
+              multiMinijobs.status === "order_known"
+                ? t("dash.todayMultiMinijobsKnown", {
+                    first: jobName(multiMinijobs.firstJobId),
+                    further: multiMinijobs.furtherJobIds.map(jobName).join(", "),
+                  })
+                : t("dash.todayMultiMinijobsUnknown")
+            }
             href="/jobs"
           />
         ) : null}

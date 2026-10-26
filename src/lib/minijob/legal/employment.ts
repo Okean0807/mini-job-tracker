@@ -62,3 +62,42 @@ export function isEligibleMinijobShift(shift: Shift, job: Job | undefined): bool
 export function minijobJobs(jobs: Job[]): Job[] {
   return jobs.filter((job) => isMinijobEmployment(job));
 }
+
+/**
+ * Hinweis „mehrere Minijobs neben einer Hauptbeschäftigung“.
+ *
+ * Neben einer versicherungspflichtigen Hauptbeschäftigung bleibt nach § 8
+ * Abs. 2 SGB IV nur EIN Minijob geringfügig – nach Auskunft der
+ * Minijob-Zentrale der zeitlich zuerst aufgenommene; weitere Minijobs werden
+ * mit der Hauptbeschäftigung zusammengerechnet. Die Grenzberechnung der App
+ * bildet das bewusst NICHT ab (sie rechnet alle Minijobs gemeinsam). Diese
+ * Funktion liefert nur einen vorsichtigen Hinweis, keine Rechtsfolge:
+ * - "order_known": alle beteiligten Minijobs haben ein Beginndatum und der
+ *   früheste ist eindeutig → „voraussichtlich“ erster Minijob benennbar;
+ * - "order_unknown": Beginndaten fehlen oder sind gleich → Reihenfolge offen.
+ */
+export type MultipleMinijobsNotice =
+  | { status: "none" }
+  | { status: "order_known"; firstJobId: string; furtherJobIds: string[] }
+  | { status: "order_unknown"; jobIds: string[] };
+
+export function multipleMinijobsBesideMainJob(jobs: Job[], date: string): MultipleMinijobsNotice {
+  const active = jobs.filter((job) => !job.archived && jobActiveOn(job, date));
+  const hasMainJob = active.some((job) => employmentTypeOf(job) === "hauptbeschaeftigung");
+  const minijobs = active.filter((job) => isMinijobEmployment(job));
+  if (!hasMainJob || minijobs.length < 2) return { status: "none" };
+
+  const starts = minijobs.map((job) => job.startDate);
+  if (starts.some((start) => !start)) {
+    return { status: "order_unknown", jobIds: minijobs.map((job) => job.id) };
+  }
+  const sorted = [...minijobs].sort((a, b) => a.startDate!.localeCompare(b.startDate!));
+  if (sorted[0]!.startDate === sorted[1]!.startDate) {
+    return { status: "order_unknown", jobIds: minijobs.map((job) => job.id) };
+  }
+  return {
+    status: "order_known",
+    firstJobId: sorted[0]!.id,
+    furtherJobIds: sorted.slice(1).map((job) => job.id),
+  };
+}

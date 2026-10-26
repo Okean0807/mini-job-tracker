@@ -5,7 +5,7 @@ import { LANGUAGES, detectLanguage } from "@/lib/i18n/core";
 import { normalizeDashboard } from "./dashboard";
 import { isPlainRecord } from "./payload";
 import { isValidPin, withConsistentPinSettings } from "./pin";
-import { KNOWN_LEGAL_MONTHLY_LIMITS } from "./legal";
+import { KNOWN_LEGAL_MONTHLY_LIMITS, findRuleVersion } from "./legal";
 import {
   GUEST_SCOPE,
   ownerOfScope,
@@ -102,6 +102,16 @@ function setActiveScopeInternal(scope: StorageScope): void {
 
 export function dataStorageKey(scope: StorageScope = getActiveScope()): string {
   return scopedKey(STORAGE_KEY_BASE, scope);
+}
+
+/**
+ * Settings for a NEW data set (first start / empty scope): the default hourly
+ * rate is the statutory minimum wage of the rule version valid on `now`.
+ * Existing settings are never passed through here; stored values win.
+ */
+export function newSettingsDefaults(now: Date = new Date()): Settings {
+  const minimumWage = findRuleVersion(now)?.minimumWage;
+  return minimumWage ? { ...DEFAULT_SETTINGS, defaultRate: minimumWage } : { ...DEFAULT_SETTINGS };
 }
 
 export const EMPTY_DATA: AppData = {
@@ -310,7 +320,7 @@ function loadScopeState(
     return next !== stored ? { data: next, filled: true } : { data: stored, filled: false };
   }
   return {
-    data: { ...EMPTY_DATA, settings: { ...EMPTY_DATA.settings, language: languageSeed } },
+    data: { ...EMPTY_DATA, settings: { ...newSettingsDefaults(), language: languageSeed } },
     filled: false,
   };
 }
@@ -330,7 +340,7 @@ export function loadFromStorage() {
     return;
   }
   // Erststart: Sprache aus dem Browser übernehmen (später manuell änderbar)
-  state = { ...EMPTY_DATA, settings: { ...EMPTY_DATA.settings, language: detectLanguage() } };
+  state = { ...EMPTY_DATA, settings: { ...newSettingsDefaults(), language: detectLanguage() } };
   emit(false);
 }
 

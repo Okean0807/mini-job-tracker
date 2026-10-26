@@ -3,6 +3,7 @@ import {
   findRuleVersion,
   minijobLimitFromWage,
   isEligibleMinijobShift,
+  isMinijobEmployment,
 } from "./legal";
 import { effectiveHourlyFromMonthly } from "./rate";
 import { payrollTotals } from "./payroll";
@@ -97,6 +98,41 @@ export function autoHoursLimit(settings: Settings, year?: number, month?: number
   const limit = monthlyLimitOf(settings, year, month);
   if (!rate || rate <= 0 || !limit) return 0;
   return limit / rate;
+}
+
+export interface MinijobHoursLimit {
+  jobId: string;
+  name: string;
+  /** Effektiver Stundensatz des Jobs (Job-Satz, aus Monatsgehalt, sonst Standardsatz). */
+  rate: number;
+  hours: number;
+}
+
+/**
+ * Informative Stundengrenze je aktivem Minijob: Monatsgrenze ÷ eigener Satz.
+ * Gleiche Satz-Reihenfolge wie die Lohnberechnung; `settings.defaultRate` nur,
+ * wenn der Job keinen eigenen Satz hat. Nicht-Minijobs erhalten keinen Eintrag.
+ * Ein manueller Stundenwert (hoursLimitAuto=false) wird hier bewusst ignoriert.
+ */
+export function minijobHoursLimits(
+  jobs: Job[],
+  settings: Settings,
+  year?: number,
+  month?: number,
+): MinijobHoursLimit[] {
+  const limit = monthlyLimitOf(settings, year, month);
+  if (!limit) return [];
+  const out: MinijobHoursLimit[] = [];
+  for (const job of jobs) {
+    if (job.archived || !isMinijobEmployment(job)) continue;
+    const rate =
+      typeof job.rate === "number"
+        ? job.rate
+        : (effectiveHourlyFromMonthly(job) ?? settings.defaultRate);
+    if (!(rate > 0)) continue;
+    out.push({ jobId: job.id, name: job.name, rate, hours: limit / rate });
+  }
+  return out;
 }
 
 /**

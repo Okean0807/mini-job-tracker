@@ -5,9 +5,8 @@
  */
 import { MONTHS_DE, isoDate, shiftsInMonth, shiftsInYear } from "./calc";
 import { employmentTypeOf, isMinijobEmployment, monthlyHoursLimitFor } from "./legal";
-import { monthUsage, monthlyLimitOf, yearlyLimitOf } from "./limits";
+import { minijobHoursLimits, monthUsage, monthlyLimitOf, yearlyLimitOf } from "./limits";
 import { payrollTotals } from "./payroll";
-import { effectiveHourlyFromMonthly } from "./rate";
 import { makeResolver } from "./resolve";
 import type { AppData, Job, ResolvedEmploymentType, WorkMode } from "./types";
 import { jobsApplyMinijobLimit, primaryWorkMode } from "./work-mode";
@@ -183,22 +182,18 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
   const limitApplies = jobsApplyMinijobLimit(data.jobs);
   const workMode = primaryWorkMode(data.jobs, data.settings.activeJobId);
   const legalMonthly = limitApplies ? monthlyLimitOf(data.settings, year, month) : null;
-  // Hours limits come from each Minijob's effective rate; settings.defaultRate is
-  // only used where the job itself has no rate (as in payroll). Several Minijobs with different
-  // rates have no shared hours limit — the combined earnings limit is what counts.
-  const minijobHoursLimit = (job: Job): number | null => {
-    if (!legalMonthly || !isMinijobEmployment(job)) return null;
-    // Same fallback as the payroll/limits engine: job rate, monthly-derived, default.
-    const rate =
-      typeof job.rate === "number"
-        ? job.rate
-        : (effectiveHourlyFromMonthly(job) ?? data.settings.defaultRate);
-    return rate && rate > 0 ? round2(legalMonthly / rate) : null;
-  };
-  const activeMinijobs = data.jobs.filter((j) => !j.archived && isMinijobEmployment(j));
-  const minijobHoursLimits = new Set(
-    activeMinijobs.map((j) => minijobHoursLimit(j)).filter((h): h is number => h !== null),
+  // Hours limits come from each Minijob's effective rate (limits.minijobHoursLimits);
+  // several Minijobs with different rates have no shared hours limit — the
+  // combined earnings limit is what counts.
+  const perJobHours = new Map(
+    (limitApplies ? minijobHoursLimits(data.jobs, data.settings, year, month) : []).map((h) => [
+      h.jobId,
+      round2(h.hours),
+    ]),
   );
+  const minijobHoursLimit = (job: Job): number | null => perJobHours.get(job.id) ?? null;
+  const activeMinijobs = data.jobs.filter((j) => !j.archived && isMinijobEmployment(j));
+  const distinctHours = new Set(perJobHours.values());
   const manualHours =
     !data.settings.hoursLimitAuto && data.settings.hoursLimitMonthly > 0
       ? data.settings.hoursLimitMonthly
@@ -208,8 +203,8 @@ export function buildAssistantContext(data: AppData, now: Date = new Date()): st
     : (manualHours ??
       (activeMinijobs.length === 0
         ? monthlyHoursLimitFor(currentDate, hourlyRate) // onboarding: no jobs yet
-        : minijobHoursLimits.size === 1
-          ? [...minijobHoursLimits][0]!
+        : distinctHours.size === 1
+          ? [...distinctHours][0]!
           : null));
   const minijobMonth = limitApplies
     ? monthUsage(data.shifts, resolve, data.settings, year, month, currentDate)

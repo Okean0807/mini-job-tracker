@@ -132,6 +132,8 @@ export {
   minijobJobs,
   needsEmploymentTypeReview,
   jobsNeedingEmploymentType,
+  multipleMinijobsBesideMainJob,
+  type MultipleMinijobsNotice,
 } from "./employment";
 
 export {

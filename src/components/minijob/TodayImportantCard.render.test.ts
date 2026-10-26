@@ -122,3 +122,35 @@ describe("TodayImportantCard – Beschäftigungsart / Grenze", () => {
     expect(render(main, [], 95)).not.toContain(t("dash.todayLimit", { percent: 95 }));
   });
 });
+
+describe("TodayImportantCard – mehrere Minijobs neben Hauptbeschäftigung (nur Hinweis)", () => {
+  const hb = job({ id: "hb", name: "Büro", employmentType: "hauptbeschaeftigung" });
+  const mjA = job({ id: "a", name: "Café", employmentType: "minijob", startDate: "2024-03-01" });
+  const mjB = job({ id: "b", name: "Kino", employmentType: "minijob", startDate: "2025-06-01" });
+  const known = (first: string, further: string) =>
+    t("dash.todayMultiMinijobsKnown", { first, further });
+
+  it("benennt den voraussichtlich ersten Minijob, wenn die Beginndaten eindeutig sind", () => {
+    const text = render([hb, mjB, mjA]);
+    expect(text).toContain(known("Café", "Kino"));
+    expect(text).not.toContain(t("dash.todayMultiMinijobsUnknown"));
+  });
+
+  it("ohne eindeutige Beginndaten: Reihenfolge offen, kein Minijob wird benannt", () => {
+    const text = render([hb, mjA, job({ id: "b", name: "Kino", employmentType: "minijob" })]);
+    expect(text).toContain(t("dash.todayMultiMinijobsUnknown"));
+    expect(text).not.toContain("voraussichtlich");
+  });
+
+  it("kein Hinweis bei nur einem Minijob neben der Hauptbeschäftigung", () => {
+    const text = render([hb, mjA]);
+    expect(text).not.toContain(t("dash.todayMultiMinijobsUnknown"));
+    expect(text).not.toContain(known("Café", ""));
+  });
+
+  it("kein Hinweis bei mehreren Minijobs ohne Hauptbeschäftigung", () => {
+    const text = render([mjA, mjB]);
+    expect(text).not.toContain(t("dash.todayMultiMinijobsUnknown"));
+    expect(text).not.toContain(known("Café", "Kino"));
+  });
+});
