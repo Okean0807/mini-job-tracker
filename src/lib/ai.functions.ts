@@ -6,7 +6,7 @@ import {
   ASK_GATEWAY_TIMEOUT_MS,
   isAbortOrTimeoutError,
 } from "@/lib/ai-ask";
-import { AiGuardError, parseAskAssistantInput } from "@/lib/ai-guard";
+import { AiGuardError, parseAskAssistantInput, safeAiDiagFields } from "@/lib/ai-guard";
 import { type PrivacyGateCode, checkAiPrivacy } from "@/lib/ai/health-privacy-gate";
 import { createDefaultProvider } from "@/lib/ai/provider";
 import type { AIProvider, AskRequest, AskResponse } from "@/lib/ai/types";
@@ -28,12 +28,33 @@ export type AskAssistantResult =
 
 export type AskDiagStage = "rate_limit" | "provider";
 
+/**
+ * Closed list of `outcome` values that may appear in a diagnostics line: the AiGuardError codes,
+ * the three fixed failure outcomes and the degraded markers. Nothing derived from provider or
+ * user data can reach the log through this field.
+ */
+export const ASK_OUTCOMES = [
+  "invalid_payload",
+  "payload_too_large",
+  "rate_limited",
+  "unavailable",
+  "timeout",
+  "rpc_error",
+  "error",
+  "truncated",
+  "unexpected_finish",
+] as const;
+export type AskOutcome = (typeof ASK_OUTCOMES)[number];
+
 export type AskAssistantDeps = {
   createProvider?: () => AIProvider;
   /** One deadline for the whole server-side ask (rate-limit RPC + provider). */
   createDeadline?: () => AbortSignal;
   now?: () => number;
-  /** Receives one privacy-safe line per failed ask: stage, outcome, elapsed ms only. */
+  /**
+   * Receives one privacy-safe line per failed ask. Allowlisted fields only: event, stage,
+   * outcome, cause, httpStatus, providerStatus, elapsedMs.
+   */
   log?: (line: string) => void;
 };
 
@@ -67,20 +88,35 @@ export async function runAskAssistant(
   const signal = deps.createDeadline?.() ?? AbortSignal.timeout(ASK_GATEWAY_TIMEOUT_MS);
   const log = deps.log ?? defaultLog;
 
-  // Only fixed identifiers and a duration — never the question, context, answer, user id or error text.
-  const fail = (stage: AskDiagStage, outcome: string, error: AiGuardError): AiGuardError => {
+  // Only fixed identifiers, allowlisted diagnostics and a duration — never the question, context,
+  // answer, user id, provider response body or error text. A failed ask is logged only by
+  // fail() and a degraded success only by the success branch below, so one request produces at
+  // most one event.
+  const emit = (
+    event: "ai.ask.failed" | "ai.ask.degraded",
+    stage: AskDiagStage,
+    outcome: AskOutcome,
+    diagSource: unknown,
+  ): void => {
     try {
+      const diag = safeAiDiagFields(diagSource);
       log(
         JSON.stringify({
-          event: "ai.ask.failed",
+          event,
           stage,
-          outcome,
+          outcome: (ASK_OUTCOMES as readonly string[]).includes(outcome) ? outcome : "error",
+          ...(diag.cause ? { cause: diag.cause } : {}),
+          ...(diag.httpStatus !== undefined ? { httpStatus: diag.httpStatus } : {}),
+          ...(diag.providerStatus ? { providerStatus: diag.providerStatus } : {}),
           elapsedMs: Math.max(0, Math.round(now() - startedAt)),
         }),
       );
     } catch {
       // Diagnostics must never change the response.
     }
+  };
+  const fail = (stage: AskDiagStage, outcome: AskOutcome, error: AiGuardError): AiGuardError => {
+    emit("ai.ask.failed", stage, outcome, (error as { diag?: unknown }).diag);
     return error;
   };
 
@@ -93,14 +129,18 @@ export async function runAskAssistant(
       throw fail(
         "rate_limit",
         "timeout",
-        new AiGuardError("unavailable", ASK_GATEWAY_TIMEOUT_MESSAGE),
+        new AiGuardError("unavailable", ASK_GATEWAY_TIMEOUT_MESSAGE, {
+          cause: "rate_limit_timeout",
+        }),
       );
     }
     // Fail closed when the security control cannot be evaluated.
     throw fail(
       "rate_limit",
       "rpc_error",
-      new AiGuardError("unavailable", "Die KI ist vorübergehend nicht verfügbar."),
+      new AiGuardError("unavailable", "Die KI ist vorübergehend nicht verfügbar.", {
+        cause: "rate_limit_rpc_error",
+      }),
     );
   }
   const rateRows = rate as RateLimitRow[] | RateLimitRow | null | undefined;
@@ -122,6 +162,14 @@ export async function runAskAssistant(
 
   try {
     const result = await provider.ask(req, { signal });
+    if (result.degraded) {
+      // The user-visible wording is already part of `result.answer`; this is diagnostics only.
+      emit("ai.ask.degraded", "provider", result.degraded, {
+        cause:
+          result.degraded === "truncated" ? "provider_truncated" : "provider_unexpected_finish",
+        httpStatus: 200,
+      });
+    }
     if (result.sources && result.sources.length > 0) {
       return { answer: result.answer, sources: result.sources };
     }
@@ -138,13 +186,17 @@ export async function runAskAssistant(
       throw fail(
         "provider",
         "timeout",
-        new AiGuardError("unavailable", ASK_GATEWAY_TIMEOUT_MESSAGE),
+        new AiGuardError("unavailable", ASK_GATEWAY_TIMEOUT_MESSAGE, {
+          cause: "provider_timeout",
+        }),
       );
     }
     throw fail(
       "provider",
       "error",
-      new AiGuardError("unavailable", "Die KI konnte nicht antworten."),
+      new AiGuardError("unavailable", "Die KI konnte nicht antworten.", {
+        cause: "provider_error",
+      }),
     );
   }
 }

@@ -137,7 +137,13 @@ describe("runAskAssistant — one server deadline covers rate limit + provider",
     });
     expect(p.ask).not.toHaveBeenCalled();
     expect(h.lines.map((l) => JSON.parse(l))).toEqual([
-      { event: "ai.ask.failed", stage: "rate_limit", outcome: "timeout", elapsedMs: 30_000 },
+      {
+        event: "ai.ask.failed",
+        stage: "rate_limit",
+        outcome: "timeout",
+        cause: "rate_limit_timeout",
+        elapsedMs: 30_000,
+      },
     ]);
   });
 
@@ -211,7 +217,13 @@ describe("runAskAssistant — one server deadline covers rate limit + provider",
       ),
     ).rejects.toMatchObject({ code: "unavailable", message: ASK_GATEWAY_TIMEOUT_MESSAGE });
     expect(h.lines.map((l) => JSON.parse(l))).toEqual([
-      { event: "ai.ask.failed", stage: "provider", outcome: "timeout", elapsedMs: 29_500 },
+      {
+        event: "ai.ask.failed",
+        stage: "provider",
+        outcome: "timeout",
+        cause: "provider_timeout",
+        elapsedMs: 29_500,
+      },
     ]);
   });
 
@@ -252,12 +264,14 @@ describe("runAskAssistant — one server deadline covers rate limit + provider",
     ).rejects.toMatchObject({ code: "unavailable", message: "Die KI konnte nicht antworten." });
     expect(h.lines).toHaveLength(1);
     const line = h.lines[0]!;
-    expect(Object.keys(JSON.parse(line)).sort()).toEqual([
-      "elapsedMs",
-      "event",
-      "outcome",
-      "stage",
-    ]);
+    // `cause` is the only addition: a closed-set value, never error text.
+    expect(JSON.parse(line)).toEqual({
+      event: "ai.ask.failed",
+      stage: "provider",
+      outcome: "error",
+      cause: "provider_error",
+      elapsedMs: expect.any(Number),
+    });
     for (const secret of ["sk-SECRET123", USER_ID, QUESTION, CONTEXT, "42", "upstream"]) {
       expect(line).not.toContain(secret);
     }

@@ -31,14 +31,101 @@ export type AskAssistantInput = z.infer<typeof askAssistantSchema>;
 
 export type AiGuardCode = "invalid_payload" | "payload_too_large" | "rate_limited" | "unavailable";
 
+/**
+ * Closed set of normalised failure causes for server-side diagnostics. Never shown to
+ * users; written to the structured failure log only (see ai.functions.ts).
+ */
+export const AI_FAILURE_CAUSES = [
+  "app_auth",
+  "provider_auth",
+  "provider_forbidden",
+  "provider_quota",
+  "provider_model_not_found",
+  "provider_rate_limited",
+  "provider_bad_request",
+  "provider_server_error",
+  "provider_http_error",
+  "provider_timeout",
+  "provider_network",
+  "provider_parse_error",
+  "provider_empty",
+  "provider_blocked",
+  "provider_other_finish",
+  "provider_truncated",
+  "provider_unexpected_finish",
+  "provider_error",
+  "no_api_key",
+  "rate_limit_rpc_error",
+  "rate_limit_timeout",
+] as const;
+export type AiFailureCause = (typeof AI_FAILURE_CAUSES)[number];
+
+/** Provider `error.status` tokens that may be logged; anything else is reported as OTHER. */
+export const AI_PROVIDER_STATUSES = [
+  "INVALID_ARGUMENT",
+  "FAILED_PRECONDITION",
+  "UNAUTHENTICATED",
+  "PERMISSION_DENIED",
+  "NOT_FOUND",
+  "RESOURCE_EXHAUSTED",
+  "INTERNAL",
+  "UNAVAILABLE",
+  "DEADLINE_EXCEEDED",
+  "OTHER",
+] as const;
+export type AiProviderStatus = (typeof AI_PROVIDER_STATUSES)[number];
+
+/** Sanitised diagnostics carried by an error; every field is optional and allowlisted. */
+export type AiErrorDiag = {
+  cause: AiFailureCause;
+  httpStatus?: number;
+  providerStatus?: AiProviderStatus;
+};
+
+/**
+ * Re-validates diagnostics against the allowlists (defence in depth: also protects the log
+ * against duck-typed errors from another bundle). Unknown or malformed fields are dropped.
+ */
+export function safeAiDiagFields(diag: unknown): {
+  cause?: AiFailureCause;
+  httpStatus?: number;
+  providerStatus?: AiProviderStatus;
+} {
+  if (!diag || typeof diag !== "object") return {};
+  const d = diag as { cause?: unknown; httpStatus?: unknown; providerStatus?: unknown };
+  const out: { cause?: AiFailureCause; httpStatus?: number; providerStatus?: AiProviderStatus } =
+    {};
+  if (typeof d.cause === "string" && (AI_FAILURE_CAUSES as readonly string[]).includes(d.cause)) {
+    out.cause = d.cause as AiFailureCause;
+  }
+  if (
+    typeof d.httpStatus === "number" &&
+    Number.isInteger(d.httpStatus) &&
+    d.httpStatus >= 100 &&
+    d.httpStatus <= 599
+  ) {
+    out.httpStatus = d.httpStatus;
+  }
+  if (
+    typeof d.providerStatus === "string" &&
+    (AI_PROVIDER_STATUSES as readonly string[]).includes(d.providerStatus)
+  ) {
+    out.providerStatus = d.providerStatus as AiProviderStatus;
+  }
+  return out;
+}
+
 /** Fehler mit bewusst generischer, nutzersichtbarer Meldung (keine Stacks/Secrets). */
 export class AiGuardError extends Error {
   readonly code: AiGuardCode;
+  /** Server-side diagnostics only; never part of the user-visible message. */
+  readonly diag?: AiErrorDiag;
 
-  constructor(code: AiGuardCode, message: string) {
+  constructor(code: AiGuardCode, message: string, diag?: AiErrorDiag) {
     super(message);
     this.name = "AiGuardError";
     this.code = code;
+    if (diag) this.diag = diag;
   }
 }
 

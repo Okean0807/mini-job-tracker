@@ -8,6 +8,37 @@ import { resolveSupabasePublicEnv } from './public-env'
 
 
 
+/** Closed set of reasons for the sanitised auth-failure log line (never tokens, headers or user ids). */
+export type AuthFailureReason =
+  | "no_request"
+  | "no_header"
+  | "bad_scheme"
+  | "no_token"
+  | "bad_token_format"
+  | "claims_invalid"
+  | "no_sub";
+
+/**
+ * Logs one allowlisted event, then returns the unchanged error to throw. Logging can never
+ * replace or hide the original error.
+ */
+function unauthorized(reason: AuthFailureReason, message: string): Error {
+  try {
+    console.warn(
+      JSON.stringify({
+        event: "ai.auth.failed",
+        stage: "app_auth",
+        outcome: "unauthorized",
+        cause: "app_auth",
+        reason,
+      }),
+    );
+  } catch {
+    // Diagnostics must never change the response.
+  }
+  return new Error(message);
+}
+
 function isNewSupabaseApiKey(value: string): boolean {
   return value.startsWith('sb_publishable_') || value.startsWith('sb_secret_');
 }
@@ -41,26 +72,26 @@ export const requireSupabaseAuth = createMiddleware({ type: 'function' }).server
     const request = getRequest();
 
     if (!request?.headers) {
-      throw new Error('Unauthorized: No request headers available');
+      throw unauthorized("no_request", "Unauthorized: No request headers available");
     }
 
     const authHeader = request.headers.get('authorization');
 
     if (!authHeader) {
-      throw new Error('Unauthorized: No authorization header provided');
+      throw unauthorized("no_header", "Unauthorized: No authorization header provided");
     }
 
     if (!authHeader.startsWith('Bearer ')) {
-      throw new Error('Unauthorized: Only Bearer tokens are supported');
+      throw unauthorized("bad_scheme", "Unauthorized: Only Bearer tokens are supported");
     }
 
     const token = authHeader.replace('Bearer ', '');
     if (!token) {
-      throw new Error('Unauthorized: No token provided');
+      throw unauthorized("no_token", "Unauthorized: No token provided");
     }
 
     if (token.split('.').length !== 3) {
-      throw new Error('Unauthorized: Invalid token');
+      throw unauthorized("bad_token_format", "Unauthorized: Invalid token");
     }
 
     const supabase = createClient<Database>(
@@ -83,11 +114,11 @@ export const requireSupabaseAuth = createMiddleware({ type: 'function' }).server
 
     const { data, error } = await supabase.auth.getClaims(token);
     if (error || !data?.claims) {
-      throw new Error('Unauthorized: Invalid token');
+      throw unauthorized("claims_invalid", "Unauthorized: Invalid token");
     }
 
     if (!data.claims.sub) {
-      throw new Error('Unauthorized: No user ID found in token');
+      throw unauthorized("no_sub", "Unauthorized: No user ID found in token");
     }
 
     return next({

@@ -124,7 +124,8 @@ describe("mapHttpError", () => {
     const err = mapHttpError(401, JSON.stringify({ error: { message: "API key not valid" } }));
     expect(err).toBeInstanceOf(AiGuardError);
     expect(err.code).toBe("unavailable");
-    expect(err.message).toBe("Anmeldung bei der KI fehlgeschlagen. Bitte später erneut versuchen.");
+    expect(err.message).toBe("Die KI ist momentan nicht verfügbar. Bitte später erneut versuchen.");
+    expect(err.diag).toEqual({ cause: "provider_auth", httpStatus: 401 });
     expect(err.message).not.toMatch(/API key not valid/i);
     expect(err.message).not.toMatch(/GEMINI_/i);
   });
@@ -148,7 +149,12 @@ describe("mapHttpError", () => {
       400,
       JSON.stringify({ error: { status: "INVALID_ARGUMENT", message: "API_KEY_INVALID secret-xyz" } }),
     );
-    expect(err.message).toBe("Anmeldung bei der KI fehlgeschlagen. Bitte später erneut versuchen.");
+    expect(err.message).toBe("Die KI ist momentan nicht verfügbar. Bitte später erneut versuchen.");
+    expect(err.diag).toEqual({
+      cause: "provider_auth",
+      httpStatus: 400,
+      providerStatus: "INVALID_ARGUMENT",
+    });
     expect(err.message).not.toContain("secret-xyz");
     expect(err.message).not.toContain("API_KEY_INVALID");
     expect(err.message).not.toMatch(/GEMINI_/i);
@@ -379,7 +385,7 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
 
     await expect(new GeminiProvider().ask({ question: "x", context: "{}" })).rejects.toMatchObject({
       code: "unavailable",
-      message: "Anmeldung bei der KI fehlgeschlagen. Bitte später erneut versuchen.",
+      message: "Die KI ist momentan nicht verfügbar. Bitte später erneut versuchen.",
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

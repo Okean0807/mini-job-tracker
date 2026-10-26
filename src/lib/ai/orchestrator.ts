@@ -91,10 +91,11 @@ function withSearchUnavailableNote(response: AskResponse, note: string): AskResp
     return response;
   }
   const answer = `${response.answer.trim()}\n\n${note}`;
+  const degraded = response.degraded ? { degraded: response.degraded } : {};
   if (response.sources && response.sources.length > 0) {
-    return { answer, sources: response.sources };
+    return { answer, sources: response.sources, ...degraded };
   }
-  return { answer };
+  return { answer, ...degraded };
 }
 
 /**
@@ -169,6 +170,10 @@ export class OrchestratingAIProvider implements AIProvider {
       return withGroundingUnavailableNote(response);
     }
 
-    return { answer: response.answer, sources };
+    return {
+      answer: response.answer,
+      sources,
+      ...(response.degraded ? { degraded: response.degraded } : {}),
+    };
   }
 }

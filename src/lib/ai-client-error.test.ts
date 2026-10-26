@@ -20,13 +20,24 @@ describe("aiClientErrorMessage", () => {
     );
   });
 
-  it("sanitizes Unauthorized / API key / technical auth text", () => {
+  it("app session rejection (Unauthorized) → session message; API key text → service message", () => {
     expect(
       aiClientErrorMessage(new Error("Unauthorized: No authorization header provided"), "fallback"),
     ).toBe(AI_CLIENT_SAFE_MESSAGES.auth);
-    expect(aiClientErrorMessage(new Error("Invalid API key"), "fallback")).toBe(
+    expect(aiClientErrorMessage(new Error("Unauthorized: Invalid token"), "fallback")).toBe(
       AI_CLIENT_SAFE_MESSAGES.auth,
     );
+    expect(aiClientErrorMessage(new Error("Invalid API key"), "fallback")).toBe(
+      AI_CLIENT_SAFE_MESSAGES.credentials,
+    );
+    expect(AI_CLIENT_SAFE_MESSAGES.auth).not.toBe(AI_CLIENT_SAFE_MESSAGES.credentials);
+    expect(AI_CLIENT_SAFE_MESSAGES.auth).toMatch(/Sitzung.*anmelden|melde dich erneut an/);
+  });
+
+  it("a missing request object is a server problem, not a session problem", () => {
+    expect(
+      aiClientErrorMessage(new Error("Unauthorized: No request headers available"), "fallback"),
+    ).toBe(AI_CLIENT_SAFE_MESSAGES.unavailable);
   });
 
   it("sanitizes GEMINI_ and HTTP technical leaks", () => {
@@ -101,6 +112,7 @@ describe("sanitizeAiClientMessage / isTechnicalAiErrorMessage / classify", () =>
   it("classifies network vs auth", () => {
     expect(classifyAiClientError("Failed to fetch")).toBe("network");
     expect(classifyAiClientError("Unauthorized")).toBe("auth");
+    expect(classifyAiClientError("Invalid API key")).toBe("credentials");
     expect(classifyAiClientError("KI ist derzeit nicht verfügbar.")).toBe("safe");
   });
 

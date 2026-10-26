@@ -9,8 +9,14 @@
 
 const SAFE_UNAVAILABLE =
   "Die KI ist momentan nicht verfügbar. Bitte später erneut versuchen.";
+/**
+ * The app session (Supabase) was rejected: the user can fix it by signing in again.
+ * Provider credential problems are NOT this case (see SAFE_CREDENTIALS).
+ */
 const SAFE_AUTH =
-  "Anmeldung bei der KI fehlgeschlagen. Bitte später erneut versuchen.";
+  "Deine Sitzung ist möglicherweise abgelaufen. Bitte melde dich erneut an und versuche es noch einmal.";
+/** API key / credential text leaked from the provider side: service problem, not actionable. */
+const SAFE_CREDENTIALS = "Die KI ist momentan nicht verfügbar. Bitte später erneut versuchen.";
 const SAFE_CONFIG =
   "KI-Dienst vorübergehend nicht erreichbar. Bitte später erneut versuchen.";
 const SAFE_HTTP = "Die KI konnte nicht antworten. Bitte später erneut versuchen.";
@@ -26,6 +32,7 @@ export type AiClientErrorKind =
   | "network"
   | "timeout"
   | "auth"
+  | "credentials"
   | "config"
   | "http"
   | "unavailable"
@@ -85,9 +92,11 @@ export function classifyAiClientError(raw: string): AiClientErrorKind {
   if (isBrowserOffline() || /offline|internetverbindung/i.test(trimmed)) return "offline";
   if (isNetworkAiErrorMessage(trimmed)) return "network";
   if (isTimeoutAiErrorMessage(trimmed)) return "timeout";
-  if (/unauthorized|authorization\s*header|api[_\s-]?key|bearer\b|sk-/i.test(trimmed)) {
-    return "auth";
-  }
+  // Origin decides: the app's own rejection ("Unauthorized: …") is a session problem, but a
+  // missing request object is a server-side oddity the user cannot fix.
+  if (/unauthorized: no request headers/i.test(trimmed)) return "unavailable";
+  if (/unauthorized|authorization\s*header|bearer\b/i.test(trimmed)) return "auth";
+  if (/api[_\s-]?key|x-goog-api-key|\bsk-/i.test(trimmed)) return "credentials";
   if (/GEMINI_/i.test(trimmed)) return "config";
   if (/\bHTTP\s*\d{3}\b/i.test(trimmed) || /\bstatus\s*[:=]?\s*\d{3}\b/i.test(trimmed)) {
     return "http";
@@ -111,6 +120,8 @@ export function sanitizeAiClientMessage(raw: string, fallback: string): string {
       return SAFE_TIMEOUT;
     case "auth":
       return SAFE_AUTH;
+    case "credentials":
+      return SAFE_CREDENTIALS;
     case "config":
       return SAFE_CONFIG;
     case "http":
@@ -154,6 +165,7 @@ export function aiClientErrorMessage(error: unknown, fallback: string): string {
 export const AI_CLIENT_SAFE_MESSAGES = {
   unavailable: SAFE_UNAVAILABLE,
   auth: SAFE_AUTH,
+  credentials: SAFE_CREDENTIALS,
   config: SAFE_CONFIG,
   http: SAFE_HTTP,
   network: SAFE_NETWORK,

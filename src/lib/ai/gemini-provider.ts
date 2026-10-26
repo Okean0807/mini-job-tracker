@@ -3,7 +3,12 @@ import {
   ASK_GATEWAY_TIMEOUT_MS,
   isAbortOrTimeoutError,
 } from "@/lib/ai-ask";
-import { AiGuardError } from "@/lib/ai-guard";
+import {
+  AI_PROVIDER_STATUSES,
+  AiGuardError,
+  type AiErrorDiag,
+  type AiProviderStatus,
+} from "@/lib/ai-guard";
 import type { AIProvider, AskRequest, AskResponse, AskSource } from "@/lib/ai/types";
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
@@ -118,7 +123,11 @@ type GeminiGroundingChunk = {
 };
 
 type GeminiGenerateResponse = {
+  /** Prompt-level filter result: when `blockReason` is set the prompt was blocked (no candidates). */
+  promptFeedback?: { blockReason?: string };
   candidates?: Array<{
+    /** Why generation stopped; only present once the model stopped producing tokens. */
+    finishReason?: string;
     content?: { parts?: Array<{ text?: string }> };
     groundingMetadata?: {
       groundingChunks?: GeminiGroundingChunk[];
@@ -161,18 +170,85 @@ function isAiGuardErrorLike(error: unknown): error is AiGuardError {
   );
 }
 
+/** Provider credential / configuration failure: not actionable for the user, so deliberately not "login". */
+export const PROVIDER_UNAVAILABLE_MESSAGE =
+  "Die KI ist momentan nicht verfügbar. Bitte später erneut versuchen.";
+/** HTTP 200 whose text is empty (no candidate, no parts or only whitespace). */
+export const EMPTY_RESPONSE_MESSAGE =
+  "Die KI hat keine Antwort geliefert. Bitte versuche es erneut.";
+/** Prompt or candidate blocked by the provider; deliberately names no reason. */
+export const BLOCKED_RESPONSE_MESSAGE =
+  "Die KI konnte diese Anfrage nicht beantworten. Bitte formuliere sie anders oder stelle eine andere Frage.";
+/**
+ * Candidate finishReason OTHER: the reference lists it without a documented meaning, so it is
+ * neither presented as a successful answer nor blamed on the user's wording.
+ */
+export const INCOMPLETE_RESPONSE_MESSAGE =
+  "Die KI hat keine vollständige Antwort geliefert. Bitte versuche es erneut.";
+/** MAX_TOKENS without any usable text. */
+export const TRUNCATED_EMPTY_MESSAGE =
+  "Die Antwort der KI wurde vorzeitig abgebrochen. Bitte stelle die Frage kürzer oder genauer.";
+/** Placed before a MAX_TOKENS answer that still contains text. */
+export const TRUNCATED_ANSWER_NOTE =
+  "Hinweis: Die Antwort der KI wurde möglicherweise abgebrochen und ist eventuell unvollständig.";
+
+/**
+ * Candidate `finishReason` values that mean the content was withheld or not produced normally
+ * (Gemini API reference, FinishReason enum). IMAGE_RECITATION is deliberately absent: it could
+ * not be confirmed from the reference text available when this was written. OTHER is handled
+ * separately (see INCOMPLETE_RESPONSE_MESSAGE); a prompt-level blockReason of any value,
+ * including OTHER, is a documented block.
+ */
+const BLOCKING_FINISH_REASONS: ReadonlySet<string> = new Set([
+  "SAFETY",
+  "BLOCKLIST",
+  "PROHIBITED_CONTENT",
+  "SPII",
+  "IMAGE_SAFETY",
+  "IMAGE_PROHIBITED_CONTENT",
+  "RECITATION",
+  "LANGUAGE",
+]);
+/** Normal completion; an absent finishReason is treated the same way. */
+const NORMAL_FINISH_REASONS: ReadonlySet<string> = new Set(["STOP"]);
+
+/**
+ * Allowlisted `error.status` of a provider error body (Google API status vocabulary).
+ * Returns undefined when the body has none; unknown tokens become OTHER. Never returns text.
+ */
+export function providerStatusFromBody(bodyText: string): AiProviderStatus | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch {
+    return undefined;
+  }
+  if (!parsed || typeof parsed !== "object") return undefined;
+  const error = (parsed as { error?: unknown }).error;
+  if (!error || typeof error !== "object") return undefined;
+  const status = (error as { status?: unknown }).status;
+  if (typeof status !== "string") return undefined;
+  return (AI_PROVIDER_STATUSES as readonly string[]).includes(status)
+    ? (status as AiProviderStatus)
+    : "OTHER";
+}
+
 /** Map Gemini HTTP failures to safe user-facing AiGuardError — never include API key, env names, or raw body. */
 export function mapHttpError(status: number, bodyText: string): AiGuardError {
+  const providerStatus = providerStatusFromBody(bodyText);
+  const diag = (cause: AiErrorDiag["cause"]): AiErrorDiag => ({
+    cause,
+    httpStatus: status,
+    ...(providerStatus ? { providerStatus } : {}),
+  });
   if (status === 401) {
-    return new AiGuardError(
-      "unavailable",
-      "Anmeldung bei der KI fehlgeschlagen. Bitte später erneut versuchen.",
-    );
+    return new AiGuardError("unavailable", PROVIDER_UNAVAILABLE_MESSAGE, diag("provider_auth"));
   }
   if (status === 429) {
     return new AiGuardError(
       "rate_limited",
       "Zu viele Anfragen oder Kontingent erschöpft – bitte kurz warten.",
+      diag("provider_rate_limited"),
     );
   }
   if (status === 403) {
@@ -181,17 +257,20 @@ export function mapHttpError(status: number, bodyText: string): AiGuardError {
       return new AiGuardError(
         "unavailable",
         "KI-Kontingent aufgebraucht oder Zugriff gesperrt. Bitte später erneut versuchen.",
+        diag("provider_quota"),
       );
     }
     return new AiGuardError(
       "unavailable",
       "KI-Zugriff derzeit nicht möglich. Bitte später erneut versuchen.",
+      diag("provider_forbidden"),
     );
   }
   if (status === 404) {
     return new AiGuardError(
       "unavailable",
       "KI-Dienst vorübergehend nicht erreichbar. Bitte später erneut versuchen.",
+      diag("provider_model_not_found"),
     );
   }
   if (status === 400) {
@@ -199,18 +278,23 @@ export function mapHttpError(status: number, bodyText: string): AiGuardError {
       return new AiGuardError(
         "unavailable",
         "KI-Kontingent aufgebraucht. Bitte später erneut versuchen.",
+        diag("provider_quota"),
       );
     }
-    if (/API_KEY|API key|invalid.?argument|INVALID_ARGUMENT/i.test(bodyText)) {
-      return new AiGuardError(
-        "unavailable",
-        "Anmeldung bei der KI fehlgeschlagen. Bitte später erneut versuchen.",
-      );
+    // Only a key-related 400 is a credential problem; a bare INVALID_ARGUMENT is a bad request.
+    if (/API_KEY|API key/i.test(bodyText)) {
+      return new AiGuardError("unavailable", PROVIDER_UNAVAILABLE_MESSAGE, diag("provider_auth"));
     }
+    return new AiGuardError(
+      "unavailable",
+      "Die KI konnte nicht antworten. Bitte später erneut versuchen.",
+      diag("provider_bad_request"),
+    );
   }
   return new AiGuardError(
     "unavailable",
     "Die KI konnte nicht antworten. Bitte später erneut versuchen.",
+    diag(status >= 500 ? "provider_server_error" : "provider_http_error"),
   );
 }
 
@@ -223,10 +307,11 @@ export function withGroundingUnavailableNote(response: AskResponse): AskResponse
     return response;
   }
   const answer = `${response.answer.trim()}\n\n${GROUNDING_UNAVAILABLE_NOTE}`;
+  const degraded = response.degraded ? { degraded: response.degraded } : {};
   if (response.sources && response.sources.length > 0) {
-    return { answer, sources: response.sources };
+    return { answer, sources: response.sources, ...degraded };
   }
-  return { answer };
+  return { answer, ...degraded };
 }
 
 /** Gemini reasoning provider — generateContent only, no tools or Google Search grounding. */
@@ -234,7 +319,9 @@ export class GeminiProvider implements AIProvider {
   async ask(req: AskRequest, opts?: { signal?: AbortSignal }): Promise<AskResponse> {
     const { apiKey, model } = resolveGeminiConfig();
     if (!apiKey) {
-      throw new AiGuardError("unavailable", "KI ist derzeit nicht verfügbar.");
+      throw new AiGuardError("unavailable", "KI ist derzeit nicht verfügbar.", {
+        cause: "no_api_key",
+      });
     }
 
     const language = req.language?.trim() || "Deutsch";
@@ -246,9 +333,13 @@ export class GeminiProvider implements AIProvider {
     } catch (error) {
       if (isAiGuardErrorLike(error)) throw error;
       if (isAbortOrTimeoutError(error)) {
-        throw new AiGuardError("unavailable", ASK_GATEWAY_TIMEOUT_MESSAGE);
+        throw new AiGuardError("unavailable", ASK_GATEWAY_TIMEOUT_MESSAGE, {
+          cause: "provider_timeout",
+        });
       }
-      throw new AiGuardError("unavailable", "Die KI konnte nicht antworten.");
+      throw new AiGuardError("unavailable", "Die KI konnte nicht antworten.", {
+        cause: "provider_error",
+      });
     }
   }
 
@@ -287,7 +378,9 @@ export class GeminiProvider implements AIProvider {
       });
     } catch (error) {
       if (isAbortOrTimeoutError(error)) throw error;
-      throw new AiGuardError("unavailable", "Die KI konnte nicht antworten.");
+      throw new AiGuardError("unavailable", "Die KI konnte nicht antworten.", {
+        cause: "provider_network",
+      });
     }
 
     const bodyText = await response.text();
@@ -296,19 +389,85 @@ export class GeminiProvider implements AIProvider {
       throw mapHttpError(response.status, bodyText);
     }
 
-    let json: GeminiGenerateResponse;
+    const parseError = (): AiGuardError =>
+      new AiGuardError("unavailable", "Die KI konnte nicht antworten.", {
+        cause: "provider_parse_error",
+        httpStatus: response.status,
+      });
+
+    let parsed: unknown;
     try {
-      json = JSON.parse(bodyText) as GeminiGenerateResponse;
+      parsed = JSON.parse(bodyText);
     } catch {
-      throw new AiGuardError("unavailable", "Die KI konnte nicht antworten.");
+      throw parseError();
+    }
+    // A successful HTTP status with an unexpected structure must never become a silent empty answer.
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw parseError();
+    const json = parsed as GeminiGenerateResponse;
+    if (json.candidates !== undefined && !Array.isArray(json.candidates)) throw parseError();
+    const candidate = json.candidates?.[0];
+    const parts = candidate?.content?.parts;
+    if (parts !== undefined && !Array.isArray(parts)) throw parseError();
+
+    const blocked = (): AiGuardError =>
+      new AiGuardError("unavailable", BLOCKED_RESPONSE_MESSAGE, {
+        cause: "provider_blocked",
+        httpStatus: response.status,
+      });
+
+    // Prompt-level block: no candidates are returned. BLOCK_REASON_UNSPECIFIED is documented as unused.
+    const blockReason = json.promptFeedback?.blockReason;
+    if (
+      typeof blockReason === "string" &&
+      blockReason !== "" &&
+      blockReason !== "BLOCK_REASON_UNSPECIFIED"
+    ) {
+      throw blocked();
     }
 
-    const candidate = json.candidates?.[0];
-    const answer =
-      candidate?.content?.parts
-        ?.map((p) => (typeof p.text === "string" ? p.text : ""))
-        .join("")
-        .trim() || "Keine Antwort erhalten.";
+    const finishReason =
+      typeof candidate?.finishReason === "string" ? candidate.finishReason : undefined;
+    const answer = (parts ?? [])
+      .map((p) => (p && typeof p.text === "string" ? p.text : ""))
+      .join("")
+      .trim();
+
+    // Blocked content is never a success, even if some text was produced before the block.
+    if (finishReason !== undefined && BLOCKING_FINISH_REASONS.has(finishReason)) throw blocked();
+
+    // Undocumented meaning: fail closed (even with partial text) without guessing a cause.
+    if (finishReason === "OTHER") {
+      throw new AiGuardError("unavailable", INCOMPLETE_RESPONSE_MESSAGE, {
+        cause: "provider_other_finish",
+        httpStatus: response.status,
+      });
+    }
+
+    if (finishReason === "MAX_TOKENS") {
+      if (!answer) {
+        throw new AiGuardError("unavailable", TRUNCATED_EMPTY_MESSAGE, {
+          cause: "provider_truncated",
+          httpStatus: response.status,
+        });
+      }
+      // Warning first: the chat history keeps only the first characters of a long message.
+      return { answer: `${TRUNCATED_ANSWER_NOTE}\n\n${answer}`, degraded: "truncated" };
+    }
+
+    if (!answer) {
+      const providerStatus = providerStatusFromBody(bodyText);
+      throw new AiGuardError("unavailable", EMPTY_RESPONSE_MESSAGE, {
+        cause: "provider_empty",
+        httpStatus: response.status,
+        ...(providerStatus ? { providerStatus } : {}),
+      });
+    }
+
+    // STOP, no finishReason, or a value this code does not know: the text is kept unchanged.
+    // Unknown values are flagged for diagnostics only (the value itself is never logged).
+    if (finishReason !== undefined && !NORMAL_FINISH_REASONS.has(finishReason)) {
+      return { answer, degraded: "unexpected_finish" };
+    }
 
     // Production path does not use Gemini grounding; ignore any residual metadata.
     return { answer };

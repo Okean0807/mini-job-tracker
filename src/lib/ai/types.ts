@@ -11,9 +11,16 @@ export type AskSource = {
   url: string;
 };
 
+/**
+ * Server-side marker for answers that were returned but are not clean successes. It is only
+ * used for diagnostics (never sent to the client); user-visible wording is part of `answer`.
+ */
+export type AskDegraded = "truncated" | "unexpected_finish";
+
 export type AskResponse = {
   answer: string;
   sources?: AskSource[];
+  degraded?: AskDegraded;
 };
 
 export interface AIProvider {
