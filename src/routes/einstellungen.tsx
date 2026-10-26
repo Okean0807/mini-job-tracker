@@ -17,7 +17,12 @@ import { markOAuthPending } from "@/lib/minijob/storage-scope";
 import { LocalDataImportSection } from "@/components/minijob/LocalDataImport";
 import { formatDate, formatDateDE, formatEuro, formatHours, isoDate } from "@/lib/minijob/calc";
 import { defaultRateBelowMinimum } from "@/lib/minijob/wage-compliance";
-import { monthlyHoursLimit, monthlyLimitOf, yearlyLimitOf } from "@/lib/minijob/limits";
+import {
+  minijobHoursLimits,
+  monthlyHoursLimit,
+  monthlyLimitOf,
+  yearlyLimitOf,
+} from "@/lib/minijob/limits";
 import {
   backupNow,
   forceFailStuckSync,
@@ -89,8 +94,10 @@ export const Route = createFileRoute("/einstellungen")({
 });
 
 function SettingsPage() {
-  const { settings, shifts } = useAppData();
+  const { settings, shifts, jobs } = useAppData();
   const { t } = useT();
+  // Stundengrenze je Minijob nach eigenem Satz; ohne Minijob nur Orientierung am Standardsatz.
+  const perJobHours = minijobHoursLimits(jobs, settings);
   const [pinSetupOpen, setPinSetupOpen] = useState(false);
   const [pinDraft, setPinDraft] = useState("");
   const [pinConfirm, setPinConfirm] = useState("");
@@ -198,12 +205,29 @@ function SettingsPage() {
                   <Lock className="size-3.5" />
                   {t("set.limits.auto")}
                 </div>
-                <div className="mt-2 flex items-center justify-between gap-2 text-sm">
-                  <span className="text-muted-foreground">{t("set.defaults.hoursLimit")}</span>
-                  <span className="font-semibold tabular-nums">
-                    {formatHours(monthlyHoursLimit(settings))}
-                  </span>
-                </div>
+                {perJobHours.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-sm" aria-label={t("set.limits.hoursPerJob")}>
+                    {perJobHours.map((h) => (
+                      <li key={h.jobId} className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 truncate text-muted-foreground">
+                          {t("set.limits.hoursForJob", { job: h.name, rate: formatEuro(h.rate) })}
+                        </span>
+                        <span className="font-semibold tabular-nums">{formatHours(h.hours)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="mt-2 flex items-center justify-between gap-2 text-sm">
+                    <span className="text-muted-foreground">
+                      {t("set.limits.hoursAtDefaultRate", {
+                        rate: formatEuro(settings.defaultRate),
+                      })}
+                    </span>
+                    <span className="font-semibold tabular-nums">
+                      {formatHours(monthlyHoursLimit(settings))}
+                    </span>
+                  </div>
+                )}
               </div>
             ) : (
               <NumberField
@@ -232,7 +256,11 @@ function SettingsPage() {
                       : {
                           hoursLimitMonthly:
                             settings.hoursLimitMonthly ||
-                            Math.round(monthlyHoursLimit(settings) * 100) / 100,
+                            Math.round(
+                              (perJobHours.length === 1
+                                ? perJobHours[0]!.hours
+                                : monthlyHoursLimit(settings)) * 100,
+                            ) / 100,
                         }),
                   })
                 }
