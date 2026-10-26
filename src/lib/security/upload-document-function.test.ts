@@ -1,3 +1,6 @@
+// @vitest-environment node
+// Edge-function handler (Deno): native FormData/Request (undici) instead of happy-dom’s
+// JS multipart parser, which needs seconds per 20 MiB body and timed out under load.
 // Mock tests for supabase/functions/upload-document/handler.ts. Fake clients only.
 import { describe, expect, it, vi } from "vitest";
 
