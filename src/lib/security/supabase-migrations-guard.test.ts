@@ -20,6 +20,9 @@ const EXPECTED = [
   "20260930192515_p1_rls_performance_hardening.sql",
   // C-1: applied to production by merging this file into main (Supabase GitHub integration).
   "20261012160000_p2_documents_no_direct_client_write.sql",
+  // F-1: moved from supabase/pending after the isolated PG 17.6 author DB run (t604);
+  // applied to production only when merged into main.
+  "20261014100000_p2_ai_rate_limit_server_clock.sql",
 ];
 
 // Pinned SHA-256 of migration file bytes.
@@ -46,6 +49,9 @@ const PINNED_SHA256: Record<string, string> = {
   // byte-identical to the QA-reviewed supabase/pending file at 4bbab7a
   "20261012160000_p2_documents_no_direct_client_write.sql":
     "e990bda08787f279ddb6fbf3e616c450d4a9bd1ea76e3a16c33bc9ea81c342bf",
+  // F-1 migration bytes (author run PG 17.6, t604); behaviour: scripts/db-tests/pr140_run.sh
+  "20261014100000_p2_ai_rate_limit_server_clock.sql":
+    "f6ea596997a98430c298916de8873809c3991a4875bab017b47f3566c30d30da",
 };
 
 const read = (f: string) => readFileSync(resolve(MIGRATIONS_DIR, f));
@@ -53,7 +59,7 @@ const read = (f: string) => readFileSync(resolve(MIGRATIONS_DIR, f));
 describe("supabase migrations guard (must mirror production history)", () => {
   const files = readdirSync(MIGRATIONS_DIR).sort();
 
-  it("contains exactly the 10 expected migration files", () => {
+  it("contains exactly the 11 expected migration files", () => {
     expect(files).toEqual(EXPECTED);
   });
 
