@@ -129,20 +129,33 @@ export function LimitCard({
         main={`${formatEuro(usage.earnings)} / ${formatEuro(usage.earningsLimit)}`}
         hint={t("limit.leftAmount", { amount: formatEuro(usage.earningsLeft) })}
       />
-      <Bar
-        titleId={titleId}
-        label={t("limit.hours")}
-        share={usage.hoursShare}
-        main={`${formatHours(usage.hours)} / ${formatHours(usage.hoursLimit)}`}
-        hint={
-          auto
-            ? t("limit.autoHint", {
-                hours: formatHours(usage.hoursLimit),
-                rate: formatEuro(rate),
-              })
-            : t("limit.leftHours", { hours: formatHours(usage.hoursLeft) })
-        }
-      />
+      {/* 0 means "no single hours basis" (different rates, no entries), not a real 0 h limit.
+          LimitUsage has no entry or rate count, so the two cases are not told apart here. */}
+      {auto && !(usage.hoursLimit > 0) ? (
+        <Bar
+          titleId={titleId}
+          label={t("limit.hours")}
+          share={0}
+          main={formatHours(usage.hours)}
+          hint={t("limit.hoursNoBasis")}
+          noLimit
+        />
+      ) : (
+        <Bar
+          titleId={titleId}
+          label={t("limit.hours")}
+          share={usage.hoursShare}
+          main={`${formatHours(usage.hours)} / ${formatHours(usage.hoursLimit)}`}
+          hint={
+            auto
+              ? t("limit.autoHint", {
+                  hours: formatHours(usage.hoursLimit),
+                  rate: formatEuro(rate),
+                })
+              : t("limit.leftHours", { hours: formatHours(usage.hoursLeft) })
+          }
+        />
+      )}
 
       {usage.earningsShare >= 100 || usage.hoursShare >= 100 ? (
         <div className="mt-3 space-y-1 rounded-xl border border-destructive/30 bg-destructive/5 p-2.5">
@@ -160,6 +173,7 @@ function Bar({
   share,
   main,
   hint,
+  noLimit = false,
 }: {
   /** ID des sichtbaren Kartentitels – Teil des Accessible Name des Balkens. */
   titleId: string;
@@ -167,9 +181,22 @@ function Bar({
   share: number;
   main: string;
   hint: string;
+  /** No limit to compare with: show the value and the hint only, no percentage and no bar. */
+  noLimit?: boolean;
 }) {
   const labelId = useId();
   const clamped = Math.min(100, Math.round(share));
+  if (noLimit) {
+    return (
+      <div className="mt-3">
+        <div className="flex items-baseline justify-between text-sm">
+          <span className="font-medium">{label}</span>
+          <span className="tabular-nums font-semibold text-foreground">{main}</span>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+      </div>
+    );
+  }
   return (
     <div className="mt-3">
       <div className="flex items-baseline justify-between text-sm">
