@@ -184,6 +184,32 @@ export function mapHttpError(status: number, bodyText: string): AiGuardError {
   );
 }
 
+/**
+ * Server-side diagnostics for a non-OK Gemini response. Logs only: stage, HTTP status,
+ * the (normalized) model id and Gemini's short status enum (e.g. UNAVAILABLE). Never the
+ * API key, URL, headers, prompt/context, user data or the raw response body.
+ */
+function logGeminiHttpError(status: number, model: string, bodyText: string): void {
+  const entry: Record<string, unknown> = {
+    stage: "gemini_http_error",
+    status,
+    model: /^[A-Za-z0-9._-]{1,64}$/.test(model) ? model : "invalid",
+  };
+  const providerStatus = extractProviderStatus(bodyText);
+  if (providerStatus) entry["providerStatus"] = providerStatus;
+  console.error(JSON.stringify(entry));
+}
+
+/** Gemini's `error.status` enum only, and only if it looks like one (no free text). */
+function extractProviderStatus(bodyText: string): string | undefined {
+  try {
+    const status = (JSON.parse(bodyText) as GeminiGenerateResponse).error?.status;
+    return typeof status === "string" && /^[A-Z_]{3,40}$/.test(status) ? status : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Append clear note when web verification / grounding is unavailable. */
 export function withGroundingUnavailableNote(response: AskResponse): AskResponse {
   if (
@@ -261,6 +287,7 @@ export class GeminiProvider implements AIProvider {
     const bodyText = await response.text();
 
     if (!response.ok) {
+      logGeminiHttpError(response.status, model, bodyText);
       throw mapHttpError(response.status, bodyText);
     }
 

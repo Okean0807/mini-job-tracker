@@ -26,7 +26,8 @@ export const askAssistant = createServerFn({ method: "POST" })
     type RateLimitRow = { allowed?: boolean | null; retry_after_seconds?: number | null };
     const rateRows = rate as unknown as RateLimitRow[] | RateLimitRow | null | undefined;
     const rateRow = Array.isArray(rateRows) ? rateRows[0] : rateRows;
-    if (!rateRow?.allowed) {
+    // Fail closed: only an explicit boolean `true` lets the request through.
+    if (rateRow?.allowed !== true) {
       const retry = Number(rateRow?.retry_after_seconds ?? 1);
       throw new AiGuardError(
         "rate_limited",

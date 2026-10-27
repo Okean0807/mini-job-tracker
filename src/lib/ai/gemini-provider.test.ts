@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 
 import { AiGuardError } from "@/lib/ai-guard";
 
@@ -447,5 +447,138 @@ describe("GeminiProvider.ask (mocked fetch)", () => {
       code: "unavailable",
       message: expect.stringMatching(/rechtzeitig/i),
     });
+  });
+});
+
+describe("GeminiProvider.ask — gemini_http_error server log (mocked fetch)", () => {
+  const API_KEY = "test-key-not-real-1234567890";
+  const QUESTION = "Wie viel verdiene ich voraussichtlich nächsten Monat?";
+  const CONTEXT = '{"hours":42,"employer":"Beispiel GmbH"}';
+  const originalKey = process.env["GEMINI_API_KEY"];
+  const originalModel = process.env["GEMINI_MODEL"];
+  let errorSpy: MockInstance<typeof console.error>;
+
+  beforeEach(() => {
+    process.env["GEMINI_API_KEY"] = API_KEY;
+    delete process.env["GEMINI_MODEL"];
+    vi.stubGlobal("fetch", vi.fn());
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    if (originalKey === undefined) delete process.env["GEMINI_API_KEY"];
+    else process.env["GEMINI_API_KEY"] = originalKey;
+    if (originalModel === undefined) delete process.env["GEMINI_MODEL"];
+    else process.env["GEMINI_MODEL"] = originalModel;
+  });
+
+  function respond(status: number, body: string) {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      new Response(body, { status, headers: { "Content-Type": "application/json" } }),
+    );
+  }
+
+  async function ask() {
+    return new GeminiProvider().ask({ question: QUESTION, context: CONTEXT });
+  }
+
+  it.each([400, 500, 502, 503])(
+    "non-OK %s → one structured line with stage, status and model; user message unchanged",
+    async (status) => {
+      respond(status, "upstream failure");
+      await expect(ask()).rejects.toMatchObject({
+        code: "unavailable",
+        message: "Die KI konnte nicht antworten. Bitte später erneut versuchen.",
+      });
+
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      expect(errorSpy.mock.calls[0]).toHaveLength(1);
+      const line = errorSpy.mock.calls[0]?.[0];
+      expect(typeof line).toBe("string");
+      expect(JSON.parse(line as string)).toEqual({
+        stage: "gemini_http_error",
+        status,
+        model: "gemini-3.6-flash",
+      });
+    },
+  );
+
+  it("logs the status for every mapped error class as well (401/403/404/429)", async () => {
+    for (const status of [401, 403, 404, 429]) {
+      errorSpy.mockClear();
+      respond(status, "x");
+      await expect(ask()).rejects.toBeInstanceOf(AiGuardError);
+      expect(JSON.parse(errorSpy.mock.calls[0]?.[0] as string)).toMatchObject({
+        stage: "gemini_http_error",
+        status,
+      });
+    }
+  });
+
+  it("never logs the key, URL, headers, prompt, context or the raw provider body", async () => {
+    const secretBody = JSON.stringify({
+      error: {
+        code: 503,
+        status: "UNAVAILABLE",
+        message: `overloaded for key ${API_KEY} while answering "${QUESTION}" ${CONTEXT} Bearer abc.def.ghi`,
+      },
+    });
+    respond(503, secretBody);
+    await expect(ask()).rejects.toBeInstanceOf(AiGuardError);
+
+    const logged = errorSpy.mock.calls.map((c) => c.map(String).join(" ")).join("\n");
+    for (const forbidden of [
+      API_KEY,
+      "x-goog-api-key",
+      "generativelanguage",
+      "https://",
+      "Bearer",
+      "overloaded",
+      "Beispiel GmbH",
+      "verdiene",
+      "authorization",
+      "cookie",
+    ]) {
+      expect(logged.toLowerCase()).not.toContain(forbidden.toLowerCase());
+    }
+    // Only the whitelisted enum survives from the provider body.
+    expect(JSON.parse(errorSpy.mock.calls[0]?.[0] as string)).toEqual({
+      stage: "gemini_http_error",
+      status: 503,
+      model: "gemini-3.6-flash",
+      providerStatus: "UNAVAILABLE",
+    });
+  });
+
+  it("drops a provider status that is not a plain enum (no free text in the log)", async () => {
+    respond(400, JSON.stringify({ error: { status: `see ${API_KEY} and "${QUESTION}"` } }));
+    await expect(ask()).rejects.toBeInstanceOf(AiGuardError);
+    const entry = JSON.parse(errorSpy.mock.calls[0]?.[0] as string) as Record<string, unknown>;
+    expect(entry).not.toHaveProperty("providerStatus");
+    expect(JSON.stringify(entry)).not.toContain(API_KEY);
+  });
+
+  it("an unusable model id is reported as 'invalid' instead of being echoed", async () => {
+    process.env["GEMINI_MODEL"] = `bad model ${API_KEY}`;
+    respond(500, "x");
+    await expect(ask()).rejects.toBeInstanceOf(AiGuardError);
+    const entry = JSON.parse(errorSpy.mock.calls[0]?.[0] as string) as Record<string, unknown>;
+    expect(entry["model"]).toBe("invalid");
+    expect(JSON.stringify(entry)).not.toContain(API_KEY);
+  });
+
+  it("logs nothing on success, on network failure or on a missing key", async () => {
+    respond(200, JSON.stringify({ candidates: [{ content: { parts: [{ text: "ok" }] } }] }));
+    await expect(ask()).resolves.toEqual({ answer: "ok" });
+
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new TypeError("fetch failed"));
+    await expect(ask()).rejects.toBeInstanceOf(AiGuardError);
+
+    delete process.env["GEMINI_API_KEY"];
+    await expect(ask()).rejects.toBeInstanceOf(AiGuardError);
+
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 });
