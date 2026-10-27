@@ -30,6 +30,7 @@ const ALLOWED_FIELDS = [
   "httpStatus",
   "providerStatus",
   "elapsedMs",
+  "inputChars",
 ];
 const DATA = {
   question: `Wie viel? ${SENTINELS.question}`,
@@ -468,5 +469,24 @@ describe("web search unavailable → one safe ai.search.degraded event", () => {
       throw new Error("log sink down");
     });
     expect(result).toEqual({ answer: `Antwort ${SENTINELS.body}` });
+  });
+});
+
+describe("inputChars is a size only", () => {
+  it("equals question + context length and never carries their text", async () => {
+    stubResponse(500, { error: { message: SENTINELS.body, status: "INTERNAL" } });
+    const { lines } = await run();
+    const parsed = expectSafe(lines);
+    expect(parsed["inputChars"]).toBe(DATA.question.length + DATA.context.length);
+  });
+
+  it("is present on a degraded (truncated) success event as well", async () => {
+    stubResponse(200, {
+      candidates: [{ content: { parts: [{ text: "Teil" }] }, finishReason: "MAX_TOKENS" }],
+    });
+    const { lines } = await run();
+    const parsed = expectSafe(lines);
+    expect(parsed["event"]).toBe("ai.ask.degraded");
+    expect(parsed["inputChars"]).toBe(DATA.question.length + DATA.context.length);
   });
 });

@@ -88,6 +88,8 @@ export async function runAskAssistant(
   const startedAt = now();
   const signal = deps.createDeadline?.() ?? AbortSignal.timeout(ASK_GATEWAY_TIMEOUT_MS);
   const log = deps.log ?? defaultLog;
+  // Size only (never the text): lets a timeout be compared with the request that caused it.
+  const inputChars = data.question.length + data.context.length;
 
   // Only fixed identifiers, allowlisted diagnostics and a duration — never the question, context,
   // answer, user id, provider response body or error text. A failed ask is logged only by
@@ -110,6 +112,7 @@ export async function runAskAssistant(
           ...(diag.httpStatus !== undefined ? { httpStatus: diag.httpStatus } : {}),
           ...(diag.providerStatus ? { providerStatus: diag.providerStatus } : {}),
           elapsedMs: Math.max(0, Math.round(now() - startedAt)),
+          inputChars,
         }),
       );
     } catch {

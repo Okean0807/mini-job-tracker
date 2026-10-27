@@ -14,6 +14,7 @@ import {
   PROVIDER_UNAVAILABLE_MESSAGE,
   INCOMPLETE_RESPONSE_MESSAGE,
   TRUNCATED_ANSWER_NOTE,
+  GEMINI_MAX_OUTPUT_TOKENS,
   TRUNCATED_EMPTY_MESSAGE,
   mapHttpError,
   providerStatusFromBody,
@@ -447,7 +448,9 @@ describe("MAX_TOKENS is never presented as a complete answer", () => {
     const body = JSON.parse(
       String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body),
     );
-    expect(JSON.stringify(body)).not.toMatch(/maxOutputTokens/);
+    // The configured cap is sent unchanged: a truncated answer is never retried with a higher limit.
+    expect(body.generationConfig.maxOutputTokens).toBe(GEMINI_MAX_OUTPUT_TOKENS);
+    expect(JSON.stringify(body).match(/maxOutputTokens/g)).toHaveLength(1);
   });
 });
 

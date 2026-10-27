@@ -5,6 +5,7 @@ import { AiGuardError } from "@/lib/ai-guard";
 import {
   buildGenerateContentUrl,
   buildGenerationConfig,
+  GEMINI_MAX_OUTPUT_TOKENS,
   buildSystemInstruction,
   extractSourcesFromGrounding,
   GeminiProvider,
@@ -467,6 +468,7 @@ describe("buildGenerationConfig (bounded thinking latency)", () => {
       '"gemini-3.6-flash"',
     ]) {
       expect(buildGenerationConfig(model), model).toEqual({
+        maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
         thinkingConfig: { thinkingLevel: "low" },
       });
     }
@@ -474,12 +476,27 @@ describe("buildGenerationConfig (bounded thinking latency)", () => {
 
   it("deprecated 2.5 ids are remapped to 3.x and therefore also bounded", () => {
     expect(buildGenerationConfig("gemini-2.5-flash")).toEqual({
+      maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
       thinkingConfig: { thinkingLevel: "low" },
     });
   });
 
   it("other families get no generationConfig (request unchanged, no unsupported field)", () => {
     for (const model of ["gemini-2.5-pro", "gemini-2.0-flash", "gemini-30-x", "custom-model"]) {
+      expect(buildGenerationConfig(model), model).toBeUndefined();
+    }
+  });
+});
+
+describe("answer length cap (maxOutputTokens)", () => {
+  it("is a bounded positive integer, below the stored-message size in tokens", () => {
+    expect(Number.isInteger(GEMINI_MAX_OUTPUT_TOKENS)).toBe(true);
+    expect(GEMINI_MAX_OUTPUT_TOKENS).toBeGreaterThanOrEqual(1024);
+    expect(GEMINI_MAX_OUTPUT_TOKENS).toBeLessThanOrEqual(4096);
+  });
+
+  it("is only set for the 3.x family, where thinking is bounded by thinkingLevel low", () => {
+    for (const model of ["gemini-2.5-pro", "gemini-2.0-flash", "custom-model", "gemini-30-x"]) {
       expect(buildGenerationConfig(model), model).toBeUndefined();
     }
   });
@@ -525,7 +542,10 @@ describe("GeminiProvider.ask request body (thinking config)", () => {
     });
     expect(result.answer).toBe("OK");
     const body = sentBody();
-    expect(body["generationConfig"]).toEqual({ thinkingConfig: { thinkingLevel: "low" } });
+    expect(body["generationConfig"]).toEqual({
+      maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
+      thinkingConfig: { thinkingLevel: "low" },
+    });
     expect(JSON.stringify(body)).not.toMatch(/thinkingBudget/);
     expect(body["contents"]).toBeDefined();
     expect(body["systemInstruction"]).toBeDefined();

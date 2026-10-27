@@ -143,6 +143,7 @@ describe("runAskAssistant — one server deadline covers rate limit + provider",
         outcome: "timeout",
         cause: "rate_limit_timeout",
         elapsedMs: 30_000,
+        inputChars: expect.any(Number),
       },
     ]);
   });
@@ -223,6 +224,7 @@ describe("runAskAssistant — one server deadline covers rate limit + provider",
         outcome: "timeout",
         cause: "provider_timeout",
         elapsedMs: 29_500,
+        inputChars: expect.any(Number),
       },
     ]);
   });
@@ -271,6 +273,7 @@ describe("runAskAssistant — one server deadline covers rate limit + provider",
       outcome: "error",
       cause: "provider_error",
       elapsedMs: expect.any(Number),
+      inputChars: expect.any(Number),
     });
     for (const secret of ["sk-SECRET123", USER_ID, QUESTION, CONTEXT, "42", "upstream"]) {
       expect(line).not.toContain(secret);

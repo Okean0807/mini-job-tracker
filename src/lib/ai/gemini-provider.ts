@@ -57,16 +57,30 @@ export function buildGenerateContentUrl(model: string): string {
 }
 
 /**
+ * Upper bound for one answer (Gemini 3.x only, see buildGenerationConfig). The answer is a single
+ * non-streamed generateContent call inside a 30 s server budget, so an unbounded answer to a
+ * "list everything" question can overrun it. 2048 tokens is roughly 6-7k German characters, in
+ * line with AI_MAX_MESSAGE_CHARS (8000) of the stored chat history, so a normal answer is not cut.
+ * On the limit the existing MAX_TOKENS handling applies (answer plus note, or a specific error).
+ * It does not guarantee that no timeout occurs: input size and provider latency are separate.
+ * Thinking tokens count against it; thinkingLevel "low" keeps that share small.
+ */
+export const GEMINI_MAX_OUTPUT_TOKENS = 2048;
+
+/**
  * Gemini 3.x models think by default (MEDIUM/HIGH), which can push a single
  * generateContent call past the 30 s server budget. `thinkingLevel: "low"` is the
  * documented low-latency setting for that family. Other model families get no
- * thinkingConfig, so their request stays exactly as before (and cannot 400 on an
- * unsupported field).
+ * generationConfig at all, so their request stays exactly as before: for them thinking tokens
+ * cannot be bounded here, and a fixed output cap could leave an empty answer.
  */
 export function buildGenerationConfig(model: string): Record<string, unknown> | undefined {
   const id = normalizeGeminiModelId(model);
   if (/^gemini-3([.-]|$)/.test(id)) {
-    return { thinkingConfig: { thinkingLevel: "low" } };
+    return {
+      maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
+      thinkingConfig: { thinkingLevel: "low" },
+    };
   }
   return undefined;
 }
