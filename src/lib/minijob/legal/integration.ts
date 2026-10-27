@@ -2,7 +2,7 @@ import { payrollTotals, shiftPayroll } from "../payroll";
 import { isEligibleMinijobShift } from "./employment";
 import { monthStart, forecastRolling12Months, type Rolling12ForecastResult } from "./rolling";
 import type { AppData, Job, Settings, Shift } from "../types";
-import type { Resolver } from "../resolve";
+import { makeResolver, type Resolver } from "../resolve";
 
 export interface MonthlyIncomeBreakdown {
   date: string;
@@ -136,15 +136,9 @@ export function assessLegalIncome(
   anchorMonth: string,
   referenceDate = todayIso(),
 ): LegalIncomeAssessment {
-  const resolve = ((shift: Shift) => {
-    const job = data.jobs.find((candidate) => candidate.id === shift.jobId);
-    return {
-      job,
-      defaultRate: data.settings.defaultRate,
-      supplements: job?.supplements ?? data.settings.supplements,
-      holiday: false,
-    };
-  }) as Resolver;
+  // Same resolver as the dashboard cards (monthUsage / yearUsage): holiday flag per Bundesland
+  // and confirmed sick months. A private resolver here made this path disagree with them.
+  const resolve = makeResolver(data.jobs, data.settings);
 
   const months = buildMonthlyIncomeFromShifts(data.shifts, resolve, referenceDate);
   const rolling = forecastRolling12Months(
