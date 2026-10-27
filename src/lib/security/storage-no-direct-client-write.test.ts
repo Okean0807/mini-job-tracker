@@ -3,7 +3,7 @@ import { join, relative, resolve } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-// Guards for the PENDING migration 20261012160000 (drop direct client INSERT/UPDATE
+// Guards for migration 20261012160000 (moved from supabase/pending; applied to prod on merge) (drop direct client INSERT/UPDATE
 // policies on the documents bucket). Content/structure checks only: passing does NOT
 // mean the policies are dropped in production.
 
@@ -311,11 +311,11 @@ describe("storage guard gaps (QA #135)", () => {
   });
 });
 
-describe("PENDING 20261012160000 SQL", () => {
+describe("20261012160000 SQL (supabase/migrations; applied on merge)", () => {
   const strip = (s: string) => s.replace(/^--.*$/gm, "");
   const fwd = strip(
     readFileSync(
-      resolve(root, "supabase/pending/20261012160000_p2_documents_no_direct_client_write.sql"),
+      resolve(root, "supabase/migrations/20261012160000_p2_documents_no_direct_client_write.sql"),
       "utf8",
     ),
   );
