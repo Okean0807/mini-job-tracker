@@ -151,6 +151,16 @@ export function saveAiChatHistory(userId: string, store: AiChatHistoryStore): vo
   }
 }
 
+/** Removes the stored chat history of one user (used when the account is deleted). */
+export function clearAiChatHistory(userId: string): void {
+  if (!userId || typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(aiChatHistoryStorageKey(userId));
+  } catch {
+    /* best effort; the server-side deletion is authoritative */
+  }
+}
+
 /** Conversations newest-first for the history list. */
 export function listConversationsNewestFirst(store: AiChatHistoryStore): AiConversation[] {
   return [...store.conversations].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));

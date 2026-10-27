@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { enterTestModeScope, markWizardPendingFirstSync } from "@/lib/minijob/cloud";
 import { markOAuthPending } from "@/lib/minijob/storage-scope";
+import { LegalLinks } from "@/components/minijob/LegalLinks";
 import { signInWithOAuthProvider } from "@/lib/minijob/oauth-sign-in";
 import {
   checkpointOnboardingBeforeOAuth,
@@ -325,6 +326,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
                   </Button>
                   <FieldHelp>{t("wiz.cloud.demoHint")}</FieldHelp>
                   <FieldHelp>{t("wiz.cloud.requiredHint")}</FieldHelp>
+                  <LegalLinks className="pt-1" />
                 </>
               )}
             </Card>

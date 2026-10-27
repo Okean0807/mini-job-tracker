@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { Skeleton } from "@/components/ui/skeleton";
+import { LegalLinks } from "@/components/minijob/LegalLinks";
 import { signInWithOAuthProvider } from "@/lib/minijob/oauth-sign-in";
 import { deleteMyAccount } from "@/lib/minijob/account-delete";
 import { markOAuthPending } from "@/lib/minijob/storage-scope";
@@ -1140,6 +1141,7 @@ function CloudSync({
         <Button className="w-full" onClick={() => oauthGoogle()}>
           {t("set.account.signIn.google")}
         </Button>
+        <LegalLinks />
       </Section>
     );
   }
