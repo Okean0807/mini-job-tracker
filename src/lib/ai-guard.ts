@@ -57,6 +57,11 @@ export const AI_FAILURE_CAUSES = [
   "no_api_key",
   "rate_limit_rpc_error",
   "rate_limit_timeout",
+  "search_missing_key",
+  "search_rate_limited",
+  "search_network",
+  "search_unavailable",
+  "search_quota_exhausted",
 ] as const;
 export type AiFailureCause = (typeof AI_FAILURE_CAUSES)[number];
 

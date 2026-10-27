@@ -50,4 +50,46 @@ describe("needsCurrentInfo", () => {
     expect(needsCurrentInfo("   ")).toBe(false);
     expect(needsCurrentInfo("Wie viele Stunden habe ich gearbeitet?")).toBe(false);
   });
+
+  describe("time words alone do not trigger a web search for the user's own data", () => {
+    it.each([
+      "Wie viel habe ich diesen Monat verdient?",
+      "Wie viel habe ich im Oktober 2026 verdient?",
+      "Wie viele Stunden habe ich heute gearbeitet?",
+      "Wie hoch ist mein aktueller Verdienst?",
+      "Was war mein Verdienst 2025?",
+      "Wie viele Schichten hatte ich aktuell diesen Monat?",
+      "Wie hoch ist mein Stundenlohn heute?",
+      "Zeig mir meine Einträge von 2026",
+    ])("false: %s", (q) => {
+      expect(needsCurrentInfo(q)).toBe(false);
+    });
+  });
+
+  describe("legal / current-rate questions still trigger a web search", () => {
+    it.each([
+      "Wie hoch ist die gesetzliche Minijob-Grenze 2026?",
+      "Wie hoch ist der aktuelle Mindestlohn in Deutschland?",
+      "Welche gesetzlichen Änderungen gelten 2026 für Minijobs?",
+      "Liege ich 2026 über der Minijob-Grenze?",
+      "Wie viel Beitrag zur Sozialversicherung zahle ich heute?",
+      "Ist das neu 2026?",
+      "WIE HOCH IST DIE VERDIENSTGRENZE?",
+    ])("true: %s", (q) => {
+      expect(needsCurrentInfo(q)).toBe(true);
+    });
+  });
+
+  it("does not mistake words that merely contain own-data stems for own-data questions", () => {
+    // "Stundenlohn" is not "Stunden", "Michael" is not "ich"
+    expect(needsCurrentInfo("Wie hoch ist der aktuelle Stundenlohn im Gebäudereiniger-Handwerk?")).toBe(
+      true,
+    );
+    expect(needsCurrentInfo("Was sagt Michael aktuell dazu?")).toBe(true);
+  });
+
+  it("treats a year only as a time word when it stands alone", () => {
+    expect(needsCurrentInfo("Ereignisse 2026")).toBe(true);
+    expect(needsCurrentInfo("Ereignisse 20260")).toBe(false);
+  });
 });

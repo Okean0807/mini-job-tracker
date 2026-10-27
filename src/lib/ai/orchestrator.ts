@@ -17,12 +17,20 @@ import {
   TavilyWebSearchProvider,
   WEB_SEARCH_QUOTA_EXHAUSTED_MESSAGE,
 } from "@/lib/ai/web-search/tavily-provider";
-import type { WebSearchResultItem } from "@/lib/ai/web-search/types";
+import type { WebSearchFailureReason, WebSearchResultItem } from "@/lib/ai/web-search/types";
 
 /** Explicit Free-tier quota note — never mentions upgrade/billing. */
 export const WEB_SEARCH_QUOTA_NOTE =
   `Hinweis: ${WEB_SEARCH_QUOTA_EXHAUSTED_MESSAGE} ` +
   "Behandle Angaben zu gesetzlichen Grenzen und aktuellem Recht als allgemeine Orientierung, nicht als verbindliche Auskunft.";
+
+/**
+ * Shown when no web-search key is configured for this environment (expected in Preview/dev).
+ * Names no secret and no variable: it is a client-visible message.
+ */
+export const WEB_SEARCH_NOT_CONFIGURED_NOTE =
+  "Hinweis: Die Web-Prüfung ist in dieser Umgebung nicht konfiguriert. " +
+  "Die Antwort basiert auf deinen gespeicherten Daten und dem Modellwissen.";
 
 /** Context preface for Gemini when ranked web results are present. */
 export const WEB_RESULTS_CONTEXT_PREFACE =
@@ -82,20 +90,42 @@ export function sourcesFromWebResults(
   return sources;
 }
 
-function withSearchUnavailableNote(response: AskResponse, note: string): AskResponse {
+/** Records why the web check could not run (closed code, diagnostics only). */
+function withSearchReason(response: AskResponse, reason: WebSearchFailureReason): AskResponse {
+  return { ...response, searchUnavailable: reason };
+}
+
+function withSearchUnavailableNote(
+  response: AskResponse,
+  note: string,
+  reason: WebSearchFailureReason,
+): AskResponse {
   if (
     response.answer.includes("Web-Prüfung ist momentan nicht verfügbar") ||
     response.answer.includes("Web-Prüfung ist vorübergehend nicht verfügbar") ||
+    response.answer.includes("Web-Prüfung ist in dieser Umgebung nicht konfiguriert") ||
     response.answer.includes("Web-Suche-Kontingent (Free Tier) aufgebraucht")
   ) {
-    return response;
+    return withSearchReason(response, reason);
   }
   const answer = `${response.answer.trim()}\n\n${note}`;
   const degraded = response.degraded ? { degraded: response.degraded } : {};
   if (response.sources && response.sources.length > 0) {
-    return { answer, sources: response.sources, ...degraded };
+    return withSearchReason({ answer, sources: response.sources, ...degraded }, reason);
   }
-  return { answer, ...degraded };
+  return withSearchReason({ answer, ...degraded }, reason);
+}
+
+/** Client-visible note per failure reason; only a missing key gets its own wording. */
+function searchFailureNote(reason: WebSearchFailureReason): string {
+  switch (reason) {
+    case "quota_exhausted":
+      return WEB_SEARCH_QUOTA_NOTE;
+    case "missing_key":
+      return WEB_SEARCH_NOT_CONFIGURED_NOTE;
+    default:
+      return GROUNDING_UNAVAILABLE_NOTE;
+  }
 }
 
 /**
@@ -132,16 +162,16 @@ export class OrchestratingAIProvider implements AIProvider {
         throw error;
       }
       const response = await this.llm.ask(req, opts);
-      return withGroundingUnavailableNote(response);
+      return withSearchReason(withGroundingUnavailableNote(response), "unavailable");
     }
 
     if (!searchOutcome.ok) {
       const response = await this.llm.ask(req, opts);
-      const note =
-        searchOutcome.reason === "quota_exhausted"
-          ? WEB_SEARCH_QUOTA_NOTE
-          : GROUNDING_UNAVAILABLE_NOTE;
-      return withSearchUnavailableNote(response, note);
+      return withSearchUnavailableNote(
+        response,
+        searchFailureNote(searchOutcome.reason),
+        searchOutcome.reason,
+      );
     }
 
     const ranked = rankWebSearchResults(searchOutcome.results, plan.query);

@@ -43,6 +43,7 @@ export const ASK_OUTCOMES = [
   "error",
   "truncated",
   "unexpected_finish",
+  "search_unavailable",
 ] as const;
 export type AskOutcome = (typeof ASK_OUTCOMES)[number];
 
@@ -93,7 +94,7 @@ export async function runAskAssistant(
   // fail() and a degraded success only by the success branch below, so one request produces at
   // most one event.
   const emit = (
-    event: "ai.ask.failed" | "ai.ask.degraded",
+    event: "ai.ask.failed" | "ai.ask.degraded" | "ai.search.degraded",
     stage: AskDiagStage,
     outcome: AskOutcome,
     diagSource: unknown,
@@ -168,6 +169,12 @@ export async function runAskAssistant(
         cause:
           result.degraded === "truncated" ? "provider_truncated" : "provider_unexpected_finish",
         httpStatus: 200,
+      });
+    }
+    if (result.searchUnavailable) {
+      // Expected in environments without a search key; the answer already carries the note.
+      emit("ai.search.degraded", "provider", "search_unavailable", {
+        cause: `search_${result.searchUnavailable}`,
       });
     }
     if (result.sources && result.sources.length > 0) {

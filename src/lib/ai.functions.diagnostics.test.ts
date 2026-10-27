@@ -11,7 +11,7 @@ vi.mock("@tanstack/react-start", () => {
 vi.mock("@/integrations/supabase/auth-middleware", () => ({ requireSupabaseAuth: {} }));
 
 import { ASK_GATEWAY_TIMEOUT_MESSAGE } from "@/lib/ai-ask";
-import { AiGuardError } from "@/lib/ai-guard";
+import { AI_FAILURE_CAUSES, AiGuardError } from "@/lib/ai-guard";
 import { GeminiProvider } from "@/lib/ai/gemini-provider";
 
 import { type AskRateLimitClient, runAskAssistant } from "./ai.functions";
@@ -405,5 +405,68 @@ describe("blocked, truncated and unexpected-finish responses", () => {
     });
     expect(error).toBeUndefined();
     expect((result as { answer: string }).answer).toContain("Teil");
+  });
+});
+
+describe("web search unavailable → one safe ai.search.degraded event", () => {
+  const SEARCH_REASONS = [
+    "missing_key",
+    "rate_limited",
+    "network",
+    "unavailable",
+    "quota_exhausted",
+  ] as const;
+
+  async function runWithSearchMarker(
+    searchUnavailable: (typeof SEARCH_REASONS)[number] | undefined,
+    log?: (l: string) => void,
+  ) {
+    const lines: string[] = [];
+    const result = await runAskAssistant(
+      DATA,
+      { supabase: rpcOk, userId: SENTINELS.user },
+      {
+        createProvider: () => ({
+          ask: async () => ({
+            answer: `Antwort ${SENTINELS.body}`,
+            ...(searchUnavailable ? { searchUnavailable } : {}),
+          }),
+        }),
+        log: log ?? ((l) => lines.push(l)),
+      },
+    );
+    return { result, lines };
+  }
+
+  it.each(SEARCH_REASONS)(
+    "%s → exactly one allowlisted line, no marker for the client",
+    async (reason) => {
+      const { result, lines } = await runWithSearchMarker(reason);
+      expect(result).toEqual({ answer: `Antwort ${SENTINELS.body}` });
+      expect(result).not.toHaveProperty("searchUnavailable");
+      expect(lines).toHaveLength(1);
+      const parsed = JSON.parse(lines[0]!);
+      for (const key of Object.keys(parsed)) expect(ALLOWED_FIELDS).toContain(key);
+      for (const secret of Object.values(SENTINELS)) expect(lines[0]).not.toContain(secret);
+      expect(parsed).toMatchObject({
+        event: "ai.search.degraded",
+        stage: "provider",
+        outcome: "search_unavailable",
+        cause: `search_${reason}`,
+      });
+      expect(AI_FAILURE_CAUSES).toContain(parsed.cause);
+    },
+  );
+
+  it("no marker → no search event", async () => {
+    const { lines } = await runWithSearchMarker(undefined);
+    expect(lines).toEqual([]);
+  });
+
+  it("a throwing logger does not break the answer", async () => {
+    const { result } = await runWithSearchMarker("missing_key", () => {
+      throw new Error("log sink down");
+    });
+    expect(result).toEqual({ answer: `Antwort ${SENTINELS.body}` });
   });
 });

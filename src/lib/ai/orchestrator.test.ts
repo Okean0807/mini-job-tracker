@@ -5,6 +5,7 @@ import {
   OrchestratingAIProvider,
   sourcesFromWebResults,
   WEB_RESULTS_CONTEXT_PREFACE,
+  WEB_SEARCH_NOT_CONFIGURED_NOTE,
   WEB_SEARCH_QUOTA_NOTE,
 } from "./orchestrator";
 import { GROUNDING_UNAVAILABLE_NOTE } from "./gemini-provider";
@@ -148,7 +149,7 @@ describe("OrchestratingAIProvider", () => {
     expect(llmReq.context).not.toContain("Suchergebnisse:");
   });
 
-  it("missing key / unavailable search → GROUNDING_UNAVAILABLE_NOTE", async () => {
+  it("missing key → separate 'not configured' note, no secret or variable names, marker set", async () => {
     const llm = stubLlm("Allgemein");
     const webSearch = stubSearch({
       ok: false,
@@ -160,9 +161,71 @@ describe("OrchestratingAIProvider", () => {
       question: "Was gilt gesetzlich für Minijobs?",
       context: "{}",
     });
+    expect(out.answer).toContain(WEB_SEARCH_NOT_CONFIGURED_NOTE);
+    expect(out.answer).not.toContain(GROUNDING_UNAVAILABLE_NOTE);
+    expect(WEB_SEARCH_NOT_CONFIGURED_NOTE).toMatch(/nicht konfiguriert/);
+    expect(WEB_SEARCH_NOT_CONFIGURED_NOTE).toMatch(/gespeicherten Daten und dem Modellwissen/);
+    expect(WEB_SEARCH_NOT_CONFIGURED_NOTE).not.toMatch(/TAVILY|KEY|API|secret/i);
+    expect(out.searchUnavailable).toBe("missing_key");
+    expect(out.sources).toBeUndefined();
+  });
+
+  it.each(["rate_limited", "network", "unavailable"] as const)(
+    "%s → generic grounding note + marker",
+    async (reason) => {
+      const llm = stubLlm("Allgemein");
+      const webSearch = stubSearch({ ok: false, reason, message: "x" });
+      const orch = new OrchestratingAIProvider({ llm, webSearch });
+      const out = await orch.ask({ question: "Was gilt gesetzlich für Minijobs?", context: "{}" });
+      expect(out.answer).toContain(GROUNDING_UNAVAILABLE_NOTE);
+      expect(out.answer).not.toContain(WEB_SEARCH_NOT_CONFIGURED_NOTE);
+      expect(out.searchUnavailable).toBe(reason);
+    },
+  );
+
+  it("quota exhaustion carries the marker", async () => {
+    const webSearch = stubSearch({ ok: false, reason: "quota_exhausted", message: "x" });
+    const orch = new OrchestratingAIProvider({ llm: stubLlm(), webSearch });
+    const out = await orch.ask({ question: "Aktuelle Minijob-Grenze?", context: "{}" });
+    expect(out.answer).toContain(WEB_SEARCH_QUOTA_NOTE);
+    expect(out.searchUnavailable).toBe("quota_exhausted");
+  });
+
+  it("non-abort error thrown by the search → generic note + marker 'unavailable'", async () => {
+    const webSearch: WebSearchProvider = {
+      search: vi.fn(async () => {
+        throw new Error("boom");
+      }),
+    };
+    const orch = new OrchestratingAIProvider({ llm: stubLlm("Antwort"), webSearch });
+    const out = await orch.ask({ question: "Aktuelle Minijob-Grenze?", context: "{}" });
+    expect(out.answer).toContain("Antwort");
     expect(out.answer).toContain(GROUNDING_UNAVAILABLE_NOTE);
-    expect(GROUNDING_UNAVAILABLE_NOTE).toMatch(/momentan nicht verfügbar/);
-    expect(GROUNDING_UNAVAILABLE_NOTE).toMatch(/gespeicherten Daten bzw\. dem Modellwissen/);
+    expect(out.searchUnavailable).toBe("unavailable");
+  });
+
+  it("abort errors from the search are still rethrown", async () => {
+    const abort = Object.assign(new Error("aborted"), { name: "AbortError" });
+    const webSearch: WebSearchProvider = {
+      search: vi.fn(async () => {
+        throw abort;
+      }),
+    };
+    const llm = stubLlm();
+    const orch = new OrchestratingAIProvider({ llm, webSearch });
+    await expect(
+      orch.ask({ question: "Aktuelle Minijob-Grenze?", context: "{}" }),
+    ).rejects.toBe(abort);
+    expect(llm.ask).not.toHaveBeenCalled();
+  });
+
+  it("own-data question never touches the search provider", async () => {
+    const webSearch = stubSearch({ ok: false, reason: "missing_key", message: "x" });
+    const orch = new OrchestratingAIProvider({ llm: stubLlm(), webSearch });
+    const out = await orch.ask({ question: "Wie viel habe ich diesen Monat verdient?", context: "{}" });
+    expect(webSearch.search).not.toHaveBeenCalled();
+    expect(out.searchUnavailable).toBeUndefined();
+    expect(out.answer).not.toContain("Web-Prüfung");
   });
 
   it("empty search results → unavailable note (never pretend current-checked)", async () => {
@@ -175,5 +238,6 @@ describe("OrchestratingAIProvider", () => {
     });
     expect(out.answer).toContain(GROUNDING_UNAVAILABLE_NOTE);
     expect(out.sources).toBeUndefined();
+    expect(out.searchUnavailable).toBeUndefined();
   });
 });
