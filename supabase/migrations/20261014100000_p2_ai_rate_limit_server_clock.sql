@@ -1,4 +1,6 @@
--- PENDING (NOT applied). Fix: consume_ai_rate_limit trusted a caller-supplied
+-- F-1 (moved from supabase/pending after the isolated PG 17.6 author DB run, t604).
+-- Takes effect in production only after merge to main (Supabase migration channel).
+-- Fix: consume_ai_rate_limit trusted a caller-supplied
 -- clock. `authenticated` has EXECUTE and may call the RPC directly with an
 -- arbitrary p_now_ms; a far-future value purges all real stamps
 -- (p_now_ms - x >= window), which resets the user's own counters and bypasses

@@ -1,9 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-// Static guard for the PENDING migration. Behaviour (limits, boundaries, races) is
-// verified against an isolated PostgreSQL by scripts/db-tests/pr140_run.sh (not CI).
-const FILE = "supabase/pending/20261014100000_p2_ai_rate_limit_server_clock.sql";
+// Static guard for the F-1 migration (moved into supabase/migrations after the
+// isolated PG 17.6 author DB run, t604). Behaviour (limits, boundaries, races) is
+// verified against an isolated PostgreSQL by
+// scripts/db-tests/pr140_run.sh (not CI).
+const FILE = "supabase/migrations/20261014100000_p2_ai_rate_limit_server_clock.sql";
 const raw = readFileSync(FILE, "utf8");
 
 /** Removes `-- …` line comments and block comments so commented-out text never satisfies a check. */
@@ -18,7 +20,7 @@ const body = sql.slice(start + "as $$".length, end);
 const outside = sql.slice(0, start) + sql.slice(end + 3);
 const norm = (s: string) => s.replace(/\s+/g, " ").trim();
 
-describe("pending consume_ai_rate_limit: server clock only", () => {
+describe("consume_ai_rate_limit (F-1): server clock only", () => {
   it("has exactly one function body", () => {
     expect(start).toBeGreaterThan(0);
     expect(end).toBeGreaterThan(start);
@@ -88,8 +90,8 @@ describe("pending consume_ai_rate_limit: server clock only", () => {
     expect(sql).not.toMatch(/\bgrant\b[^;]*\bto\b[^;]*\b(anon|public|service_role)\b/i);
   });
 
-  it("is only pending, never in the applied migration chain", () => {
-    expect(existsSync("supabase/migrations/20261014100000_p2_ai_rate_limit_server_clock.sql")).toBe(
+  it("lives only in the migration chain (no stale pending copy)", () => {
+    expect(existsSync("supabase/pending/20261014100000_p2_ai_rate_limit_server_clock.sql")).toBe(
       false,
     );
   });

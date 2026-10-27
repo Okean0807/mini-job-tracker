@@ -4,13 +4,13 @@
 # (PGHOST must be a directory; TCP hosts are refused). Never point this at prod.
 # Usage: PGHOST=/tmp/pg140/sock PGPORT=55417 scripts/db-tests/pr140_run.sh [function.sql]
 #   ONLY_CONCURRENCY=1 skips the functional cases (e.g. to compare an older body).
-#   function.sql defaults to supabase/pending/20261014100000_p2_ai_rate_limit_server_clock.sql
+#   function.sql defaults to supabase/migrations/20261014100000_p2_ai_rate_limit_server_clock.sql
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 : "${PGHOST:?set PGHOST to the local socket directory}"
 [[ -d "$PGHOST" ]] || { echo "refusing: PGHOST must be a local socket directory"; exit 2; }
 export PGUSER=postgres
-FUNC=${1:-supabase/pending/20261014100000_p2_ai_rate_limit_server_clock.sql}
+FUNC=${1:-supabase/migrations/20261014100000_p2_ai_rate_limit_server_clock.sql}
 DB=pr140_$$
 D=scripts/db-tests
 U=11111111-1111-1111-1111-111111111111

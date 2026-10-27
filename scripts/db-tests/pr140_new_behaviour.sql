@@ -1,4 +1,4 @@
--- Against the NEW pending body (20261014100000). Run after pr140_stub + migrations.
+-- Against the NEW body (20261014100000). Run after pr140_stub + migrations.
 \set ON_ERROR_STOP on
 \set U '11111111-1111-1111-1111-111111111111'
 \set V '22222222-2222-2222-2222-222222222222'
