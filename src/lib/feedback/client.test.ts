@@ -5,7 +5,6 @@ import { FeedbackError, type FeedbackInput } from "./schema";
 
 const input: FeedbackInput = {
   submissionId: "11111111-1111-4111-8111-111111111111",
-  kind: "bug",
   message: "Fehler",
   appVersion: "1.0.0",
   lang: "de",

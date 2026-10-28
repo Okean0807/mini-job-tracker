@@ -1,6 +1,6 @@
 /**
- * Feedback-Dialog (Einstellungen → Allgemein): echte Komponente, echter Store, nur sonner und
- * der Server-Aufruf (`submit`) sind Test-Doubles.
+ * Feedback window (Einstellungen → Allgemein): real component, real store; only sonner, the auth hook and
+ * the server call (`submit`) are test doubles.
  */
 import { createElement } from "react";
 import { act } from "react";
@@ -18,7 +18,7 @@ vi.mock("@/hooks/use-auth-session", () => ({
 
 import { tl } from "@/lib/i18n";
 import { FeedbackError, MAX_FEEDBACK_CHARS, type FeedbackInput } from "@/lib/feedback/schema";
-import { getData, replaceAll, saveJob, saveShift, updateSettings } from "@/lib/minijob/store";
+import { replaceAll, saveJob, saveShift, updateSettings } from "@/lib/minijob/store";
 
 import { FeedbackSection } from "./FeedbackDialog";
 
@@ -29,8 +29,8 @@ let host: HTMLDivElement;
 let root: Root;
 type Call = { data: FeedbackInput };
 let submit: ReturnType<typeof vi.fn<(args: Call) => Promise<unknown>>>;
-
 let openAccount: ReturnType<typeof vi.fn<() => void>>;
+
 const renderSection = () =>
   act(async () => {
     root.render(createElement(FeedbackSection, { submit, onOpenAccount: openAccount }));
@@ -54,6 +54,7 @@ afterEach(() => {
   act(() => root.unmount());
   host.remove();
   document.body.innerHTML = "";
+  vi.restoreAllMocks();
 });
 
 const $ = (sel: string) => document.body.querySelector<HTMLElement>(sel);
@@ -75,10 +76,9 @@ const submitForm = () =>
       new Event("submit", { bubbles: true, cancelable: true }),
     );
   });
-const radio = (id: string) => $(`#${id}`);
 
-describe("entry point and form", () => {
-  it("the settings button is a labelled button that opens an accessible dialog", async () => {
+describe("the window", () => {
+  it("a labelled button in the settings opens a dialog with a message field, a counter and a send button", async () => {
     const button = $('[data-testid="feedback-open"]') as HTMLButtonElement;
     expect(button.tagName).toBe("BUTTON");
     expect(button.textContent).toContain(de("fb.open"));
@@ -86,37 +86,30 @@ describe("entry point and form", () => {
     expect(dialog()).toBeNull();
     await open();
     expect(dialog()!.textContent).toContain(de("fb.dialog.title"));
+    expect($("#fb-message")).not.toBeNull();
+    expect($('[data-testid="feedback-submit"]')!.textContent).toBe(de("fb.send"));
   });
 
-  it("offers bug, idea and rating; the star rating only for 'rating'", async () => {
+  it("is simple: one message field, no type or rating controls, nothing else to fill in", async () => {
     await open();
-    expect(dialog()!.textContent).toContain(de("fb.kind.bug"));
-    expect(dialog()!.textContent).toContain(de("fb.kind.idea"));
-    expect(dialog()!.textContent).toContain(de("fb.kind.rating"));
-    expect($('[data-testid="feedback-star-1"]')).toBeNull();
-    await click(radio("fb-kind-rating"));
-    expect($('[data-testid="feedback-star-5"]')).not.toBeNull();
-    await click(radio("fb-kind-idea"));
-    expect($('[data-testid="feedback-star-1"]')).toBeNull();
+    expect(dialog()!.querySelectorAll("textarea")).toHaveLength(1);
+    expect(dialog()!.querySelectorAll("input")).toHaveLength(0);
+    expect(dialog()!.querySelector('[role="radiogroup"], [role="radio"]')).toBeNull();
   });
 
-  it("is accessible: labelled groups, labelled stars, described textarea, 44px targets", async () => {
+  it("is accessible and touch friendly: labelled field, described by hint and counter, 44px buttons, 2000 limit", async () => {
     await open();
-    await click(radio("fb-kind-rating"));
-    expect(dialog()!.querySelector('[role="radiogroup"]')!.getAttribute("aria-label")).toBe(
-      de("fb.kind.label"),
-    );
-    const star3 = $('[data-testid="feedback-star-3"]')!;
-    expect(star3.getAttribute("role")).toBe("radio");
-    expect(star3.getAttribute("aria-label")).toBe(de("fb.rating.star", { n: 3 }));
-    expect(star3.className).toContain("size-11");
-    const area = $("#fb-message")!;
+    const area = $("#fb-message") as HTMLTextAreaElement;
     expect(document.querySelector('label[for="fb-message"]')).not.toBeNull();
     expect(area.getAttribute("aria-describedby")).toBe("fb-privacy fb-counter");
-    expect(($("#fb-message") as HTMLTextAreaElement).maxLength).toBe(MAX_FEEDBACK_CHARS);
+    expect(area.maxLength).toBe(MAX_FEEDBACK_CHARS);
+    const formButtons = $('[data-testid="feedback-form"]')!.querySelectorAll("button");
+    expect(formButtons).toHaveLength(2); // Abbrechen + Absenden
+    for (const b of formButtons) expect(b.className, b.textContent ?? "").toContain("min-h-11");
+    expect($('[data-testid="feedback-open"]')!.className).toContain("min-h-11");
   });
 
-  it("shows the privacy warning and a live character counter", async () => {
+  it("shows the privacy hint (no salaries/shifts, reply address is sent) and a live counter", async () => {
     await open();
     expect($('[data-testid="feedback-privacy"]')!.textContent).toBe(de("fb.privacy"));
     expect($('[data-testid="feedback-counter"]')!.textContent).toBe(
@@ -129,10 +122,10 @@ describe("entry point and form", () => {
   });
 });
 
-describe("client-side validation (the server validates again)", () => {
-  it("a bug/idea without enough text is not sent", async () => {
+describe("validation in the form (the server validates again)", () => {
+  it.each(["", "  ", "ab"])("an empty or too short message (%j) is not sent", async (text) => {
     await open();
-    await type("ab");
+    await type(text);
     await submitForm();
     expect(submit).not.toHaveBeenCalled();
     expect($('[data-testid="feedback-error"]')!.textContent).toBe(
@@ -141,36 +134,14 @@ describe("client-side validation (the server validates again)", () => {
     expect($('[data-testid="feedback-error"]')!.getAttribute("role")).toBe("alert");
   });
 
-  it("a rating without stars is not sent; with stars it needs no text", async () => {
+  it("the field cannot exceed the limit", async () => {
     await open();
-    await click(radio("fb-kind-rating"));
-    await submitForm();
-    expect(submit).not.toHaveBeenCalled();
-    expect($('[data-testid="feedback-error"]')!.textContent).toBe(de("fb.error.ratingRequired"));
-    await click($('[data-testid="feedback-star-4"]'));
-    await submitForm();
-    await flush();
-    expect(submit).toHaveBeenCalledTimes(1);
-    expect(submit.mock.calls[0]![0].data).toMatchObject({ kind: "rating", rating: 4, message: "" });
+    expect(($("#fb-message") as HTMLTextAreaElement).maxLength).toBe(2000);
   });
 });
 
 describe("sending", () => {
-  it("success: toast only after the server confirmed, dialog closes, form resets", async () => {
-    await open();
-    await type("Der Export ist zu langsam");
-    expect(toastMock.success).not.toHaveBeenCalled();
-    await submitForm();
-    await flush();
-    expect(submit).toHaveBeenCalledTimes(1);
-    expect(toastMock.success).toHaveBeenCalledWith(de("fb.success"));
-    expect(toastMock.error).not.toHaveBeenCalled();
-    expect(dialog()).toBeNull();
-    await open();
-    expect(($("#fb-message") as HTMLTextAreaElement).value).toBe("");
-  });
-
-  it("sends only the minimal fields — no app data from the store", async () => {
+  it("sends only the message and four automatic technical fields; success is shown after the server confirmed", async () => {
     saveJob({
       id: "j1",
       name: "GEHEIMER-ARBEITGEBER",
@@ -188,23 +159,33 @@ describe("sending", () => {
       breakMinutes: 0,
       note: "GEHEIME-NOTIZ",
     });
-    expect(getData().shifts).toHaveLength(1);
     await open();
-    await type("Kalender zeigt falsches Datum");
+    await type("Der Kalender zeigt das falsche Datum");
+    expect(toastMock.success).not.toHaveBeenCalled();
     await submitForm();
     await flush();
+    expect(submit).toHaveBeenCalledTimes(1);
     const data = submit.mock.calls[0]![0].data;
-    expect(Object.keys(data).sort()).toEqual(
-      ["appVersion", "kind", "lang", "message", "route", "submissionId"].sort(),
-    );
+    expect(Object.keys(data).sort()).toEqual([
+      "appVersion",
+      "lang",
+      "message",
+      "route",
+      "submissionId",
+    ]);
+    expect(data.message).toBe("Der Kalender zeigt das falsche Datum");
     const wire = JSON.stringify(submit.mock.calls);
-    for (const secret of ["GEHEIMER-ARBEITGEBER", "GEHEIME-NOTIZ", "99.99", "2026-09-01"]) {
+    for (const secret of ["GEHEIMER-ARBEITGEBER", "GEHEIME-NOTIZ", "99.99", "2026-09-01", "@"]) {
       expect(wire).not.toContain(secret);
     }
-    expect(data.route).toMatch(/^\/[a-z0-9_\-/]*$/);
+    expect(toastMock.success).toHaveBeenCalledWith(de("fb.success"));
+    expect(toastMock.error).not.toHaveBeenCalled();
+    expect(dialog()).toBeNull();
+    await open();
+    expect(($("#fb-message") as HTMLTextAreaElement).value).toBe(""); // form reset after success
   });
 
-  it("double click / repeated submit while sending sends exactly once and disables the button", async () => {
+  it("shows a sending indicator, locks the button and sends once on repeated clicks", async () => {
     let release!: (v: unknown) => void;
     submit.mockImplementation(() => new Promise((r) => (release = r)));
     await open();
@@ -222,7 +203,7 @@ describe("sending", () => {
     expect(toastMock.success).toHaveBeenCalledTimes(1);
   });
 
-  it("network error: text kept, error shown (alert + toast), retry reuses the same submissionId", async () => {
+  it("network error: text kept, clear error (alert + toast), retry uses the same form id", async () => {
     submit.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     await open();
     await type("Absturz beim Speichern");
@@ -233,13 +214,23 @@ describe("sending", () => {
     expect($('[data-testid="feedback-error"]')!.textContent).toBe(de("fb.error.network"));
     expect(($("#fb-message") as HTMLTextAreaElement).value).toBe("Absturz beim Speichern");
     expect(($('[data-testid="feedback-submit"]') as HTMLButtonElement).disabled).toBe(false);
-
     await submitForm();
     await flush();
     expect(submit).toHaveBeenCalledTimes(2);
-    const ids = submit.mock.calls.map((c) => c[0].data.submissionId);
-    expect(ids[0]).toBe(ids[1]);
+    expect(submit.mock.calls[0]![0].data.submissionId).toBe(
+      submit.mock.calls[1]![0].data.submissionId,
+    );
     expect(toastMock.success).toHaveBeenCalledTimes(1);
+  });
+
+  it("a mail-service failure (server says unavailable) is an error, never a success", async () => {
+    submit.mockRejectedValueOnce(new FeedbackError("unavailable"));
+    await open();
+    await type("Mail-Dienst ausgefallen");
+    await submitForm();
+    await flush();
+    expect(toastMock.success).not.toHaveBeenCalled();
+    expect($('[data-testid="feedback-error"]')!.textContent).toBe(de("fb.error.network"));
   });
 
   it("an unconfirmed server answer is never shown as success", async () => {
@@ -272,11 +263,10 @@ describe("sending", () => {
     await flush();
     expect(submit).not.toHaveBeenCalled();
     expect($('[data-testid="feedback-error"]')!.textContent).toBe(de("fb.error.offline"));
-    vi.restoreAllMocks();
   });
 });
 
-describe("authentication gate (Feedback is for signed-in users only)", () => {
+describe("only for signed-in users", () => {
   const rerender = async (status: "loading" | "signed_in" | "signed_out") => {
     authState.status = status;
     await renderSection();
@@ -292,10 +282,9 @@ describe("authentication gate (Feedback is for signed-in users only)", () => {
     expect(dialog()).toBeNull();
   });
 
-  it("guest (signed out): sees the sign-in suggestion, no feedback button, no dialog", async () => {
+  it("guest: sees the sign-in suggestion, no message button, no dialog, nothing is sent", async () => {
     await rerender("signed_out");
     expect($('[data-testid="feedback-signin"]')!.textContent).toContain(de("fb.signIn.required"));
-    expect($('[data-testid="feedback-signin"] [role="status"]')).not.toBeNull();
     expect($('[data-testid="feedback-open"]')).toBeNull();
     expect(dialog()).toBeNull();
     expect(submit).not.toHaveBeenCalled();
@@ -305,12 +294,6 @@ describe("authentication gate (Feedback is for signed-in users only)", () => {
     await rerender("signed_out");
     await click($('[data-testid="feedback-signin-action"]'));
     expect(openAccount).toHaveBeenCalledTimes(1);
-  });
-
-  it("signed in: button enabled and no sign-in prompt", async () => {
-    await rerender("signed_in");
-    expect($('[data-testid="feedback-signin"]')).toBeNull();
-    expect(($('[data-testid="feedback-open"]') as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("signing out while the dialog is open closes it and nothing can be submitted", async () => {

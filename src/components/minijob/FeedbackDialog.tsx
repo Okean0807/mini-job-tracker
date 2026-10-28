@@ -1,5 +1,4 @@
-import * as RadioGroupPrimitive from "@radix-ui/react-radio-group";
-import { MessageSquare, Star } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -12,7 +11,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { useT } from "@/lib/i18n";
@@ -20,19 +18,17 @@ import { sendFeedback } from "@/lib/feedback/client";
 import { feedbackContext } from "@/lib/feedback/context";
 import { submitFeedback } from "@/lib/feedback/feedback.functions";
 import {
-  FEEDBACK_KINDS,
   MAX_FEEDBACK_CHARS,
   MIN_FEEDBACK_CHARS,
   feedbackSchema,
   type FeedbackInput,
-  type FeedbackKind,
 } from "@/lib/feedback/schema";
 
 type Submit = (args: { data: FeedbackInput }) => Promise<unknown>;
 
 const newSubmissionId = () => crypto.randomUUID();
 
-/** Einstellungen → Allgemein: Feedback (Fehler, Idee, Bewertung). Auch für Gäste. */
+/** Einstellungen → Allgemein: Nachricht an den Entwickler (E-Mail). Nur für angemeldete Nutzer. */
 export function FeedbackSection({
   submit = submitFeedback as Submit,
   onOpenAccount,
@@ -46,18 +42,14 @@ export function FeedbackSection({
   // wird einem Gast die Anmeldung vorgeschlagen, damit nichts kurz aufblitzt.
   const { status: authStatus } = useAuthSession();
   const [open, setOpen] = useState(false);
-  const [kind, setKind] = useState<FeedbackKind>("bug");
-  const [rating, setRating] = useState(0);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Eine ID pro Formular: eine Wiederholung nach Netzwerkfehler wird serverseitig nie doppelt gespeichert.
+  // Eine ID pro Formular: eine Wiederholung nach Netzwerkfehler führt nicht zu einer doppelten E-Mail.
   const submissionId = useRef(newSubmissionId());
   const sendingRef = useRef(false);
 
   function reset() {
-    setKind("bug");
-    setRating(0);
     setMessage("");
     setError(null);
     submissionId.current = newSubmissionId();
@@ -74,20 +66,16 @@ export function FeedbackSection({
     );
     const input = {
       submissionId: submissionId.current,
-      kind,
       message: message.trim(),
-      ...(kind === "rating" ? { rating } : {}),
       ...ctx,
     };
     const parsed = feedbackSchema.safeParse(input);
     if (!parsed.success) {
       const paths = parsed.error.issues.map((i) => i.path.join("."));
       setError(
-        paths.includes("rating") && kind === "rating" && rating === 0
-          ? t("fb.error.ratingRequired")
-          : paths.includes("message")
-            ? t("fb.error.messageRequired", { min: MIN_FEEDBACK_CHARS })
-            : t("fb.error.invalid"),
+        paths.includes("message")
+          ? t("fb.error.messageRequired", { min: MIN_FEEDBACK_CHARS })
+          : t("fb.error.invalid"),
       );
       return;
     }
@@ -124,12 +112,6 @@ export function FeedbackSection({
       setSending(false);
     }
   }
-
-  const kindLabel: Record<FeedbackKind, string> = {
-    bug: t("fb.kind.bug"),
-    idea: t("fb.kind.idea"),
-    rating: t("fb.kind.rating"),
-  };
 
   return (
     <section className="space-y-3 rounded-2xl border bg-card p-4 shadow-card">
@@ -177,60 +159,6 @@ export function FeedbackSection({
           </DialogHeader>
 
           <form className="space-y-4" onSubmit={onSubmit} noValidate data-testid="feedback-form">
-            <fieldset className="space-y-2">
-              <legend className="text-sm font-medium">{t("fb.kind.label")}</legend>
-              <RadioGroup
-                value={kind}
-                onValueChange={(v) => {
-                  setKind(v as FeedbackKind);
-                  setError(null);
-                }}
-                aria-label={t("fb.kind.label")}
-              >
-                {FEEDBACK_KINDS.map((k) => (
-                  <div key={k} className="flex min-h-11 items-center gap-3">
-                    <RadioGroupItem value={k} id={`fb-kind-${k}`} />
-                    <Label htmlFor={`fb-kind-${k}`} className="flex-1 cursor-pointer text-sm">
-                      {kindLabel[k]}
-                    </Label>
-                  </div>
-                ))}
-              </RadioGroup>
-            </fieldset>
-
-            {kind === "rating" ? (
-              <div className="space-y-2">
-                <Label id="fb-rating-label" className="text-sm font-medium">
-                  {t("fb.rating.label")}
-                </Label>
-                <RadioGroupPrimitive.Root
-                  aria-labelledby="fb-rating-label"
-                  value={rating ? String(rating) : ""}
-                  onValueChange={(v) => {
-                    setRating(Number(v));
-                    setError(null);
-                  }}
-                  orientation="horizontal"
-                  className="flex gap-1"
-                >
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <RadioGroupPrimitive.Item
-                      key={n}
-                      value={String(n)}
-                      aria-label={t("fb.rating.star", { n })}
-                      data-testid={`feedback-star-${n}`}
-                      className="flex size-11 items-center justify-center rounded-md text-amber-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <Star
-                        className={n <= rating ? "size-7 fill-current" : "size-7"}
-                        aria-hidden
-                      />
-                    </RadioGroupPrimitive.Item>
-                  ))}
-                </RadioGroupPrimitive.Root>
-              </div>
-            ) : null}
-
             <div className="space-y-2">
               <Label htmlFor="fb-message" className="text-sm font-medium">
                 {t("fb.message.label")}
@@ -240,7 +168,7 @@ export function FeedbackSection({
                 value={message}
                 maxLength={MAX_FEEDBACK_CHARS}
                 rows={6}
-                placeholder={t(`fb.message.placeholder.${kind}`)}
+                placeholder={t("fb.message.placeholder")}
                 aria-describedby="fb-privacy fb-counter"
                 aria-invalid={error ? true : undefined}
                 onChange={(e) => {

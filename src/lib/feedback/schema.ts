@@ -1,17 +1,12 @@
 import { z } from "zod";
 
 /**
- * Feedback (Fehler melden / Verbesserung vorschlagen / App bewerten).
- *
- * Gemeinsame Regeln für Client und Server – der Server verlässt sich NIE auf die
- * Client-Prüfung. Bewusst minimal: nur Text, Art, Bewertung und vier technische Felder.
- * `.strict()` lehnt jedes weitere Feld ab (z. B. Schichten, Sicherungen, Tokens).
+ * Feedback = eine Textnachricht an den Betreiber (E-Mail). Gemeinsame Regeln für Client und Server;
+ * der Server verlässt sich NIE auf die Client-Prüfung. `.strict()` lehnt jedes weitere Feld ab
+ * (z. B. Empfänger, Schichten, Sicherungen, Tokens) – der Empfänger kommt ausschließlich aus der
+ * Server-Konfiguration.
  */
-export const FEEDBACK_KINDS = ["bug", "idea", "rating"] as const;
-export type FeedbackKind = (typeof FEEDBACK_KINDS)[number];
-
 export const MAX_FEEDBACK_CHARS = 2000;
-/** Fehler/Ideen brauchen einen aussagekräftigen Text; eine reine Bewertung nicht. */
 export const MIN_FEEDBACK_CHARS = 3;
 export const FEEDBACK_LANGS = ["de", "en", "ru", "tr", "pl"] as const;
 
@@ -19,41 +14,41 @@ export const FEEDBACK_LANGS = ["de", "en", "ru", "tr", "pl"] as const;
 const ROUTE_RE = /^\/[a-z0-9_\-/]{0,63}$/;
 const VERSION_RE = /^[A-Za-z0-9._+-]{1,32}$/;
 
+/** Steuerzeichen außer Zeilenumbruch/Tab entfernen, CRLF vereinheitlichen. */
+export function cleanMessage(value: string): string {
+  return (
+    value
+      .replace(/\r\n?/g, "\n")
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+      .trim()
+  );
+}
+
 export const feedbackSchema = z
   .object({
-    /** Vom Client pro Formular erzeugt; macht Wiederholungen idempotent. */
+    /** Vom Client pro Formular erzeugt; dient als Idempotenzschlüssel bei Wiederholungen. */
     submissionId: z.string().uuid(),
-    kind: z.enum(FEEDBACK_KINDS),
-    message: z.string().max(MAX_FEEDBACK_CHARS),
-    rating: z.number().int().min(1).max(5).optional(),
+    message: z
+      .string()
+      .max(MAX_FEEDBACK_CHARS)
+      .refine((m) => cleanMessage(m).length >= MIN_FEEDBACK_CHARS, "message-required"),
     appVersion: z.string().regex(VERSION_RE),
     lang: z.enum(FEEDBACK_LANGS),
     route: z.string().regex(ROUTE_RE),
   })
-  .strict()
-  .superRefine((value, ctx) => {
-    const text = value.message.trim();
-    if (value.kind === "rating") {
-      if (value.rating === undefined) {
-        ctx.addIssue({ code: "custom", path: ["rating"], message: "rating-required" });
-      }
-    } else {
-      if (value.rating !== undefined) {
-        ctx.addIssue({ code: "custom", path: ["rating"], message: "rating-not-allowed" });
-      }
-      if (text.length < MIN_FEEDBACK_CHARS) {
-        ctx.addIssue({ code: "custom", path: ["message"], message: "message-required" });
-      }
-    }
-  });
+  .strict();
 
 export type FeedbackInput = z.infer<typeof feedbackSchema>;
 
+export type FeedbackErrorCode =
+  "invalid" | "rate_limited" | "unavailable" | "unauthenticated" | "forbidden";
+
 export class FeedbackError extends Error {
-  readonly code: "invalid" | "rate_limited" | "unavailable" | "unauthenticated" | "forbidden";
+  readonly code: FeedbackErrorCode;
   readonly retryAfterSeconds: number;
 
-  constructor(code: FeedbackError["code"], retryAfterSeconds = 0) {
+  constructor(code: FeedbackErrorCode, retryAfterSeconds = 0) {
     // Maschinenlesbar, ohne interne Details; der Client übersetzt in Nutzertexte.
     super(`feedback:${code}:${retryAfterSeconds}`);
     this.name = "FeedbackError";
@@ -71,10 +66,10 @@ export function parseFeedbackInput(input: unknown): FeedbackInput {
 /** Fehlercode aus einer (ggf. über das Netz rekonstruierten) Fehlermeldung lesen. */
 export function readFeedbackError(
   error: unknown,
-): { code: FeedbackError["code"]; retry: number } | null {
+): { code: FeedbackErrorCode; retry: number } | null {
   const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
   const m = /feedback:(invalid|rate_limited|unavailable|unauthenticated|forbidden):(\d+)/.exec(
     message,
   );
-  return m ? { code: m[1] as FeedbackError["code"], retry: Number(m[2]) } : null;
+  return m ? { code: m[1] as FeedbackErrorCode, retry: Number(m[2]) } : null;
 }

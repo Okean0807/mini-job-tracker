@@ -25,9 +25,7 @@ describe("feedbackContext", () => {
       expect(
         feedbackSchema.safeParse({
           submissionId: "11111111-1111-4111-8111-111111111111",
-          kind: "rating",
-          message: "",
-          rating: 5,
+          message: "Hallo Test",
           ...c,
         }).success,
         p,

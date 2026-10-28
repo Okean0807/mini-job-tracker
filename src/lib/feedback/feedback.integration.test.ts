@@ -1,15 +1,13 @@
 // @vitest-environment node
 /**
- * Integration test of the real authentication path (variant C2) against a FAKE Supabase
- * (local HTTP server: /auth/v1/user and PostgREST /rest/v1/rpc/submit_feedback):
+ * Integration test of the real authentication path against FAKE services (local HTTP servers):
  *
- *   real requireSupabaseAuth (getClaims -> fake auth server) -> user-scoped supabase-js client
- *   -> handleFeedback -> HTTP request to the fake PostgREST.
+ *   real requireSupabaseAuth (getClaims -> fake Supabase /auth/v1/user)
+ *   -> handleFeedback -> real Resend adapter -> fake mail API.
  *
  * Needs no secrets and no external infrastructure; every key and token below is a test constant.
- * It proves what the application sends and how it reacts to answers. It does NOT prove the real
- * Supabase/PostgREST, auth.uid(), RLS or grants (see scripts/db-tests/feedback_run.sh for the SQL
- * behaviour on a temporary local PostgreSQL and docs/FEEDBACK_DEPLOYMENT.md for the real checks).
+ * It proves what the application sends and how it reacts. It does NOT prove that Supabase accepts real
+ * tokens or that Resend delivers real e-mail.
  */
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -23,84 +21,98 @@ vi.mock("@tanstack/react-start/server", () => ({
 
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
-import { handleFeedback } from "./handler";
+import { handleFeedback, readMailConfig } from "./handler";
+import { sendMail } from "./mailer";
+import { createRateLimiter } from "./rate-limit";
 import { FeedbackError } from "./schema";
 
 const PUBLISHABLE = "sb_publishable_TEST_ONLY_0123456789";
-const SERVICE_CANARY = "service-role-CANARY-must-never-be-sent-0123456789";
-const SQL_DETAIL = "SECRET-SQL-DETAIL relation public.feedback violates something";
-const A = "aaaaaaaa-0000-4000-8000-000000000001";
-const B = "bbbbbbbb-0000-4000-8000-000000000002";
+const SERVICE_CANARY = "service-role-CANARY-must-never-be-used-0123456789";
+const MAIL_KEY = "re_TEST_ONLY_not_a_real_key_0123456789";
+const OWNER = "owner@example.test";
+const PROVIDER_TEXT = "SECRET-PROVIDER-TEXT";
 
 const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
-/** HS256-style token: getClaims() falls back to GET /auth/v1/user, which the fake answers. */
 const jwt = (claims: Record<string, unknown>) =>
   `${b64({ alg: "HS256", typ: "JWT" })}.${b64({
     role: "authenticated",
     exp: Math.floor(Date.now() / 1000) + 3600,
     ...claims,
   })}.${Buffer.alloc(32, 7).toString("base64url")}`;
-const TOKEN_A = jwt({ sub: A });
-const TOKEN_B = jwt({ sub: B });
+const TOKEN_A = jwt({ sub: "aaaaaaaa-0000-4000-8000-000000000001", email: "a@example.test" });
+const TOKEN_B = jwt({ sub: "bbbbbbbb-0000-4000-8000-000000000002", email: "b@example.test" });
 const TOKEN_ANON = jwt({ sub: "cccccccc-0000-4000-8000-000000000003", is_anonymous: true });
-const TOKEN_REVOKED = jwt({ sub: A, jti: "revoked" });
+const TOKEN_REVOKED = jwt({ sub: "aaaaaaaa-0000-4000-8000-000000000001", jti: "revoked" });
 
-type Seen = {
-  method: string;
-  url: string;
-  headers: Record<string, string>;
-  body: Record<string, unknown>;
-};
-let server: Server;
-let seen: Seen[] = [];
-let rpcAnswer: ((token: string) => { status: number; body: unknown }) | null = null;
+const claimsOf = (t: string) =>
+  JSON.parse(Buffer.from(t.split(".")[1]!, "base64url").toString()) as Record<string, unknown>;
 
-const claimsOf = (token: string) =>
-  JSON.parse(Buffer.from(token.split(".")[1]!, "base64url").toString()) as Record<string, unknown>;
+type Mail = { url: string; headers: Record<string, string>; body: Record<string, unknown> };
+let supabase: Server;
+let mailApi: Server;
+let mails: Mail[] = [];
+let authCalls = 0;
+let mailAnswer: () => { status: number; body: string } = () => ({
+  status: 200,
+  body: '{"id":"msg_1"}',
+});
+let mailBase = "";
+
+const listen = (server: Server) =>
+  new Promise<string>((resolve) =>
+    server.listen(0, "127.0.0.1", () =>
+      resolve(`http://127.0.0.1:${(server.address() as AddressInfo).port}`),
+    ),
+  );
 
 beforeAll(async () => {
-  server = createServer((req, res) => {
+  supabase = createServer((req, res) => {
+    const token = String(req.headers.authorization ?? "").replace(/^Bearer /, "");
+    res.setHeader("content-type", "application/json");
+    if ((req.url ?? "").startsWith("/auth/v1/user")) {
+      authCalls += 1;
+      if (!token || token === TOKEN_REVOKED) {
+        res.statusCode = 401;
+        res.end(JSON.stringify({ msg: "invalid JWT" }));
+      } else res.end(JSON.stringify({ id: claimsOf(token)["sub"], aud: "authenticated" }));
+      return;
+    }
+    res.statusCode = 404;
+    res.end("{}");
+  });
+  mailApi = createServer((req, res) => {
     let raw = "";
     req.on("data", (c) => (raw += c));
     req.on("end", () => {
-      const headers = Object.fromEntries(
-        Object.entries(req.headers).map(([k, v]) => [k, String(v)]),
-      );
-      const url = req.url ?? "";
-      seen.push({ method: req.method ?? "", url, headers, body: raw ? JSON.parse(raw) : {} });
-      const token = (headers["authorization"] ?? "").replace(/^Bearer /, "");
+      mails.push({
+        url: req.url ?? "",
+        headers: Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k, String(v)])),
+        body: raw ? JSON.parse(raw) : {},
+      });
+      const a = mailAnswer();
+      res.statusCode = a.status;
       res.setHeader("content-type", "application/json");
-      if (url.startsWith("/auth/v1/user")) {
-        if (!token || token === TOKEN_REVOKED) {
-          res.statusCode = 401;
-          res.end(JSON.stringify({ msg: "invalid JWT" }));
-        } else {
-          res.end(JSON.stringify({ id: claimsOf(token)["sub"], aud: "authenticated" }));
-        }
-        return;
-      }
-      const reply = rpcAnswer?.(token) ?? {
-        status: 200,
-        body: [{ status: "created", retry_after_seconds: 0 }],
-      };
-      res.statusCode = reply.status;
-      res.end(JSON.stringify(reply.body));
+      res.end(a.body);
     });
   });
-  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  process.env["VITE_SUPABASE_URL"] = url;
-  process.env["VITE_SUPABASE_PUBLISHABLE_KEY"] = PUBLISHABLE;
-  process.env["SUPABASE_URL"] = url;
-  process.env["SUPABASE_PUBLISHABLE_KEY"] = PUBLISHABLE;
-  process.env["SUPABASE_SERVICE_ROLE_KEY"] = SERVICE_CANARY; // present in the environment, must stay unused
+  const url = await listen(supabase);
+  mailBase = await listen(mailApi);
+  for (const name of ["VITE_SUPABASE_URL", "SUPABASE_URL"]) process.env[name] = url;
+  for (const name of ["VITE_SUPABASE_PUBLISHABLE_KEY", "SUPABASE_PUBLISHABLE_KEY"])
+    process.env[name] = PUBLISHABLE;
+  process.env["SUPABASE_SERVICE_ROLE_KEY"] = SERVICE_CANARY; // present, must stay unused
 });
-afterAll(() => new Promise<void>((r) => server.close(() => r())));
+afterAll(async () => {
+  supabase.closeAllConnections();
+  mailApi.closeAllConnections();
+  await Promise.all([new Promise((r) => supabase.close(r)), new Promise((r) => mailApi.close(r))]);
+});
 
 beforeEach(() => {
-  seen = [];
-  rpcAnswer = null;
+  mails = [];
+  authCalls = 0;
   requestHeaders = {};
+  mailAnswer = () => ({ status: 200, body: '{"id":"msg_1"}' });
   vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -108,27 +120,36 @@ afterEach(() => vi.restoreAllMocks());
 
 const input = () => ({
   submissionId: crypto.randomUUID(),
-  kind: "bug",
   message: "Der Export schlägt fehl",
   appVersion: "1.0.0",
   lang: "de",
   route: "/einstellungen",
 });
 
-type Ctx = {
-  supabase: { rpc: (fn: string, args: unknown) => Promise<{ data: unknown; error: unknown }> };
-};
-/** Runs the REAL middleware, then the REAL handler with the middleware's client. */
-async function submit(token: string | null, data: unknown = input()) {
-  requestHeaders = token ? { authorization: `Bearer ${token}` } : {};
-  const middleware = requireSupabaseAuth as unknown as {
-    options: {
-      server: (args: { next: (o: { context: Ctx }) => unknown }) => Promise<{ context: Ctx }>;
-    };
+type Ctx = { userId: string; claims: Record<string, unknown> };
+const mw = requireSupabaseAuth as unknown as {
+  options: {
+    server: (args: { next: (o: { context: Ctx }) => unknown }) => Promise<{ context: Ctx }>;
   };
-  const { context } = await middleware.options.server({ next: (o) => o });
+};
+const rateLimiter = createRateLimiter();
+const config = () => readMailConfig({ RESEND_API_KEY: MAIL_KEY, FEEDBACK_TO_EMAIL: OWNER })!;
+
+/** Runs the REAL middleware, then the REAL handler with the REAL mail adapter (pointed at the fake API). */
+async function submit(token: string | null, data: unknown = input(), limiter = rateLimiter) {
+  requestHeaders = token ? { authorization: `Bearer ${token}` } : {};
+  const { context } = await mw.options.server({ next: (o) => o });
+  const claims = context.claims as { email?: unknown; is_anonymous?: unknown };
   return handleFeedback(data, {
-    rpc: (fn, args) => context.supabase.rpc(fn, args as never),
+    user: {
+      id: context.userId,
+      email: typeof claims.email === "string" ? claims.email : undefined,
+      isAnonymous: claims.is_anonymous === true,
+    },
+    config: config(),
+    rateLimiter: limiter,
+    send: (m, c) => sendMail(m, { apiKey: c.apiKey, baseUrl: mailBase }),
+    log: (e, f) => console.warn(e, JSON.stringify(f)),
   });
 }
 const fails = async (p: Promise<unknown>) => {
@@ -139,161 +160,116 @@ const fails = async (p: Promise<unknown>) => {
   }
   throw new Error("expected rejection");
 };
-const rpcCalls = () => seen.filter((s) => s.url.startsWith("/rest/v1/rpc/submit_feedback"));
-const everything = () => JSON.stringify(seen);
 
 describe("user A and user B (authenticated)", () => {
-  it("A's request carries A's token and the publishable key, 7 parameters, no user id", async () => {
+  it("A's message becomes one e-mail to the owner, reply-to A's verified address, and is confirmed", async () => {
     await expect(submit(TOKEN_A)).resolves.toEqual({ ok: true, duplicate: false });
-    expect(rpcCalls()).toHaveLength(1);
-    const call = rpcCalls()[0]!;
-    expect(call.method).toBe("POST");
-    expect(call.headers["authorization"]).toBe(`Bearer ${TOKEN_A}`);
-    expect(call.headers["apikey"]).toBe(PUBLISHABLE);
-    expect(Object.keys(call.body).sort()).toEqual(
-      [
-        "p_app_version",
-        "p_kind",
-        "p_lang",
-        "p_message",
-        "p_rating",
-        "p_route",
-        "p_submission_id",
-      ].sort(),
-    );
-    expect(everything()).not.toContain(A); // the user id is never sent as data
+    expect(mails).toHaveLength(1);
+    const m = mails[0]!;
+    expect(m.url).toBe("/emails");
+    expect(m.headers["authorization"]).toBe(`Bearer ${MAIL_KEY}`);
+    expect(m.body["to"]).toEqual([OWNER]);
+    expect(m.body["reply_to"]).toBe("a@example.test");
+    expect(String(m.body["text"])).toContain("Der Export schlägt fehl");
   });
 
-  it("B's request carries B's token — the author is whoever the token says, never a field", async () => {
+  it("B's message carries B's address — the sender identity comes from the token, never the request", async () => {
     await submit(TOKEN_B);
-    expect(rpcCalls()[0]!.headers["authorization"]).toBe(`Bearer ${TOKEN_B}`);
-    expect(rpcCalls()[0]!.headers["authorization"]).not.toContain(TOKEN_A);
+    expect(mails[0]!.body["reply_to"]).toBe("b@example.test");
+    expect(JSON.stringify(mails[0])).not.toContain("a@example.test");
   });
 
-  it("a user id supplied in the request body is rejected before any database call", async () => {
-    const e = await fails(submit(TOKEN_A, { ...input(), userId: B }));
-    expect((e as FeedbackError).code).toBe("invalid");
-    expect(rpcCalls()).toHaveLength(0);
-  });
-
-  it("the service-role key is never sent to anyone", async () => {
-    await submit(TOKEN_A);
-    expect(everything()).not.toContain(SERVICE_CANARY);
-  });
-});
-
-describe("no token / bad token (rejected on the server, before the database)", () => {
-  it("no Authorization header: Unauthorized, nothing sent to PostgREST", async () => {
-    const e = await fails(submit(null));
-    expect(e.message).toMatch(/^Unauthorized/);
-    expect(seen).toHaveLength(0);
-  });
-
-  it.each([
-    ["not a JWT", "abc"],
-    ["two segments", "a.b"],
-    ["empty bearer", ""],
-  ])("%s: Unauthorized, nothing sent", async (_n, token) => {
-    requestHeaders = { authorization: `Bearer ${token}` };
-    const middleware = requireSupabaseAuth as unknown as {
-      options: { server: (a: { next: (o: unknown) => unknown }) => Promise<unknown> };
-    };
-    const e = await fails(middleware.options.server({ next: (o) => o }));
-    expect(e.message).toMatch(/^Unauthorized/);
-    expect(rpcCalls()).toHaveLength(0);
-  });
-
-  it("a token the auth server rejects: Unauthorized, the RPC is never called", async () => {
-    const e = await fails(submit(TOKEN_REVOKED));
-    expect(e.message).toMatch(/^Unauthorized/);
-    expect(rpcCalls()).toHaveLength(0);
-  });
-
-  it("non-Bearer schemes are refused", async () => {
-    requestHeaders = { authorization: `Basic ${TOKEN_A}` };
-    const middleware = requireSupabaseAuth as unknown as {
-      options: { server: (a: { next: (o: unknown) => unknown }) => Promise<unknown> };
-    };
-    expect((await fails(middleware.options.server({ next: (o) => o }))).message).toMatch(
-      /^Unauthorized/,
-    );
-  });
-});
-
-describe("anonymous Supabase user (is_anonymous claim)", () => {
-  it("the request reaches the database with that token and the 'forbidden' answer becomes a safe code", async () => {
-    rpcAnswer = (token) =>
-      claimsOf(token)["is_anonymous"] === true
-        ? { status: 200, body: [{ status: "forbidden", retry_after_seconds: 0 }] }
-        : { status: 200, body: [{ status: "created", retry_after_seconds: 0 }] };
-    const e = (await fails(submit(TOKEN_ANON))) as FeedbackError;
-    expect(e.code).toBe("forbidden");
-    // The refusal itself is decided in SQL (see the local SQL tests); this only proves the mapping.
-  });
-});
-
-describe("what a client can ever learn", () => {
-  it.each([
-    [
-      "SQL error with details",
-      { status: 500, body: { message: SQL_DETAIL, code: "XX000", details: SQL_DETAIL } },
-    ],
-    [
-      "function missing (migration not applied)",
-      {
-        status: 404,
-        body: { code: "PGRST202", message: "Could not find the function public.submit_feedback" },
-      },
-    ],
-    [
-      "permission denied",
-      {
-        status: 403,
-        body: { code: "42501", message: "permission denied for function submit_feedback" },
-      },
-    ],
-    [
-      "expired JWT at PostgREST",
-      { status: 401, body: { code: "PGRST301", message: "JWT expired" } },
-    ],
-    ["unexpected status value", { status: 200, body: [{ status: "ok" }] }],
-    ["empty result", { status: 200, body: [] }],
-    ["html error page", { status: 502, body: "<html>Bad gateway</html>" }],
-  ])("%s -> unavailable, nothing internal in message or logs", async (_n, reply) => {
-    rpcAnswer = () => reply;
-    const e = (await fails(submit(TOKEN_A))) as FeedbackError;
-    expect(e).toBeInstanceOf(FeedbackError);
-    expect(e.code).toBe("unavailable");
-    const text =
-      e.message +
-      JSON.stringify(vi.mocked(console.warn).mock.calls) +
-      JSON.stringify(vi.mocked(console.error).mock.calls);
-    for (const secret of [
-      SQL_DETAIL,
-      "PGRST",
-      "42501",
-      "submit_feedback",
-      "Bad gateway",
-      SERVICE_CANARY,
-      PUBLISHABLE,
+  it("a recipient or reply-to supplied in the request is rejected; nothing is sent", async () => {
+    for (const extra of [
+      { to: "evil@example.com" },
+      { replyTo: "evil@example.com" },
+      { cc: "evil@example.com" },
     ]) {
-      expect(text).not.toContain(secret);
+      const e = await fails(submit(TOKEN_A, { ...input(), ...extra }));
+      expect((e as FeedbackError).code).toBe("invalid");
     }
+    expect(mails).toHaveLength(0);
   });
 
-  it("rate limit answer -> rate_limited with retry-after", async () => {
-    rpcAnswer = () => ({
-      status: 200,
-      body: [{ status: "rate_limited", retry_after_seconds: 125 }],
-    });
-    const e = (await fails(submit(TOKEN_A))) as FeedbackError;
-    expect(e.message).toBe("feedback:rate_limited:125");
+  it("the service-role key and the Supabase publishable key are never sent to the mail service", async () => {
+    await submit(TOKEN_A);
+    const wire = JSON.stringify(mails);
+    expect(wire).not.toContain(SERVICE_CANARY);
+    expect(wire).not.toContain(PUBLISHABLE);
+    expect(wire).not.toContain(TOKEN_A);
+  });
+});
+
+describe("no token / bad token / anonymous", () => {
+  it("no Authorization header: Unauthorized from the server, no mail", async () => {
+    expect((await fails(submit(null))).message).toMatch(/^Unauthorized/);
+    expect(mails).toHaveLength(0);
   });
 
-  it("'invalid' and 'unauthenticated' answers map to their codes", async () => {
-    rpcAnswer = () => ({ status: 200, body: [{ status: "invalid" }] });
-    expect(((await fails(submit(TOKEN_A))) as FeedbackError).code).toBe("invalid");
-    rpcAnswer = () => ({ status: 200, body: [{ status: "unauthenticated" }] });
-    expect(((await fails(submit(TOKEN_A))) as FeedbackError).code).toBe("unauthenticated");
+  it.each([
+    ["garbage", "abc"],
+    ["two segments", "a.b"],
+  ])("%s token: Unauthorized, no mail", async (_n, token) => {
+    expect((await fails(submit(token))).message).toMatch(/^Unauthorized/);
+    expect(mails).toHaveLength(0);
+  });
+
+  it("a token the auth server rejects: Unauthorized, no mail", async () => {
+    expect((await fails(submit(TOKEN_REVOKED))).message).toMatch(/^Unauthorized/);
+    expect(authCalls).toBeGreaterThan(0);
+    expect(mails).toHaveLength(0);
+  });
+
+  it("an anonymous Supabase session is refused ('forbidden'), no mail", async () => {
+    expect(((await fails(submit(TOKEN_ANON))) as FeedbackError).code).toBe("forbidden");
+    expect(mails).toHaveLength(0);
+  });
+});
+
+describe("rate limit", () => {
+  it("the 6th message of user A within the hour is refused (retry-after), B can still send", async () => {
+    const limiter = createRateLimiter();
+    for (let i = 0; i < 5; i += 1) await submit(TOKEN_A, input(), limiter);
+    const e = (await fails(submit(TOKEN_A, input(), limiter))) as FeedbackError;
+    expect(e.code).toBe("rate_limited");
+    expect(e.retryAfterSeconds).toBeGreaterThan(0);
+    expect(mails).toHaveLength(5);
+    await expect(submit(TOKEN_B, input(), limiter)).resolves.toMatchObject({ ok: true });
+    expect(mails).toHaveLength(6);
+  });
+});
+
+describe("mail service problems", () => {
+  it.each([
+    ["rejected key", { status: 401, body: `{"message":"${PROVIDER_TEXT}"}` }],
+    ["sandbox sender restriction", { status: 403, body: `{"message":"${PROVIDER_TEXT}"}` }],
+    ["provider rate limit", { status: 429, body: "{}" }],
+    ["server error", { status: 500, body: PROVIDER_TEXT }],
+    ["answer without a message id", { status: 200, body: "{}" }],
+  ])(
+    "%s -> unavailable; the text is kept for a retry; no internal text leaks",
+    async (_n, reply) => {
+      mailAnswer = () => reply;
+      const e = (await fails(submit(TOKEN_A, input(), createRateLimiter()))) as FeedbackError;
+      expect(e.code).toBe("unavailable");
+      const text = e.message + JSON.stringify(vi.mocked(console.warn).mock.calls);
+      for (const secret of [PROVIDER_TEXT, MAIL_KEY, OWNER, SERVICE_CANARY, TOKEN_A, "Export"]) {
+        expect(text).not.toContain(secret);
+      }
+    },
+  );
+
+  it("mail API unreachable -> unavailable", async () => {
+    requestHeaders = { authorization: `Bearer ${TOKEN_A}` };
+    const { context } = await mw.options.server({ next: (o) => o });
+    const e = await fails(
+      handleFeedback(input(), {
+        user: { id: context.userId },
+        config: config(),
+        rateLimiter: createRateLimiter(),
+        send: (m, c) => sendMail(m, { apiKey: c.apiKey, baseUrl: "http://127.0.0.1:9" }),
+      }),
+    );
+    expect((e as FeedbackError).code).toBe("unavailable");
   });
 });
