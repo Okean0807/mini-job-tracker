@@ -183,7 +183,7 @@ describe("Lokales Backup → Exportieren (Meldungen)", () => {
       (b) => b.textContent === de("set.localBackup.export"),
     )!;
   const win = window as unknown as { showSaveFilePicker?: unknown };
-  const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 80))));
+  const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 10))));
 
   afterEach(() => {
     delete win.showSaveFilePicker;
