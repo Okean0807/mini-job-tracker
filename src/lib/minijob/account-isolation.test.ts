@@ -1202,7 +1202,7 @@ describe("Async-Schreibpfade außerhalb des Sync (Epoch-Snapshot)", () => {
   it("JSON-Sicherung: Konto wechselt während des Datei-Lesens → nichts in B geschrieben", async () => {
     session = { user: { id: A } };
     const { store } = await boot();
-    const { importJsonBackupFile } = await import("./json-backup-import");
+    const { prepareBackupFile, applyPreparedBackup } = await import("./backup-restore");
     const gate = deferred();
     const file = {
       text: async () => {
@@ -1210,13 +1210,13 @@ describe("Async-Schreibpfade außerhalb des Sync (Epoch-Snapshot)", () => {
         return JSON.stringify(payloadWith(["from-file"]));
       },
     };
-    const run = importJsonBackupFile(file);
+    const run = prepareBackupFile(file);
     authCallback?.("SIGNED_OUT", null);
     await signIn(B);
     const bBefore = window.localStorage.getItem(`minijob-tracker-v1:u:${B}`);
     gate.release();
 
-    expect(await run).toBe("stale");
+    expect((await run).status).toBe("stale");
     expect(store.getActiveScopeOwner()).toBe(B);
     expect(store.getData().shifts.some((s) => s.id === "from-file")).toBe(false);
     expect(window.localStorage.getItem(`minijob-tracker-v1:u:${B}`)).toBe(bBefore);
@@ -1224,12 +1224,30 @@ describe("Async-Schreibpfade außerhalb des Sync (Epoch-Snapshot)", () => {
       "from-file",
     );
 
-    // Ohne Wechsel: wie bisher importiert.
-    const ok = await importJsonBackupFile({
+    // Ohne Wechsel: vorbereitet, nach Bestätigung (apply) übernommen.
+    const ready = await prepareBackupFile({
       text: async () => JSON.stringify(payloadWith(["from-file"])),
     });
-    expect(ok).toBe("imported");
+    if (ready.status !== "ready") throw new Error("expected ready");
+    expect(store.getData().shifts.some((s) => s.id === "from-file")).toBe(false); // vor Bestätigung
+    expect(applyPreparedBackup(ready.prepared).status).toBe("restored");
     expect(store.getData().shifts.map((s) => s.id)).toContain("from-file");
+  });
+
+  it("JSON-Sicherung: Konto wechselt nach der Prüfung, vor der Bestätigung → 'stale', nichts geschrieben", async () => {
+    session = { user: { id: A } };
+    const { store } = await boot();
+    const { prepareBackupFile, applyPreparedBackup } = await import("./backup-restore");
+    const ready = await prepareBackupFile({
+      text: async () => JSON.stringify(payloadWith(["late"])),
+    });
+    if (ready.status !== "ready") throw new Error("expected ready");
+    authCallback?.("SIGNED_OUT", null);
+    await signIn(B);
+    const bBefore = window.localStorage.getItem(`minijob-tracker-v1:u:${B}`);
+    expect(applyPreparedBackup(ready.prepared).status).toBe("stale");
+    expect(store.getData().shifts.some((s) => s.id === "late")).toBe(false);
+    expect(window.localStorage.getItem(`minijob-tracker-v1:u:${B}`)).toBe(bBefore);
   });
 
   it("Export-Registrierung: Konto wechselt während blobToDataUrl → Dokument bleibt bei A, nie in B's Liste", async () => {
@@ -1252,17 +1270,22 @@ describe("Async-Schreibpfade außerhalb des Sync (Epoch-Snapshot)", () => {
 });
 
 describe("Einstellungen: Scope-Generation-Guards (lokale Sicherung, Biometrie)", () => {
-  it("lokale Sicherung: Scope-Wechsel während FileReader → nichts in den neuen Scope geschrieben", async () => {
+  it("lokale Sicherung: Scope-Wechsel während des Lesens → nichts in den neuen Scope geschrieben", async () => {
     session = { user: { id: A } };
     const { store } = await boot();
-    const { restoreLocalBackupFile } = await import("./local-backup-restore");
-    const file = new Blob([JSON.stringify(payloadWith(["from-local-backup"]))]);
-    const run = restoreLocalBackupFile(file);
-    authCallback?.("SIGNED_OUT", null); // synchron: Gast-Scope aktiv, bevor onload feuert
+    const { prepareBackupFile } = await import("./backup-restore");
+    const gate = deferred();
+    const run = prepareBackupFile({
+      text: async () => {
+        await gate.promise;
+        return JSON.stringify(payloadWith(["from-local-backup"]));
+      },
+    });
+    authCallback?.("SIGNED_OUT", null); // Gast-Scope aktiv, bevor das Lesen endet
     const guestBefore = window.localStorage.getItem("minijob-tracker-v1:guest");
-    vi.useRealTimers();
+    gate.release();
 
-    expect(await run).toBe("stale");
+    expect((await run).status).toBe("stale");
     expect(store.getActiveScope().kind).toBe("guest");
     expect(store.getData().shifts.some((s) => s.id === "from-local-backup")).toBe(false);
     expect(window.localStorage.getItem("minijob-tracker-v1:guest")).toBe(guestBefore);
@@ -1271,18 +1294,69 @@ describe("Einstellungen: Scope-Generation-Guards (lokale Sicherung, Biometrie)",
     );
   });
 
-  it("lokale Sicherung ohne Wechsel → wie bisher übernommen; ungültig/kaputt unverändert gemeldet", async () => {
+  it("lokale Sicherung ohne Wechsel → nach Bestätigung übernommen; ungültig/kaputt unverändert gemeldet", async () => {
     session = { user: { id: A } };
     const { store } = await boot();
-    const { restoreLocalBackupFile } = await import("./local-backup-restore");
-    vi.useRealTimers();
-    const ok = await restoreLocalBackupFile(
+    const { prepareBackupFile, applyPreparedBackup } = await import("./backup-restore");
+    const ok = await prepareBackupFile(
       new Blob([JSON.stringify(payloadWith(["from-local-backup"]))]),
     );
-    expect(ok).toBe("restored");
+    if (ok.status !== "ready") throw new Error("expected ready");
+    expect(applyPreparedBackup(ok.prepared).status).toBe("restored");
     expect(store.getData().shifts.map((s) => s.id)).toContain("from-local-backup");
-    expect(await restoreLocalBackupFile(new Blob([JSON.stringify({ foo: 1 })]))).toBe("invalid");
-    expect(await restoreLocalBackupFile(new Blob(["{kaputt"]))).toBe("read-error");
+    expect((await prepareBackupFile(new Blob([JSON.stringify({ foo: 1 })]))).status).toBe(
+      "invalid",
+    );
+    expect((await prepareBackupFile(new Blob(["{kaputt"]))).status).toBe("parse-error");
+  });
+
+  it("Cloud: Wiederherstellung gilt als lokale Änderung und wird hochgeladen (nicht von der Cloud überschrieben)", async () => {
+    session = { user: { id: A } };
+    const { store, cloud } = await boot();
+    const { prepareBackupFile, applyPreparedBackup } = await import("./backup-restore");
+    store.saveShift(shift("c1"));
+    await vi.advanceTimersByTimeAsync(10_000);
+    await settle();
+    expect(upsertsContaining("c1").length).toBeGreaterThan(0);
+
+    const ready = await prepareBackupFile({
+      text: async () => JSON.stringify(payloadWith(["restored"])),
+    });
+    if (ready.status !== "ready") throw new Error("expected ready");
+    expect(applyPreparedBackup(ready.prepared).status).toBe("restored");
+    await vi.advanceTimersByTimeAsync(10_000);
+    await settle();
+
+    expect(store.getData().shifts.map((s) => s.id)).toEqual(["restored"]);
+    expect(upsertsContaining("restored").length).toBeGreaterThan(0);
+    expect(cloud.getSyncState().status).not.toBe("error");
+  });
+
+  it("Cloud: neuere Cloud-Kopie + lokale Wiederherstellung → Konflikt, Wiederherstellung bleibt, Cloud unverändert", async () => {
+    session = { user: { id: A } };
+    const { store, cloud } = await boot();
+    const { prepareBackupFile, applyPreparedBackup } = await import("./backup-restore");
+    store.saveShift(shift("c1"));
+    await vi.advanceTimersByTimeAsync(10_000);
+    await settle();
+
+    // Anderes Gerät hat die Cloud-Kopie danach geändert.
+    const otherDevice = payloadWith(["other-device"]);
+    backups.set(A, {
+      payload: otherDevice,
+      updated_at: new Date(Date.now() + 60_000).toISOString(),
+    });
+    const ready = await prepareBackupFile({
+      text: async () => JSON.stringify(payloadWith(["restored"])),
+    });
+    if (ready.status !== "ready") throw new Error("expected ready");
+    applyPreparedBackup(ready.prepared);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await settle();
+
+    expect(store.getData().shifts.map((s) => s.id)).toEqual(["restored"]);
+    expect(backups.get(A)?.payload).toBe(otherDevice); // nichts still überschrieben
+    expect(cloud.getSyncState().status).toBe("conflict");
   });
 
   it("Biometrie: Scope-Wechsel während WebAuthn → keine Credential-Id/kein Abschalten im neuen Scope", async () => {

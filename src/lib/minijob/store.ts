@@ -154,14 +154,16 @@ function setPersistFailed(failed: boolean) {
   persistListeners.forEach((l) => l(failed));
 }
 
-function persist() {
-  if (typeof window === "undefined") return;
+function persist(): boolean {
+  if (typeof window === "undefined") return true;
   try {
     window.localStorage.setItem(dataStorageKey(), JSON.stringify(state));
     setPersistFailed(false);
+    return true;
   } catch {
     /* Speicher voll oder blockiert – sichtbar melden statt still verwerfen */
     setPersistFailed(true);
+    return false;
   }
 }
 
@@ -722,16 +724,49 @@ export function getTimer(): RunningTimer | null {
 
 /* ---------- Import / Export ---------- */
 
-export function replaceAll(data: Partial<AppData>) {
+/** Neuen Gesamtstand vorbereiten (wirft bei Fehlern, bevor irgendetwas geändert wird). */
+function buildReplacement(data: Partial<AppData>): AppData {
   let next = normalize(data);
   const objects = ensureObjectsFromShifts(next.objects, next.shifts, {
     newId,
     now: todayIso(),
   });
   if (objects !== next.objects) next = { ...next, objects };
-  next = withEnsuredCatalogs(next);
+  return withEnsuredCatalogs(next);
+}
+
+export function replaceAll(data: Partial<AppData>) {
+  const next = buildReplacement(data);
   commit(next, false);
   applyAppearance(next.settings);
+}
+
+/**
+ * Vom Nutzer bestätigte Wiederherstellung (JSON-Sicherung, Rückgängig).
+ *
+ * Anders als `replaceAll` (Cloud-Restore, ohne Sync-Hook):
+ * - schlägt das Speichern fehl, wird der vorherige Stand im Speicher
+ *   wiederhergestellt und `"persist-failed"` gemeldet (nie ein falscher Erfolg);
+ *   der alte Stand auf dem Datenträger bleibt unverändert, weil `setItem` bei
+ *   einem Fehler nichts schreibt;
+ * - gilt die Wiederherstellung als lokale Änderung (`commit(..., true)`), damit
+ *   die Cloud-Synchronisation sie als eigene Arbeit behandelt (Konflikt statt
+ *   stilles Überschreiben durch eine Cloud-Kopie).
+ * Wirft, wenn der neue Stand nicht aufgebaut werden kann; dann ist nichts geändert.
+ */
+export function restoreAll(data: Partial<AppData>): "ok" | "persist-failed" {
+  const next = buildReplacement(data);
+  const previous = state;
+  const wasFailed = persistFailed;
+  state = next;
+  if (!persist()) {
+    state = previous;
+    setPersistFailed(wasFailed);
+    return "persist-failed";
+  }
+  emit(true);
+  applyAppearance(next.settings);
+  return "ok";
 }
 
 export function newId(): string {
