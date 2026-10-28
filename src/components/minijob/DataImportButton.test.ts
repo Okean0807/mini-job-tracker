@@ -22,6 +22,7 @@ import { getData, replaceAll, updateSettings } from "@/lib/minijob/store";
 import type { Job, Settings } from "@/lib/minijob/types";
 
 import { DataImportButton } from "./DataImportButton";
+import { IMPORT_FILE_ACCEPT } from "./ImportDialog";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -111,7 +112,80 @@ describe("the entry point opens the existing import", () => {
     });
     expect(dialog()).not.toBeNull();
     expect(dialog()!.textContent).toContain(de("imp.title"));
-    expect(fileInput()!.getAttribute("accept")).toBe(".csv,.txt,.json");
+    expect(fileInput()!.getAttribute("accept")).toBe(IMPORT_FILE_ACCEPT);
+  });
+
+  it("pressing the select button opens the system file input", async () => {
+    await openDialog();
+    const clickSpy = vi.spyOn(fileInput()!, "click");
+    await act(async () => {
+      buttonByText(de("imp.selectFile"))!.click();
+    });
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(fileInput()!.disabled).toBe(false);
+  });
+
+  it("the accept filter lists extensions and MIME types so Android does not grey out a CSV", () => {
+    for (const token of [".csv", ".txt", ".json", "text/*", "application/json"]) {
+      expect(IMPORT_FILE_ACCEPT.split(",")).toContain(token);
+    }
+    expect(IMPORT_FILE_ACCEPT).not.toMatch(/xlsx|spreadsheetml/);
+  });
+});
+
+describe("picker feedback and re-selection", () => {
+  it("a picked CSV is shown inline with its name, then the preview appears", async () => {
+    await openDialog();
+    const { file } = fileWithText(
+      "minijob-2026-10-28.csv",
+      csvTemplate(),
+      "text/comma-separated-values",
+    );
+    await chooseFile(file);
+    expect(dialog()!.textContent).toContain("minijob-2026-10-28.csv");
+    expect(dialog()!.textContent).toContain(de("imp.summary", { valid: 2, invalid: 0 }));
+  });
+
+  it("an empty selection (cancel) changes nothing and shows no message", async () => {
+    await openDialog();
+    const before = snapshot();
+    const input = fileInput()!;
+    Object.defineProperty(input, "files", { value: [], configurable: true });
+    await act(async () => {
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(snapshot()).toBe(before);
+    expect(toastMock.error).not.toHaveBeenCalled();
+    expect(document.body.querySelector('[data-testid="import-selected"]')).toBeNull();
+    expect(dialog()!.textContent).toContain(de("imp.selectFile"));
+  });
+
+  it("the input value is cleared after each pick so the same file can be chosen again", async () => {
+    await openDialog();
+    const input = fileInput()!;
+    const valueSetter = vi.spyOn(input, "value", "set");
+    await chooseFile(fileWithText("empty.csv", "").file);
+    expect(valueSetter).toHaveBeenCalledWith("");
+    // same file again still reaches the handler and reports again
+    await chooseFile(fileWithText("empty.csv", "").file);
+    expect(toastMock.error).toHaveBeenCalledTimes(2);
+  });
+
+  it("a rejected file is also reported inline, not only as a toast", async () => {
+    await openDialog();
+    await chooseFile(fileWithText("table.xlsx", "PK").file);
+    const inline = document.body.querySelector('[data-testid="import-error"]');
+    expect(inline?.textContent).toBe(de("imp.xlsxUnsupported"));
+    expect(inline?.getAttribute("role")).toBe("alert");
+  });
+
+  it("a read failure is reported instead of being swallowed", async () => {
+    await openDialog();
+    const { file, textSpy } = fileWithText("shifts.csv", csvTemplate());
+    textSpy.mockRejectedValue(new Error("denied"));
+    await chooseFile(file);
+    expect(toastMock.error).toHaveBeenCalledWith(de("imp.readError"));
+    expect(document.body.querySelector('[data-testid="import-error"]')).not.toBeNull();
   });
 });
 
