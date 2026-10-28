@@ -84,8 +84,9 @@ function DatenschutzPage() {
               (localStorage).
             </li>
             <li>
-              „Konto löschen“ in den Einstellungen entfernt Dokumente, Ordner, Backups und das Konto
-              in der Cloud sowie die lokalen Kontodaten dieses Geräts.
+              „Konto löschen“ in den Einstellungen entfernt Dokumente, Ordner, Cloud-Sicherungen
+              deiner App-Daten (technische Sicherungskopien des Anbieters sind davon nicht umfasst)
+              und das Konto in der Cloud sowie die lokalen Kontodaten dieses Geräts.
             </li>
           </ul>
         </section>

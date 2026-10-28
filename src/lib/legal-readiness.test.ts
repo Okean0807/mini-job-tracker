@@ -197,6 +197,43 @@ describe("account deletion removes local personal data of the account", () => {
   });
 });
 
+describe("public deletion wording matches what the code guarantees", () => {
+  const page = read("src/routes/datenschutz.tsx").replace(/\s+/g, " ");
+  const handler = read("supabase/functions/delete-account/handler.ts");
+  const client = read("src/lib/minijob/account-delete.ts");
+  const start = page.indexOf("„Konto löschen“");
+  const item = page.slice(start, page.indexOf("</li>", start));
+
+  it("separates app cloud copies from the provider's technical backups", () => {
+    expect(item).toContain(
+      "Cloud-Sicherungen deiner App-Daten (technische Sicherungskopien des Anbieters sind davon nicht umfasst)",
+    );
+    // The ambiguous word that could be read as "all backups incl. infrastructure" must not return.
+    expect(item).not.toMatch(/\bBackups\b/);
+  });
+
+  it("makes no blanket or guaranteed-erasure promise", () => {
+    expect(item).not.toMatch(
+      /alle (deine )?Daten|sämtliche|vollständig|restlos|unwiderruflich|sofort|garantiert/i,
+    );
+  });
+
+  it("every item named on the page is deleted by the server function", () => {
+    // Dokumente (Storage objects + rows), Ordner, Cloud-Sicherungen (= backups table), Konto (Auth user)
+    expect(handler).toMatch(/BUCKET = ["']documents["']/);
+    expect(handler).toMatch(/\[\s*"documents",\s*"document_folders",\s*"backups"\s*\] as const/);
+    expect(handler).toMatch(/auth\.admin\.deleteUser\(user\.id\)/);
+    expect(item).toMatch(/Dokumente, Ordner, Cloud-Sicherungen/);
+  });
+
+  it("local data is only removed after the server confirmed the deletion", () => {
+    const failed = client.indexOf("if (error) return { ok: false, error };");
+    expect(failed).toBeGreaterThan(-1);
+    expect(failed).toBeLessThan(client.indexOf("clearUserScopeLocalData(userId)"));
+    expect(failed).toBeLessThan(client.indexOf("clearAiChatHistory(userId)"));
+  });
+});
+
 describe("draft legal texts stay drafts", () => {
   const dir = "docs/legal";
   const drafts = [
