@@ -1,9 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { History, Mic, Plus, Send, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { AiNoticeDialog } from "@/components/minijob/AiNoticeDialog";
+import { LegalLinks } from "@/components/minijob/LegalLinks";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -33,6 +35,7 @@ import {
   startNewConversation,
 } from "@/lib/minijob/ai-chat-history";
 import { buildAssistantContext } from "@/lib/minijob/ai-context";
+import { acknowledgeAiNotice, hasAcknowledgedAiNotice } from "@/lib/minijob/ai-notice";
 import { getData } from "@/lib/minijob/store";
 import { listenOnce, voiceSupported } from "@/lib/minijob/voice";
 
@@ -83,6 +86,10 @@ function AssistantPage() {
   }));
   const [busy, setBusy] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  // First-use notice: nothing is sent to the AI providers before the user confirms it.
+  const [noticeOpen, setNoticeOpen] = useState(false);
+  const pendingQuestion = useRef<string | null>(null);
+  const ackedInMemory = useRef<string | null>(null);
 
   // Load per-user history when signed in (isolation by userId key).
   useEffect(() => {
@@ -125,6 +132,11 @@ function AssistantPage() {
     if (!q || busy) return;
     if (authStatus !== "signed_in") {
       toast.error(t("ai.signedOut"));
+      return;
+    }
+    if (userId && ackedInMemory.current !== userId && !hasAcknowledgedAiNotice(userId)) {
+      pendingQuestion.current = q;
+      setNoticeOpen(true);
       return;
     }
     // Fresh snapshot at click time — avoids stale useMemo closures and makes
@@ -172,6 +184,22 @@ function AssistantPage() {
         timeoutMessage: t("ai.error.timeout"),
       },
     );
+  }
+
+  function onNoticeConfirm() {
+    if (userId) {
+      ackedInMemory.current = userId; // also valid when localStorage is unavailable
+      acknowledgeAiNotice(userId);
+    }
+    setNoticeOpen(false);
+    const q = pendingQuestion.current;
+    pendingQuestion.current = null;
+    if (q) void ask(q);
+  }
+
+  function onNoticeCancel() {
+    pendingQuestion.current = null;
+    setNoticeOpen(false);
   }
 
   async function speak() {
@@ -368,8 +396,16 @@ function AssistantPage() {
               <Send className="size-4" />
             </Button>
           </div>
+          <p
+            className="pb-2 text-center text-xs text-muted-foreground"
+            data-testid="ai-privacy-hint"
+          >
+            {t("ai.privacy.hint")}
+          </p>
         </>
       )}
+      <LegalLinks className="pb-24 pt-2" />
+      <AiNoticeDialog open={noticeOpen} onConfirm={onNoticeConfirm} onCancel={onNoticeCancel} />
     </main>
   );
 }

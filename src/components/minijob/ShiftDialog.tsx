@@ -15,6 +15,16 @@ import { useEffect, useRef, useState } from "react";
 
 import { toast } from "sonner";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -145,6 +155,9 @@ export function ShiftDialog({
   const [zip, setZip] = useState("");
   const [city, setCity] = useState("");
   const [gpsBusy, setGpsBusy] = useState(false);
+  // Position waiting for the user's decision on the (third-party) address lookup.
+  const [geoPrompt, setGeoPrompt] = useState<{ lat: number; lng: number } | null>(null);
+  const geoPromptRef = useRef<{ lat: number; lng: number } | null>(null);
   const [floor, setFloor] = useState("");
   const [doorSide, setDoorSide] = useState("");
   const [workCode, setWorkCode] = useState("");
@@ -252,6 +265,8 @@ export function ShiftDialog({
     setZip(source?.zip ?? "");
     setCity(source?.city ?? "");
     setGpsBusy(false);
+    setGeoPrompt(null);
+    geoPromptRef.current = null;
     setFloor(source?.floor ?? "");
     setDoorSide(source?.doorSide ?? "");
     setWorkCode(source?.workCode ?? "");
@@ -575,6 +590,44 @@ export function ShiftDialog({
       />
     </div>
   );
+
+  function promptGeoLookup(pos: { lat: number; lng: number }) {
+    geoPromptRef.current = pos;
+    setGeoPrompt(pos);
+  }
+
+  function declineGeoLookup() {
+    if (!geoPromptRef.current) return;
+    geoPromptRef.current = null;
+    setGeoPrompt(null);
+    toast.message(t("worklog.geoNotice.skipped"));
+  }
+
+  async function confirmGeoLookup() {
+    const pos = geoPromptRef.current;
+    geoPromptRef.current = null;
+    setGeoPrompt(null);
+    if (!pos) return;
+    setGpsBusy(true);
+    try {
+      const previous = { street, houseNo, zip, city };
+      const reverse = await reverseGeocodeGerman(pos.lat, pos.lng);
+      if (reverse) {
+        const next = applyReverseOrKeep(previous, reverse);
+        setStreet(next.street ?? "");
+        setHouseNo(next.houseNo ?? "");
+        setZip(next.zip ?? "");
+        setCity(next.city ?? "");
+        toast.success(t("worklog.gpsAddressOk"));
+      } else {
+        toast.message(t("worklog.gpsAddressFail"));
+      }
+    } catch {
+      toast.error(t("worklog.gpsError"));
+    } finally {
+      setGpsBusy(false);
+    }
+  }
 
   return (
     <>
@@ -1530,18 +1583,9 @@ export function ShiftDialog({
                             try {
                               const pos = await currentPosition();
                               setGps(pos);
-                              const previous = { street, houseNo, zip, city };
-                              const reverse = await reverseGeocodeGerman(pos.lat, pos.lng);
-                              if (reverse) {
-                                const next = applyReverseOrKeep(previous, reverse);
-                                setStreet(next.street ?? "");
-                                setHouseNo(next.houseNo ?? "");
-                                setZip(next.zip ?? "");
-                                setCity(next.city ?? "");
-                                toast.success(t("worklog.gpsAddressOk"));
-                              } else {
-                                toast.message(t("worklog.gpsAddressFail"));
-                              }
+                              // The address lookup sends the coordinates to a third party
+                              // (Nominatim): ask the user first; declining keeps the GPS only.
+                              promptGeoLookup(pos);
                             } catch {
                               toast.error(t("worklog.gpsError"));
                             } finally {
@@ -1605,6 +1649,26 @@ export function ShiftDialog({
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={geoPrompt !== null}
+        onOpenChange={(next) => {
+          if (!next) declineGeoLookup();
+        }}
+      >
+        <AlertDialogContent data-testid="geo-notice-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("worklog.geoNotice.title")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("worklog.geoNotice.body")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("worklog.geoNotice.decline")}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void confirmGeoLookup()}>
+              {t("worklog.geoNotice.confirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <ObjectDialog
         open={objectDialogOpen}

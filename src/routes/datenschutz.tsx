@@ -56,6 +56,41 @@ function DatenschutzPage() {
           </p>
         </section>
 
+        <section className="rounded-xl border bg-card p-5" data-testid="datenschutz-tech-stand">
+          <h2 className="text-lg font-bold">Technischer Stand der eingesetzten Dienste</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Beschreibung der aktuellen technischen Konfiguration – keine Angabe von
+            Rechtsgrundlagen, Verträgen oder Löschfristen.
+          </p>
+          <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
+            <li>Supabase: Anmeldung, Datenbank und Dateispeicher (Projektregion Frankfurt, EU).</li>
+            <li>
+              Vercel: Auslieferung der App und serverseitige KI-Funktion (Funktionsregion USA-Ost).
+            </li>
+            <li>Google: Anmeldung per Google-Konto und KI-Antworten über die Gemini API.</li>
+            <li>
+              Tavily: Websuche bei Fragen zu aktuellen Rechtsangaben (nur eine aus der Frage
+              abgeleitete Suchanfrage).
+            </li>
+            <li>
+              OpenStreetMap Nominatim: Adresssuche aus dem Standort – nur nach ausdrücklicher
+              Bestätigung im Eintrag-Dialog.
+            </li>
+            <li>
+              Schriftarten werden von der App selbst ausgeliefert (kein Abruf bei Google Fonts).
+            </li>
+            <li>
+              Im Browser gespeichert: App-Daten, Anmeldesitzung, KI-Verlauf und Hinweis-Bestätigung
+              (localStorage).
+            </li>
+            <li>
+              „Konto löschen“ in den Einstellungen entfernt Dokumente, Ordner, Cloud-Sicherungen
+              deiner App-Daten (technische Sicherungskopien des Anbieters sind davon nicht umfasst)
+              und das Konto in der Cloud sowie die lokalen Kontodaten dieses Geräts.
+            </li>
+          </ul>
+        </section>
+
         <section className="rounded-xl border bg-card p-5">
           <h2 className="text-lg font-bold">Ihre Rechte</h2>
           <p className="mt-2 text-sm text-muted-foreground">

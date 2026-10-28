@@ -8,6 +8,19 @@ export const assistant: Bundle = {
     "voice.error.noSpeech": "Keine Sprache erkannt.",
     "ai.title": "KI-Assistent",
     "ai.intro": "Stelle Fragen zu deinen Arbeitszeiten, deinem Verdienst und deinen Prognosen.",
+    "ai.notice.title": "Hinweis zum KI-Assistenten",
+    "ai.notice.intro":
+      "Du schreibst mit einem KI-System, nicht mit einem Menschen. Antworten können fehlerhaft oder unvollständig sein und ersetzen keine Rechts-, Steuer- oder Sozialversicherungsberatung.",
+    "ai.notice.data":
+      "Beim Absenden wird deine Frage zusammen mit einem Auszug deiner App-Daten übermittelt: Stundenlohn, Grenzwerte, Stunden und Verdienst der letzten Monate und Jahre sowie die Bezeichnungen deiner Jobs (diese können z. B. einen Arbeitgebernamen enthalten). Name und E-Mail-Adresse gehören nicht zu diesem Auszug.",
+    "ai.notice.providers":
+      "Die Daten gehen an unseren Server und von dort an Google (Gemini API). Bei Fragen, die aktuelle Rechtsangaben brauchen, kann zusätzlich eine daraus abgeleitete Suchanfrage an Tavily (Websuche) gesendet werden – ohne deinen App-Auszug. Die Übermittlung ist nicht anonymisiert, und die Verarbeitung kann auch außerhalb der EU/des EWR (z. B. in den USA) stattfinden.",
+    "ai.notice.optional":
+      "Die KI-Funktion ist freiwillig. Wenn du abbrichst, wird nichts gesendet und alle anderen Funktionen der App bleiben nutzbar.",
+    "ai.notice.confirm": "Verstanden, fortfahren",
+    "ai.notice.cancel": "Abbrechen",
+    "ai.privacy.hint":
+      "KI-Antworten können fehlerhaft sein. Deine Frage und ein Auszug deiner App-Daten werden an externe KI-Dienste gesendet.",
     "ai.signedOut": "Bitte melde dich in den Einstellungen an, um den KI-Assistenten zu nutzen.",
     "ai.suggestion.hours": "Wie viele Stunden habe ich diesen Monat gearbeitet?",
     "ai.suggestion.earnings": "Wie viel habe ich dieses Jahr verdient?",
@@ -39,6 +52,19 @@ export const assistant: Bundle = {
     "voice.error.noSpeech": "No speech detected.",
     "ai.title": "AI Assistant",
     "ai.intro": "Ask questions about your working hours, earnings and forecasts.",
+    "ai.notice.title": "About the AI assistant",
+    "ai.notice.intro":
+      "You are chatting with an AI system, not a person. Answers can be wrong or incomplete and are not legal, tax or social-insurance advice.",
+    "ai.notice.data":
+      "When you send a question, it is transmitted together with an extract of your app data: hourly rate, limits, hours and earnings of recent months and years, and the names of your jobs (these may contain an employer name). Your name and e-mail address are not part of this extract.",
+    "ai.notice.providers":
+      "The data goes to our server and from there to Google (Gemini API). For questions that need current legal information, a search query derived from your question may also be sent to Tavily (web search) – without your app extract. The transfer is not anonymised, and processing may also take place outside the EU/EEA (e.g. in the USA).",
+    "ai.notice.optional":
+      "The AI feature is optional. If you cancel, nothing is sent and all other features of the app stay available.",
+    "ai.notice.confirm": "Understood, continue",
+    "ai.notice.cancel": "Cancel",
+    "ai.privacy.hint":
+      "AI answers can be wrong. Your question and an extract of your app data are sent to external AI services.",
     "ai.signedOut": "Please sign in from settings to use the AI assistant.",
     "ai.suggestion.hours": "How many hours have I worked this month?",
     "ai.suggestion.earnings": "How much have I earned this year?",
@@ -69,6 +95,19 @@ export const assistant: Bundle = {
     "voice.error.noSpeech": "Речь не распознана.",
     "ai.title": "ИИ-ассистент",
     "ai.intro": "Задавайте вопросы о рабочем времени, заработке и прогнозах.",
+    "ai.notice.title": "О ИИ-ассистенте",
+    "ai.notice.intro":
+      "Вы общаетесь с системой искусственного интеллекта, а не с человеком. Ответы могут быть неточными или неполными и не заменяют юридическую, налоговую или консультацию по социальному страхованию.",
+    "ai.notice.data":
+      "При отправке вопрос передаётся вместе с выдержкой из данных приложения: почасовая ставка, лимиты, часы и заработок за последние месяцы и годы, а также названия ваших работ (в них может быть имя работодателя). Ваше имя и адрес электронной почты в эту выдержку не входят.",
+    "ai.notice.providers":
+      "Данные отправляются на наш сервер, а оттуда в Google (Gemini API). Для вопросов, требующих актуальных правовых сведений, поисковый запрос, составленный из вашего вопроса, может дополнительно уходить в Tavily (веб-поиск) – без выдержки из данных приложения. Передача не анонимизируется, а обработка может проходить и за пределами ЕС/ЕЭП (например, в США).",
+    "ai.notice.optional":
+      "Функция ИИ необязательна. Если отменить, ничего не отправляется, а остальные функции приложения остаются доступными.",
+    "ai.notice.confirm": "Понятно, продолжить",
+    "ai.notice.cancel": "Отмена",
+    "ai.privacy.hint":
+      "Ответы ИИ могут быть неточными. Ваш вопрос и выдержка из данных приложения отправляются внешним ИИ-сервисам.",
     "ai.signedOut": "Войдите в настройках, чтобы пользоваться ИИ-ассистентом.",
     "ai.suggestion.hours": "Сколько часов я отработал(а) в этом месяце?",
     "ai.suggestion.earnings": "Сколько я заработал(а) в этом году?",
@@ -99,6 +138,19 @@ export const assistant: Bundle = {
     "voice.error.noSpeech": "Konuşma algılanamadı.",
     "ai.title": "YZ Asistanı",
     "ai.intro": "Çalışma saatlerin, kazancın ve tahminlerinle ilgili sorular sor.",
+    "ai.notice.title": "Yapay zekâ asistanı hakkında",
+    "ai.notice.intro":
+      "Bir kişiyle değil, bir yapay zekâ sistemiyle yazışıyorsunuz. Yanıtlar hatalı veya eksik olabilir; hukuki, vergi veya sosyal sigorta danışmanlığı yerine geçmez.",
+    "ai.notice.data":
+      "Soruyu gönderdiğinizde, soru uygulama verilerinizden bir özetle birlikte iletilir: saatlik ücret, sınırlar, son ay ve yıllardaki saat ve kazançlar ile işlerinizin adları (bunlar işveren adı içerebilir). Adınız ve e-posta adresiniz bu özetin parçası değildir.",
+    "ai.notice.providers":
+      "Veriler sunucumuza, oradan da Google'a (Gemini API) gider. Güncel hukuki bilgi gerektiren sorularda, sorunuzdan türetilen bir arama sorgusu ayrıca Tavily'ye (web araması) gönderilebilir – uygulama özetiniz olmadan. Aktarım anonimleştirilmez ve işleme AB/AEA dışında (ör. ABD'de) da yapılabilir.",
+    "ai.notice.optional":
+      "Yapay zekâ özelliği isteğe bağlıdır. İptal ederseniz hiçbir şey gönderilmez ve uygulamanın diğer tüm özellikleri kullanılabilir kalır.",
+    "ai.notice.confirm": "Anladım, devam et",
+    "ai.notice.cancel": "İptal",
+    "ai.privacy.hint":
+      "Yapay zekâ yanıtları hatalı olabilir. Sorunuz ve uygulama verilerinizden bir özet harici yapay zekâ hizmetlerine gönderilir.",
     "ai.signedOut": "YZ asistanını kullanmak için ayarlardan giriş yapın.",
     "ai.suggestion.hours": "Bu ay kaç saat çalıştım?",
     "ai.suggestion.earnings": "Bu yıl ne kadar kazandım?",
@@ -129,6 +181,19 @@ export const assistant: Bundle = {
     "voice.error.noSpeech": "Nie wykryto mowy.",
     "ai.title": "Asystent AI",
     "ai.intro": "Zadawaj pytania dotyczące czasu pracy, zarobków i prognoz.",
+    "ai.notice.title": "O asystencie AI",
+    "ai.notice.intro":
+      "Piszesz z systemem sztucznej inteligencji, a nie z człowiekiem. Odpowiedzi mogą być błędne lub niepełne i nie zastępują porady prawnej, podatkowej ani z zakresu ubezpieczeń społecznych.",
+    "ai.notice.data":
+      "Po wysłaniu pytanie jest przekazywane razem z wyciągiem z danych aplikacji: stawka godzinowa, limity, godziny i zarobki z ostatnich miesięcy i lat oraz nazwy Twoich prac (mogą zawierać nazwę pracodawcy). Imię i adres e-mail nie wchodzą w skład tego wyciągu.",
+    "ai.notice.providers":
+      "Dane trafiają na nasz serwer, a stamtąd do Google (Gemini API). Przy pytaniach wymagających aktualnych informacji prawnych zapytanie wyszukiwania utworzone z Twojego pytania może dodatkowo trafić do Tavily (wyszukiwarka internetowa) – bez wyciągu z danych aplikacji. Przekazanie nie jest zanonimizowane, a przetwarzanie może odbywać się także poza UE/EOG (np. w USA).",
+    "ai.notice.optional":
+      "Funkcja AI jest dobrowolna. Jeśli anulujesz, nic nie zostanie wysłane, a pozostałe funkcje aplikacji nadal działają.",
+    "ai.notice.confirm": "Rozumiem, kontynuuj",
+    "ai.notice.cancel": "Anuluj",
+    "ai.privacy.hint":
+      "Odpowiedzi AI mogą być błędne. Twoje pytanie i wyciąg z danych aplikacji są wysyłane do zewnętrznych usług AI.",
     "ai.signedOut": "Zaloguj się w ustawieniach, aby korzystać z asystenta AI.",
     "ai.suggestion.hours": "Ile godzin przepracowałem/am w tym miesiącu?",
     "ai.suggestion.earnings": "Ile zarobiłem/am w tym roku?",
