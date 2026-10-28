@@ -42,8 +42,12 @@ describe("importFileKind — routing before any byte is read", () => {
 
 describe("ImportDialog — Excel import stays disabled", () => {
   it("offers only CSV, TXT and JSON in the file picker", () => {
-    expect(dialogSrc).toContain('accept=".csv,.txt,.json"');
-    expect(dialogSrc).not.toMatch(/accept="[^"]*xls/);
+    // Extensions CSV/TXT/JSON; MIME types are listed only so Android's picker does not grey
+    // out a CSV (application/vnd.ms-excel is the legacy CSV type, .xls* is still refused by name).
+    expect(dialogSrc).toContain("accept={IMPORT_FILE_ACCEPT}");
+    const accept = dialogSrc.match(/IMPORT_FILE_ACCEPT =\s*"([^"]*)"/)?.[1] ?? "";
+    expect(accept.split(",").slice(0, 3)).toEqual([".csv", ".txt", ".json"]);
+    expect(accept).not.toMatch(/\.xls|\.ods|spreadsheetml/);
   });
 
   it("checks size, then rejects spreadsheets before reading the file", () => {
@@ -64,7 +68,7 @@ describe("ImportDialog — Excel import stays disabled", () => {
 
   it("parse failures surface as a toast; parsing does not write data", () => {
     expect(handleFileSrc).toMatch(
-      /try \{\s*parsed = parseCsv\([\s\S]*?\} catch \{\s*toast\.error\(t\("imp\.readError"\)\);\s*return;/,
+      /try \{\s*parsed = parseCsv\([\s\S]*?\} catch \{\s*fail\(t\("imp\.readError"\)\);\s*return;/,
     );
     expect(handleFileSrc).not.toMatch(/saveShifts|saveJob|replaceAll/);
   });
