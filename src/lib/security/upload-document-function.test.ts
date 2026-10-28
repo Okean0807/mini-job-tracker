@@ -1,3 +1,7 @@
+// @vitest-environment node
+// Node (undici) Request/FormData on purpose: happy-dom's own Request.formData() parses a 20 MiB
+// multipart body in JS (1-7 s unloaded, 17-21 s under CPU load vs ~0.1 s in Node), which made the
+// 20 MiB limit tests exceed Vitest's 5 s timeout. Nothing in this file needs a DOM.
 // Mock tests for supabase/functions/upload-document/handler.ts. Fake clients only.
 import { describe, expect, it, vi } from "vitest";
 

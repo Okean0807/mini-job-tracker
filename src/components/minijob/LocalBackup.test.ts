@@ -176,3 +176,68 @@ describe("Lokales Backup → Importieren", () => {
     expect(snapshot()).toBe(before);
   });
 });
+
+describe("Lokales Backup → Exportieren (Meldungen)", () => {
+  const exportButton = () =>
+    [...host.querySelectorAll<HTMLButtonElement>("button")].find(
+      (b) => b.textContent === de("set.localBackup.export"),
+    )!;
+  const win = window as unknown as { showSaveFilePicker?: unknown };
+  const settle = () => act(async () => void (await new Promise((r) => setTimeout(r, 10))));
+
+  afterEach(() => {
+    delete win.showSaveFilePicker;
+  });
+
+  it("saved via picker → success toast 'gespeichert' only", async () => {
+    const writable = { write: vi.fn(async () => {}), close: vi.fn(async () => {}) };
+    const picker = vi.fn(async () => ({ createWritable: async () => writable }));
+    win.showSaveFilePicker = picker;
+    await act(async () => {
+      exportButton().click();
+      expect(picker).toHaveBeenCalledTimes(1); // synchronously inside the click
+    });
+    await settle();
+    expect(toastMock.success).toHaveBeenCalledTimes(1);
+    expect(toastMock.success).toHaveBeenCalledWith(de("set.localBackup.saved"));
+    expect(toastMock.error).not.toHaveBeenCalled();
+  });
+
+  it("cancelled → neither success nor error toast", async () => {
+    win.showSaveFilePicker = async () => {
+      throw Object.assign(new Error("x"), { name: "AbortError" });
+    };
+    await act(async () => exportButton().click());
+    await settle();
+    expect(toastMock.success).not.toHaveBeenCalled();
+    expect(toastMock.error).not.toHaveBeenCalled();
+    expect(exportButton().disabled).toBe(false);
+  });
+
+  it("write failure → error toast, no success", async () => {
+    win.showSaveFilePicker = async () => ({
+      createWritable: async () => ({
+        write: async () => {
+          throw new Error("disk full");
+        },
+        close: async () => {},
+        abort: async () => {},
+      }),
+    });
+    await act(async () => exportButton().click());
+    await settle();
+    expect(toastMock.error).toHaveBeenCalledWith(de("set.localBackup.exportFailed"));
+    expect(toastMock.success).not.toHaveBeenCalled();
+  });
+
+  it("no picker API → download fallback with the existing 'Backup-Datei erstellt' message", async () => {
+    (URL as unknown as { createObjectURL: unknown }).createObjectURL = () => "blob:t";
+    (URL as unknown as { revokeObjectURL: unknown }).revokeObjectURL = () => {};
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    await act(async () => exportButton().click());
+    await settle();
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(toastMock.success).toHaveBeenCalledWith(de("set.localBackup.created"));
+    click.mockRestore();
+  });
+});

@@ -70,6 +70,8 @@ export const settingsDict: Bundle = {
     "set.localBackup.export": "Exportieren",
     "set.localBackup.import": "Importieren",
     "set.localBackup.created": "Backup-Datei erstellt",
+    "set.localBackup.saved": "Backup gespeichert",
+    "set.localBackup.exportFailed": "Backup konnte nicht gespeichert werden – bitte erneut versuchen",
     "set.localBackup.restored": "Backup wiederhergestellt",
     "set.localBackup.invalid": "Backup ungültig – lokale Daten wurden nicht überschrieben",
 
@@ -263,6 +265,8 @@ export const settingsDict: Bundle = {
     "set.localBackup.export": "Export",
     "set.localBackup.import": "Import",
     "set.localBackup.created": "Backup file created",
+    "set.localBackup.saved": "Backup saved",
+    "set.localBackup.exportFailed": "Backup could not be saved – please try again",
     "set.localBackup.restored": "Backup restored",
     "set.localBackup.invalid": "Invalid backup – local data was not overwritten",
 
@@ -456,6 +460,8 @@ export const settingsDict: Bundle = {
     "set.localBackup.export": "Экспорт",
     "set.localBackup.import": "Импорт",
     "set.localBackup.created": "Файл резервной копии создан",
+    "set.localBackup.saved": "Резервная копия сохранена",
+    "set.localBackup.exportFailed": "Не удалось сохранить резервную копию – попробуйте ещё раз",
     "set.localBackup.restored": "Резервная копия восстановлена",
     "set.localBackup.invalid": "Недействительная копия – локальные данные не перезаписаны",
 
@@ -649,6 +655,8 @@ export const settingsDict: Bundle = {
     "set.localBackup.export": "Dışa aktar",
     "set.localBackup.import": "İçe aktar",
     "set.localBackup.created": "Yedek dosyası oluşturuldu",
+    "set.localBackup.saved": "Yedek kaydedildi",
+    "set.localBackup.exportFailed": "Yedek kaydedilemedi – lütfen tekrar deneyin",
     "set.localBackup.restored": "Yedek geri yüklendi",
     "set.localBackup.invalid": "Geçersiz yedek – yerel veriler üzerine yazılmadı",
 
@@ -842,6 +850,8 @@ export const settingsDict: Bundle = {
     "set.localBackup.export": "Eksportuj",
     "set.localBackup.import": "Importuj",
     "set.localBackup.created": "Utworzono plik kopii zapasowej",
+    "set.localBackup.saved": "Kopia zapasowa zapisana",
+    "set.localBackup.exportFailed": "Nie udało się zapisać kopii zapasowej – spróbuj ponownie",
     "set.localBackup.restored": "Przywrócono kopię zapasową",
     "set.localBackup.invalid": "Nieprawidłowa kopia – lokalne dane nie zostały nadpisane",
 

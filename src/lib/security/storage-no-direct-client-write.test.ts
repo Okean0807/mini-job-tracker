@@ -295,7 +295,9 @@ describe("storage guard gaps (QA #135)", () => {
       return [...findStorageEscapes(src, rel), ...findStorageWrites(src, rel)];
     });
     expect(hits).toEqual([]);
-  });
+    // The scan reads every source file synchronously (~2 s unloaded on 4 cores); under CPU
+    // contention it exceeded Vitest's 5 s default. Only the timeout is raised, not the checks.
+  }, 30_000);
 
   it("server-side Edge Functions (service role, not affected by the policy drop): Storage writes are pinned to upload-document only", () => {
     const fnFiles = listAllSources(resolve(root, "supabase/functions"));
