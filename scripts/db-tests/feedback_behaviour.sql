@@ -1,8 +1,8 @@
 \set ON_ERROR_STOP on
 \pset tuples_only on
 -- Structure / access model
-select t.ok((select relrowsecurity and relforcerowsecurity from pg_class where oid = 'public.feedback'::regclass), 'feedback: RLS enabled + forced');
-select t.ok((select relrowsecurity and relforcerowsecurity from pg_class where oid = 'public.feedback_rate_limits'::regclass), 'rate limits: RLS enabled + forced');
+select t.ok((select relrowsecurity and not relforcerowsecurity from pg_class where oid = 'public.feedback'::regclass), 'feedback: RLS enabled, not forced (no BYPASSRLS dependency)');
+select t.ok((select relrowsecurity and not relforcerowsecurity from pg_class where oid = 'public.feedback_rate_limits'::regclass), 'rate limits: RLS enabled, not forced');
 select t.ok((select count(*) = 0 from pg_policies where schemaname = 'public' and tablename in ('feedback', 'feedback_rate_limits')), 'no policies on either table');
 select t.ok((select prosecdef from pg_proc where oid = 'public.submit_feedback(uuid,text,text,smallint,text,text,text,text)'::regprocedure), 'submit_feedback is SECURITY DEFINER');
 begin;

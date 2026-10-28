@@ -34,15 +34,15 @@ describe("migration draft is not part of the migration chain", () => {
 });
 
 describe("no public read, insert, update or delete", () => {
-  it("RLS enabled and forced on both tables; no policies at all", () => {
+  it("RLS enabled on both tables; no policies at all; RLS is NOT forced (no BYPASSRLS dependency)", () => {
     for (const t of ["feedback", "feedback_rate_limits"]) {
       expect(sql).toMatch(new RegExp(`alter table public\\.${t} enable row level security`));
-      expect(sql).toMatch(new RegExp(`alter table public\\.${t} force row level security`));
       expect(sql).toMatch(
         new RegExp(`revoke all on table public\\.${t} from public, anon, authenticated`),
       );
     }
     expect(sql).not.toMatch(/create\s+policy/i);
+    expect(sql).not.toMatch(/force row level security/i);
   });
 
   it("only service_role may execute submit_feedback; nobody else is granted anything", () => {

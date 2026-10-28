@@ -5,6 +5,11 @@
 -- Feedback (bug / idea / rating). Access model:
 --   * anon / authenticated: NO privileges on either table, RLS enabled, NO policies
 --     -> no public read, insert, update or delete.
+--   * RLS is deliberately NOT forced (no FORCE ROW LEVEL SECURITY). With FORCE, the function
+--     owner would be subject to RLS too and submit_feedback would fail unless that role has
+--     BYPASSRLS (verified on a local PostgreSQL: "new row violates row-level security policy").
+--     Without FORCE the table owner (= the function owner, same migration) is exempt, while
+--     anon/authenticated stay locked out by REVOKE + RLS without policies. No BYPASSRLS needed.
 --   * Only the server (service_role, via the TanStack server function) may call
 --     public.submit_feedback(); the owner reads rows with service_role / the dashboard.
 --   * No user_id, no IP, no email is stored. Rate limiting uses a keyed hash of the IP
@@ -29,7 +34,6 @@ create table if not exists public.feedback (
 create index if not exists feedback_created_at_idx on public.feedback (created_at desc);
 
 alter table public.feedback enable row level security;
-alter table public.feedback force row level security;
 revoke all on table public.feedback from public, anon, authenticated;
 
 create table if not exists public.feedback_rate_limits (
@@ -43,7 +47,6 @@ create index if not exists feedback_rate_limits_updated_at_idx
   on public.feedback_rate_limits (updated_at);
 
 alter table public.feedback_rate_limits enable row level security;
-alter table public.feedback_rate_limits force row level security;
 revoke all on table public.feedback_rate_limits from public, anon, authenticated;
 
 -- Limits: 5 per hour and 20 per day per client key, 300 per hour for the whole app.

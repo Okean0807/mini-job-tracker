@@ -18,8 +18,12 @@ export interface FeedbackDeps {
     fn: "submit_feedback",
     args: Record<string, unknown>,
   ) => Promise<{ data: unknown; error: unknown }>;
-  /** Nicht umkehrbarer Schlüssel pro Client (HMAC der IP), nie die IP selbst. */
-  clientKey: string;
+  /**
+   * Nicht umkehrbarer Schlüssel pro Client (HMAC der normalisierten IP), nie die IP selbst.
+   * Als Funktion wird er erst nach der Eingabeprüfung gebildet; sie wirft FeedbackError("unavailable"),
+   * wenn Secret oder vertrauenswürdige IP fehlen (fail closed, kein gemeinsamer Bucket).
+   */
+  clientKey: string | (() => string);
   log?: (event: string, fields: Record<string, unknown>) => void;
 }
 
@@ -34,6 +38,13 @@ export async function handleFeedback(raw: unknown, deps: FeedbackDeps): Promise<
     return { ok: true, duplicate: false };
   }
 
+  let clientKey: string;
+  try {
+    clientKey = typeof deps.clientKey === "function" ? deps.clientKey() : deps.clientKey;
+  } catch (error) {
+    throw error instanceof FeedbackError ? error : new FeedbackError("unavailable");
+  }
+
   let response: { data: unknown; error: unknown };
   try {
     response = await deps.rpc("submit_feedback", {
@@ -44,7 +55,7 @@ export async function handleFeedback(raw: unknown, deps: FeedbackDeps): Promise<
       p_app_version: input.appVersion,
       p_lang: input.lang,
       p_route: input.route,
-      p_client_key: deps.clientKey,
+      p_client_key: clientKey,
     });
   } catch {
     deps.log?.("feedback.rpc-threw", {});
