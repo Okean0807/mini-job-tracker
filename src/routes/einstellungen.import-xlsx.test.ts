@@ -71,8 +71,10 @@ describe("import, local backup, cloud backup and documents stay separate", () =>
   });
 
   it("local backup (JSON restore in Settings) keeps its own handler and file input", () => {
-    expect(src).toMatch(/restoreLocalBackupFile/);
-    expect(functionBody(src, "LocalBackup")).toMatch(/accept="application\/json"/);
+    const local = read("../components/minijob/LocalBackup.tsx");
+    expect(src).toMatch(/<LocalBackup\b/);
+    expect(local).toMatch(/useBackupRestore/);
+    expect(local).toMatch(/accept="application\/json"/);
   });
 
   it("the Documents page keeps its own upload and does not use the import dialog", () => {

@@ -239,30 +239,122 @@ describe("CSV / TXT shifts", () => {
   });
 });
 
-describe("JSON backup", () => {
-  const validBackup = () =>
+describe("JSON backup (full replacement, confirmed first)", () => {
+  const backupWith = (shifts: number) =>
     JSON.stringify({
       ...getData(),
       jobs: [{ id: "backup-job", name: "Backup-Job", color: "#112233", mode: "flex" }],
-      shifts: [],
+      shifts: Array.from({ length: shifts }, (_, i) => ({
+        id: `b-${i}`,
+        jobId: "backup-job",
+        kind: "arbeit",
+        date: "2026-09-01",
+        start: "09:00",
+        end: "12:00",
+        breakMinutes: 0,
+      })),
     });
+  const seedFive = () => {
+    replaceAll({
+      ...getData(),
+      jobs: [{ id: "old", name: "Alt", color: "#000000", mode: "flex" }],
+      shifts: Array.from({ length: 5 }, (_, i) => ({
+        id: `old-${i}`,
+        jobId: "old",
+        kind: "arbeit" as const,
+        date: "2026-08-01",
+        start: "08:00",
+        end: "12:00",
+        breakMinutes: 0,
+      })),
+    });
+  };
+  const text = (el: string) => document.body.querySelector(`[data-testid="${el}"]`)?.textContent;
 
-  it("a valid backup is applied and reported", async () => {
+  it("shows a summary first and changes nothing until the user confirms", async () => {
     await openDialog();
-    await chooseFile(fileWithText("backup.json", validBackup(), "application/json").file);
-    expect(toastMock.success).toHaveBeenCalledWith(de("imp.jsonSuccess"));
+    seedFive();
+    const before = snapshot();
+    await chooseFile(fileWithText("backup.json", backupWith(1), "application/json").file);
+    expect(text("restore-summary")).toContain(de("restore.warn"));
+    expect(text("restore-current")).toBe(de("restore.counts", { shifts: 5, jobs: 1 }));
+    expect(text("restore-incoming")).toBe(de("restore.counts", { shifts: 1, jobs: 1 }));
+    expect(snapshot()).toBe(before);
+    expect(toastMock.success).not.toHaveBeenCalled();
+
+    await act(async () => {
+      document.body.querySelector<HTMLElement>('[data-testid="restore-confirm"]')!.click();
+    });
+    expect(getData().shifts.map((s) => s.id)).toEqual(["b-0"]);
     expect(getData().jobs.map((j) => j.name)).toEqual(["Backup-Job"]);
+    expect(toastMock.success).toHaveBeenCalledWith(de("restore.success"), expect.anything());
+    expect(dialog()).toBeNull();
   });
 
-  it("an invalid or unreadable backup is refused and the stored data stays as it was", async () => {
+  it("cancelling after the summary keeps all data and returns to the picker", async () => {
     await openDialog();
+    seedFive();
+    const before = snapshot();
+    await chooseFile(fileWithText("backup.json", backupWith(1), "application/json").file);
+    await act(async () => {
+      document.body.querySelector<HTMLElement>('[data-testid="restore-cancel"]')!.click();
+    });
+    expect(snapshot()).toBe(before);
+    expect(text("restore-summary")).toBeUndefined();
+    expect(dialog()!.textContent).toContain(de("imp.selectFile"));
+  });
+
+  it("an empty backup over existing data announces the deletion before anything happens", async () => {
+    await openDialog();
+    seedFive();
+    const before = snapshot();
+    await chooseFile(
+      fileWithText(
+        "empty.json",
+        backupWith(0).replace(/"jobs":\[[^\]]*\]/, '"jobs":[]'),
+        "application/json",
+      ).file,
+    );
+    expect(text("restore-wipes")).toBe(de("restore.empty"));
+    expect(snapshot()).toBe(before);
+  });
+
+  it("the success toast offers an undo that brings the previous state back", async () => {
+    await openDialog();
+    seedFive();
+    const before = snapshot();
+    await chooseFile(fileWithText("backup.json", backupWith(1), "application/json").file);
+    await act(async () => {
+      document.body.querySelector<HTMLElement>('[data-testid="restore-confirm"]')!.click();
+    });
+    const options = toastMock.success.mock.calls.find((c) => c[0] === de("restore.success"))![1];
+    expect(options.action.label).toBe(de("restore.undo"));
+    await act(async () => {
+      options.action.onClick();
+    });
+    expect(snapshot()).toBe(before);
+    expect(toastMock.success).toHaveBeenCalledWith(de("restore.undone"));
+  });
+
+  it("an invalid or broken backup is refused before any summary and the stored data stays as it was", async () => {
+    await openDialog();
+    seedFive();
     const before = snapshot();
     await chooseFile(fileWithText("wrong.json", '{"hello":1}', "application/json").file);
-    expect(toastMock.error).toHaveBeenCalledWith(de("imp.jsonInvalid"));
+    expect(toastMock.error).toHaveBeenCalledWith(expect.stringContaining("(missing)"));
+    expect(text("restore-summary")).toBeUndefined();
     expect(snapshot()).toBe(before);
 
     await chooseFile(fileWithText("broken.json", "{not json", "application/json").file);
     expect(toastMock.error).toHaveBeenCalledWith(de("imp.jsonError"));
+    expect(snapshot()).toBe(before);
+
+    const ghost = JSON.stringify({
+      shifts: [{ id: "x", jobId: "ghost", date: "2026-09-01", start: "09:00", end: "10:00" }],
+      jobs: [],
+    });
+    await chooseFile(fileWithText("ghost.json", ghost, "application/json").file);
+    expect(toastMock.error).toHaveBeenCalledWith(expect.stringContaining("jobId"));
     expect(snapshot()).toBe(before);
   });
 });

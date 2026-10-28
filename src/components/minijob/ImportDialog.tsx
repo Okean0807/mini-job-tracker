@@ -25,9 +25,10 @@ import {
   getData,
 } from "@/lib/minijob/store";
 import { importFileKind, MAX_IMPORT_BYTES } from "@/lib/minijob/import-file-kind";
-import { importJsonBackupFile } from "@/lib/minijob/json-backup-import";
 import type { Job, Settings } from "@/lib/minijob/types";
 import { useT } from "@/lib/i18n";
+
+import { BackupRestoreSummary, useBackupRestore } from "./BackupRestore";
 
 // Android's picker maps extension-only filters to MIME types and can grey out a
 // valid CSV whose stored type differs (text/csv vs. text/comma-separated-values),
@@ -60,7 +61,17 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
     setError(message);
   }
 
+  // JSON-Sicherungen ersetzen den gesamten Bestand: erst Prüfung, dann Bestätigung.
+  const restore = useBackupRestore({
+    onError: setError,
+    onRestored: () => {
+      onOpenChange(false);
+      reset();
+    },
+  });
+
   function reset() {
+    restore.cancel();
     setPicked(null);
     setError(null);
     setResult(null);
@@ -80,20 +91,7 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
     }
 
     if (kind === "json") {
-      try {
-        const outcome = await importJsonBackupFile(file);
-        // Namensraum während des Lesens gewechselt: nichts schreiben, still beenden.
-        if (outcome === "stale") return;
-        if (outcome === "invalid") {
-          fail(t("imp.jsonInvalid"));
-          return;
-        }
-        toast.success(t("imp.jsonSuccess"));
-        onOpenChange(false);
-        reset();
-      } catch {
-        fail(t("imp.jsonError"));
-      }
+      await restore.pick(file);
       return;
     }
 
@@ -174,7 +172,13 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
           <DialogDescription>{t("imp.desc")}</DialogDescription>
         </DialogHeader>
 
-        {!result ? (
+        {restore.pending ? (
+          <BackupRestoreSummary
+            prepared={restore.pending}
+            onCancel={restore.cancel}
+            onConfirm={restore.confirm}
+          />
+        ) : !result ? (
           <div className="space-y-3">
             <input
               ref={fileRef}
