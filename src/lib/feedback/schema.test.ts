@@ -67,6 +67,8 @@ describe("feedback schema: only minimal fields, nothing else", () => {
     ["token", "abc"],
     ["userId", "u1"],
     ["email", "a@b.de"],
+    ["website", ""],
+    ["user_id", "00000000-0000-4000-8000-000000000000"],
   ])("rejects the extra field %s", (key, value) => {
     expect(ok({ [key]: value }).success).toBe(false);
   });

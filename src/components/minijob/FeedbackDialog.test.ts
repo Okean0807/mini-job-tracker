@@ -9,6 +9,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const toastMock = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn(), message: vi.fn() }));
 vi.mock("sonner", () => ({ toast: toastMock }));
+const authState = vi.hoisted(() => ({
+  status: "signed_in" as "loading" | "signed_in" | "signed_out",
+}));
+vi.mock("@/hooks/use-auth-session", () => ({
+  useAuthSession: () => ({ status: authState.status, session: null }),
+}));
 
 import { tl } from "@/lib/i18n";
 import { FeedbackError, MAX_FEEDBACK_CHARS, type FeedbackInput } from "@/lib/feedback/schema";
@@ -24,7 +30,15 @@ let root: Root;
 type Call = { data: FeedbackInput };
 let submit: ReturnType<typeof vi.fn<(args: Call) => Promise<unknown>>>;
 
+let openAccount: ReturnType<typeof vi.fn<() => void>>;
+const renderSection = () =>
+  act(async () => {
+    root.render(createElement(FeedbackSection, { submit, onOpenAccount: openAccount }));
+  });
+
 beforeEach(async () => {
+  authState.status = "signed_in";
+  openAccount = vi.fn<() => void>();
   window.localStorage.clear();
   replaceAll({ shifts: [], jobs: [] });
   updateSettings({ language: "de" });
@@ -34,9 +48,7 @@ beforeEach(async () => {
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
-  await act(async () => {
-    root.render(createElement(FeedbackSection, { submit }));
-  });
+  await renderSection();
 });
 afterEach(() => {
   act(() => root.unmount());
@@ -262,29 +274,70 @@ describe("sending", () => {
     expect($('[data-testid="feedback-error"]')!.textContent).toBe(de("fb.error.offline"));
     vi.restoreAllMocks();
   });
+});
 
-  it("the honeypot value travels to the server (which drops the submission)", async () => {
-    await open();
-    await type("Bot-Text");
-    const trap = $('[data-testid="feedback-website"]') as HTMLInputElement;
-    expect(trap.closest("[aria-hidden='true']")).not.toBeNull();
-    expect(trap.tabIndex).toBe(-1);
-    await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
-      setter.call(trap, "http://spam");
-      trap.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await submitForm();
-    await flush();
-    expect(submit.mock.calls[0]![0].data.website).toBe("http://spam");
+describe("authentication gate (Feedback is for signed-in users only)", () => {
+  const rerender = async (status: "loading" | "signed_in" | "signed_out") => {
+    authState.status = status;
+    await renderSection();
+  };
+
+  it("while the auth state is loading: no sign-in prompt, the button is locked, nothing opens", async () => {
+    await rerender("loading");
+    expect($('[data-testid="feedback-signin"]')).toBeNull();
+    const button = $('[data-testid="feedback-open"]') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.getAttribute("aria-busy")).toBe("true");
+    await click(button);
+    expect(dialog()).toBeNull();
   });
 
-  it("works for guests: no sign-in or session is needed to send", async () => {
+  it("guest (signed out): sees the sign-in suggestion, no feedback button, no dialog", async () => {
+    await rerender("signed_out");
+    expect($('[data-testid="feedback-signin"]')!.textContent).toContain(de("fb.signIn.required"));
+    expect($('[data-testid="feedback-signin"] [role="status"]')).not.toBeNull();
+    expect($('[data-testid="feedback-open"]')).toBeNull();
+    expect(dialog()).toBeNull();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("the sign-in button takes the guest to the account tab", async () => {
+    await rerender("signed_out");
+    await click($('[data-testid="feedback-signin-action"]'));
+    expect(openAccount).toHaveBeenCalledTimes(1);
+  });
+
+  it("signed in: button enabled and no sign-in prompt", async () => {
+    await rerender("signed_in");
+    expect($('[data-testid="feedback-signin"]')).toBeNull();
+    expect(($('[data-testid="feedback-open"]') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("signing out while the dialog is open closes it and nothing can be submitted", async () => {
     await open();
-    await type("Gast-Feedback");
+    await type("Text vor dem Abmelden");
+    await rerender("signed_out");
+    expect(dialog()).toBeNull();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("an expired session answered by the server shows the sign-in-again message and keeps the text", async () => {
+    submit.mockRejectedValueOnce(new Error("Unauthorized: Invalid token"));
+    await open();
+    await type("Sitzung abgelaufen");
     await submitForm();
     await flush();
-    expect(submit).toHaveBeenCalledTimes(1);
-    expect(toastMock.success).toHaveBeenCalled();
+    expect($('[data-testid="feedback-error"]')!.textContent).toBe(de("fb.error.unauthenticated"));
+    expect(toastMock.success).not.toHaveBeenCalled();
+    expect(($("#fb-message") as HTMLTextAreaElement).value).toBe("Sitzung abgelaufen");
+  });
+
+  it("an anonymous Supabase session is told feedback is unavailable", async () => {
+    submit.mockRejectedValueOnce(new FeedbackError("forbidden"));
+    await open();
+    await type("Anonym");
+    await submitForm();
+    await flush();
+    expect($('[data-testid="feedback-error"]')!.textContent).toBe(de("fb.error.forbidden"));
   });
 });

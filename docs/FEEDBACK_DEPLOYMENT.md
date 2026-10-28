@@ -1,32 +1,60 @@
-# Feedback - deployment dependencies (draft, nothing applied)
+# Feedback (variant C2: signed-in users only) - deployment notes
 
-Status: the Feedback code is in PR #157; the SQL is a DRAFT in `supabase/pending/` and is **not applied**
-anywhere. Until it is applied and verified, sending feedback fails with "unavailable" (no data is lost).
+Status: code in this branch; the SQL is a DRAFT in `supabase/pending/` and is **not applied** anywhere.
+Until it is applied and verified, sending feedback fails with "unavailable" (nothing is lost, nothing is stored).
+Tested so far: unit/integration tests against a FAKE Supabase and SQL on a TEMPORARY local PostgreSQL
+with a stub of Supabase's `auth` schema. **The real Supabase has not been tested.**
 
-## Server-only environment (Production only; never `VITE_*`)
+## Architecture
 
-| Variable | Purpose | Rule |
-|---|---|---|
-| `SUPABASE_URL` | PostgREST endpoint | already used by the server client |
-| `SUPABASE_SERVICE_ROLE_KEY` | lets the server call `submit_feedback` (the only role allowed to) | **first server path in this repo that needs it on Vercel**; keep it out of Preview unless Preview points to a non-production database |
-| `FEEDBACK_HASH_SECRET` | HMAC key for the rate-limit client key | >= 32 characters, >= 12 distinct; `openssl rand -hex 32`; missing/weak = submissions refused; no fallback |
-| `FEEDBACK_TRUST_PROXY` | which proxy may tell us the client IP | `vercel` or unset; unset = no IP trusted = submissions refused |
+```
+signed-in browser -> server function submitFeedback (Vercel)
+   CSRF middleware + attachSupabaseAuth (bearer token)      src/start.ts
+   requireSupabaseAuth: getClaims(token) -> user-scoped client (publishable key + the user's JWT)
+   zod strict validation (comfort + error masking)          src/lib/feedback/schema.ts, handler.ts
+   -> PostgREST rpc submit_feedback (role: authenticated)
+        auth.uid() = author, is_anonymous refused, validation, 5/hour + 20/day per user, idempotent
+```
 
-`FEEDBACK_TRUST_PROXY=vercel` is only correct if Vercel's edge replaces `x-forwarded-for` (documented by
-Vercel; **confirm on the real deployment** by sending a request with a spoofed `X-Forwarded-For` and checking
-that the stored `feedback_rate_limits.client_key` does not change). The code uses the rightmost entry as
-defence in depth. IPv6 clients are reduced to their /64 prefix.
+The security boundary is the SQL function: any signed-in user may also call the RPC directly, so validation
+and limits live there. The server function adds CSRF protection, error masking and a place for a future
+CAPTCHA check.
 
-## Open items (documented, intentionally not implemented here)
+## Environment
 
-- F4 spam / global cap: 300 submissions per hour for the whole app can be exhausted by ~60 addresses;
-  there is no CAPTCHA (needs a separate decision).
-- F5 where the service role lives: an Edge Function would keep the key inside Supabase instead of Vercel.
-- F6 retention / purge of `feedback` (worst case ~7,200 rows/day, ~14 MB/day) - owner decision.
-- Email notification (separate, not started).
+No new variables. Feedback uses the existing public Supabase URL and publishable key and the user's token.
+It **never** uses `SUPABASE_SERVICE_ROLE_KEY`, and no IP/HMAC/proxy settings exist any more
+(`FEEDBACK_HASH_SECRET`, `FEEDBACK_TRUST_PROXY` were removed with the guest mechanics).
 
-## Checks only possible on real Supabase (not done)
+## Reading, retention, deletion
 
-Apply the migration in a controlled environment; verify anon/authenticated are denied; verify
-`submit_feedback` runs for the real migration owner; call it with supabase-js and the service key;
-confirm limits, duplicate handling and rollback; confirm PostgREST finds the function (schema cache).
+- The owner reads rows with the Supabase dashboard / service role. Useful overview (read-only):
+  `select date_trunc('hour', created_at) h, count(*) from public.feedback group by 1 order by 1 desc limit 48;`
+- Provisional retention: 6 months (NOT final, legal review open). No scheduler is created; purge manually:
+  `delete from public.feedback where created_at < now() - interval '6 months';`
+- Rows and the limiter row are deleted with the account (`ON DELETE CASCADE` to `auth.users`;
+  `delete-account` hard-deletes the auth user). Provider backups are outside this.
+- Emergency switch that keeps all data: `revoke execute on function public.submit_feedback(uuid, text, text,
+  smallint, text, text, text) from authenticated;`
+
+## Open items (not implemented on purpose)
+
+- CAPTCHA (to be studied before the public launch; Turnstile fits the server function), e-mail
+  notifications (not needed for 1.0), a global limit (removed for 1.0; many accounts can still add up to
+  20 rows/day each - watch the overview query).
+- Datenschutz and Impressum are drafts/placeholders; legal readiness is not complete.
+
+## Checks that are only possible on a real Supabase (NOT done)
+
+1. Local Supabase stack (`supabase start`, needs a container runtime; not run here) with the migration copied
+   into a throw-away worktree's `supabase/migrations/`.
+2. A separate test project (owner decision, possible cost): apply the draft there only, never in Production;
+   confirm `auth.uid()`/`auth.jwt()` and the `is_anonymous` claim, default function privileges, owner role,
+   PostgREST schema cache and `smallint` parameter, advisors, and that the function is callable only with a
+   user JWT (`curl` with `apikey` + `Authorization`), 401/permission denied without it, cascade on a real
+   user deletion, rollback and re-apply.
+3. `scripts/feedback-transport-check.mjs` against that project's URL with real tokens (it only uses a fake
+   Supabase today).
+4. Real device (Android): signed-in send, expired session, guest sees the sign-in suggestion.
+5. Supabase advisors will probably warn about a SECURITY DEFINER function executable by `authenticated`
+   in an exposed schema (same pattern as `consume_ai_rate_limit`); decide explicitly.

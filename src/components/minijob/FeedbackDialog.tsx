@@ -14,6 +14,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
+import { useAuthSession } from "@/hooks/use-auth-session";
 import { useT } from "@/lib/i18n";
 import { sendFeedback } from "@/lib/feedback/client";
 import { feedbackContext } from "@/lib/feedback/context";
@@ -32,13 +33,22 @@ type Submit = (args: { data: FeedbackInput }) => Promise<unknown>;
 const newSubmissionId = () => crypto.randomUUID();
 
 /** Einstellungen → Allgemein: Feedback (Fehler, Idee, Bewertung). Auch für Gäste. */
-export function FeedbackSection({ submit = submitFeedback as Submit }: { submit?: Submit }) {
+export function FeedbackSection({
+  submit = submitFeedback as Submit,
+  onOpenAccount,
+}: {
+  submit?: Submit;
+  /** Wechselt zum Tab „Konto“, wo man sich anmelden kann. */
+  onOpenAccount?: () => void;
+}) {
   const { t, lang } = useT();
+  // Feedback nur für angemeldete Nutzer. Erst nach dem Laden des Anmeldestatus („loading“ → bereit)
+  // wird einem Gast die Anmeldung vorgeschlagen, damit nichts kurz aufblitzt.
+  const { status: authStatus } = useAuthSession();
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<FeedbackKind>("bug");
   const [rating, setRating] = useState(0);
   const [message, setMessage] = useState("");
-  const [website, setWebsite] = useState(""); // Honeypot, für Nutzer unsichtbar
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Eine ID pro Formular: eine Wiederholung nach Netzwerkfehler wird serverseitig nie doppelt gespeichert.
@@ -49,7 +59,6 @@ export function FeedbackSection({ submit = submitFeedback as Submit }: { submit?
     setKind("bug");
     setRating(0);
     setMessage("");
-    setWebsite("");
     setError(null);
     submissionId.current = newSubmissionId();
   }
@@ -57,6 +66,7 @@ export function FeedbackSection({ submit = submitFeedback as Submit }: { submit?
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (sendingRef.current) return; // Doppelklick / Enter-Wiederholung
+    if (authStatus !== "signed_in") return; // auch ohne UI-Sperre nie als Gast senden
     const ctx = feedbackContext(
       window.location.pathname,
       import.meta.env["VITE_APP_VERSION"] as string | undefined,
@@ -68,7 +78,6 @@ export function FeedbackSection({ submit = submitFeedback as Submit }: { submit?
       message: message.trim(),
       ...(kind === "rating" ? { rating } : {}),
       ...ctx,
-      ...(website ? { website } : {}),
     };
     const parsed = feedbackSchema.safeParse(input);
     if (!parsed.success) {
@@ -97,13 +106,17 @@ export function FeedbackSection({ submit = submitFeedback as Submit }: { submit?
       const text =
         outcome.status === "offline"
           ? t("fb.error.offline")
-          : outcome.status === "rate_limited"
-            ? t("fb.error.rate", {
-                minutes: Math.max(1, Math.ceil(outcome.retryAfterSeconds / 60)),
-              })
-            : outcome.status === "invalid"
-              ? t("fb.error.invalid")
-              : t("fb.error.network");
+          : outcome.status === "unauthenticated"
+            ? t("fb.error.unauthenticated")
+            : outcome.status === "forbidden"
+              ? t("fb.error.forbidden")
+              : outcome.status === "rate_limited"
+                ? t("fb.error.rate", {
+                    minutes: Math.max(1, Math.ceil(outcome.retryAfterSeconds / 60)),
+                  })
+                : outcome.status === "invalid"
+                  ? t("fb.error.invalid")
+                  : t("fb.error.network");
       setError(text);
       toast.error(text);
     } finally {
@@ -122,17 +135,41 @@ export function FeedbackSection({ submit = submitFeedback as Submit }: { submit?
     <section className="space-y-3 rounded-2xl border bg-card p-4 shadow-card">
       <h2 className="text-sm font-semibold">{t("fb.title")}</h2>
       <p className="text-xs text-muted-foreground">{t("fb.desc")}</p>
-      <Button
-        variant="outline"
-        className="min-h-11 w-full"
-        aria-haspopup="dialog"
-        data-testid="feedback-open"
-        onClick={() => setOpen(true)}
-      >
-        <MessageSquare className="size-4" /> {t("fb.open")}
-      </Button>
+      {authStatus === "signed_out" ? (
+        <div className="space-y-2" data-testid="feedback-signin">
+          <p className="rounded-xl bg-muted p-3 text-xs" role="status">
+            {t("fb.signIn.required")}
+          </p>
+          {onOpenAccount ? (
+            <Button
+              variant="outline"
+              className="min-h-11 w-full"
+              data-testid="feedback-signin-action"
+              onClick={onOpenAccount}
+            >
+              {t("fb.signIn.action")}
+            </Button>
+          ) : null}
+        </div>
+      ) : (
+        <Button
+          variant="outline"
+          className="min-h-11 w-full"
+          aria-haspopup="dialog"
+          data-testid="feedback-open"
+          // Während der Anmeldestatus lädt: sichtbar, aber gesperrt und ohne Anmelde-Hinweis.
+          disabled={authStatus !== "signed_in"}
+          aria-busy={authStatus === "loading" ? true : undefined}
+          onClick={() => setOpen(true)}
+        >
+          <MessageSquare className="size-4" /> {t("fb.open")}
+        </Button>
+      )}
 
-      <Dialog open={open} onOpenChange={(v) => (!sending ? setOpen(v) : undefined)}>
+      <Dialog
+        open={open && authStatus === "signed_in"}
+        onOpenChange={(v) => (!sending ? setOpen(v) : undefined)}
+      >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{t("fb.dialog.title")}</DialogTitle>
@@ -225,22 +262,6 @@ export function FeedbackSection({ submit = submitFeedback as Submit }: { submit?
               >
                 {t("fb.privacy")}
               </p>
-            </div>
-
-            {/* Honeypot: für Menschen und Screenreader unsichtbar, Bots füllen es aus. */}
-            <div aria-hidden="true" className="absolute -left-[9999px] h-0 w-0 overflow-hidden">
-              <label>
-                Website
-                <input
-                  type="text"
-                  name="website"
-                  tabIndex={-1}
-                  autoComplete="off"
-                  value={website}
-                  onChange={(e) => setWebsite(e.target.value)}
-                  data-testid="feedback-website"
-                />
-              </label>
             </div>
 
             {error ? (

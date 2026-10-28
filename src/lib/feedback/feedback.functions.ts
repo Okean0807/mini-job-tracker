@@ -1,15 +1,28 @@
 import { createServerFn } from "@tanstack/react-start";
 
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+
+import { handleFeedback } from "./handler";
 import { parseFeedbackInput } from "./schema";
 
 /**
- * Öffentliche Server-Funktion (kein Login nötig – auch Gäste können Feedback senden).
- * Zugriff auf die Datenbank nur serverseitig über den service_role-Client in
- * `feedback.server.ts`; Browser und Rollen anon/authenticated haben keinen Tabellenzugriff.
+ * Feedback nur für angemeldete Nutzer (Variante C2).
+ *
+ * - `requireSupabaseAuth` prüft das JWT serverseitig (`getClaims`) und liefert einen Supabase-Client
+ *   mit publishable Key + JWT des Nutzers. Es wird KEIN service_role-Schlüssel verwendet.
+ * - Der RPC `submit_feedback` bestimmt den Autor über `auth.uid()`; das Feld kommt nie aus der Anfrage.
+ * - Der Client-Schutz (CSRF-Middleware, Bearer-Token) kommt aus `src/start.ts`.
  */
 export const submitFeedback = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => parseFeedbackInput(input))
-  .handler(async ({ data }) => {
-    const { submitFeedbackServer } = await import("./feedback.server");
-    return submitFeedbackServer(data);
-  });
+  .handler(async ({ data, context }) =>
+    handleFeedback(data, {
+      rpc: (fn, args) =>
+        context.supabase.rpc(fn as never, args as never) as unknown as Promise<{
+          data: unknown;
+          error: unknown;
+        }>,
+      log: (event, fields) => console.warn(`[${event}]`, JSON.stringify(fields)),
+    }),
+  );

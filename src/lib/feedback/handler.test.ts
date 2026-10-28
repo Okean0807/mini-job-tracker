@@ -18,7 +18,7 @@ function deps(result: { data?: unknown; error?: unknown } | Error) {
     return { data: result.data ?? null, error: result.error ?? null };
   });
   const log = vi.fn();
-  return { rpc, log, d: { rpc, clientKey: "k".repeat(32), log } satisfies FeedbackDeps };
+  return { rpc, log, d: { rpc, log } satisfies FeedbackDeps };
 }
 const fails = async (p: Promise<unknown>) => {
   try {
@@ -28,18 +28,18 @@ const fails = async (p: Promise<unknown>) => {
   }
   throw new Error("expected rejection");
 };
+const argsOf = (rpc: ReturnType<typeof vi.fn>) =>
+  (rpc.mock.calls[0] as unknown as [string, Record<string, unknown>])[1];
 
-describe("handleFeedback", () => {
-  it("stores through the RPC with exactly the allowed arguments (no extra data)", async () => {
+describe("handleFeedback (variant C2)", () => {
+  it("calls the RPC with exactly the 7 allowed parameters — no user id, no client key", async () => {
     const { rpc, d } = deps({ data: [{ status: "created" }] });
     await expect(handleFeedback(input, d)).resolves.toEqual({ ok: true, duplicate: false });
     expect(rpc).toHaveBeenCalledTimes(1);
-    const [fn, args] = rpc.mock.calls[0]! as unknown as [string, Record<string, unknown>];
-    expect(fn).toBe("submit_feedback");
-    expect(Object.keys(args).sort()).toEqual(
+    expect((rpc.mock.calls[0] as unknown as [string])[0]).toBe("submit_feedback");
+    expect(Object.keys(argsOf(rpc)).sort()).toEqual(
       [
         "p_app_version",
-        "p_client_key",
         "p_kind",
         "p_lang",
         "p_message",
@@ -48,21 +48,24 @@ describe("handleFeedback", () => {
         "p_submission_id",
       ].sort(),
     );
-    expect(args["p_message"]).toBe("Dunkler Modus wäre schön"); // trimmed
-    expect(args["p_rating"]).toBeNull();
+    expect(argsOf(rpc)["p_message"]).toBe("Dunkler Modus wäre schön"); // trimmed
+    expect(argsOf(rpc)["p_rating"]).toBeNull();
   });
 
   it("passes the rating only for kind rating", async () => {
     const { rpc, d } = deps({ data: [{ status: "created" }] });
     await handleFeedback({ ...input, kind: "rating", message: "", rating: 4 }, d);
-    expect((rpc.mock.calls[0] as unknown as [string, Record<string, unknown>])[1]["p_rating"]).toBe(
-      4,
-    );
+    expect(argsOf(rpc)["p_rating"]).toBe(4);
   });
 
   it("a duplicate (retry of a stored submission) is a success", async () => {
     const { d } = deps({ data: [{ status: "duplicate" }] });
     await expect(handleFeedback(input, d)).resolves.toEqual({ ok: true, duplicate: true });
+  });
+
+  it("accepts a single-row (non-array) answer too", async () => {
+    const { d } = deps({ data: { status: "created" } });
+    await expect(handleFeedback(input, d)).resolves.toEqual({ ok: true, duplicate: false });
   });
 
   it("rate limit -> FeedbackError rate_limited with retry-after (at least 1 s)", async () => {
@@ -72,6 +75,15 @@ describe("handleFeedback", () => {
     expect(e.retryAfterSeconds).toBe(120);
     const z = await fails(handleFeedback(input, deps({ data: [{ status: "rate_limited" }] }).d));
     expect(z.retryAfterSeconds).toBeGreaterThanOrEqual(1);
+  });
+
+  it.each([
+    ["unauthenticated", "unauthenticated"],
+    ["forbidden", "forbidden"],
+    ["invalid", "invalid"],
+  ] as const)("database status %s -> code %s", async (status, code) => {
+    const e = await fails(handleFeedback(input, deps({ data: [{ status }] }).d));
+    expect(e.code).toBe(code);
   });
 
   it.each([
@@ -94,21 +106,14 @@ describe("handleFeedback", () => {
     ["bad rating", { ...input, kind: "rating", message: "", rating: 6 }],
     ["rating on idea", { ...input, rating: 3 }],
     ["extra field", { ...input, shifts: [] }],
+    ["user id from the request", { ...input, userId: "other-user" }],
+    ["old honeypot field", { ...input, website: "" }],
     ["not an object", "hello"],
     ["null", null],
   ])("invalid input (%s) is rejected before any database call", async (_n, raw) => {
     const { rpc, d } = deps({ data: [{ status: "created" }] });
     const e = await fails(handleFeedback(raw, d));
     expect(e.code).toBe("invalid");
-    expect(rpc).not.toHaveBeenCalled();
-  });
-
-  it("honeypot: pretends success but stores nothing", async () => {
-    const { rpc, d } = deps({ data: [{ status: "created" }] });
-    await expect(handleFeedback({ ...input, website: "http://spam" }, d)).resolves.toEqual({
-      ok: true,
-      duplicate: false,
-    });
     expect(rpc).not.toHaveBeenCalled();
   });
 });

@@ -100,6 +100,7 @@ function SettingsPage() {
   const [bioCapability, setBioCapability] = useState<BiometricCapability>("unsupported");
   const [previewMode, setPreviewMode] = useState<UiMode | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [tab, setTab] = useState("allgemein");
 
   useEffect(() => {
     let cancelled = false;
@@ -118,7 +119,7 @@ function SettingsPage() {
     <main className="mx-auto max-w-lg px-4 pt-6">
       <h1 className="text-2xl font-extrabold tracking-tight">{t("set.title")}</h1>
 
-      <Tabs defaultValue="allgemein" className="mt-4">
+      <Tabs value={tab} onValueChange={setTab} className="mt-4">
         <TabsList className="w-full">
           <TabsTrigger value="allgemein" className="flex-1">
             {t("set.tabs.general")}
@@ -486,7 +487,7 @@ function SettingsPage() {
 
           <LocalBackup shiftCount={shifts.length} />
 
-          <FeedbackSection />
+          <FeedbackSection onOpenAccount={() => setTab("konto")} />
 
           <Section title={t("set.setup.title")}>
             <p className="text-xs text-muted-foreground">{t("set.setup.desc")}</p>

@@ -29,8 +29,6 @@ export const feedbackSchema = z
     appVersion: z.string().regex(VERSION_RE),
     lang: z.enum(FEEDBACK_LANGS),
     route: z.string().regex(ROUTE_RE),
-    /** Honeypot: echte Nutzer lassen es leer. */
-    website: z.string().max(200).optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -52,7 +50,7 @@ export const feedbackSchema = z
 export type FeedbackInput = z.infer<typeof feedbackSchema>;
 
 export class FeedbackError extends Error {
-  readonly code: "invalid" | "rate_limited" | "unavailable";
+  readonly code: "invalid" | "rate_limited" | "unavailable" | "unauthenticated" | "forbidden";
   readonly retryAfterSeconds: number;
 
   constructor(code: FeedbackError["code"], retryAfterSeconds = 0) {
@@ -75,6 +73,8 @@ export function readFeedbackError(
   error: unknown,
 ): { code: FeedbackError["code"]; retry: number } | null {
   const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
-  const m = /feedback:(invalid|rate_limited|unavailable):(\d+)/.exec(message);
+  const m = /feedback:(invalid|rate_limited|unavailable|unauthenticated|forbidden):(\d+)/.exec(
+    message,
+  );
   return m ? { code: m[1] as FeedbackError["code"], retry: Number(m[2]) } : null;
 }

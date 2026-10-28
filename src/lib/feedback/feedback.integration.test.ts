@@ -1,18 +1,16 @@
 // @vitest-environment node
 /**
- * Integration test of the real server path with a FAKE PostgREST (local HTTP server):
- * submitFeedbackServer -> real supabase-js admin client -> HTTP request -> fake answer.
- * Needs no secrets and no external infrastructure; all values below are test constants.
+ * Integration test of the real authentication path (variant C2) against a FAKE Supabase
+ * (local HTTP server: /auth/v1/user and PostgREST /rest/v1/rpc/submit_feedback):
  *
- * What it proves: the exact wire format sent to Supabase, which client key is derived from which
- * header, that nothing is sent when configuration is unsafe, and that clients only ever receive
- * safe error codes (no SQL text, no secrets) for every kind of database answer.
+ *   real requireSupabaseAuth (getClaims -> fake auth server) -> user-scoped supabase-js client
+ *   -> handleFeedback -> HTTP request to the fake PostgREST.
  *
- * What it does NOT prove: the real Supabase/PostgREST, RLS, grants (see
- * scripts/db-tests/feedback_run.sh for the local PostgreSQL tests and
- * scripts/feedback-transport-check.mjs for the TanStack HTTP transport).
+ * Needs no secrets and no external infrastructure; every key and token below is a test constant.
+ * It proves what the application sends and how it reacts to answers. It does NOT prove the real
+ * Supabase/PostgREST, auth.uid(), RLS or grants (see scripts/db-tests/feedback_run.sh for the SQL
+ * behaviour on a temporary local PostgreSQL and docs/FEEDBACK_DEPLOYMENT.md for the real checks).
  */
-import { createHmac } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -23,17 +21,90 @@ vi.mock("@tanstack/react-start/server", () => ({
   getRequest: () => ({ headers: new Headers(requestHeaders) }),
 }));
 
-import { FeedbackError, readFeedbackError } from "./schema";
-import { submitFeedbackServer } from "./feedback.server";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
-const SERVICE_KEY = "test-service-role-key-NOT-A-REAL-KEY-0123456789";
-const HASH_SECRET = "f3a9c1d27b5e48a09d6c3b1e7a4f8205-feedback-hash-secret";
+import { handleFeedback } from "./handler";
+import { FeedbackError } from "./schema";
+
+const PUBLISHABLE = "sb_publishable_TEST_ONLY_0123456789";
+const SERVICE_CANARY = "service-role-CANARY-must-never-be-sent-0123456789";
 const SQL_DETAIL = "SECRET-SQL-DETAIL relation public.feedback violates something";
+const A = "aaaaaaaa-0000-4000-8000-000000000001";
+const B = "bbbbbbbb-0000-4000-8000-000000000002";
 
-type Seen = { url: string; apikey: string; authorization: string; body: Record<string, unknown> };
+const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
+/** HS256-style token: getClaims() falls back to GET /auth/v1/user, which the fake answers. */
+const jwt = (claims: Record<string, unknown>) =>
+  `${b64({ alg: "HS256", typ: "JWT" })}.${b64({
+    role: "authenticated",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    ...claims,
+  })}.${Buffer.alloc(32, 7).toString("base64url")}`;
+const TOKEN_A = jwt({ sub: A });
+const TOKEN_B = jwt({ sub: B });
+const TOKEN_ANON = jwt({ sub: "cccccccc-0000-4000-8000-000000000003", is_anonymous: true });
+const TOKEN_REVOKED = jwt({ sub: A, jti: "revoked" });
+
+type Seen = {
+  method: string;
+  url: string;
+  headers: Record<string, string>;
+  body: Record<string, unknown>;
+};
 let server: Server;
 let seen: Seen[] = [];
-let answer: (() => { status: number; body: unknown }) | null = null;
+let rpcAnswer: ((token: string) => { status: number; body: unknown }) | null = null;
+
+const claimsOf = (token: string) =>
+  JSON.parse(Buffer.from(token.split(".")[1]!, "base64url").toString()) as Record<string, unknown>;
+
+beforeAll(async () => {
+  server = createServer((req, res) => {
+    let raw = "";
+    req.on("data", (c) => (raw += c));
+    req.on("end", () => {
+      const headers = Object.fromEntries(
+        Object.entries(req.headers).map(([k, v]) => [k, String(v)]),
+      );
+      const url = req.url ?? "";
+      seen.push({ method: req.method ?? "", url, headers, body: raw ? JSON.parse(raw) : {} });
+      const token = (headers["authorization"] ?? "").replace(/^Bearer /, "");
+      res.setHeader("content-type", "application/json");
+      if (url.startsWith("/auth/v1/user")) {
+        if (!token || token === TOKEN_REVOKED) {
+          res.statusCode = 401;
+          res.end(JSON.stringify({ msg: "invalid JWT" }));
+        } else {
+          res.end(JSON.stringify({ id: claimsOf(token)["sub"], aud: "authenticated" }));
+        }
+        return;
+      }
+      const reply = rpcAnswer?.(token) ?? {
+        status: 200,
+        body: [{ status: "created", retry_after_seconds: 0 }],
+      };
+      res.statusCode = reply.status;
+      res.end(JSON.stringify(reply.body));
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  process.env["VITE_SUPABASE_URL"] = url;
+  process.env["VITE_SUPABASE_PUBLISHABLE_KEY"] = PUBLISHABLE;
+  process.env["SUPABASE_URL"] = url;
+  process.env["SUPABASE_PUBLISHABLE_KEY"] = PUBLISHABLE;
+  process.env["SUPABASE_SERVICE_ROLE_KEY"] = SERVICE_CANARY; // present in the environment, must stay unused
+});
+afterAll(() => new Promise<void>((r) => server.close(() => r())));
+
+beforeEach(() => {
+  seen = [];
+  rpcAnswer = null;
+  requestHeaders = {};
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+  vi.spyOn(console, "error").mockImplementation(() => {});
+});
+afterEach(() => vi.restoreAllMocks());
 
 const input = () => ({
   submissionId: crypto.randomUUID(),
@@ -44,73 +115,44 @@ const input = () => ({
   route: "/einstellungen",
 });
 
-beforeAll(async () => {
-  server = createServer((req, res) => {
-    let raw = "";
-    req.on("data", (c) => (raw += c));
-    req.on("end", () => {
-      seen.push({
-        url: req.url ?? "",
-        apikey: String(req.headers["apikey"] ?? ""),
-        authorization: String(req.headers["authorization"] ?? ""),
-        body: raw ? JSON.parse(raw) : {},
-      });
-      const reply = answer?.() ?? {
-        status: 200,
-        body: [{ status: "created", retry_after_seconds: 0 }],
-      };
-      res.statusCode = reply.status;
-      res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify(reply.body));
-    });
+type Ctx = {
+  supabase: { rpc: (fn: string, args: unknown) => Promise<{ data: unknown; error: unknown }> };
+};
+/** Runs the REAL middleware, then the REAL handler with the middleware's client. */
+async function submit(token: string | null, data: unknown = input()) {
+  requestHeaders = token ? { authorization: `Bearer ${token}` } : {};
+  const middleware = requireSupabaseAuth as unknown as {
+    options: {
+      server: (args: { next: (o: { context: Ctx }) => unknown }) => Promise<{ context: Ctx }>;
+    };
+  };
+  const { context } = await middleware.options.server({ next: (o) => o });
+  return handleFeedback(data, {
+    rpc: (fn, args) => context.supabase.rpc(fn, args as never),
   });
-  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  const { port } = server.address() as AddressInfo;
-  process.env["SUPABASE_URL"] = `http://127.0.0.1:${port}`;
-  process.env["VITE_SUPABASE_URL"] = `http://127.0.0.1:${port}`;
-  process.env["SUPABASE_SERVICE_ROLE_KEY"] = SERVICE_KEY;
-});
-afterAll(() => new Promise<void>((r) => server.close(() => r())));
-
-let warn: ReturnType<typeof vi.spyOn>;
-beforeEach(() => {
-  seen = [];
-  answer = null;
-  requestHeaders = { "x-forwarded-for": "198.51.100.9" };
-  process.env["FEEDBACK_TRUST_PROXY"] = "vercel";
-  process.env["FEEDBACK_HASH_SECRET"] = HASH_SECRET;
-  warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-  vi.spyOn(console, "error").mockImplementation(() => {});
-});
-afterEach(() => vi.restoreAllMocks());
-
+}
 const fails = async (p: Promise<unknown>) => {
   try {
     await p;
   } catch (e) {
-    return e as FeedbackError;
+    return e as Error;
   }
   throw new Error("expected rejection");
 };
-const expectedKey = (identity: string) =>
-  createHmac("sha256", HASH_SECRET)
-    .update(`feedback-client:v1:${identity}`)
-    .digest("hex")
-    .slice(0, 32);
-const logged = () =>
-  JSON.stringify(warn.mock.calls) + JSON.stringify(vi.mocked(console.error).mock.calls);
+const rpcCalls = () => seen.filter((s) => s.url.startsWith("/rest/v1/rpc/submit_feedback"));
+const everything = () => JSON.stringify(seen);
 
-describe("wire format to Supabase", () => {
-  it("calls the RPC once with the service key, exactly the 8 documented parameters, and a keyed client hash", async () => {
-    await expect(submitFeedbackServer(input())).resolves.toEqual({ ok: true, duplicate: false });
-    expect(seen).toHaveLength(1);
-    const call = seen[0]!;
-    expect(call.url).toBe("/rest/v1/rpc/submit_feedback");
-    expect(call.apikey).toBe(SERVICE_KEY);
+describe("user A and user B (authenticated)", () => {
+  it("A's request carries A's token and the publishable key, 7 parameters, no user id", async () => {
+    await expect(submit(TOKEN_A)).resolves.toEqual({ ok: true, duplicate: false });
+    expect(rpcCalls()).toHaveLength(1);
+    const call = rpcCalls()[0]!;
+    expect(call.method).toBe("POST");
+    expect(call.headers["authorization"]).toBe(`Bearer ${TOKEN_A}`);
+    expect(call.headers["apikey"]).toBe(PUBLISHABLE);
     expect(Object.keys(call.body).sort()).toEqual(
       [
         "p_app_version",
-        "p_client_key",
         "p_kind",
         "p_lang",
         "p_message",
@@ -119,91 +161,82 @@ describe("wire format to Supabase", () => {
         "p_submission_id",
       ].sort(),
     );
-    expect(call.body["p_client_key"]).toBe(expectedKey("v4:198.51.100.9"));
-    const wire = JSON.stringify(call.body);
-    expect(wire).not.toContain("198.51.100.9");
-    expect(wire).not.toContain(HASH_SECRET);
-    expect(wire).not.toContain(SERVICE_KEY);
+    expect(everything()).not.toContain(A); // the user id is never sent as data
   });
 
-  it("a duplicate answer is a success", async () => {
-    answer = () => ({ status: 200, body: [{ status: "duplicate", retry_after_seconds: 0 }] });
-    await expect(submitFeedbackServer(input())).resolves.toEqual({ ok: true, duplicate: true });
-  });
-});
-
-describe("which header decides the client (F1)", () => {
-  it("rightmost x-forwarded-for entry; spoofed left entries do not change the key", async () => {
-    requestHeaders = { "x-forwarded-for": "198.51.100.9" };
-    await submitFeedbackServer(input());
-    requestHeaders = { "x-forwarded-for": "1.1.1.1, 2.2.2.2, 198.51.100.9" };
-    await submitFeedbackServer(input());
-    expect(seen[0]!.body["p_client_key"]).toBe(seen[1]!.body["p_client_key"]);
+  it("B's request carries B's token — the author is whoever the token says, never a field", async () => {
+    await submit(TOKEN_B);
+    expect(rpcCalls()[0]!.headers["authorization"]).toBe(`Bearer ${TOKEN_B}`);
+    expect(rpcCalls()[0]!.headers["authorization"]).not.toContain(TOKEN_A);
   });
 
-  it("IPv6 addresses of one /64 are one client", async () => {
-    requestHeaders = { "x-forwarded-for": "2001:db8:1:2::1" };
-    await submitFeedbackServer(input());
-    requestHeaders = { "x-forwarded-for": "2001:db8:1:2:dead:beef:0:7" };
-    await submitFeedbackServer(input());
-    expect(seen[0]!.body["p_client_key"]).toBe(seen[1]!.body["p_client_key"]);
-    expect(seen[0]!.body["p_client_key"]).toBe(expectedKey("v6:2001:db8:1:2"));
+  it("a user id supplied in the request body is rejected before any database call", async () => {
+    const e = await fails(submit(TOKEN_A, { ...input(), userId: B }));
+    expect((e as FeedbackError).code).toBe("invalid");
+    expect(rpcCalls()).toHaveLength(0);
   });
 
-  it("proxy trust not configured: refuses and never contacts the database", async () => {
-    delete process.env["FEEDBACK_TRUST_PROXY"];
-    const e = await fails(submitFeedbackServer(input()));
-    expect(e.code).toBe("unavailable");
-    expect(seen).toHaveLength(0);
-    expect(logged()).toContain("feedback.no-trusted-ip");
-  });
-
-  it("trusted proxy but no/garbage address: refuses (no shared 'unknown' bucket)", async () => {
-    requestHeaders = {};
-    expect((await fails(submitFeedbackServer(input()))).code).toBe("unavailable");
-    requestHeaders = { "x-forwarded-for": "not-an-ip" };
-    expect((await fails(submitFeedbackServer(input()))).code).toBe("unavailable");
-    expect(seen).toHaveLength(0);
+  it("the service-role key is never sent to anyone", async () => {
+    await submit(TOKEN_A);
+    expect(everything()).not.toContain(SERVICE_CANARY);
   });
 });
 
-describe("hash secret (F2)", () => {
+describe("no token / bad token (rejected on the server, before the database)", () => {
+  it("no Authorization header: Unauthorized, nothing sent to PostgREST", async () => {
+    const e = await fails(submit(null));
+    expect(e.message).toMatch(/^Unauthorized/);
+    expect(seen).toHaveLength(0);
+  });
+
   it.each([
-    ["missing", undefined],
-    ["empty", ""],
-    ["too short", "short-secret"],
-    ["low variety", "a".repeat(64)],
-  ])("%s secret refuses the submission, contacts nothing and leaks nothing", async (_n, value) => {
-    if (value === undefined) delete process.env["FEEDBACK_HASH_SECRET"];
-    else process.env["FEEDBACK_HASH_SECRET"] = value;
-    const e = await fails(submitFeedbackServer(input()));
-    expect(e.code).toBe("unavailable");
-    expect(e.message).toBe("feedback:unavailable:0");
-    expect(seen).toHaveLength(0);
-    expect(logged()).toContain("feedback.secret-invalid");
-    if (value) expect(logged()).not.toContain(value);
+    ["not a JWT", "abc"],
+    ["two segments", "a.b"],
+    ["empty bearer", ""],
+  ])("%s: Unauthorized, nothing sent", async (_n, token) => {
+    requestHeaders = { authorization: `Bearer ${token}` };
+    const middleware = requireSupabaseAuth as unknown as {
+      options: { server: (a: { next: (o: unknown) => unknown }) => Promise<unknown> };
+    };
+    const e = await fails(middleware.options.server({ next: (o) => o }));
+    expect(e.message).toMatch(/^Unauthorized/);
+    expect(rpcCalls()).toHaveLength(0);
   });
 
-  it("the service role key is never used as a fallback secret", async () => {
-    delete process.env["FEEDBACK_HASH_SECRET"];
-    await fails(submitFeedbackServer(input()));
-    expect(seen).toHaveLength(0);
+  it("a token the auth server rejects: Unauthorized, the RPC is never called", async () => {
+    const e = await fails(submit(TOKEN_REVOKED));
+    expect(e.message).toMatch(/^Unauthorized/);
+    expect(rpcCalls()).toHaveLength(0);
   });
 
-  it("a valid secret never appears in logs or in the error text", async () => {
-    answer = () => ({ status: 500, body: { message: SQL_DETAIL, code: "XX000" } });
-    const e = await fails(submitFeedbackServer(input()));
-    expect(JSON.stringify(e.message)).not.toContain(HASH_SECRET);
-    expect(logged()).not.toContain(HASH_SECRET);
-    expect(logged()).not.toContain(SERVICE_KEY);
+  it("non-Bearer schemes are refused", async () => {
+    requestHeaders = { authorization: `Basic ${TOKEN_A}` };
+    const middleware = requireSupabaseAuth as unknown as {
+      options: { server: (a: { next: (o: unknown) => unknown }) => Promise<unknown> };
+    };
+    expect((await fails(middleware.options.server({ next: (o) => o }))).message).toMatch(
+      /^Unauthorized/,
+    );
   });
 });
 
-describe("what a client can ever learn (transport-safe error codes)", () => {
+describe("anonymous Supabase user (is_anonymous claim)", () => {
+  it("the request reaches the database with that token and the 'forbidden' answer becomes a safe code", async () => {
+    rpcAnswer = (token) =>
+      claimsOf(token)["is_anonymous"] === true
+        ? { status: 200, body: [{ status: "forbidden", retry_after_seconds: 0 }] }
+        : { status: 200, body: [{ status: "created", retry_after_seconds: 0 }] };
+    const e = (await fails(submit(TOKEN_ANON))) as FeedbackError;
+    expect(e.code).toBe("forbidden");
+    // The refusal itself is decided in SQL (see the local SQL tests); this only proves the mapping.
+  });
+});
+
+describe("what a client can ever learn", () => {
   it.each([
     [
       "SQL error with details",
-      { status: 500, body: { message: SQL_DETAIL, code: "XX000", hint: "x", details: SQL_DETAIL } },
+      { status: 500, body: { message: SQL_DETAIL, code: "XX000", details: SQL_DETAIL } },
     ],
     [
       "function missing (migration not applied)",
@@ -215,63 +248,52 @@ describe("what a client can ever learn (transport-safe error codes)", () => {
     [
       "permission denied",
       {
-        status: 401,
+        status: 403,
         body: { code: "42501", message: "permission denied for function submit_feedback" },
       },
+    ],
+    [
+      "expired JWT at PostgREST",
+      { status: 401, body: { code: "PGRST301", message: "JWT expired" } },
     ],
     ["unexpected status value", { status: 200, body: [{ status: "ok" }] }],
     ["empty result", { status: 200, body: [] }],
     ["html error page", { status: 502, body: "<html>Bad gateway</html>" }],
   ])("%s -> unavailable, nothing internal in message or logs", async (_n, reply) => {
-    answer = () => reply;
-    const e = await fails(submitFeedbackServer(input()));
+    rpcAnswer = () => reply;
+    const e = (await fails(submit(TOKEN_A))) as FeedbackError;
     expect(e).toBeInstanceOf(FeedbackError);
     expect(e.code).toBe("unavailable");
-    expect(readFeedbackError(e)).toEqual({ code: "unavailable", retry: 0 });
-    const text = e.message + logged();
+    const text =
+      e.message +
+      JSON.stringify(vi.mocked(console.warn).mock.calls) +
+      JSON.stringify(vi.mocked(console.error).mock.calls);
     for (const secret of [
       SQL_DETAIL,
-      "PGRST202",
+      "PGRST",
       "42501",
       "submit_feedback",
       "Bad gateway",
-      SERVICE_KEY,
-      HASH_SECRET,
+      SERVICE_CANARY,
+      PUBLISHABLE,
     ]) {
       expect(text).not.toContain(secret);
     }
   });
 
-  it("rate limit answer -> rate_limited with a retry-after", async () => {
-    answer = () => ({ status: 200, body: [{ status: "rate_limited", retry_after_seconds: 125 }] });
-    const e = await fails(submitFeedbackServer(input()));
-    expect(readFeedbackError(e)).toEqual({ code: "rate_limited", retry: 125 });
-  });
-
-  it("database unreachable -> unavailable, no connection details", async () => {
-    const original = process.env["SUPABASE_URL"];
-    server.closeAllConnections();
-    process.env["SUPABASE_URL"] = "http://127.0.0.1:9"; // nothing listens here
-    vi.resetModules();
-    const fresh = await import("./feedback.server");
-    const e = await fails(fresh.submitFeedbackServer(input()));
-    process.env["SUPABASE_URL"] = original;
-    expect(e.code).toBe("unavailable");
-    expect(e.message).not.toMatch(/127\.0\.0\.1|ECONNREFUSED|fetch failed/);
-  });
-
-  it("invalid input is rejected as 'invalid' before any configuration or database use", async () => {
-    delete process.env["FEEDBACK_HASH_SECRET"];
-    const e = await fails(submitFeedbackServer({ ...input(), shifts: [{ id: "x" }] }));
-    expect(e.code).toBe("invalid");
-    expect(seen).toHaveLength(0);
-  });
-
-  it("honeypot submissions are acknowledged without touching the database", async () => {
-    await expect(submitFeedbackServer({ ...input(), website: "http://spam" })).resolves.toEqual({
-      ok: true,
-      duplicate: false,
+  it("rate limit answer -> rate_limited with retry-after", async () => {
+    rpcAnswer = () => ({
+      status: 200,
+      body: [{ status: "rate_limited", retry_after_seconds: 125 }],
     });
-    expect(seen).toHaveLength(0);
+    const e = (await fails(submit(TOKEN_A))) as FeedbackError;
+    expect(e.message).toBe("feedback:rate_limited:125");
+  });
+
+  it("'invalid' and 'unauthenticated' answers map to their codes", async () => {
+    rpcAnswer = () => ({ status: 200, body: [{ status: "invalid" }] });
+    expect(((await fails(submit(TOKEN_A))) as FeedbackError).code).toBe("invalid");
+    rpcAnswer = () => ({ status: 200, body: [{ status: "unauthenticated" }] });
+    expect(((await fails(submit(TOKEN_A))) as FeedbackError).code).toBe("unauthenticated");
   });
 });

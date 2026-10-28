@@ -48,6 +48,31 @@ describe("sendFeedback", () => {
     }
   });
 
+  it("auth failures: server codes and the auth middleware's 'Unauthorized: …' map to unauthenticated", async () => {
+    for (const error of [
+      new FeedbackError("unauthenticated"),
+      new Error("Unauthorized: No authorization header provided"),
+      new Error("Unauthorized: Invalid token"),
+    ]) {
+      const r = await sendFeedback(input, async () => {
+        throw error;
+      });
+      expect(r).toEqual({ status: "unauthenticated" });
+    }
+    expect(
+      await sendFeedback(input, async () => {
+        throw new FeedbackError("forbidden");
+      }),
+    ).toEqual({ status: "forbidden" });
+  });
+
+  it("an error that merely mentions 'unauthorized' later in the text is not an auth failure", async () => {
+    const r = await sendFeedback(input, async () => {
+      throw new Error("proxy said: not Unauthorized");
+    });
+    expect(r).toEqual({ status: "failed" });
+  });
+
   it("maps server error codes", async () => {
     expect(
       await sendFeedback(input, async () => {
