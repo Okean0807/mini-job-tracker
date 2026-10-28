@@ -9,7 +9,7 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { BarChart3, Bot, Briefcase, CalendarDays, FileText, Settings } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { toast } from "sonner";
 
@@ -19,9 +19,18 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { PinLock } from "@/components/minijob/PinLock";
 import { isLegalPath } from "@/lib/minijob/legal-links";
 import { OnboardingWizard } from "@/components/minijob/OnboardingWizard";
+import { PostAuthLanding } from "@/components/minijob/PostAuthLanding";
+import { useWizardDone } from "@/components/minijob/use-wizard-done";
+import { ProfileRestoreSplash } from "@/components/minijob/ProfileRestoreSplash";
+import { useAuthSession } from "@/hooks/use-auth-session";
+import { isOAuthLandingPending } from "@/lib/minijob/post-auth-landing";
 import { LocalDataImportPrompt } from "@/components/minijob/LocalDataImport";
 import { ScopeBoundary, useActiveScopeKey } from "@/components/minijob/ScopeBoundary";
-import { shouldShowOnboardingWizard } from "@/lib/minijob/wizard-flow";
+import {
+  isFirstProfileRestorePending,
+  resolveWizardOverlay,
+  shouldShowOnboardingWizard,
+} from "@/lib/minijob/wizard-flow";
 import { initCloudSync, useSyncState } from "../lib/minijob/cloud";
 import { initNotifications } from "../lib/minijob/notify";
 import {
@@ -267,10 +276,13 @@ function RootComponent() {
     if (!(current.pinEnabled && current.pin)) setUnlockedScope(scope);
   }, [scope, ready]);
   const [showWizard, setShowWizard] = useState(false);
+  // A Google sign-in started in this tab and is not settled yet (see post-auth-landing.ts).
+  const [oauthReturn, setOauthReturn] = useState(false);
 
   useEffect(() => {
     try {
       loadFromStorage();
+      setOauthReturn(isOAuthLandingPending());
       const data = getData();
       const loaded = data.settings;
       applyAppearance(loaded);
@@ -307,6 +319,25 @@ function RootComponent() {
 
   const onLegalPage = isLegalPath(useRouterState({ select: (state) => state.location.pathname }));
 
+  // Existing account on a device without its data: the cloud may hold a complete profile, so
+  // the wizard waits for the first comparison instead of flashing for an "empty" profile.
+  const { status: authStatus } = useAuthSession();
+  const sync = useSyncState();
+  const scopeIsUser = scope.startsWith("u:");
+  const restorePending =
+    isFirstProfileRestorePending({
+      signedIn: sync.signedIn,
+      scopeIsUser,
+      lastSyncedAt: sync.lastSyncedAt,
+      status: sync.status,
+    }) ||
+    // Returning from Google: session or account namespace not ready yet.
+    (oauthReturn && (authStatus === "loading" || (authStatus === "signed_in" && !scopeIsUser)));
+  const wizardOverlay = resolveWizardOverlay({ wizardNeeded: showWizard, restorePending });
+  const hideWizard = useCallback(() => setShowWizard(false), []);
+  const finishWizard = useWizardDone(hideWizard);
+  const settleOauthReturn = useCallback(() => setOauthReturn(false), []);
+
   const locked = ready && settings.pinEnabled && Boolean(settings.pin) && unlockedScope !== scope;
 
   return (
@@ -324,13 +355,25 @@ function RootComponent() {
       {/* Hide nav under wizard/PIN overlays (z-40 under z-60) and while bootstrapping */}
       {ready && !showWizard && !locked ? <BottomNav uiMode={settings.uiMode} /> : null}
       {locked ? <PinLock settings={settings} onUnlock={() => setUnlockedScope(scope)} /> : null}
-      {ready && showWizard && !locked ? (
+      {ready && !locked && wizardOverlay === "restoring" ? (
+        <div hidden={onLegalPage}>
+          <ProfileRestoreSplash />
+        </div>
+      ) : null}
+      {ready && !locked && wizardOverlay === "wizard" ? (
         // Auf den öffentlichen Rechtsseiten bleibt der Assistent gemountet (Schritt und
         // Eingaben bleiben erhalten), liegt aber nicht über der Seite.
         <div hidden={onLegalPage} data-testid="wizard-host">
           {/* key: Wizard-Eingaben (In-Memory) nie in einen anderen Namensraum mitnehmen. */}
-          <OnboardingWizard key={scope} settings={settings} onDone={() => setShowWizard(false)} />
+          <OnboardingWizard key={scope} settings={settings} onDone={finishWizard} />
         </div>
+      ) : null}
+      {ready ? (
+        <PostAuthLanding
+          authStatus={authStatus}
+          restorePending={restorePending}
+          onSettled={settleOauthReturn}
+        />
       ) : null}
       {ready && !locked ? <LocalDataImportPrompt /> : null}
       <SyncAlerts />
