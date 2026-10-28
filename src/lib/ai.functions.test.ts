@@ -4,6 +4,9 @@
  * `allowed === true`. No network, no Supabase, no Gemini: createServerFn, the auth
  * middleware and the provider factory are replaced with in-memory fakes.
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { providerAsk, createDefaultProvider } = vi.hoisted(() => {
@@ -96,6 +99,7 @@ describe("askAssistant — rate-limit gate fails closed", () => {
     ["allowed null", [{ allowed: null }]],
     ["allowed missing", [{ retry_after_seconds: 5 }]],
     ["allowed as string 'true'", [{ allowed: "true" }]],
+    ["allowed as string 'false'", [{ allowed: "false" }]],
     ["allowed as number 1", [{ allowed: 1 }]],
     ["allowed as object", [{ allowed: {} }]],
   ])("empty or malformed RPC result (%s) → refuses, provider not called", async (_label, data) => {
@@ -156,5 +160,24 @@ describe("askAssistant — allowed=true reaches the provider", () => {
     await result;
     expect(rpc).toHaveBeenCalledTimes(1);
     expect(rpc).toHaveBeenCalledWith("consume_ai_rate_limit", { p_user_id: "user-1" });
+  });
+});
+
+describe("askAssistant — source keeps the strict gate", () => {
+  // The refusal must be `allowed !== true` (not a truthiness check): a refactor that
+  // switches to `!rateRow?.allowed` would let "true", 1 or {} through to the provider.
+  const source = readFileSync(join(process.cwd(), "src/lib/ai.functions.ts"), "utf8");
+
+  it("uses exactly one strict `rateRow?.allowed !== true` check", () => {
+    expect(source.match(/rateRow\?\.allowed !== true/g)).toHaveLength(1);
+  });
+
+  it("has no truthiness check on the RPC row", () => {
+    expect(source).not.toMatch(/!\s*rateRow\?\.allowed\b(?!\s*!==)/);
+  });
+
+  it("runs the privacy gate before the rate-limit RPC", () => {
+    expect(source.indexOf("checkAiPrivacy(")).toBeGreaterThan(0);
+    expect(source.indexOf("checkAiPrivacy(")).toBeLessThan(source.indexOf("consume_ai_rate_limit"));
   });
 });
