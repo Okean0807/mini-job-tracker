@@ -29,6 +29,16 @@ import { importJsonBackupFile } from "@/lib/minijob/json-backup-import";
 import type { Job, Settings } from "@/lib/minijob/types";
 import { useT } from "@/lib/i18n";
 
+// Android's picker maps extension-only filters to MIME types and can grey out a
+// valid CSV whose stored type differs (text/csv vs. text/comma-separated-values),
+// so MIME wildcards are listed too. Format checks stay in handleFile.
+export const IMPORT_FILE_ACCEPT =
+  ".csv,.txt,.json,text/*,application/json,application/csv,application/vnd.ms-excel";
+
+function formatFileSize(bytes: number) {
+  return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -42,8 +52,17 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
   const [result, setResult] = useState<CsvParseResult | null>(null);
   const [fileName, setFileName] = useState("");
   const [duplicateCount, setDuplicateCount] = useState(0);
+  const [picked, setPicked] = useState<{ name: string; size: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  function fail(message: string) {
+    toast.error(message);
+    setError(message);
+  }
 
   function reset() {
+    setPicked(null);
+    setError(null);
     setResult(null);
     setFileName("");
     setDuplicateCount(0);
@@ -52,10 +71,11 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
 
   async function handleFile(file: File) {
     setFileName(file.name);
+    setError(null);
     const kind = importFileKind(file.name);
 
     if (file.size > MAX_IMPORT_BYTES) {
-      toast.error(t("imp.fileTooLarge"));
+      fail(t("imp.fileTooLarge"));
       return;
     }
 
@@ -65,14 +85,14 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
         // Namensraum während des Lesens gewechselt: nichts schreiben, still beenden.
         if (outcome === "stale") return;
         if (outcome === "invalid") {
-          toast.error(t("imp.jsonInvalid"));
+          fail(t("imp.jsonInvalid"));
           return;
         }
         toast.success(t("imp.jsonSuccess"));
         onOpenChange(false);
         reset();
       } catch {
-        toast.error(t("imp.jsonError"));
+        fail(t("imp.jsonError"));
       }
       return;
     }
@@ -80,7 +100,7 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
     if (kind === "spreadsheet") {
       // XLS/XLSX parsing was removed from the client import path. The old
       // SheetJS dependency was unmaintained and expanded the attack surface.
-      toast.error(t("imp.xlsxUnsupported"));
+      fail(t("imp.xlsxUnsupported"));
       return;
     }
 
@@ -88,7 +108,7 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
     try {
       text = await file.text();
     } catch {
-      toast.error(t("imp.readError"));
+      fail(t("imp.readError"));
       return;
     }
 
@@ -101,11 +121,11 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
       const incoming = parsed.valid.flatMap((row) => (row.shift ? [row.shift] : []));
       duplicates = duplicateShiftIndexes(incoming, getData().shifts, getData().jobs).size;
     } catch {
-      toast.error(t("imp.readError"));
+      fail(t("imp.readError"));
       return;
     }
     if (parsed.rows.length === 0) {
-      toast.error(t("imp.noRows"));
+      fail(t("imp.noRows"));
       return;
     }
     setResult(parsed);
@@ -159,11 +179,17 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
             <input
               ref={fileRef}
               type="file"
-              accept=".csv,.txt,.json"
+              accept={IMPORT_FILE_ACCEPT}
               className="hidden"
               onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) void handleFile(file);
+                const input = e.currentTarget;
+                const file = input.files?.[0];
+                // Clear so picking the same file again fires `change` again.
+                input.value = "";
+                if (!file) return;
+                setError(null);
+                setPicked({ name: file.name, size: file.size });
+                handleFile(file).catch(() => fail(t("imp.readError")));
               }}
             />
             <Button className="w-full" onClick={() => fileRef.current?.click()}>
@@ -176,6 +202,16 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
             >
               <Download className="size-4" /> {t("imp.downloadTemplate")}
             </Button>
+            {picked ? (
+              <p className="text-xs" data-testid="import-selected">
+                {picked.name} · {formatFileSize(picked.size)}
+              </p>
+            ) : null}
+            {error ? (
+              <p role="alert" className="text-xs text-destructive" data-testid="import-error">
+                {error}
+              </p>
+            ) : null}
             <p className="text-xs text-muted-foreground">{t("imp.columnsHint")}</p>
           </div>
         ) : (
