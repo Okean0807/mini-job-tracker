@@ -22,7 +22,6 @@ export interface FeedbackDeps {
   config: MailConfig | null;
   rateLimiter: RateLimiter;
   send?: (message: MailMessage, config: MailConfig) => Promise<MailResult>;
-  now?: () => Date;
   /** Bereits gesendete Formular-IDs dieser Instanz (best effort gegen doppelte Mails). */
   sent?: Set<string>;
   log?: (event: string, fields: Record<string, unknown>) => void;
@@ -50,10 +49,14 @@ export function readMailConfig(env: {
   return { apiKey, to, from };
 }
 
+/**
+ * Der Text muss bei gleicher Formular-ID byte-gleich bleiben (kein Zeitstempel): Resend beantwortet
+ * dieselbe Idempotenz-Kennung mit anderem Inhalt mit 409, die Wiederholung nach einem Timeout würde sonst
+ * nie bestätigt. Das Datum steht ohnehin im E-Mail-Header.
+ */
 function buildText(
   input: { message: string; appVersion: string; lang: string; route: string; submissionId: string },
   email: string | undefined,
-  when: Date,
 ): string {
   return [
     "Neue Nachricht aus MiniJob Companion",
@@ -65,7 +68,6 @@ function buildText(
     `App-Version: ${input.appVersion}`,
     `Sprache: ${input.lang}`,
     `Seite: ${input.route}`,
-    `Zeit: ${when.toISOString()}`,
     `Formular-ID: ${input.submissionId}`,
   ].join("\n");
 }
@@ -96,7 +98,7 @@ export async function handleFeedback(raw: unknown, deps: FeedbackDeps): Promise<
         from: deps.config.from,
         to: deps.config.to,
         subject: SUBJECT,
-        text: buildText(input, replyTo, (deps.now ?? (() => new Date()))()),
+        text: buildText(input, replyTo),
         replyTo,
         idempotencyKey: `feedback-${input.submissionId}`,
       },

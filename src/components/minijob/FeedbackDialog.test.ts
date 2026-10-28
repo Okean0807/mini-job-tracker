@@ -223,6 +223,21 @@ describe("sending", () => {
     expect(toastMock.success).toHaveBeenCalledTimes(1);
   });
 
+  it("editing the text after a failed attempt starts a new form id (same id + new text would be a provider conflict)", async () => {
+    submit.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    await open();
+    await type("Erste Fassung");
+    await submitForm();
+    await flush();
+    await type("Zweite Fassung, ergänzt");
+    await submitForm();
+    await flush();
+    expect(submit).toHaveBeenCalledTimes(2);
+    expect(submit.mock.calls[0]![0].data.submissionId).not.toBe(
+      submit.mock.calls[1]![0].data.submissionId,
+    );
+  });
+
   it("a mail-service failure (server says unavailable) is an error, never a success", async () => {
     submit.mockRejectedValueOnce(new FeedbackError("unavailable"));
     await open();

@@ -174,6 +174,8 @@ export function FeedbackSection({
                 onChange={(e) => {
                   setMessage(e.target.value);
                   setError(null);
+                  // Anderer Inhalt = neue Formular-ID (gleiche ID + anderer Text würde beim Dienst als Konflikt enden).
+                  submissionId.current = newSubmissionId();
                 }}
               />
               <p

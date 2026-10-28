@@ -26,7 +26,6 @@ function setup(over: Partial<FeedbackDeps> = {}, sendResult: unknown = { ok: tru
     config,
     rateLimiter: createRateLimiter(),
     send: send as never,
-    now: () => new Date("2026-10-28T12:00:00.000Z"),
     sent: new Set(),
     log,
     ...over,
@@ -58,7 +57,20 @@ describe("a valid message", () => {
     expect(mail.text).toContain("App-Version: 1.0.0");
     expect(mail.text).toContain("Sprache: de");
     expect(mail.text).toContain("Seite: /einstellungen");
-    expect(mail.text).toContain("Zeit: 2026-10-28T12:00:00.000Z");
+    expect(mail.text).not.toMatch(/Zeit:/);
+  });
+
+  it("same form id gives a byte-identical mail on a later retry (provider idempotency needs the same payload)", async () => {
+    vi.useFakeTimers();
+    try {
+      const { send, deps } = setup();
+      await handleFeedback(input, deps);
+      vi.setSystemTime(Date.now() + 60_000);
+      await handleFeedback(input, { ...deps, sent: new Set() });
+      expect(send.mock.calls[0]![0]).toEqual(send.mock.calls[1]![0]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("contains nothing else about the user: no id, no token, no work data", async () => {
