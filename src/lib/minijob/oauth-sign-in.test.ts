@@ -1,5 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+import { isOAuthLandingPending } from "./post-auth-landing";
+
 const signInWithOAuth = vi.fn();
 
 vi.mock("@/integrations/supabase/client", () => ({
@@ -12,6 +14,7 @@ vi.mock("@/integrations/supabase/client", () => ({
 
 describe("signInWithOAuthProvider", () => {
   beforeEach(() => {
+    window.sessionStorage.clear();
     signInWithOAuth.mockReset();
     signInWithOAuth.mockResolvedValue({ data: { url: "https://example", provider: "google" }, error: null });
   });
@@ -30,7 +33,7 @@ describe("signInWithOAuthProvider", () => {
     });
   });
 
-  it("defaults redirectTo to /einstellungen on current origin", async () => {
+  it("defaults redirectTo to the allowed /einstellungen on the current origin (landing is client-side)", async () => {
     vi.stubGlobal("window", { location: { origin: "https://app.example" } });
     vi.resetModules();
     const { signInWithOAuthProvider } = await import("./oauth-sign-in");
@@ -50,6 +53,34 @@ describe("signInWithOAuthProvider", () => {
     const { signInWithOAuthProvider } = await import("./oauth-sign-in");
     const result = await signInWithOAuthProvider("google", "https://example.com/einstellungen");
     expect(result.error?.message).toBe("provider disabled");
+  });
+
+  it("sets the landing marker BEFORE the browser leaves for Google", async () => {
+    let markerAtCall: boolean | null = null;
+    signInWithOAuth.mockImplementation(async () => {
+      markerAtCall = isOAuthLandingPending();
+      return { data: { url: "https://example", provider: "google" }, error: null };
+    });
+    const { signInWithOAuthProvider } = await import("./oauth-sign-in");
+    await signInWithOAuthProvider("google", "https://example.com/einstellungen");
+    expect(markerAtCall).toBe(true);
+    expect(isOAuthLandingPending()).toBe(true);
+  });
+
+  it("removes the marker when the sign-in cannot start (error result or throw)", async () => {
+    const { signInWithOAuthProvider } = await import("./oauth-sign-in");
+    signInWithOAuth.mockResolvedValueOnce({
+      data: { url: null, provider: "google" },
+      error: new Error("x"),
+    });
+    await signInWithOAuthProvider("google", "https://example.com/einstellungen");
+    expect(isOAuthLandingPending()).toBe(false);
+
+    signInWithOAuth.mockRejectedValueOnce(new Error("network"));
+    await expect(
+      signInWithOAuthProvider("google", "https://example.com/einstellungen"),
+    ).rejects.toThrow("network");
+    expect(isOAuthLandingPending()).toBe(false);
   });
 
   it("exports only google as OAuthProvider (Apple absent from public API)", async () => {
