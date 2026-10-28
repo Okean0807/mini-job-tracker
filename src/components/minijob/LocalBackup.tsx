@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { isoDate } from "@/lib/minijob/calc";
+import { exportBackup } from "@/lib/minijob/backup-export";
 import { getData } from "@/lib/minijob/store";
 import { useT } from "@/lib/i18n";
 
@@ -17,15 +18,20 @@ import { BackupRestoreSummary, useBackupRestore } from "./BackupRestore";
 export function LocalBackup({ shiftCount }: { shiftCount: number }) {
   const { t } = useT();
 
-  function download() {
-    const blob = new Blob([JSON.stringify(getData(), null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `minijob-backup-${isoDate(new Date())}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success(t("set.localBackup.created"));
+  const [exporting, setExporting] = useState(false);
+
+  // Direkt im Klick gestartet (Nutzeraktivierung für den System-Speicherdialog).
+  function exportBackupFile() {
+    if (exporting) return;
+    setExporting(true);
+    void exportBackup(getData())
+      .then((outcome) => {
+        if (outcome === "saved") toast.success(t("set.localBackup.saved"));
+        else if (outcome === "downloaded") toast.success(t("set.localBackup.created"));
+        else if (outcome === "failed") toast.error(t("set.localBackup.exportFailed"));
+        // "cancelled": normaler Ausgang, bewusst keine Meldung
+      })
+      .finally(() => setExporting(false));
   }
 
   // Gleicher Ablauf wie „Daten importieren“: prüfen, bestätigen, dann ersetzen.
@@ -41,7 +47,7 @@ export function LocalBackup({ shiftCount }: { shiftCount: number }) {
         {t("set.localBackup.desc", { count: shiftCount })}
       </p>
       <div className="grid grid-cols-2 gap-3">
-        <Button variant="outline" onClick={download}>
+        <Button variant="outline" onClick={exportBackupFile} aria-busy={exporting}>
           {t("set.localBackup.export")}
         </Button>
         <Button variant="outline" asChild>
