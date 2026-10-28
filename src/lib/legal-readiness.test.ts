@@ -10,6 +10,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { LegalLinks } from "@/components/minijob/LegalLinks";
+import { LEGAL_LINKS } from "@/lib/minijob/legal-links";
 import { tl, type Lang } from "@/lib/i18n";
 import { aiChatHistoryStorageKey, clearAiChatHistory } from "@/lib/minijob/ai-chat-history";
 import {
@@ -54,17 +55,17 @@ describe("fonts are self-hosted", () => {
 });
 
 describe("legal links", () => {
-  it("renders Impressum, Datenschutz and KI-Hinweise", () => {
-    const html = renderToStaticMarkup(LegalLinks({}));
-    for (const href of ["/impressum", "/datenschutz", "/ki-hinweise"]) {
-      expect(html).toContain(`href="${href}"`);
-    }
+  it("lists Impressum, Datenschutz and KI-Hinweise", () => {
+    expect(LEGAL_LINKS.map((l) => l.href)).toEqual(["/impressum", "/datenschutz", "/ki-hinweise"]);
   });
 
   it("opens in a new tab with noopener when asked", () => {
     const html = renderToStaticMarkup(LegalLinks({ newTab: true }));
     expect(html).toContain('target="_blank"');
     expect(html).toContain('rel="noopener noreferrer"');
+    for (const href of ["/impressum", "/datenschutz", "/ki-hinweise"]) {
+      expect(html).toContain(`href="${href}"`);
+    }
   });
 
   it("is shown on the sign-in screens and in the AI area", () => {

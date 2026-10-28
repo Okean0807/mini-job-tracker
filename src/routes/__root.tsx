@@ -4,6 +4,7 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
@@ -16,6 +17,7 @@ import { Toaster } from "@/components/ui/sonner";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { PinLock } from "@/components/minijob/PinLock";
+import { isLegalPath } from "@/lib/minijob/legal-links";
 import { OnboardingWizard } from "@/components/minijob/OnboardingWizard";
 import { LocalDataImportPrompt } from "@/components/minijob/LocalDataImport";
 import { ScopeBoundary, useActiveScopeKey } from "@/components/minijob/ScopeBoundary";
@@ -303,6 +305,8 @@ function RootComponent() {
     settings.uiMode,
   ]);
 
+  const onLegalPage = isLegalPath(useRouterState({ select: (state) => state.location.pathname }));
+
   const locked = ready && settings.pinEnabled && Boolean(settings.pin) && unlockedScope !== scope;
 
   return (
@@ -321,8 +325,12 @@ function RootComponent() {
       {ready && !showWizard && !locked ? <BottomNav uiMode={settings.uiMode} /> : null}
       {locked ? <PinLock settings={settings} onUnlock={() => setUnlockedScope(scope)} /> : null}
       {ready && showWizard && !locked ? (
-        // key: Wizard-Eingaben (In-Memory) nie in einen anderen Namensraum mitnehmen.
-        <OnboardingWizard key={scope} settings={settings} onDone={() => setShowWizard(false)} />
+        // Auf den öffentlichen Rechtsseiten bleibt der Assistent gemountet (Schritt und
+        // Eingaben bleiben erhalten), liegt aber nicht über der Seite.
+        <div hidden={onLegalPage} data-testid="wizard-host">
+          {/* key: Wizard-Eingaben (In-Memory) nie in einen anderen Namensraum mitnehmen. */}
+          <OnboardingWizard key={scope} settings={settings} onDone={() => setShowWizard(false)} />
+        </div>
       ) : null}
       {ready && !locked ? <LocalDataImportPrompt /> : null}
       <SyncAlerts />
