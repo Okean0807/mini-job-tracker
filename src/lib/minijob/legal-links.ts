@@ -7,9 +7,15 @@ export const LEGAL_LINKS = [
 
 export type LegalHref = (typeof LEGAL_LINKS)[number]["href"];
 
-const LEGAL_PATHS: readonly string[] = LEGAL_LINKS.map((link) => link.href);
+/** Overview page reached from the AI page; it only lists the three documents above. */
+export const LEGAL_OVERVIEW_PATH = "/rechtliches";
 
-/** True for the public legal routes (which must never be covered by onboarding/overlays). */
+const LEGAL_PATHS: readonly string[] = [
+  ...LEGAL_LINKS.map((link) => link.href),
+  LEGAL_OVERVIEW_PATH,
+];
+
+/** True for the public legal routes (documents + overview) (which must never be covered by onboarding/overlays). */
 export function isLegalPath(pathname: string): boolean {
   const normalized = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
   return LEGAL_PATHS.includes(normalized);

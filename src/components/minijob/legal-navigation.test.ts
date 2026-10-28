@@ -14,6 +14,7 @@ import { join } from "node:path";
 
 import {
   Outlet,
+  Link,
   RouterProvider,
   createMemoryHistory,
   createRootRoute,
@@ -26,6 +27,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { LegalLinks } from "@/components/minijob/LegalLinks";
+import { Route as RechtlichesFileRoute } from "@/routes/rechtliches";
 import { LegalPageShell } from "@/components/minijob/LegalPageShell";
 import { isLegalPath } from "@/lib/minijob/legal-links";
 
@@ -167,8 +169,8 @@ describe("LegalPageShell back control", () => {
 });
 
 describe("root cause 1: the wizard overlay must not cover the legal routes", () => {
-  it("isLegalPath matches exactly the three public documents", () => {
-    for (const p of ["/impressum", "/datenschutz", "/ki-hinweise", "/impressum/"]) {
+  it("isLegalPath matches exactly the three public documents and the overview", () => {
+    for (const p of ["/impressum", "/datenschutz", "/ki-hinweise", "/rechtliches", "/impressum/"]) {
       expect(isLegalPath(p)).toBe(true);
     }
     for (const p of ["/", "/assistent", "/einstellungen", "/impressum-x", "/jobs"]) {
@@ -205,7 +207,8 @@ describe("placement concept", () => {
     expect(row).toBeGreaterThan(0);
     expect(row).toBeLessThan(src.indexOf("{SUGGESTIONS.map"));
     expect(src).toMatch(/<LegalLinks only=\{\["\/ki-hinweise"\]\}/);
-    expect(src).toMatch(/to="\/einstellungen"\s+hash="rechtliches"/);
+    expect(src).toMatch(/to="\/rechtliches"/);
+    expect(src).not.toMatch(/to="\/einstellungen"/);
     expect(src).not.toMatch(/<LegalLinks className="pb-24/);
   });
 
@@ -215,5 +218,94 @@ describe("placement concept", () => {
       expect(src).toContain("<LegalPageShell>");
       expect(src).not.toContain("<main");
     }
+  });
+});
+
+/**
+ * Regression: on the KI page the "Rechtliches" link led to "Einstellungen"
+ * (it pointed at /einstellungen#rechtliches, i.e. the whole settings screen).
+ */
+describe("KI page: 'Rechtliches' link", () => {
+  function AiPage() {
+    const [question, setQuestion] = useState("");
+    return createElement(
+      "div",
+      null,
+      createElement("textarea", {
+        "data-testid": "question",
+        value: question,
+        onChange: (e: { target: { value: string } }) => setQuestion(e.target.value),
+      }),
+      createElement(
+        "div",
+        { "data-testid": "ai-legal-links" },
+        createElement(LegalLinks, { only: ["/ki-hinweise"] }),
+        createElement(Link, { to: "/rechtliches" }, "Rechtliches"),
+      ),
+    );
+  }
+
+  async function mountAi() {
+    const rootRoute = createRootRoute({ component: Outlet });
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([
+        createRoute({ getParentRoute: () => rootRoute, path: "/assistent", component: AiPage }),
+        createRoute({
+          getParentRoute: () => rootRoute,
+          path: "/einstellungen",
+          component: () => createElement("h1", null, "Einstellungen"),
+        }),
+        createRoute({
+          getParentRoute: () => rootRoute,
+          path: "/rechtliches",
+          component: RechtlichesFileRoute.options.component!,
+        }),
+        ...["impressum", "datenschutz", "ki-hinweise"].map((name) =>
+          createRoute({
+            getParentRoute: () => rootRoute,
+            path: `/${name}`,
+            component: () => createElement(LegalPageShell, null, createElement("h1", null, name)),
+          }),
+        ),
+      ]),
+      history: createMemoryHistory({ initialEntries: ["/assistent"] }),
+    });
+    await act(async () => {
+      root.render(createElement(RouterProvider, { router }));
+      await router.load();
+    });
+    return router;
+  }
+
+  const aiLink = (name: string) =>
+    [...host.querySelectorAll<HTMLAnchorElement>('[data-testid="ai-legal-links"] a')].find(
+      (a) => a.textContent === name,
+    );
+
+  it("opens the legal overview (not Einstellungen) and returns to the KI page with its links", async () => {
+    const router = await mountAi();
+    const rechtliches = aiLink("Rechtliches")!;
+    expect(rechtliches.getAttribute("href")).toBe("/rechtliches");
+    await click(rechtliches);
+    expect(router.state.location.pathname).toBe("/rechtliches");
+    expect(host.textContent).not.toContain("Einstellungen");
+    expect(host.querySelector("h1")?.textContent).toBe("Rechtliches");
+    const docs = [...host.querySelectorAll('[data-testid="legal-links"] a')].map((a) =>
+      a.getAttribute("href"),
+    );
+    expect(docs).toEqual(["/impressum", "/datenschutz", "/ki-hinweise"]);
+
+    // one level deeper and back twice: overview -> document -> overview -> KI page
+    await click(host.querySelector('[data-testid="legal-links"] a'));
+    expect(router.state.location.pathname).toBe("/impressum");
+    await click(host.querySelector('[data-testid="legal-back"]'));
+    expect(router.state.location.pathname).toBe("/rechtliches");
+    await click(host.querySelector('[data-testid="legal-back"]'));
+    expect(router.state.location.pathname).toBe("/assistent");
+    expect(aiLink("Rechtliches")).toBeTruthy();
+    expect(aiLink("KI-Hinweise")).toBeTruthy();
+    // The route unmounts like on any navigation: an unsent draft is not kept (unchanged, pre-existing
+    // behaviour); the stored chat history is reloaded from storage by the real page.
+    expect(host.querySelector('[data-testid="question"]')).toBeTruthy();
   });
 });

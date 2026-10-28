@@ -310,8 +310,7 @@ function AssistantPage() {
         <LegalLinks only={["/ki-hinweise"]} className="justify-start" />
         <Link
           className="inline-flex min-h-10 items-center underline underline-offset-4"
-          to="/einstellungen"
-          hash="rechtliches"
+          to="/rechtliches"
         >
           Rechtliches
         </Link>
