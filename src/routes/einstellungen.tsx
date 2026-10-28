@@ -753,11 +753,11 @@ function SettingsPage() {
         </TabsContent>
       </Tabs>
 
-      <nav className="mt-6 mb-6 flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs text-muted-foreground" aria-label="Rechtliche Informationen">
-        <a className="underline underline-offset-4" href="/impressum">Impressum</a>
-        <a className="underline underline-offset-4" href="/datenschutz">Datenschutz</a>
-        <a className="underline underline-offset-4" href="/ki-hinweise">KI-Hinweise</a>
-      </nav>
+      <div className="mb-6 mt-6" id="rechtliches">
+        <Section title="Rechtliches">
+          <LegalLinks variant="list" />
+        </Section>
+      </div>
     </main>
   );
 }
@@ -1141,7 +1141,6 @@ function CloudSync({
         <Button className="w-full" onClick={() => oauthGoogle()}>
           {t("set.account.signIn.google")}
         </Button>
-        <LegalLinks />
       </Section>
     );
   }

@@ -17,6 +17,7 @@ import { Route as EinstellungenRouteImport } from './routes/einstellungen'
 import { Route as ImpressumRouteImport } from './routes/impressum'
 import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as KiHinweiseRouteImport } from './routes/ki-hinweise'
+import { Route as RechtlichesRouteImport } from './routes/rechtliches'
 import { Route as StatistikRouteImport } from './routes/statistik'
 
 const IndexRoute = IndexRouteImport.update({
@@ -59,6 +60,11 @@ const KiHinweiseRoute = KiHinweiseRouteImport.update({
   path: '/ki-hinweise',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RechtlichesRoute = RechtlichesRouteImport.update({
+  id: '/rechtliches',
+  path: '/rechtliches',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StatistikRoute = StatistikRouteImport.update({
   id: '/statistik',
   path: '/statistik',
@@ -74,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/impressum': typeof ImpressumRoute
   '/jobs': typeof JobsRoute
   '/ki-hinweise': typeof KiHinweiseRoute
+  '/rechtliches': typeof RechtlichesRoute
   '/statistik': typeof StatistikRoute
 }
 export interface FileRoutesByTo {
@@ -85,6 +92,7 @@ export interface FileRoutesByTo {
   '/impressum': typeof ImpressumRoute
   '/jobs': typeof JobsRoute
   '/ki-hinweise': typeof KiHinweiseRoute
+  '/rechtliches': typeof RechtlichesRoute
   '/statistik': typeof StatistikRoute
 }
 export interface FileRoutesById {
@@ -97,6 +105,7 @@ export interface FileRoutesById {
   '/impressum': typeof ImpressumRoute
   '/jobs': typeof JobsRoute
   '/ki-hinweise': typeof KiHinweiseRoute
+  '/rechtliches': typeof RechtlichesRoute
   '/statistik': typeof StatistikRoute
 }
 export interface FileRouteTypes {
@@ -110,6 +119,7 @@ export interface FileRouteTypes {
     | '/impressum'
     | '/jobs'
     | '/ki-hinweise'
+    | '/rechtliches'
     | '/statistik'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -121,6 +131,7 @@ export interface FileRouteTypes {
     | '/impressum'
     | '/jobs'
     | '/ki-hinweise'
+    | '/rechtliches'
     | '/statistik'
   id:
     | '__root__'
@@ -132,6 +143,7 @@ export interface FileRouteTypes {
     | '/impressum'
     | '/jobs'
     | '/ki-hinweise'
+    | '/rechtliches'
     | '/statistik'
   fileRoutesById: FileRoutesById
 }
@@ -144,6 +156,7 @@ export interface RootRouteChildren {
   ImpressumRoute: typeof ImpressumRoute
   JobsRoute: typeof JobsRoute
   KiHinweiseRoute: typeof KiHinweiseRoute
+  RechtlichesRoute: typeof RechtlichesRoute
   StatistikRoute: typeof StatistikRoute
 }
 
@@ -205,6 +218,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof KiHinweiseRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/rechtliches': {
+      id: '/rechtliches'
+      path: '/rechtliches'
+      fullPath: '/rechtliches'
+      preLoaderRoute: typeof RechtlichesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/statistik': {
       id: '/statistik'
       path: '/statistik'
@@ -224,6 +244,7 @@ const rootRouteChildren: RootRouteChildren = {
   ImpressumRoute: ImpressumRoute,
   JobsRoute: JobsRoute,
   KiHinweiseRoute: KiHinweiseRoute,
+  RechtlichesRoute: RechtlichesRoute,
   StatistikRoute: StatistikRoute,
 }
 export const routeTree = rootRouteImport

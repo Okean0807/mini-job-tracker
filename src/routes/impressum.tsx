@@ -1,5 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 
+import { LegalPageShell } from "@/components/minijob/LegalPageShell";
+
 export const Route = createFileRoute("/impressum")({
   head: () => ({ meta: [{ title: "Impressum – MiniJob Tracker" }] }),
   component: ImpressumPage,
@@ -7,7 +9,7 @@ export const Route = createFileRoute("/impressum")({
 
 function ImpressumPage() {
   return (
-    <main className="mx-auto max-w-2xl px-4 py-8 pb-32">
+    <LegalPageShell>
       <h1 className="text-3xl font-extrabold tracking-tight">Impressum</h1>
       <p className="mt-2 text-sm text-muted-foreground">
         Anbieterinformationen gemäß den für den Dienst geltenden gesetzlichen Vorgaben.
@@ -34,6 +36,6 @@ function ImpressumPage() {
         <Link className="underline underline-offset-4" to="/ki-hinweise">KI-Hinweise</Link>
         <Link className="underline underline-offset-4" to="/einstellungen">Einstellungen</Link>
       </nav>
-    </main>
+    </LegalPageShell>
   );
 }

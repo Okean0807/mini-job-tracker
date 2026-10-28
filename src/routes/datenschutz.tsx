@@ -1,5 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 
+import { LegalPageShell } from "@/components/minijob/LegalPageShell";
+
 export const Route = createFileRoute("/datenschutz")({
   head: () => ({ meta: [{ title: "Datenschutz – MiniJob Tracker" }] }),
   component: DatenschutzPage,
@@ -7,7 +9,7 @@ export const Route = createFileRoute("/datenschutz")({
 
 function DatenschutzPage() {
   return (
-    <main className="mx-auto max-w-2xl px-4 py-8 pb-32">
+    <LegalPageShell>
       <h1 className="text-3xl font-extrabold tracking-tight">Datenschutz</h1>
       <p className="mt-2 text-sm text-muted-foreground">
         Technische Datenschutzhinweise für MiniJob Tracker. Diese Seite ist noch keine endgültige
@@ -106,6 +108,6 @@ function DatenschutzPage() {
         <Link className="underline underline-offset-4" to="/ki-hinweise">KI-Hinweise</Link>
         <Link className="underline underline-offset-4" to="/einstellungen">Einstellungen</Link>
       </nav>
-    </main>
+    </LegalPageShell>
   );
 }

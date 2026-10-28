@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { History, Mic, Plus, Send, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -303,6 +303,19 @@ function AssistantPage() {
         ) : null}
       </div>
 
+      <div
+        className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground"
+        data-testid="ai-legal-links"
+      >
+        <LegalLinks only={["/ki-hinweise"]} className="justify-start" />
+        <Link
+          className="inline-flex min-h-10 items-center underline underline-offset-4"
+          to="/rechtliches"
+        >
+          Rechtliches
+        </Link>
+      </div>
+
       {authStatus === "loading" ? (
         <div
           className="mt-6 rounded-2xl border border-dashed p-8"
@@ -404,7 +417,6 @@ function AssistantPage() {
           </p>
         </>
       )}
-      <LegalLinks className="pb-24 pt-2" />
       <AiNoticeDialog open={noticeOpen} onConfirm={onNoticeConfirm} onCancel={onNoticeCancel} />
     </main>
   );
