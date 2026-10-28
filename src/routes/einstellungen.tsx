@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FeedbackSection } from "@/components/minijob/FeedbackDialog";
 import { LocalBackup } from "@/components/minijob/LocalBackup";
 import { DataImportButton } from "@/components/minijob/DataImportButton";
 import { LegalLinks } from "@/components/minijob/LegalLinks";
@@ -484,6 +485,8 @@ function SettingsPage() {
           <DataMigration shiftCount={shifts.length} />
 
           <LocalBackup shiftCount={shifts.length} />
+
+          <FeedbackSection />
 
           <Section title={t("set.setup.title")}>
             <p className="text-xs text-muted-foreground">{t("set.setup.desc")}</p>

@@ -27,3 +27,9 @@ Supabase Branching / `db push`.
   Rollback: function body from `supabase/migrations/20260930192406_p1_ai_rate_limit.sql`,
   shipped as a new migration. **Rollback re-opens F-1** (caller-controlled `p_now_ms`
   bypass) — emergency use only.
+- `20261028120000_feedback.sql` - DRAFT for the Feedback feature (tables `feedback`,
+  `feedback_rate_limits`, function `submit_feedback`). NOT applied anywhere; kept here on purpose so
+  that merging the PR changes no database. Access: RLS on, no policies, no grants for
+  anon/authenticated; only service_role may execute `submit_feedback`. Applying requires explicit
+  owner approval, a controlled-environment test and a move into `supabase/migrations/`.
+  Rollback: `rollback/20261028120000_feedback.rollback.sql` (deletes all feedback).
