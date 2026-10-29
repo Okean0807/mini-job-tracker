@@ -5,7 +5,6 @@
  */
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { restoreLocalBackupFile } from "./local-backup-restore";
 import { payrollTotals } from "./payroll";
 import { makeResolver } from "./resolve";
 import { addAbsence, saveAbsenceEdit } from "./service";
@@ -52,7 +51,7 @@ beforeEach(() => {
 });
 
 describe("Sicherung → Wiederherstellung", () => {
-  it("Abwesenheiten mit Notiz/Fall-ID und der historische Wochenplan überleben die Wiederherstellung", async () => {
+  it("Abwesenheiten mit Notiz/Fall-ID und der historische Wochenplan überleben die Wiederherstellung", () => {
     addAbsence(JOB, "krank", "2026-09-07", "2026-09-13");
     const wed = getData().shifts.find((s) => s.date === "2026-09-09")!;
     saveShift({ ...wed, note: "Notiz bleibt" });
@@ -78,8 +77,9 @@ describe("Sicherung → Wiederherstellung", () => {
     replaceAll({ ...EMPTY_DATA, settings: { ...DEFAULT_SETTINGS } } as never);
     expect(getData().shifts).toHaveLength(0);
 
-    const result = await restoreLocalBackupFile(new Blob([json], { type: "application/json" }));
-    expect(result).toBe("restored");
+    // Eine Sicherungsdatei ist das JSON des Gesamtstands. `replaceAll` (normalize) ist der gemeinsame
+    // Kern aller Wiederherstellungswege; die Dateiwege selbst prüfen deren eigene Tests.
+    replaceAll(JSON.parse(json));
 
     const after = getData();
     expect(after.shifts.map((s) => s.id).sort()).toEqual(before.shifts.map((s) => s.id).sort());
