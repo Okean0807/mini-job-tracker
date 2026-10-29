@@ -1,6 +1,7 @@
 import { isoDate, shiftHours } from "./calc";
 import { isHoliday } from "./holidays";
 import { weeklyPlanHours } from "./schedule";
+import { weekForDate } from "./week-plan";
 import type { FixedDay, Job, Shift } from "./types";
 
 /** Parse YYYY-MM-DD as a local calendar date (not UTC midnight). */
@@ -13,19 +14,7 @@ function weekdayIndex(date: Date): number {
   return (date.getDay() + 6) % 7;
 }
 
-/**
- * Wochenplan gültig an `date` (Phase A weekHistory).
- * History-Einträge speichern den *vorherigen* Plan mit effectiveFrom = Änderungsdatum;
- * für date < effectiveFrom gilt dieser Plan, sonst der aktuelle job.week.
- */
-export function weekForDate(job: Job, date: string): FixedDay[] | undefined {
-  const sorted = [...(job.weekHistory ?? [])].sort((a, b) =>
-    a.effectiveFrom.localeCompare(b.effectiveFrom),
-  );
-  const futureChange = sorted.find((e) => e.effectiveFrom > date);
-  if (futureChange) return futureChange.week;
-  return job.week;
-}
+export { weekForDate };
 
 /**
  * Plan-Tag für das Arbeitszeitkonto (Soll). Vor Beschäftigungsbeginn
