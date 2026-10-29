@@ -50,6 +50,7 @@ import { holidayName } from "@/lib/minijob/holidays";
 import { parseRateInput, suggestedRate } from "@/lib/minijob/rate";
 import { ObjectDialog } from "@/components/minijob/ObjectDialog";
 import { persistDialogShift, removeShift, getShift } from "@/lib/minijob/service";
+import { getData } from "@/lib/minijob/store";
 import {
   type Customer,
   type Job,
@@ -101,6 +102,12 @@ interface ShiftDialogProps {
   projects: Project[];
   settings: Settings;
   objects?: WorkObject[];
+  /**
+   * Alle bekannten Einträge für die Vorschau von Abwesenheiten (Krankheitsfall-Beginn, 13-Wochen-
+   * Durchschnitt). Ohne Angabe wird der gespeicherte Gesamtstand gelesen. Die Vorschau muss dieselbe
+   * Historie wie Liste und Monatsbetrag verwenden, sonst widersprechen sich die drei Anzeigen.
+   */
+  history?: Shift[];
   /** When set, choosing Urlaub/Krank closes this dialog and opens AbsenceDialog (From–To). */
   onRequestAbsence?: (kind: "urlaub" | "krank" | "frei" | "sonstige", date: string) => void;
 }
@@ -115,6 +122,17 @@ function formatEntryDate(iso: string, locale: string): string {
     month: "long",
     year: "numeric",
   }).format(new Date(y, m - 1, d));
+}
+
+/** Fall-ID eines bearbeiteten Krankheitstags – nur solange Art und Job unverändert bleiben. */
+function keptSickCaseId(
+  source: Shift | undefined,
+  kind: ShiftKind,
+  jobId: string | undefined,
+): string | undefined {
+  if (!source?.sickCaseId || source.kind !== "krank" || kind !== "krank") return undefined;
+  if (source.jobId && source.jobId !== jobId) return undefined;
+  return source.sickCaseId;
 }
 
 function keepFieldVisible(event: { currentTarget: HTMLElement }) {
@@ -132,6 +150,7 @@ export function ShiftDialog({
   projects,
   settings,
   objects = [],
+  history,
   onRequestAbsence,
 }: ShiftDialogProps) {
   const { t, locale } = useT();
@@ -301,6 +320,7 @@ export function ShiftDialog({
   ]);
 
   const job = jobs.find((j) => j.id === jobId);
+  const editSource = resolvedShiftId ? (getShift(resolvedShiftId) ?? shift ?? undefined) : undefined;
   const holiday = holidayName(entryDate, settings.bundesland);
   const selectedObject = objects.find((o) => o.id === objectId);
   // Neue Abwesenheit (jede Art außer Arbeit): Zeiten wie im Zeitraum-Dialog
@@ -319,6 +339,10 @@ export function ShiftDialog({
   const parsedRate = parseRateInput(rate);
   if (parsedRate !== undefined) draft.rate = parsedRate;
   if (jobId) draft.jobId = jobId;
+  // Ein bearbeiteter Krankheitstag gehört weiter zu seinem Krankheitsfall: ohne die Fall-ID würde die
+  // Vorschau ihn als eigenen Fall (Tag 1) bewerten.
+  const editedSickCaseId = keptSickCaseId(editSource, kind, jobId);
+  if (editedSickCaseId) draft.sickCaseId = editedSickCaseId;
 
   // Work on a public holiday must pay hours×rate (optional surcharge). Kind "feiertag"
   // is only for not working. Preview uses payroll for absences and breakdown for work.
@@ -333,6 +357,8 @@ export function ShiftDialog({
     supplements: job?.supplements ?? settings.supplements,
     holiday: Boolean(holiday),
     defaultRate: settings.defaultRate,
+    // Dieselbe Historie wie Liste und Monatsbetrag (ohne die gerade bearbeitete Fassung selbst).
+    history: (history ?? getData().shifts).filter((s) => s.id !== resolvedShiftId),
   });
   const preview =
     kind === "arbeit"
@@ -514,6 +540,10 @@ export function ShiftDialog({
     if (code && workCodeNote.trim()) next.workCodeNote = workCodeNote.trim();
     const noteSource = existing ?? shift;
     next.createdAt = noteSource?.createdAt ?? isoDate(new Date());
+    // Der Editor baut den Eintrag neu auf; die Fall-ID eines Krankheitstags darf dabei nicht verloren gehen
+    // (sonst würde der Tag zu einem eigenen Fall und die 42-Tage-Frist begänne neu).
+    const caseId = keptSickCaseId(existing ?? shift ?? undefined, kind, jobId);
+    if (caseId) next.sickCaseId = caseId;
     persistDialogShift(next, editingId);
     toast.success(editingId ? t("shift.updated") : t("shift.saved"));
     onOpenChange(false);

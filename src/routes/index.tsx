@@ -377,6 +377,7 @@ function DashboardPage() {
         projects={projects}
         settings={settings}
         objects={objects}
+        history={shifts}
         onRequestAbsence={requestAbsence}
       />
 
