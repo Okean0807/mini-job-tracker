@@ -170,7 +170,13 @@ describe("S4 IA: Monat|Jahr Struktur", () => {
     clickButton(`${t("stats.export.annualReport")} PDF`);
     const resolve = makeResolver(B4_JOBS, B4_SETTINGS);
     const shown = B4_SHIFTS.filter((s) => s.jobId === "MA");
-    const base = buildAnnualReport(shown, B4_JOBS, B4_SETTINGS, 2026, resolve);
+    const base = buildAnnualReport(
+      shown,
+      B4_JOBS.filter((j) => j.id === "MA"),
+      B4_SETTINGS,
+      2026,
+      resolve,
+    );
     const exported = vi.mocked(exportAnnualPdf).mock.calls[0]![0];
     expect(exported).toEqual(base);
     // Gefilterter Export (MA): limitShare folgt yearUsage(gefiltert), nicht der UI-Rechtsgrenze 14 %.

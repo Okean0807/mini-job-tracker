@@ -1,30 +1,39 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { write, json_to_sheet, book_new, book_append_sheet, output, text, setFontSize, jsPdfCtor, autoTableMock } =
-  vi.hoisted(() => {
-    const write = vi.fn(() => new Uint8Array([80, 75]).buffer);
-    const json_to_sheet = vi.fn(() => ({ "!cols": undefined as unknown }));
-    const book_new = vi.fn(() => ({}));
-    const book_append_sheet = vi.fn();
-    const output = vi.fn(() => new Uint8Array([37, 80, 68, 70]).buffer); // %PDF
-    const text = vi.fn();
-    const setFontSize = vi.fn();
-    const jsPdfCtor = vi.fn(function (this: unknown) {
-      return { setFontSize, text, save: vi.fn(), output };
-    });
-    const autoTableMock = vi.fn();
-    return {
-      write,
-      json_to_sheet,
-      book_new,
-      book_append_sheet,
-      output,
-      text,
-      setFontSize,
-      jsPdfCtor,
-      autoTableMock,
-    };
+const {
+  write,
+  json_to_sheet,
+  book_new,
+  book_append_sheet,
+  output,
+  text,
+  setFontSize,
+  jsPdfCtor,
+  autoTableMock,
+} = vi.hoisted(() => {
+  const write = vi.fn(() => new Uint8Array([80, 75]).buffer);
+  const json_to_sheet = vi.fn(() => ({ "!cols": undefined as unknown }));
+  const book_new = vi.fn(() => ({}));
+  const book_append_sheet = vi.fn();
+  const output = vi.fn(() => new Uint8Array([37, 80, 68, 70]).buffer); // %PDF
+  const text = vi.fn();
+  const setFontSize = vi.fn();
+  const jsPdfCtor = vi.fn(function (this: unknown) {
+    return { setFontSize, text, save: vi.fn(), output };
   });
+  const autoTableMock = vi.fn();
+  return {
+    write,
+    json_to_sheet,
+    book_new,
+    book_append_sheet,
+    output,
+    text,
+    setFontSize,
+    jsPdfCtor,
+    autoTableMock,
+  };
+});
 
 vi.mock("xlsx", () => ({
   utils: { json_to_sheet, book_new, book_append_sheet },
@@ -97,9 +106,11 @@ const DE_PDF_HEAD = [
   "Art",
   "Zeit",
   "Pause",
-  "Stunden",
+  "Gesamtstunden bezahlt",
   "Zuschläge",
   "Verdienst",
+  "Gearbeitete Stunden",
+  "Bezahlte Abwesenheitsstunden",
 ];
 
 beforeEach(() => {
@@ -133,7 +144,19 @@ describe("documents always German (independent of UI locale)", () => {
     const call = json_to_sheet.mock.calls[0] as unknown as [Record<string, unknown>[]];
     const rows = call[0];
     expect(Object.keys(rows[0]!)).toEqual(
-      expect.arrayContaining(["Datum", "Job", "Art", "Beginn", "Ende", "Stunden", "Verdienst (€)"]),
+      expect.arrayContaining([
+        "Datum",
+        "Job",
+        "Art",
+        "Beginn",
+        "Ende",
+        "Gesamtstunden bezahlt",
+        "Verdienst (€)",
+        "Gearbeitete Stunden",
+        "Bezahlte Abwesenheitsstunden",
+        "Soll-Stunden",
+        "Vergütung",
+      ]),
     );
     expect(saveAndRegisterBytes).toHaveBeenCalledWith(
       expect.objectContaining({ category: "report_xlsx" }),
@@ -183,29 +206,23 @@ describe("document dictionary German glyphs", () => {
 describe("shiftBreakdown bonus labels still follow UI language", () => {
   it("DE in UI", () => {
     updateSettings({ language: "de" });
-    const b = shiftBreakdown(
-      { ...shifts[0]!, date: "2026-03-08" } as Shift,
-      {
-        supplements: {
-          ...DEFAULT_SUPPLEMENTS,
-          sunday: { enabled: true, mode: "prozent", value: 50 },
-        },
+    const b = shiftBreakdown({ ...shifts[0]!, date: "2026-03-08" } as Shift, {
+      supplements: {
+        ...DEFAULT_SUPPLEMENTS,
+        sunday: { enabled: true, mode: "prozent", value: 50 },
       },
-    );
+    });
     expect(b.labels).toEqual(["Sonntag"]);
   });
 
   it("EN in UI (not document export)", () => {
     updateSettings({ language: "en" });
-    const b = shiftBreakdown(
-      { ...shifts[0]!, date: "2026-03-08" } as Shift,
-      {
-        supplements: {
-          ...DEFAULT_SUPPLEMENTS,
-          sunday: { enabled: true, mode: "prozent", value: 50 },
-        },
+    const b = shiftBreakdown({ ...shifts[0]!, date: "2026-03-08" } as Shift, {
+      supplements: {
+        ...DEFAULT_SUPPLEMENTS,
+        sunday: { enabled: true, mode: "prozent", value: 50 },
       },
-    );
+    });
     expect(b.labels).toEqual(["Sunday"]);
     expect(b.labels).not.toContain("Sonntag");
   });
