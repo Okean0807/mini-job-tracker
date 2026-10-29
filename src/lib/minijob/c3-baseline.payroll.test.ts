@@ -108,10 +108,10 @@ describe("Urlaub (§ 11 BUrlG) – Referenzverhalten, nicht ändern", () => {
       estimated: true,
     });
   });
+  // Mo–Fr 07.–11.09.2026, je 5 h (08:00–13:00); explizite, gültige ISO-Daten
+  const REF_DATES = ["2026-09-07", "2026-09-08", "2026-09-09", "2026-09-10", "2026-09-11"];
   const ref = (n: number) =>
-    Array.from({ length: n }, (_, i) =>
-      mk({ date: `2026-09-0${7 + i}`, kind: "arbeit", end: "13:00" }),
-    );
+    REF_DATES.slice(0, n).map((date) => mk({ date, kind: "arbeit", end: "13:00" }));
   it("4 Referenztage (< 5): Rückfall auf den Plan", () => {
     const p = pay(mk({ date: "2026-09-14", kind: "urlaub" }), JOB, ref(4));
     expect([p.basis, p.absence, p.earnings, p.estimated]).toEqual(["plan", 4, 60, true]);
