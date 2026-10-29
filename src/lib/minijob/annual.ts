@@ -1,6 +1,7 @@
 import { yearUsage } from "./limits";
 import { monthNames, shiftsInMonth, shiftsInYear } from "./calc";
 import { shiftPayroll } from "./payroll";
+import { sollHoursFor } from "./hours-summary";
 import type { Resolver } from "./resolve";
 import type { Job, Settings, Shift } from "./types";
 
@@ -11,6 +12,8 @@ export interface AnnualMonth {
   hours: number;
   /** Bezahlte Ausfallstunden (Urlaub / Krank / Feiertag). */
   absenceHours: number;
+  /** Gesamtstunden bezahlt = gearbeitet + bezahlte Ausfallstunden. */
+  paidHours: number;
   earnings: number;
   base: number;
   bonus: number;
@@ -33,6 +36,10 @@ export interface AnnualReport {
   hours: number;
   /** Bezahlte Ausfallstunden (Urlaub / Krank / Feiertag). */
   absenceHours: number;
+  /** Gesamtstunden bezahlt = gearbeitet + bezahlte Ausfallstunden. */
+  paidHours: number;
+  /** Soll-Stunden des Jahres laut Wochenplan fester Jobs; null = nicht verfügbar. */
+  sollHours: number | null;
   earnings: number;
   /** Entgelt aus geleisteter Arbeit. */
   workEarnings: number;
@@ -86,6 +93,7 @@ export function buildAnnualReport(
       label,
       hours,
       absenceHours,
+      paidHours: hours + absenceHours,
       earnings: base + bonus,
       base,
       bonus,
@@ -162,6 +170,8 @@ export function buildAnnualReport(
     workDays: byDay.size,
     hours,
     absenceHours,
+    paidHours: hours + absenceHours,
+    sollHours: sollHoursFor(jobs, year, null, settings.bundesland),
     earnings,
     workEarnings,
     absenceEarnings,

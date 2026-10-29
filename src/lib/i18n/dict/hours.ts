@@ -1,0 +1,55 @@
+import type { Bundle } from "../core";
+
+/** Stundenkennzahlen (Gearbeitet / Bezahlte Abwesenheit / Gesamt bezahlt / Soll) und Vergütungsstatus in Exporten. */
+export const hoursDict: Bundle = {
+  de: {
+    "hours.title": "Stunden im Überblick",
+    "hours.worked": "Gearbeitete Stunden",
+    "hours.paidAbsence": "Bezahlte Abwesenheitsstunden",
+    "hours.paidTotal": "Gesamtstunden bezahlt",
+    "hours.soll": "Soll-Stunden",
+    "hours.sollNone": "Nur mit festem Wochenplan verfügbar",
+    "hours.payStatus": "Vergütung",
+    "pay.reason.unpaid-absence": "Unbezahlte Abwesenheit",
+  },
+  en: {
+    "hours.title": "Hours overview",
+    "hours.worked": "Hours worked",
+    "hours.paidAbsence": "Paid absence hours",
+    "hours.paidTotal": "Total paid hours",
+    "hours.soll": "Target hours",
+    "hours.sollNone": "Only available with a fixed weekly plan",
+    "hours.payStatus": "Pay status",
+    "pay.reason.unpaid-absence": "Unpaid absence",
+  },
+  ru: {
+    "hours.title": "Обзор часов",
+    "hours.worked": "Отработанные часы",
+    "hours.paidAbsence": "Оплачиваемые часы отсутствия",
+    "hours.paidTotal": "Всего оплачено часов",
+    "hours.soll": "Плановые часы",
+    "hours.sollNone": "Доступно только при фиксированном недельном плане",
+    "hours.payStatus": "Оплата",
+    "pay.reason.unpaid-absence": "Неоплачиваемое отсутствие",
+  },
+  tr: {
+    "hours.title": "Saat özeti",
+    "hours.worked": "Çalışılan saat",
+    "hours.paidAbsence": "Ücretli devamsızlık saatleri",
+    "hours.paidTotal": "Toplam ücretli saat",
+    "hours.soll": "Hedef saat",
+    "hours.sollNone": "Yalnızca sabit haftalık planla kullanılabilir",
+    "hours.payStatus": "Ödeme durumu",
+    "pay.reason.unpaid-absence": "Ücretsiz devamsızlık",
+  },
+  pl: {
+    "hours.title": "Przegląd godzin",
+    "hours.worked": "Przepracowane godziny",
+    "hours.paidAbsence": "Godziny płatnej nieobecności",
+    "hours.paidTotal": "Łącznie godziny płatne",
+    "hours.soll": "Godziny planowane",
+    "hours.sollNone": "Dostępne tylko przy stałym planie tygodniowym",
+    "hours.payStatus": "Wynagrodzenie",
+    "pay.reason.unpaid-absence": "Nieopłacona nieobecność",
+  },
+};

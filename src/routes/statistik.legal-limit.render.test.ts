@@ -152,7 +152,8 @@ describe("Statistik (Seite): Jahresgrenze unabhängig vom Job-Filter", () => {
   });
 
   it("Jahresbericht-Export (PDF/XLSX) bleibt gefiltert; keine Bericht-Tab-UI", () => {
-    setData({});
+    // Excel ist Premium (einheitliche Exportregel) – für den XLSX-Aufruf Premium aktivieren.
+    setData({ settings: { ...B4_SETTINGS, premium: true } });
     render();
     openTab(t("stats.tab.year"));
     const tabs = [...container.querySelectorAll('[role="tab"]')].map((el) =>
@@ -164,6 +165,7 @@ describe("Statistik (Seite): Jahresgrenze unabhängig vom Job-Filter", () => {
     expect(tabs).not.toContain(t("stats.tab.jobs"));
 
     const resolve = makeResolver(B4_JOBS, B4_SETTINGS);
+    const premiumSettings = { ...B4_SETTINGS, premium: true };
     const cases = [
       [t("stats.allJobs"), "alle"],
       ["Minijob A", "MA"],
@@ -177,7 +179,9 @@ describe("Statistik (Seite): Jahresgrenze unabhängig vom Job-Filter", () => {
       clickButton(`${t("stats.export.annualReport")} PDF`);
       clickButton(`${t("stats.export.annualReport")} Excel`);
       const shown = jobId === "alle" ? B4_SHIFTS : B4_SHIFTS.filter((s) => s.jobId === jobId);
-      const base = buildAnnualReport(shown, B4_JOBS, B4_SETTINGS, 2026, resolve);
+      // Der Bericht (inkl. Soll) folgt dem Job-Filter.
+      const scope = jobId === "alle" ? B4_JOBS : B4_JOBS.filter((j) => j.id === jobId);
+      const base = buildAnnualReport(shown, scope, premiumSettings, 2026, resolve);
       expect(vi.mocked(exportAnnualPdf)).toHaveBeenCalledTimes(1);
       expect(vi.mocked(exportAnnualXlsx)).toHaveBeenCalledTimes(1);
       expect(vi.mocked(exportAnnualPdf).mock.calls[0]![0], label).toEqual(base);
