@@ -265,7 +265,7 @@ export function MonthCalendar({
                 <span className="text-[10px] opacity-90 tabular-nums">
                   {hours.toFixed(1).replace(".", ",")} h
                 </span>
-              ) : plannedDates.has(iso) ? (
+              ) : plannedDates.has(iso) && !dayShifts.length ? (
                 <span
                   className="text-[9px] font-medium text-muted-foreground"
                   title={t("cal.plannedHint")}

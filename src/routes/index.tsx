@@ -259,7 +259,13 @@ function DashboardPage() {
         <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
           {t("dash.entriesInMonth", { month: monthLabel })}
         </h2>
-        <ShiftList shifts={monthShifts} jobs={jobs} resolve={resolve} onSelect={openEdit} />
+        <ShiftList
+          shifts={monthShifts}
+          history={shifts}
+          jobs={jobs}
+          resolve={resolve}
+          onSelect={openEdit}
+        />
       </section>
     ),
   };
@@ -371,6 +377,7 @@ function DashboardPage() {
         projects={projects}
         settings={settings}
         objects={objects}
+        history={shifts}
         onRequestAbsence={requestAbsence}
       />
 

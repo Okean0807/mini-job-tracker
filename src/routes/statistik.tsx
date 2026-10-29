@@ -184,6 +184,8 @@ function StatsPage() {
     bundesland: settings.bundesland,
     defaultRate: settings.defaultRate,
     supplements: settings.supplements,
+    // Bewertung mit der vollen Historie (wie die Bildschirmsummen); exportiert wird weiter nur `list`.
+    history: shifts,
   };
 
   function doExport(kind: "xlsx" | "pdf", list: Shift[], title: string) {

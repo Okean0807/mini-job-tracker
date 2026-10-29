@@ -81,6 +81,7 @@ export const dashboard: Bundle = {
     "absence.updated": "{count} Tage aktualisiert",
     "absence.deleted": "{count} Tage gelöscht",
     "absence.noneCreated": "Keine Tage eingetragen (Plan frei oder bereits belegt).",
+    "absence.unchanged": "Zeitraum unverändert – nichts geändert.",
     "absence.deleteRange": "Zeitraum löschen",
     "dash.absence": "Urlaub/Krank",
 
@@ -177,6 +178,7 @@ export const dashboard: Bundle = {
     "absence.updated": "{count} days updated",
     "absence.deleted": "{count} days deleted",
     "absence.noneCreated": "No days added (day off or already booked).",
+    "absence.unchanged": "Range unchanged – nothing was changed.",
     "absence.deleteRange": "Delete range",
     "dash.absence": "Leave/Sick",
 
@@ -273,6 +275,7 @@ export const dashboard: Bundle = {
     "absence.updated": "Обновлено дней: {count}",
     "absence.deleted": "Удалено дней: {count}",
     "absence.noneCreated": "Дни не добавлены (выходной или уже занято).",
+    "absence.unchanged": "Период не изменился — ничего не менялось.",
     "absence.deleteRange": "Удалить период",
     "dash.absence": "Отпуск/больничный",
 
@@ -369,6 +372,7 @@ export const dashboard: Bundle = {
     "absence.updated": "{count} gün güncellendi",
     "absence.deleted": "{count} gün silindi",
     "absence.noneCreated": "Gün eklenmedi (izin günü veya dolu).",
+    "absence.unchanged": "Dönem değişmedi – hiçbir şey değiştirilmedi.",
     "absence.deleteRange": "Aralığı sil",
     "dash.absence": "İzin/Hastalık",
 
@@ -465,6 +469,7 @@ export const dashboard: Bundle = {
     "absence.updated": "Zaktualizowano {count} dni",
     "absence.deleted": "Usunięto {count} dni",
     "absence.noneCreated": "Nie dodano dni (wolne lub już zajęte).",
+    "absence.unchanged": "Okres bez zmian – nic nie zmieniono.",
     "absence.deleteRange": "Usuń zakres",
     "dash.absence": "Urlop/Choroba",
 

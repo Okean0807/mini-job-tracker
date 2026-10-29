@@ -18,16 +18,23 @@ export interface ExportContext {
   defaultRate?: number | undefined;
   /** Globale Zuschlagsregeln (greifen, wenn der Job keine eigenen hat) */
   supplements?: Supplements | undefined;
+  /**
+   * ALLE bekannten Einträge für die Bewertung (Krankheitsfall-Beginn, 13-Wochen-Durchschnitt).
+   * Sie bestimmen nur die Berechnung, nicht welche Zeilen exportiert werden: der Bericht enthält
+   * weiterhin genau die übergebenen `shifts`. Ohne Angabe gelten die exportierten Einträge selbst als
+   * Historie (bisheriges Verhalten, richtig nur, wenn der Export alle Einträge enthält).
+   */
+  history?: Shift[] | undefined;
 }
 
-function resolve(shift: Shift, ctx: ExportContext, history: Shift[] = []) {
+function resolve(shift: Shift, ctx: ExportContext, exported: Shift[] = []) {
   const job = ctx.jobs.find((j) => j.id === shift.jobId);
   return shiftPayroll(shift, {
     job,
     supplements: ctx.supplements,
     holiday: isHoliday(shift.date, ctx.bundesland),
     defaultRate: ctx.defaultRate,
-    history,
+    history: ctx.history ?? exported,
   });
 }
 

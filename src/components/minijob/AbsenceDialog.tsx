@@ -18,7 +18,7 @@ import {
   isAbsenceKind,
   type AbsenceKind,
 } from "@/lib/minijob/absence-range";
-import { addAbsence, removeAbsenceRange } from "@/lib/minijob/service";
+import { addAbsence, removeAbsenceRange, saveAbsenceEdit } from "@/lib/minijob/service";
 import type { Job, Shift, ShiftKind } from "@/lib/minijob/types";
 import { cn } from "@/lib/utils";
 
@@ -80,11 +80,12 @@ export function AbsenceDialog({
   function save() {
     if (!job || invalid) return;
     if (editing && seed && isAbsenceKind(seed.kind)) {
-      // Drop previous contiguous block (possibly other kind) then write the new range.
+      // Nur die Differenz speichern: Einträge im neuen Zeitraum behalten ID und Notiz.
       const prev = contiguousAbsenceRange(seed, shifts);
-      removeAbsenceRange(seed.jobId ?? job.id, seed.kind, prev.from, prev.to);
-      const created = addAbsence(job, kind, from, to);
-      toast.success(t("absence.updated", { count: created.length }));
+      const result = saveAbsenceEdit(job, kind, from, to, prev.ids);
+      const changed = result.created + result.updated + result.deleted;
+      if (changed === 0) toast.message(t("absence.unchanged"));
+      else toast.success(t("absence.updated", { count: changed }));
     } else {
       const created = addAbsence(job, kind, from, to);
       if (created.length === 0) {
