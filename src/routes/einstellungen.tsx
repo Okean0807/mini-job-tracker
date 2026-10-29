@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DataImportButton } from "@/components/minijob/DataImportButton";
 import { LegalLinks } from "@/components/minijob/LegalLinks";
 import { signInWithOAuthProvider } from "@/lib/minijob/oauth-sign-in";
 import { deleteMyAccount } from "@/lib/minijob/account-delete";
@@ -1352,6 +1353,7 @@ function DataMigration({ shiftCount }: { shiftCount: number }) {
           {t("set.migration.excel")}
         </Button>
       </div>
+      <DataImportButton jobs={jobs} settings={settings} />
       <p className="text-xs text-muted-foreground">{t("set.migration.importUnavailable")}</p>
     </Section>
   );
