@@ -7,6 +7,7 @@ import {
   isAbortOrTimeoutError,
 } from "@/lib/ai-ask";
 import { AiGuardError, parseAskAssistantInput } from "@/lib/ai-guard";
+import { checkAiPrivacy } from "@/lib/ai/health-privacy-gate";
 import { createDefaultProvider } from "@/lib/ai/provider";
 import type { AskRequest } from "@/lib/ai/types";
 
@@ -14,6 +15,16 @@ export const askAssistant = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => parseAskAssistantInput(input))
   .handler(async ({ data, context }) => {
+    // L1 privacy gate: runs BEFORE the rate-limit RPC and BEFORE any provider
+    // (Gemini / Tavily) call. Scans question AND client-built context; the
+    // server does not trust the client context (malformed/unknown shape fails
+    // closed). On block nothing leaves the server; only the reason code is logged.
+    const gate = checkAiPrivacy({ question: data.question, context: data.context });
+    if (!gate.allowed) {
+      console.warn(`[ai] request blocked by privacy gate: ${gate.code}/${gate.reason}`);
+      return { answer: gate.message, blocked: true as const, code: gate.code };
+    }
+
     // Shared DB-backed rate limit: serverless instances no longer keep separate Maps.
     const { data: rate, error: rateError } = await context.supabase.rpc(
       "consume_ai_rate_limit" as never,

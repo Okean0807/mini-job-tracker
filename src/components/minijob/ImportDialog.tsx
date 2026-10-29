@@ -24,6 +24,7 @@ import {
   saveShifts,
   getData,
 } from "@/lib/minijob/store";
+import { importFileKind, MAX_IMPORT_BYTES } from "@/lib/minijob/import-file-kind";
 import { importJsonBackupFile } from "@/lib/minijob/json-backup-import";
 import type { Job, Settings } from "@/lib/minijob/types";
 import { useT } from "@/lib/i18n";
@@ -51,15 +52,14 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
 
   async function handleFile(file: File) {
     setFileName(file.name);
-    const lower = file.name.toLowerCase();
+    const kind = importFileKind(file.name);
 
-    const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
     if (file.size > MAX_IMPORT_BYTES) {
       toast.error(t("imp.fileTooLarge"));
       return;
     }
 
-    if (lower.endsWith(".json")) {
+    if (kind === "json") {
       try {
         const outcome = await importJsonBackupFile(file);
         // Namensraum während des Lesens gewechselt: nichts schreiben, still beenden.
@@ -77,7 +77,7 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
       return;
     }
 
-    if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
+    if (kind === "spreadsheet") {
       // XLS/XLSX parsing was removed from the client import path. The old
       // SheetJS dependency was unmaintained and expanded the attack surface.
       toast.error(t("imp.xlsxUnsupported"));
@@ -92,14 +92,24 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
       return;
     }
 
-    const parsed = parseCsv(text, { jobs, defaultRate: settings.defaultRate });
+    // Parsing only builds a preview; nothing is written until confirmImport().
+    // A malformed file must surface as a toast, never as an unhandled rejection.
+    let parsed: CsvParseResult;
+    let duplicates: number;
+    try {
+      parsed = parseCsv(text, { jobs, defaultRate: settings.defaultRate });
+      const incoming = parsed.valid.flatMap((row) => (row.shift ? [row.shift] : []));
+      duplicates = duplicateShiftIndexes(incoming, getData().shifts, getData().jobs).size;
+    } catch {
+      toast.error(t("imp.readError"));
+      return;
+    }
     if (parsed.rows.length === 0) {
       toast.error(t("imp.noRows"));
       return;
     }
     setResult(parsed);
-    const incoming = parsed.valid.flatMap((row) => (row.shift ? [row.shift] : []));
-    setDuplicateCount(duplicateShiftIndexes(incoming, getData().shifts, getData().jobs).size);
+    setDuplicateCount(duplicates);
   }
 
   function confirmImport() {
