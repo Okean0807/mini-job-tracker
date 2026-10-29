@@ -56,7 +56,8 @@ import {
   type WeekPeriod,
 } from "@/lib/minijob/period";
 import { payrollTotals } from "@/lib/minijob/payroll";
-import { canUse } from "@/lib/minijob/premium";
+import { canExport, type ExportFormat } from "@/lib/minijob/premium";
+import { sollHoursFor, summarizeHours } from "@/lib/minijob/hours-summary";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { avgHourlyRate } from "@/lib/minijob/stats-avg-rate";
 import {
@@ -174,10 +175,21 @@ function StatsPage() {
     [shifts, resolve, settings, year],
   );
 
-  const annualReport = useMemo(
-    () => buildAnnualReport(filtered, jobs, settings, year, resolve),
-    [filtered, jobs, settings, year, resolve],
+  const selectedJobs = useMemo(
+    () => (jobFilter === "alle" ? jobs : jobs.filter((j) => j.id === jobFilter)),
+    [jobs, jobFilter],
   );
+
+  const annualReport = useMemo(
+    () => buildAnnualReport(filtered, selectedJobs, settings, year, resolve),
+    [filtered, selectedJobs, settings, year, resolve],
+  );
+  // Soll-Stunden nur für den gewählten Umfang und nur mit festem Wochenplan (sonst null → "–").
+  const monthSoll = useMemo(
+    () => sollHoursFor(selectedJobs, year, month, settings.bundesland),
+    [selectedJobs, year, month, settings.bundesland],
+  );
+  const yearSoll = annualReport.sollHours;
 
   const ctx = {
     jobs,
@@ -188,34 +200,36 @@ function StatsPage() {
     history: shifts,
   };
 
-  function doExport(kind: "xlsx" | "pdf", list: Shift[], title: string) {
+  /** Eine Regel für alle Exporte: Excel (Liste und Jahresbericht) nur mit Premium, PDF frei. */
+  function exportAllowed(format: ExportFormat): boolean {
+    if (canExport(settings, format)) return true;
+    toast.error(t("premium.title"), { description: t("premium.excel") });
+    return false;
+  }
+
+  function doExport(kind: ExportFormat, list: Shift[], title: string, soll: number | null) {
     if (list.length === 0) {
       toast.error(t("stats.toast.noData"));
       return;
     }
-    if (kind === "xlsx" && !canUse(settings, "excel")) {
-      toast.error(t("premium.title"), { description: t("premium.excel") });
-      return;
-    }
-    if (kind === "xlsx") exportXlsx(list, title, ctx);
-    else exportPdf(list, title, ctx);
+    if (!exportAllowed(kind)) return;
+    const exportCtx = { ...ctx, sollHours: soll };
+    if (kind === "xlsx") exportXlsx(list, title, exportCtx);
+    else exportPdf(list, title, exportCtx);
     toast.success(t("stats.toast.exportSuccess"));
   }
 
-  function doAnnualExport(kind: "pdf" | "xlsx") {
+  function doAnnualExport(kind: ExportFormat) {
     if (annualReport.entries === 0) {
       toast.error(t("stats.toast.noData"));
       return;
     }
+    if (!exportAllowed(kind)) return;
     if (kind === "pdf") exportAnnualPdf(annualReport);
     else exportAnnualXlsx(annualReport);
     toast.success(t("stats.toast.exportSuccess"));
   }
 
-  const selectedJobs = useMemo(
-    () => (jobFilter === "alle" ? jobs : jobs.filter((j) => j.id === jobFilter)),
-    [jobs, jobFilter],
-  );
   const monthPayPeriods = useMemo(
     () => payPeriods(selectedJobs, filtered, payments, resolve, year, month),
     [selectedJobs, filtered, payments, resolve, year, month],
@@ -260,6 +274,11 @@ function StatsPage() {
   // S4 B1: Ø = workEarnings / workedHours
   const monthAvgRate = avgHourlyRate(monthTotals.workEarnings, monthTotals.workedHours);
   const yearAvgRate = avgHourlyRate(yearTotals.workEarnings, yearTotals.workedHours);
+  // Dieselben vier Kennzahlen wie in den Exporten (hours-summary.ts), für den angezeigten Zeitraum.
+  const hoursView =
+    period === "monat"
+      ? summarizeHours(monthShifts, resolve, shifts, monthSoll)
+      : summarizeHours(yearShifts, resolve, shifts, yearSoll);
 
   const periodLabel =
     period === "woche"
@@ -499,6 +518,37 @@ function StatsPage() {
               </>
             )}
           </div>
+
+          {/* Stunden im Überblick: getrennte Kennzahlen, kein vieldeutiges "Stunden" */}
+          <section
+            aria-label={t("hours.title")}
+            className="mt-3 rounded-2xl border bg-card p-4 shadow-card"
+          >
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {t("hours.title")}
+            </p>
+            <dl className="mt-2 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-sm">
+              <dt>{t("hours.worked")}</dt>
+              <dd className="text-right font-semibold tabular-nums">
+                {formatHours(hoursView.worked)}
+              </dd>
+              <dt>{t("hours.paidAbsence")}</dt>
+              <dd className="text-right font-semibold tabular-nums">
+                {formatHours(hoursView.paidAbsence)}
+              </dd>
+              <dt>{t("hours.paidTotal")}</dt>
+              <dd className="text-right font-semibold tabular-nums">
+                {formatHours(hoursView.paidTotal)}
+              </dd>
+              <dt>{t("hours.soll")}</dt>
+              <dd className="text-right font-semibold tabular-nums">
+                {hoursView.soll === null ? "–" : formatHours(hoursView.soll)}
+              </dd>
+            </dl>
+            {hoursView.soll === null ? (
+              <p className="mt-1 text-xs text-muted-foreground">{t("hours.sollNone")}</p>
+            ) : null}
+          </section>
 
           {/* Hauptdiagramm */}
           <section className="mt-4 rounded-2xl border bg-card p-4 shadow-card">
@@ -799,6 +849,7 @@ function StatsPage() {
                           month: months[month] ?? "",
                           year,
                         }),
+                        monthSoll,
                       )
                     }
                   >
@@ -814,6 +865,7 @@ function StatsPage() {
                           month: months[month] ?? "",
                           year,
                         }),
+                        monthSoll,
                       )
                     }
                   >
@@ -863,13 +915,17 @@ function StatsPage() {
                 <>
                   <Button
                     variant="outline"
-                    onClick={() => doExport("xlsx", yearShifts, td("report.yearTitle", { year }))}
+                    onClick={() =>
+                      doExport("xlsx", yearShifts, td("report.yearTitle", { year }), yearSoll)
+                    }
                   >
                     <FileSpreadsheet className="size-4" /> {t("stats.export.listExcel")}
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => doExport("pdf", yearShifts, td("report.yearTitle", { year }))}
+                    onClick={() =>
+                      doExport("pdf", yearShifts, td("report.yearTitle", { year }), yearSoll)
+                    }
                   >
                     <FileDown className="size-4" /> {t("stats.export.listPdf")}
                   </Button>

@@ -24,15 +24,25 @@ function docFormatHours(v: number): string {
   return formatHours(v, DOCUMENT_LOCALE);
 }
 
+/** Soll-Stunden oder "–", wenn es keinen festen Wochenplan gibt (nie eine erfundene 0). */
+function docSoll(v: number | null): string {
+  return v === null ? "–" : formatHours(v, DOCUMENT_LOCALE);
+}
 
 function kpis(report: AnnualReport) {
   return [
     { label: td("annual.kpi.earnings"), value: formatEuro(report.earnings, DOCUMENT_LOCALE) },
     { label: td("annual.kpi.hours"), value: formatHours(report.hours, DOCUMENT_LOCALE) },
+    { label: td("hours.paidAbsence"), value: formatHours(report.absenceHours, DOCUMENT_LOCALE) },
+    { label: td("hours.paidTotal"), value: formatHours(report.paidHours, DOCUMENT_LOCALE) },
+    { label: td("hours.soll"), value: docSoll(report.sollHours) },
     { label: td("annual.kpi.avgRate"), value: formatEuro(report.avgRate, DOCUMENT_LOCALE) },
     { label: td("annual.kpi.workDays"), value: String(report.workDays) },
     { label: td("annual.kpi.bonus"), value: formatEuro(report.bonus, DOCUMENT_LOCALE) },
-    { label: td("annual.kpi.avgMonth"), value: formatEuro(report.avgMonthEarnings, DOCUMENT_LOCALE) },
+    {
+      label: td("annual.kpi.avgMonth"),
+      value: formatEuro(report.avgMonthEarnings, DOCUMENT_LOCALE),
+    },
     { label: td("annual.kpi.avgDay"), value: formatHours(report.avgDayHours, DOCUMENT_LOCALE) },
     {
       label: td("annual.kpi.limit"),
@@ -147,7 +157,9 @@ export function exportAnnualPdf(report: AnnualReport) {
     head: [
       [
         td("annual.table.month"),
-        td("label.hours"),
+        td("annual.kpi.hours"),
+        td("hours.paidAbsence"),
+        td("hours.paidTotal"),
         td("annual.table.base"),
         td("label.bonus"),
         td("label.earnings"),
@@ -157,6 +169,8 @@ export function exportAnnualPdf(report: AnnualReport) {
     body: report.months.map((m) => [
       docMonthLabel(m.month),
       formatHours(m.hours, DOCUMENT_LOCALE),
+      formatHours(m.absenceHours, DOCUMENT_LOCALE),
+      formatHours(m.paidHours, DOCUMENT_LOCALE),
       formatEuro(m.base, DOCUMENT_LOCALE),
       formatEuro(m.bonus, DOCUMENT_LOCALE),
       formatEuro(m.earnings, DOCUMENT_LOCALE),
@@ -166,6 +180,8 @@ export function exportAnnualPdf(report: AnnualReport) {
       [
         td("label.total"),
         formatHours(report.hours, DOCUMENT_LOCALE),
+        formatHours(report.absenceHours, DOCUMENT_LOCALE),
+        formatHours(report.paidHours, DOCUMENT_LOCALE),
         formatEuro(report.base, DOCUMENT_LOCALE),
         formatEuro(report.bonus, DOCUMENT_LOCALE),
         formatEuro(report.earnings, DOCUMENT_LOCALE),
@@ -179,7 +195,9 @@ export function exportAnnualPdf(report: AnnualReport) {
 
   if (report.jobs.length > 0) {
     autoTable(doc, {
-      head: [[td("label.job"), td("label.hours"), td("label.earnings"), td("annual.table.share")]],
+      head: [
+        [td("label.job"), td("annual.kpi.hours"), td("label.earnings"), td("annual.table.share")],
+      ],
       body: report.jobs.map((j) => [
         j.name,
         formatHours(j.hours, DOCUMENT_LOCALE),
@@ -224,7 +242,6 @@ export function exportAnnualPdf(report: AnnualReport) {
   });
 }
 
-
 export function exportAnnualXlsx(report: AnnualReport) {
   const title = td("annual.title", { year: report.year });
   const book = createXlsxBook();
@@ -253,7 +270,9 @@ export function exportAnnualXlsx(report: AnnualReport) {
 
   const monthRows = report.months.map((m) => ({
     [td("annual.table.month")]: docMonthLabel(m.month),
-    [td("label.hours")]: Number(m.hours.toFixed(2)),
+    [td("annual.kpi.hours")]: Number(m.hours.toFixed(2)),
+    [td("hours.paidAbsence")]: Number(m.absenceHours.toFixed(2)),
+    [td("hours.paidTotal")]: Number(m.paidHours.toFixed(2)),
     [td("annual.table.base")]: Number(m.base.toFixed(2)),
     [td("report.bonusEur")]: Number(m.bonus.toFixed(2)),
     [td("report.earningsEur")]: Number(m.earnings.toFixed(2)),
@@ -261,21 +280,23 @@ export function exportAnnualXlsx(report: AnnualReport) {
   }));
   monthRows.push({
     [td("annual.table.month")]: td("label.total"),
-    [td("label.hours")]: Number(report.hours.toFixed(2)),
+    [td("annual.kpi.hours")]: Number(report.hours.toFixed(2)),
+    [td("hours.paidAbsence")]: Number(report.absenceHours.toFixed(2)),
+    [td("hours.paidTotal")]: Number(report.paidHours.toFixed(2)),
     [td("annual.table.base")]: Number(report.base.toFixed(2)),
     [td("report.bonusEur")]: Number(report.bonus.toFixed(2)),
     [td("report.earningsEur")]: Number(report.earnings.toFixed(2)),
     [td("annual.table.entries")]: report.entries,
   });
   const monthSheet = createXlsxSheet(monthRows);
-  monthSheet["!cols"] = [18, 10, 14, 14, 16, 12].map((wch) => ({ wch }));
+  monthSheet["!cols"] = [18, 14, 16, 14, 14, 14, 16, 12].map((wch) => ({ wch }));
   appendXlsxSheet(book, monthSheet, td("annual.sheet.months"));
 
   if (report.jobs.length > 0) {
     const jobSheet = createXlsxSheet(
       report.jobs.map((j) => ({
         [td("label.job")]: j.name,
-        [td("label.hours")]: Number(j.hours.toFixed(2)),
+        [td("annual.kpi.hours")]: Number(j.hours.toFixed(2)),
         [td("report.earningsEur")]: Number(j.earnings.toFixed(2)),
         [td("annual.table.share")]: Number(j.share.toFixed(1)),
       })),
@@ -288,7 +309,7 @@ export function exportAnnualXlsx(report: AnnualReport) {
   const weekdaySheet = createXlsxSheet(
     report.weekdayHours.map((h, i) => ({
       [td("annual.table.weekday")]: days[i] ?? "",
-      [td("label.hours")]: Number(h.toFixed(2)),
+      [td("annual.kpi.hours")]: Number(h.toFixed(2)),
     })),
   );
   weekdaySheet["!cols"] = [{ wch: 18 }, { wch: 10 }];
@@ -303,4 +324,3 @@ export function exportAnnualXlsx(report: AnnualReport) {
     mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
 }
-
