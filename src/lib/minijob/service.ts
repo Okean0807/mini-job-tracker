@@ -28,6 +28,7 @@ import { effectiveShiftRate, resolveRate, suggestedRate, type RateSource } from 
 import { makeResolver, type ResolveOptions, type Resolver } from "./resolve";
 import { assessLegalIncome, type LegalIncomeAssessment } from "./legal";
 
+import { planAbsenceEdit } from "./absence-plan";
 import { generateAbsence, generateFixedMonth, overtimeHours, weeklyPlanHours } from "./schedule";
 import {
   deleteShift as storeDeleteShift,
@@ -357,6 +358,38 @@ export function addAbsence(job: Job, kind: ShiftKind, from: string, to: string):
   );
   if (created.length) storeSaveShifts(created);
   return created;
+}
+
+/**
+ * Bestehenden Abwesenheitsblock auf einen neuen Zeitraum / eine neue Art / einen anderen Job
+ * ändern, ohne die Einträge zu ersetzen: nur die Differenz wird gespeichert
+ * (siehe {@link planAbsenceEdit}). Gibt die Anzahl der geänderten Tage zurück.
+ */
+export function saveAbsenceEdit(
+  job: Job,
+  kind: ShiftKind,
+  from: string,
+  to: string,
+  previousIds: readonly string[],
+): { created: number; updated: number; deleted: number } {
+  const data = getData();
+  const plan = planAbsenceEdit({
+    job,
+    kind,
+    from,
+    to,
+    bundesland: data.settings.bundesland,
+    previousIds,
+    existing: data.shifts,
+  });
+  for (const id of plan.deleteIds) storeDeleteShift(id);
+  const upserts = [...plan.updated, ...plan.created];
+  if (upserts.length) storeSaveShifts(upserts);
+  return {
+    created: plan.created.length,
+    updated: plan.updated.length,
+    deleted: plan.deleteIds.length,
+  };
 }
 
 /**
