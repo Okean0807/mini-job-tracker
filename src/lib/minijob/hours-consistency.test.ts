@@ -52,7 +52,7 @@ vi.mock("./generated-docs", () => ({
 import { buildAnnualReport } from "./annual";
 import { exportAnnualPdf, exportAnnualXlsx } from "./annual-export";
 import { shiftsInMonth, shiftsInYear } from "./calc";
-import { exportPdf, exportXlsx } from "./export";
+import { exportPdf, exportXlsx, PDF_LIST_MIN_WIDTHS } from "./export";
 import { sollHoursFor, summarizeHours } from "./hours-summary";
 import { payrollTotals } from "./payroll";
 import { makeResolver } from "./resolve";
@@ -272,5 +272,23 @@ describe("Soll ohne festen Wochenplan", () => {
     vi.clearAllMocks();
     exportPdf(october, "t", { ...ctx, sollHours: null });
     expect(pdfTexts()).toContain("Soll-Stunden: –");
+  });
+});
+
+describe("Listen-PDF: Layout-Einstellungen (Lesbarkeit; das Rendering prüft zusätzlich der visuelle Check)", () => {
+  it("Querformat A4, jede der 10 Spalten hat eine Mindestbreite, Datum >= 22 mm", () => {
+    exportPdf(october, "t", { ...ctx, sollHours: 88 });
+    expect(jsPdfCtor).toHaveBeenCalledWith({ orientation: "landscape", format: "a4" });
+    const opts = (
+      autoTableMock.mock.calls[0] as unknown as [
+        unknown,
+        { head: string[][]; columnStyles: Record<number, { minCellWidth: number }> },
+      ]
+    )[1];
+    expect(opts.head[0]).toHaveLength(PDF_LIST_MIN_WIDTHS.length);
+    PDF_LIST_MIN_WIDTHS.forEach((w, i) => expect(opts.columnStyles[i]!.minCellWidth).toBe(w));
+    expect(opts.columnStyles[0]!.minCellWidth).toBeGreaterThanOrEqual(22);
+    // alle Mindestbreiten zusammen passen in A4 quer (297 mm - 2 x 14 mm Rand)
+    expect(PDF_LIST_MIN_WIDTHS.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(269);
   });
 });

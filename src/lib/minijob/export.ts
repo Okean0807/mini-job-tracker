@@ -182,8 +182,16 @@ export function exportXlsx(shifts: Shift[], title: string, ctx: ExportContext) {
   });
 }
 
+/**
+ * Mindestbreiten (mm) der Listen-PDF-Spalten, damit Datum, Beträge und Überschriften nicht mitten im
+ * Wort umbrechen. Reihenfolge wie die Spalten: Datum, Job, Art, Zeit, Pause, Gesamtstunden bezahlt,
+ * Zuschläge, Verdienst, Gearbeitete Stunden, Bezahlte Abwesenheitsstunden.
+ */
+export const PDF_LIST_MIN_WIDTHS = [24, 20, 16, 50, 16, 30, 22, 28, 26, 36] as const;
+
 export function exportPdf(shifts: Shift[], title: string, ctx: ExportContext) {
-  const doc = new jsPDF();
+  // Querformat: zehn Spalten (vier Stundenkennzahlen) passen im Hochformat nicht lesbar.
+  const doc = new jsPDF({ orientation: "landscape", format: "a4" });
   doc.setFontSize(16);
   doc.text(td("app.name"), 14, 18);
   doc.setFontSize(11);
@@ -247,6 +255,9 @@ export function exportPdf(shifts: Shift[], title: string, ctx: ExportContext) {
       ],
     ],
     styles: { fontSize: 8 },
+    columnStyles: Object.fromEntries(
+      PDF_LIST_MIN_WIDTHS.map((minCellWidth, i) => [i, { minCellWidth }]),
+    ),
     headStyles: { fillColor: [16, 122, 110] },
     footStyles: { fillColor: [230, 230, 230], textColor: 20, fontStyle: "bold" },
   });
