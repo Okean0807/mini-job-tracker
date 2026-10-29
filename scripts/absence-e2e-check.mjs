@@ -96,7 +96,7 @@ const krank = (date, caseId) => ({
   sickCaseId: caseId,
 });
 
-async function newPage(browser, data) {
+async function newPage(browser, data, path = "/") {
   const context = await browser.newContext({ ...devices["Pixel 5"] });
   await context.clock.setFixedTime(new Date("2026-10-29T10:00:00"));
   await context.addInitScript(
@@ -108,7 +108,7 @@ async function newPage(browser, data) {
     { KEY, data },
   );
   const page = await context.newPage();
-  await page.goto(`http://127.0.0.1:${DEV_PORT}/`, { waitUntil: "networkidle" });
+  await page.goto(`http://127.0.0.1:${DEV_PORT}${path}`, { waitUntil: "networkidle" });
   return { context, page };
 }
 const stored = (page) => page.evaluate((k) => JSON.parse(localStorage.getItem(k)), KEY);
@@ -244,6 +244,53 @@ try {
   }
 
   try {
+    // ---- P1b: Statistik XLSX export of September for a sick case that began in August (full history needed)
+    const sick = [];
+    for (let d = "2026-08-10"; d <= "2026-10-09"; d = addDays(d, 1)) sick.push(krank(d, "case1"));
+    const data = {
+      shifts: sick,
+      jobs: [job(ALL_DAYS)],
+      settings: { ...baseSettings, premium: true }, // XLSX export is a premium feature in this build
+    };
+    const { context, page } = await newPage(browser, data, "/statistik");
+    await page.getByRole("button", { name: "Vorherige Periode" }).click(); // October -> September
+    await page
+      .getByText(/September 2026/)
+      .first()
+      .waitFor();
+    const [download] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByRole("button", { name: "Einträge Excel" }).click(),
+    ]);
+    const XLSX = require("xlsx");
+    const book = XLSX.readFile(await download.path());
+    const rows = XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]], { header: 1 });
+    const body = rows.slice(1);
+    const totalRow = body[body.length - 1];
+    const row21 = body.find((r) => String(r[0]).startsWith("21.09.2026"));
+    const row20 = body.find((r) => String(r[0]).startsWith("20.09.2026"));
+    check(
+      "XLSX export of September: one row per September entry plus the total row",
+      body.length === 31,
+      `${body.length} rows`,
+    );
+    check(
+      "XLSX export: day 43 earns 0 (same as the screen)",
+      row21 && Number(row21[9]) === 0,
+      JSON.stringify(row21),
+    );
+    check("XLSX export: day 42 earns 75", row20 && Number(row20[9]) === 75, JSON.stringify(row20));
+    check(
+      "XLSX export: total = 20 paid days x 75 = 1500 (same as the month total)",
+      Number(totalRow[9]) === 1500,
+      JSON.stringify(totalRow),
+    );
+    await context.close();
+  } catch (error) {
+    check("P1b export flow completed", false, String(error).split("\n")[0]);
+  }
+
+  try {
     // ---- P1: sick case 10.08.-09.10. (all days are plan days). Day 42 = 20.09. paid, day 43 = 21.09. not paid
     {
       const sick = [];
@@ -253,7 +300,7 @@ try {
       await toSeptember(page);
       const list = page.locator("ul >> li", { hasText: "21.09.2026" }).first();
       await list.waitFor();
-      const text = (await list.textContent()).replace(/ /g, " ");
+      const text = (await list.textContent()).replace(/\u00a0/g, " ");
       check(
         "day 43 is listed as unpaid (not '§ 3 EntgFG' with an amount)",
         text.includes("Ohne Entgeltfortzahlung") &&
@@ -263,13 +310,41 @@ try {
       );
       const paid = (
         await page.locator("ul >> li", { hasText: "18.09.2026" }).first().textContent()
-      ).replace(/ /g, " ");
+      ).replace(/\u00a0/g, " ");
       check(
         "day 40 is listed as paid sick pay",
         paid.includes("(§ 3 EntgFG)") && paid.includes("75,00 €"),
         paid,
       );
-      const c21 = (await cell(page, 21).textContent()).replace(/ /g, " ");
+      const c21 = (await cell(page, 21).textContent()).replace(/\u00a0/g, " ");
+      await list.click(); // open the entry editor for day 43
+      const preview = page.getByTestId("entry-absence-preview");
+      await preview.waitFor();
+      const previewText = ((await preview.textContent()) ?? "").replace(/\u00a0/g, " ");
+      check(
+        "editor preview of day 43: 0 h and 0,00 € (same as list and month total)",
+        (await preview.getAttribute("data-hours")) === "0" && previewText.includes("0,00 €"),
+        previewText,
+      );
+      await page.getByTestId("entry-save").click(); // saving must keep the case: day 43 stays unpaid
+      await page.waitForTimeout(300);
+      const savedAfter = await stored(page);
+      const day43 = savedAfter.shifts.find((x) => x.date === "2026-09-21");
+      check(
+        "saving the sick day in the editor keeps its case id",
+        day43?.sickCaseId === "case1",
+        JSON.stringify(day43),
+      );
+      await page.reload({ waitUntil: "networkidle" });
+      await toSeptember(page);
+      const afterSave = (
+        (await page.locator("ul >> li", { hasText: "21.09.2026" }).first().textContent()) ?? ""
+      ).replace(/\u00a0/g, " ");
+      check(
+        "after save and reload day 43 is still listed as unpaid",
+        afterSave.includes("Ohne Entgeltfortzahlung"),
+        afterSave,
+      );
       check(
         "calendar day 43: no hours and no 'Geplant' label",
         !/\bh\b/.test(c21) && !c21.includes("Geplant"),
@@ -277,7 +352,7 @@ try {
       );
       check(
         "calendar day 42 shows its 5 hours",
-        /5,0 h/.test((await cell(page, 20).textContent()).replace(/ /g, " ")),
+        /5,0 h/.test((await cell(page, 20).textContent()).replace(/\u00a0/g, " ")),
       );
       await context.close();
     }

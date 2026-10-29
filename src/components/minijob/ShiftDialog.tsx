@@ -320,7 +320,9 @@ export function ShiftDialog({
   ]);
 
   const job = jobs.find((j) => j.id === jobId);
-  const editSource = resolvedShiftId ? (getShift(resolvedShiftId) ?? shift ?? undefined) : undefined;
+  const editSource = resolvedShiftId
+    ? (getShift(resolvedShiftId) ?? shift ?? undefined)
+    : undefined;
   const holiday = holidayName(entryDate, settings.bundesland);
   const selectedObject = objects.find((o) => o.id === objectId);
   // Neue Abwesenheit (jede Art außer Arbeit): Zeiten wie im Zeitraum-Dialog

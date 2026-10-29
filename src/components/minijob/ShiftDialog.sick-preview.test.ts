@@ -68,8 +68,8 @@ const click = (el: Element) => act(() => (el as HTMLElement).click());
 const save = () => click(document.querySelector('[data-testid="entry-save"]')!);
 const previewEl = () =>
   document.querySelector<HTMLElement>('[data-testid="entry-absence-preview"]')!;
-const previewText = () => (previewEl().textContent ?? "").replace(/ /g, " ");
-const euro = (n: number) => formatEuro(n, "de").replace(/ /g, " ");
+const previewText = () => (previewEl().textContent ?? "").replace(/\u00a0/g, " ");
+const euro = (n: number) => formatEuro(n, "de").replace(/\u00a0/g, " ");
 
 function seed(shifts: Shift[]) {
   act(() => {
