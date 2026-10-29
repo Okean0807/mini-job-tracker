@@ -15,9 +15,16 @@ interface ShiftListProps {
   jobs: Job[];
   resolve: (shift: Shift) => ResolveOptions;
   onSelect: (shift: Shift) => void;
+  /**
+   * ALLE bekannten Einträge für die Payroll-Bewertung (Krankheitsfall-Beginn, 13-Wochen-Muster).
+   * `shifts` ist oft nur der angezeigte Monat; ein Krankheitsfall, der im Vormonat begann, würde
+   * sonst erst im angezeigten Monat „beginnen“ und der Tag nach dem 42. Tag fälschlich als bezahlt
+   * erscheinen, während der Monatsbetrag (volle Historie) ihn nicht zählt.
+   */
+  history?: Shift[];
 }
 
-export function ShiftList({ shifts, jobs, resolve, onSelect }: ShiftListProps) {
+export function ShiftList({ shifts, jobs, resolve, onSelect, history }: ShiftListProps) {
   const { t } = useT();
 
   if (shifts.length === 0) {
@@ -34,7 +41,7 @@ export function ShiftList({ shifts, jobs, resolve, onSelect }: ShiftListProps) {
       {shifts.map((s) => {
         const options = resolve(s);
         const b = shiftBreakdown(s, options);
-        const pay = shiftPayroll(s, { ...options, history: shifts });
+        const pay = shiftPayroll(s, { ...options, history: history ?? shifts });
         const job = jobs.find((j) => j.id === s.jobId);
         const rate = effectiveShiftRate(s, { job, defaultRate: options.defaultRate });
         const street = streetHouseLine(s);
