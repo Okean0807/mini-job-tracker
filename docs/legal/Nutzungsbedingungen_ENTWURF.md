@@ -31,6 +31,9 @@ stören oder zu umgehen (z. B. automatisierte Massenanfragen an den KI-Assistent
 
 ## 5. Berechnungen und KI-Assistent
 
+> Stand nach PR #161: Der KI-Assistent ist derzeit nicht verfügbar. Die KI-Punkte dieses Abschnitts gelten
+> nur bei Wiedereinführung und sind bis dahin zu streichen oder als „derzeit nicht verfügbar“ zu formulieren.
+
 - Berechnungen, Prognosen und Hinweise zu Grenzwerten sind Orientierungshilfen und beruhen auf deinen
   Eingaben. Sie berechnen keine Steuern oder Abgaben und ersetzen keine individuelle Rechts-, Steuer- oder
   Sozialversicherungsberatung.

@@ -26,7 +26,7 @@ Recommended for SSR / server helpers:
 - `SUPABASE_URL`
 - `SUPABASE_PUBLISHABLE_KEY` (or publishable anon equivalent)
 - Server-only (never `VITE_`): `SUPABASE_SERVICE_ROLE_KEY` only if `client.server.ts` paths are used
-- Server-only KI (never `VITE_`): `GEMINI_API_KEY` (required for `/assistent`), optional `GEMINI_MODEL` (default `gemini-2.5-flash`)
+- Server-only KI (never `VITE_`): `GEMINI_API_KEY` (only used when `AI_FEATURES_ENABLED=true`; the AI is off by default, see `docs/AI_FEATURE_FLAG.md`), optional `GEMINI_MODEL` (default `gemini-2.5-flash`)
 
 ## Owner steps still blocked (bots cannot)
 
