@@ -15,26 +15,58 @@ function ImpressumPage() {
         Anbieterinformationen gemäß den für den Dienst geltenden gesetzlichen Vorgaben.
       </p>
 
-      <section className="mt-6 space-y-4 rounded-xl border bg-card p-5">
+      <section
+        className="mt-6 space-y-4 rounded-xl border bg-card p-5"
+        data-testid="impressum-anbieter"
+      >
         <h2 className="text-lg font-bold">Anbieter</h2>
-        <div className="rounded-lg border border-dashed p-4 text-sm">
-          <p className="font-semibold">Noch nicht veröffentlicht</p>
-          <p className="mt-2 text-muted-foreground">
-            Vor dem öffentlichen Betrieb müssen hier Name/Firma, ladungsfähige Anschrift,
-            Kontaktmöglichkeit und – soweit erforderlich – weitere Anbieterangaben des
-            tatsächlichen Betreibers eingetragen werden.
-          </p>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Diese Seite ist bewusst keine erfundene Anbieterangabe. Platzhalter dürfen vor einem
-          öffentlichen Release nicht als vollständiges Impressum verwendet werden.
-        </p>
+        <address className="text-sm not-italic">
+          Juri Vollmer
+          <br />
+          Blumhardtstr. 23
+          <br />
+          30625 Hannover
+          <br />
+          Deutschland
+        </address>
+      </section>
+
+      <section
+        className="mt-4 space-y-2 rounded-xl border bg-card p-5"
+        data-testid="impressum-kontakt"
+      >
+        <h2 className="text-lg font-bold">Kontakt</h2>
+        <ul className="space-y-1 text-sm">
+          <li>
+            E-Mail:{" "}
+            <a className="underline underline-offset-4" href="mailto:jurivollmer84@gmail.com">
+              jurivollmer84@gmail.com
+            </a>
+          </li>
+          <li>
+            Telegram (weiterer Kontaktweg):{" "}
+            <a
+              className="underline underline-offset-4"
+              href="https://t.me/Juri_Vollmer"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              @Juri_Vollmer
+            </a>
+          </li>
+        </ul>
       </section>
 
       <nav className="mt-6 flex flex-wrap gap-3 text-sm" aria-label="Rechtliche Informationen">
-        <Link className="underline underline-offset-4" to="/datenschutz">Datenschutz</Link>
-        <Link className="underline underline-offset-4" to="/ki-hinweise">KI-Hinweise</Link>
-        <Link className="underline underline-offset-4" to="/einstellungen">Einstellungen</Link>
+        <Link className="underline underline-offset-4" to="/datenschutz">
+          Datenschutz
+        </Link>
+        <Link className="underline underline-offset-4" to="/ki-hinweise">
+          KI-Hinweise
+        </Link>
+        <Link className="underline underline-offset-4" to="/einstellungen">
+          Einstellungen
+        </Link>
       </nav>
     </LegalPageShell>
   );
