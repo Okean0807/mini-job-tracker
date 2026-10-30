@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { useAiAvailability } from "@/hooks/use-ai-availability";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { sourceDisplayLabel } from "@/lib/ai/sources";
 import type { AskSource } from "@/lib/ai/types";
@@ -74,7 +75,7 @@ function formatConversationWhen(iso: string, locale: string): string {
   }
 }
 
-function AssistantPage() {
+function AssistantChat() {
   const { t, lang, locale } = useT();
   const { status: authStatus, session } = useAuthSession();
   const userId = session?.user?.id ?? null;
@@ -420,4 +421,47 @@ function AssistantPage() {
       <AiNoticeDialog open={noticeOpen} onConfirm={onNoticeConfirm} onCancel={onNoticeCancel} />
     </main>
   );
+}
+
+/** Shown while the AI is switched off: no chat, no input, no history, no notice dialog. */
+function AssistantUnavailable() {
+  return (
+    <main className="mx-auto max-w-lg px-4 pt-6" data-testid="ai-unavailable">
+      <h1 className="text-2xl font-extrabold tracking-tight">KI-Assistent</h1>
+      <section className="mt-4 rounded-2xl border bg-card p-5 shadow-card">
+        <h2 className="text-base font-bold">Vorübergehend nicht verfügbar</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Der KI-Assistent ist in dieser Version der App nicht verfügbar. Alle anderen Funktionen
+          wie Schichten, Verdienst, Statistik, Export und Dokumente funktionieren wie gewohnt.
+          Deine Daten werden nicht an KI-Dienste übertragen.
+        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+          <Link className="inline-flex min-h-10 items-center underline underline-offset-4" to="/">
+            Zur Übersicht
+          </Link>
+          <Link
+            className="inline-flex min-h-10 items-center underline underline-offset-4"
+            to="/ki-hinweise"
+          >
+            KI-Hinweise
+          </Link>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function AssistantPage() {
+  const availability = useAiAvailability();
+  // Chat (history, context, notice, server call) is mounted only after the server confirmed the feature.
+  if (availability === "enabled") return <AssistantChat />;
+  if (availability === "loading") {
+    return (
+      <main className="mx-auto max-w-lg px-4 pt-6" aria-busy="true" data-testid="ai-availability-loading">
+        <Skeleton className="h-8 w-40" />
+        <Skeleton className="mt-4 h-24 w-full" />
+      </main>
+    );
+  }
+  return <AssistantUnavailable />;
 }

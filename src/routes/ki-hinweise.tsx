@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 
 import { LegalPageShell } from "@/components/minijob/LegalPageShell";
+import { useAiAvailability } from "@/hooks/use-ai-availability";
 
 export const Route = createFileRoute("/ki-hinweise")({
   head: () => ({ meta: [{ title: "KI-Hinweise – MiniJob Tracker" }] }),
@@ -8,12 +9,27 @@ export const Route = createFileRoute("/ki-hinweise")({
 });
 
 function AiNoticePage() {
+  const availability = useAiAvailability();
   return (
     <LegalPageShell>
       <h1 className="text-3xl font-extrabold tracking-tight">KI-Hinweise</h1>
       <p className="mt-2 text-sm text-muted-foreground">
         Technische Informationen zur optionalen Nutzung des KI-Assistenten.
       </p>
+
+      {availability !== "enabled" ? (
+        <section
+          className="mt-6 rounded-xl border border-amber-500/40 bg-amber-500/5 p-5"
+          data-testid="ki-hinweise-unavailable"
+        >
+          <h2 className="text-lg font-bold">KI vorübergehend nicht verfügbar</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Der KI-Assistent ist in dieser Version der App deaktiviert. Solange er deaktiviert ist,
+            werden keine Anfragen an KI-Dienste gesendet. Die folgenden Angaben beschreiben die
+            vorgesehene Architektur für den Fall, dass der Assistent später wieder angeboten wird.
+          </p>
+        </section>
+      ) : null}
 
       <div className="mt-6 space-y-4">
         <section className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-5">

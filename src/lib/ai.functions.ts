@@ -7,6 +7,7 @@ import {
   isAbortOrTimeoutError,
 } from "@/lib/ai-ask";
 import { AiGuardError, parseAskAssistantInput } from "@/lib/ai-guard";
+import { AI_DISABLED_MESSAGE, isAiFeatureEnabled } from "@/lib/ai/feature-flag";
 import { createDefaultProvider } from "@/lib/ai/provider";
 import type { AskRequest } from "@/lib/ai/types";
 
@@ -14,6 +15,9 @@ export const askAssistant = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => parseAskAssistantInput(input))
   .handler(async ({ data, context }) => {
+    // Kill switch first: when off there is no rate-limit RPC, no provider and no outbound request.
+    if (!isAiFeatureEnabled()) throw new AiGuardError("unavailable", AI_DISABLED_MESSAGE);
+
     // Shared DB-backed rate limit: serverless instances no longer keep separate Maps.
     const { data: rate, error: rateError } = await context.supabase.rpc(
       "consume_ai_rate_limit" as never,

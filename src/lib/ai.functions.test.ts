@@ -4,7 +4,7 @@
  * `allowed === true`. No network, no Supabase, no Gemini: createServerFn, the auth
  * middleware and the provider factory are replaced with in-memory fakes.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { providerAsk, createDefaultProvider } = vi.hoisted(() => {
   const providerAsk = vi.fn();
@@ -50,9 +50,14 @@ function run(rpcImpl: () => Promise<RpcResult>) {
 }
 
 beforeEach(() => {
+  vi.stubEnv("AI_FEATURES_ENABLED", "true");
   providerAsk.mockReset();
   createDefaultProvider.mockClear();
   providerAsk.mockResolvedValue({ answer: "Antwort" });
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe("askAssistant — rate-limit gate fails closed", () => {
