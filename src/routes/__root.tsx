@@ -34,6 +34,8 @@ import {
 import { useT } from "@/lib/i18n";
 import { applyAppearance } from "../lib/minijob/theme";
 import { visible, type Feature } from "../lib/minijob/uimode";
+import { useAiAvailability } from "@/hooks/use-ai-availability";
+import { isNavItemAvailable } from "@/lib/ai/availability";
 import type { UiMode } from "../lib/minijob/types";
 import { registerServiceWorker } from "../lib/pwa";
 
@@ -176,7 +178,10 @@ const NAV: {
 
 function BottomNav({ uiMode }: { uiMode: UiMode }) {
   const { t } = useT();
-  const items = NAV.filter((n) => !n.feature || visible(n.feature, uiMode));
+  const aiAvailability = useAiAvailability();
+  const items = NAV.filter(
+    (n) => (!n.feature || visible(n.feature, uiMode)) && isNavItemAvailable(n.to, aiAvailability),
+  );
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 backdrop-blur">
       <ul className="mx-auto flex max-w-lg">
