@@ -15,13 +15,19 @@ This checklist records what the current source code supports and what still requ
 
 ## Must be completed before public release
 
-- Replace the placeholder Impressum with the real provider identity and legally required provider information.
+- Impressum: the operator's real provider data (name, address, e-mail, Telegram as an additional channel) has been prepared in the separate PR #163. The Impressum is **not** to be treated as complete until PR #163 is merged and checked; whether this contact set and its content satisfy § 5 DDG remains a legal question.
 - Complete the privacy notice with the actual controller, purposes, legal bases, recipients/processors, international-transfer information, retention periods and data-subject rights applicable to the deployed configuration.
-- Before any re-enable of the AI: confirm the contractual/privacy status of the configured Gemini and Tavily services for the intended deployment and document the applicable processors/sub-processors and transfer mechanisms.
-- Decide and document whether AI requests are optional and how users can avoid sending work/earnings context to the AI service.
 - Verify production Supabase settings, including leaked-password protection and relevant Auth security settings.
 - Verify production RLS/storage policies and account deletion with a real test account.
 - Rotate any historical secret that was previously exposed and verify repository secret-scanning status.
+
+## Required before the AI is re-enabled (not part of the first free launch)
+
+The AI is off in the current version, so these items do not block the first free launch. They must all be done before `AI_FEATURES_ENABLED` is set to `"true"` anywhere (see `docs/AI_FEATURE_FLAG.md`):
+
+- Confirm the contractual/privacy status of the configured Gemini and Tavily services for the intended deployment and document the applicable processors/sub-processors and transfer mechanisms.
+- Decide and document whether and under which conditions AI requests are permitted (optional use, consent/notice, and how users can avoid sending work/earnings context to the AI service).
+- Update the Datenschutzerklärung, KI-Hinweise and, if kept, the Nutzungsbedingungen to describe the re-enabled processing.
 
 ## Important distinction
 
