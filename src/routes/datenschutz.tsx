@@ -33,7 +33,6 @@ function DatenschutzPage() {
             <li>Angaben zu Arbeitgebern, Jobs, Zahlungen und Abwesenheiten.</li>
             <li>Von Nutzern hochgeladene Dokumente einschließlich technischer Metadaten.</li>
             <li>Kontodaten und App-Daten bei aktivierter Cloud-Synchronisierung.</li>
-            <li>Bei einer KI-Anfrage der dafür ausgewählte App-Kontext.</li>
           </ul>
         </section>
 
@@ -47,14 +46,15 @@ function DatenschutzPage() {
           </p>
         </section>
 
-        <section className="rounded-xl border bg-card p-5">
-          <h2 className="text-lg font-bold">KI und externe Dienste</h2>
+        <section className="rounded-xl border bg-card p-5" data-testid="datenschutz-ki-status">
+          <h2 className="text-lg font-bold">KI-Assistent</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Der aktuelle Code verwendet Gemini für die KI-Verarbeitung und Tavily für ausgewählte
-            aktuelle Web-Suchen. Eine KI-Anfrage kann dafür Arbeits- und Verdienstkontext enthalten.
-            Die endgültige Datenschutzerklärung muss die konkret eingesetzten Dienste, deren Rolle,
-            Unterauftragsverarbeiter, Speicherfristen und Übermittlungsmechanismen anhand der
-            tatsächlich aktivierten Produktionseinstellungen benennen.
+            Der KI-Assistent ist in dieser Version der App nicht verfügbar. Solange er nicht
+            verfügbar ist, werden keine Anfragen an KI-Dienste gesendet und es werden keine Arbeits-
+            oder Verdienstdaten dafür übermittelt. Näheres steht in den KI-Hinweisen. Falls der
+            Assistent später wieder angeboten wird, müssen vorher die eingesetzten Dienste, ihre
+            Rolle, Speicherfristen und Übermittlungsmechanismen verbindlich beschrieben und diese
+            Datenschutzerklärung angepasst werden.
           </p>
         </section>
 
@@ -67,13 +67,9 @@ function DatenschutzPage() {
           <ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-muted-foreground">
             <li>Supabase: Anmeldung, Datenbank und Dateispeicher (Projektregion Frankfurt, EU).</li>
             <li>
-              Vercel: Auslieferung der App und serverseitige KI-Funktion (Funktionsregion USA-Ost).
+              Vercel: Auslieferung der App und serverseitige Funktionen (Funktionsregion USA-Ost).
             </li>
-            <li>Google: Anmeldung per Google-Konto und KI-Antworten über die Gemini API.</li>
-            <li>
-              Tavily: Websuche bei Fragen zu aktuellen Rechtsangaben (nur eine aus der Frage
-              abgeleitete Suchanfrage).
-            </li>
+            <li>Google: Anmeldung per Google-Konto.</li>
             <li>
               OpenStreetMap Nominatim: Adresssuche aus dem Standort – nur nach ausdrücklicher
               Bestätigung im Eintrag-Dialog.
@@ -82,8 +78,9 @@ function DatenschutzPage() {
               Schriftarten werden von der App selbst ausgeliefert (kein Abruf bei Google Fonts).
             </li>
             <li>
-              Im Browser gespeichert: App-Daten, Anmeldesitzung, KI-Verlauf und Hinweis-Bestätigung
-              (localStorage).
+              Im Browser gespeichert: App-Daten und Anmeldesitzung (localStorage). Ein früher auf
+              diesem Gerät gespeicherter KI-Verlauf bleibt lokal gespeichert, wird aber nicht mehr
+              verwendet und nicht übertragen.
             </li>
             <li>
               „Konto löschen“ in den Einstellungen entfernt Dokumente, Ordner, Cloud-Sicherungen
@@ -104,9 +101,15 @@ function DatenschutzPage() {
       </div>
 
       <nav className="mt-6 flex flex-wrap gap-3 text-sm" aria-label="Rechtliche Informationen">
-        <Link className="underline underline-offset-4" to="/impressum">Impressum</Link>
-        <Link className="underline underline-offset-4" to="/ki-hinweise">KI-Hinweise</Link>
-        <Link className="underline underline-offset-4" to="/einstellungen">Einstellungen</Link>
+        <Link className="underline underline-offset-4" to="/impressum">
+          Impressum
+        </Link>
+        <Link className="underline underline-offset-4" to="/ki-hinweise">
+          KI-Hinweise
+        </Link>
+        <Link className="underline underline-offset-4" to="/einstellungen">
+          Einstellungen
+        </Link>
       </nav>
     </LegalPageShell>
   );
