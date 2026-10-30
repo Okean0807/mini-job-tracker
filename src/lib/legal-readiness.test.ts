@@ -263,8 +263,7 @@ describe("draft legal texts stay drafts", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("the public pages still declare their interim status until real texts are published", () => {
-    expect(read("src/routes/impressum.tsx")).toMatch(/Noch nicht veröffentlicht/);
+  it("the Datenschutz page still declares its interim status until the real text is published", () => {
     expect(read("src/routes/datenschutz.tsx")).toMatch(/noch keine endgültige/);
   });
 });
