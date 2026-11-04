@@ -245,6 +245,33 @@ export function validateBuildEnv(env) {
 }
 
 /**
+ * Validate process.env together with the .env file views (see env-files.mjs). process.env wins over
+ * files (Vite precedence). For public-local EVERY file layered under process.env must be clean on
+ * its own, so a risky value hidden by a higher-priority file in one Vite mode is still rejected.
+ * @param {Record<string, unknown>} processEnv
+ * @param {Record<string, unknown>[]} fileViews
+ * @returns {BuildProfileResult}
+ */
+export function validateBuildEnvAcrossViews(processEnv, fileViews) {
+  const merged = Object.assign({}, ...fileViews, processEnv);
+  const main = validateBuildEnv(merged);
+  if (main.profile !== "public-local") return main;
+  const errors = [...main.errors];
+  for (const view of fileViews) {
+    const r = validateBuildEnv({
+      ...view,
+      ...processEnv,
+      MJC_BUILD_PROFILE: merged["MJC_BUILD_PROFILE"],
+    });
+    for (const e of r.errors) {
+      if (!errors.some((x) => x.code === e.code && x.names.join("|") === e.names.join("|")))
+        errors.push(e);
+    }
+  }
+  return { ...main, ok: errors.length === 0, errors };
+}
+
+/**
  * Values for process.env that vite.config.ts must set for a VALID result (flag from the profile;
  * SUPABASE_* -> VITE_* bridge only for cloud profiles, exactly as before for empty VITE_*).
  * @param {Record<string, unknown>} env

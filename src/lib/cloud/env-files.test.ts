@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { loadEnvFilesSync, parseEnvText } from "./env-files.mjs";
+import { loadEnvFileViewsSync, loadEnvFilesSync, parseEnvText } from "./env-files.mjs";
 
 describe("parseEnvText", () => {
   it("parses NAME=value lines, quotes, export, comments and CRLF", () => {
@@ -43,6 +43,18 @@ describe("loadEnvFilesSync", () => {
       writeFileSync(join(root, "env.txt"), "Y=nope\n");
       mkdirSync(join(root, ".env.dir"));
       expect(loadEnvFilesSync(root)).toEqual({ A: "base", B: "local", C: "prod" });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  it("loadEnvFileViewsSync keeps one object per file (no merging) in stable order", () => {
+    const root = mkdtempSync(join(tmpdir(), "mjc-p1-envviews-"));
+    try {
+      writeFileSync(join(root, ".env"), "A=base\n");
+      writeFileSync(join(root, ".env.local"), "A=local\n");
+      writeFileSync(join(root, ".env.example"), "A=example\n");
+      expect(loadEnvFileViewsSync(root)).toEqual([{ A: "base" }, { A: "local" }]);
+      expect(loadEnvFileViewsSync(join(tmpdir(), "mjc-p1-definitely-missing-dir"))).toEqual([]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

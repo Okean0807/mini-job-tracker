@@ -7,8 +7,11 @@
  */
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { formatBuildProfileFailure, validateBuildEnv } from "../src/lib/cloud/build-profile.mjs";
-import { loadEnvFilesSync } from "../src/lib/cloud/env-files.mjs";
+import {
+  formatBuildProfileFailure,
+  validateBuildEnvAcrossViews,
+} from "../src/lib/cloud/build-profile.mjs";
+import { loadEnvFileViewsSync } from "../src/lib/cloud/env-files.mjs";
 
 const args = process.argv.slice(2);
 const rootIdx = args.indexOf("--root");
@@ -17,9 +20,9 @@ const root =
     ? resolve(args[rootIdx + 1])
     : resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-// Same precedence as Vite: real process environment wins over .env files.
-const env = { ...loadEnvFilesSync(root), ...process.env };
-const result = validateBuildEnv(env);
+// Same precedence as Vite: the real process environment wins over .env files; public-local also
+// requires every individual .env file to be clean.
+const result = validateBuildEnvAcrossViews(process.env, loadEnvFileViewsSync(root));
 
 if (!result.ok) {
   console.error(

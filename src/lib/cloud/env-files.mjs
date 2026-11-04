@@ -29,23 +29,41 @@ export function parseEnvText(text) {
 }
 
 /**
- * All `.env` and `.env.*` files in `root` except `*.example` templates, merged in a stable order.
+ * The `.env` and `.env.*` files in `root` (except `*.example` templates) in a stable order.
+ * @param {string} root
+ * @returns {string[]}
+ */
+function envFileNames(root) {
+  if (!existsSync(root)) return [];
+  return readdirSync(root)
+    .filter((n) => n === ".env" || (n.startsWith(".env.") && !n.endsWith(".example")))
+    .sort();
+}
+
+/**
+ * One object per env file (no merging) - lets the public-local gate reject a risky value in ANY
+ * file even if a higher-priority file would override it for one particular Vite mode.
+ * @param {string} root
+ * @returns {Record<string, string>[]}
+ */
+export function loadEnvFileViewsSync(root) {
+  /** @type {Record<string, string>[]} */
+  const views = [];
+  for (const n of envFileNames(root)) {
+    try {
+      views.push(parseEnvText(readFileSync(join(root, n), "utf8")));
+    } catch {
+      /* unreadable file or directory: ignore (Vite would fail on its own) */
+    }
+  }
+  return views;
+}
+
+/**
+ * All env files merged in a stable order (later names win).
  * @param {string} root
  * @returns {Record<string, string>}
  */
 export function loadEnvFilesSync(root) {
-  if (!existsSync(root)) return {};
-  const names = readdirSync(root)
-    .filter((n) => n === ".env" || (n.startsWith(".env.") && !n.endsWith(".example")))
-    .sort();
-  /** @type {Record<string, string>} */
-  const merged = {};
-  for (const n of names) {
-    try {
-      Object.assign(merged, parseEnvText(readFileSync(join(root, n), "utf8")));
-    } catch {
-      /* unreadable file: ignore (Vite would fail on its own) */
-    }
-  }
-  return merged;
+  return Object.assign({}, ...loadEnvFileViewsSync(root));
 }

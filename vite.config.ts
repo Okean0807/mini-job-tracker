@@ -13,9 +13,9 @@ import { VitePWA } from "vite-plugin-pwa";
 import {
   computeViteEnvOverrides,
   formatBuildProfileFailure,
-  validateBuildEnv,
+  validateBuildEnvAcrossViews,
 } from "./src/lib/cloud/build-profile.mjs";
-import { loadEnvFilesSync } from "./src/lib/cloud/env-files.mjs";
+import { loadEnvFileViewsSync } from "./src/lib/cloud/env-files.mjs";
 
 // Build profile (P1). With an explicit MJC_BUILD_PROFILE the same validation as
 // scripts/assert-build-profile.mjs runs here too (defence in depth if `vite build` is called
@@ -27,8 +27,9 @@ import { loadEnvFilesSync } from "./src/lib/cloud/env-files.mjs";
 (() => {
   const explicitProfile = process.env["MJC_BUILD_PROFILE"]?.trim();
   if (explicitProfile) {
-    const merged = { ...loadEnvFilesSync(process.cwd()), ...process.env };
-    const result = validateBuildEnv(merged);
+    const fileViews = loadEnvFileViewsSync(process.cwd());
+    const merged = Object.assign({}, ...fileViews, process.env);
+    const result = validateBuildEnvAcrossViews(process.env, fileViews);
     if (!result.ok) {
       throw new Error(
         `vite.config: build profile check failed (names only): ${formatBuildProfileFailure(result).join("; ")}`,

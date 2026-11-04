@@ -13,6 +13,10 @@ export interface BuildProfileResult {
 }
 export function supabaseRefFromUrl(url: string): string | null;
 export function validateBuildEnv(env: Record<string, unknown>): BuildProfileResult;
+export function validateBuildEnvAcrossViews(
+  processEnv: Record<string, unknown>,
+  fileViews: Record<string, unknown>[],
+): BuildProfileResult;
 export function computeViteEnvOverrides(
   env: Record<string, unknown>,
   result: BuildProfileResult,

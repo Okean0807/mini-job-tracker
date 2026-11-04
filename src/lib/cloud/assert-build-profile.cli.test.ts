@@ -257,6 +257,38 @@ describe("build gate - .env files are scanned like process.env", () => {
       expect(gate({ MJC_BUILD_PROFILE: "public-local" }, { root }).code).toBe(0);
     });
   });
+  it("AF-1: a risky value in ANY .env file is rejected even if a higher-priority file overrides it", () => {
+    withRoot(
+      {
+        ".env.local": "VITE_CLOUD_SYNC_ENABLED=true\n",
+        ".env.production.local": "VITE_CLOUD_SYNC_ENABLED=false\n",
+      },
+      (root) => {
+        const r = gate({ MJC_BUILD_PROFILE: "public-local" }, { root });
+        expect(r.code).toBe(1);
+        expect(r.stderr).toContain("VITE_CLOUD_SYNC_ENABLED");
+      },
+    );
+    withRoot(
+      { ".env.development": `SUPABASE_URL=${URL_OK}\n`, ".env.zzz": "SUPABASE_URL=\n" },
+      (root) => {
+        const r = gate({ MJC_BUILD_PROFILE: "public-local" }, { root });
+        expect(r.code).toBe(1);
+        expectNoSentinels(r.out);
+      },
+    );
+  });
+  it("profile declared in a .env file applies to every file view", () => {
+    withRoot(
+      { ".env": "MJC_BUILD_PROFILE=public-local\n", ".env.local": `VITE_SUPABASE_URL=${URL_OK}\n` },
+      (root) => {
+        expect(gate({}, { root }).code).toBe(1);
+      },
+    );
+    withRoot({ ".env": "MJC_BUILD_PROFILE=public-local\n" }, (root) => {
+      expect(gate({}, { root }).code).toBe(0);
+    });
+  });
   it("a non-existent root is treated as no files", () => {
     expect(
       gate({ MJC_BUILD_PROFILE: "public-local" }, { root: join(emptyRoot, "does-not-exist") }).code,
@@ -279,9 +311,9 @@ describe("compatibility entry points and wiring", () => {
   });
   it("vite.config.ts uses the shared validation and the profile-driven flag/bridge", () => {
     const vite = readFileSync(resolve(process.cwd(), "vite.config.ts"), "utf8");
-    expect(vite).toContain("validateBuildEnv");
+    expect(vite).toContain("validateBuildEnvAcrossViews");
     expect(vite).toContain("computeViteEnvOverrides");
-    expect(vite).toContain("loadEnvFilesSync");
+    expect(vite).toContain("loadEnvFileViewsSync");
   });
   it("the gate runs without writing anything into the cwd", () => {
     const dir = mkdtempSync(join(tmpdir(), "mjc-p1-cwd-"));

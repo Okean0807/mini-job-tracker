@@ -6,6 +6,7 @@ import {
   formatBuildProfileFailure,
   supabaseRefFromUrl,
   validateBuildEnv,
+  validateBuildEnvAcrossViews,
 } from "./build-profile.mjs";
 
 // Synthetic values only (never real keys). Sentinels let us prove nothing is echoed back.
@@ -398,5 +399,48 @@ describe("helpers", () => {
     const snapshot = JSON.stringify(env);
     validateBuildEnv(env);
     expect(JSON.stringify(env)).toBe(snapshot);
+  });
+});
+
+describe("validateBuildEnvAcrossViews (AF-1)", () => {
+  it("process.env wins over a file; every file must still be clean for public-local", () => {
+    expect(
+      validateBuildEnvAcrossViews(pub({ VITE_CLOUD_SYNC_ENABLED: "false" }), [
+        { VITE_CLOUD_SYNC_ENABLED: "true" },
+      ]).ok,
+    ).toBe(true);
+    expect(
+      validateBuildEnvAcrossViews(pub(), [
+        { VITE_CLOUD_SYNC_ENABLED: "true" },
+        { VITE_CLOUD_SYNC_ENABLED: "false" },
+      ]).ok,
+    ).toBe(false);
+    expect(
+      validateBuildEnvAcrossViews(pub(), [{ SUPABASE_URL: URL_OK }, { SUPABASE_URL: "" }]).ok,
+    ).toBe(false);
+  });
+  it("a profile defined in a file applies to every view; cloud profiles use the merged view only", () => {
+    expect(
+      validateBuildEnvAcrossViews({}, [
+        { MJC_BUILD_PROFILE: "public-local" },
+        { VITE_SUPABASE_URL: URL_OK },
+      ]).ok,
+    ).toBe(false);
+    const cloudFiles = [{ VITE_SUPABASE_URL: URL_OK }, { VITE_SUPABASE_PUBLISHABLE_KEY: KEY_OK }];
+    const env = {
+      MJC_BUILD_PROFILE: "cloud-enabled",
+      CLOUD_SYNC_ENABLED: "true",
+      VITE_CLOUD_SYNC_ENABLED: "true",
+      MJC_EXPECTED_SUPABASE_REF: REF,
+    };
+    expect(validateBuildEnvAcrossViews(env, cloudFiles).ok).toBe(true);
+  });
+  it("never echoes values", () => {
+    const res = validateBuildEnvAcrossViews(pub(), [
+      { VITE_SUPABASE_URL: URL_OK, VITE_X_SECRET: SECRET },
+    ]);
+    expect(res.ok).toBe(false);
+    expect(JSON.stringify(res)).not.toContain(URL_OK);
+    expect(JSON.stringify(res)).not.toContain(SECRET);
   });
 });
