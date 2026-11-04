@@ -369,6 +369,15 @@ describe("helpers", () => {
     [`  https://${REF}.SUPABASE.CO  `, REF],
     [`http://${REF}.supabase.co`, null],
     ["https://supabase.co", null],
+    [`https://user:pw@${REF}.supabase.co`, null],
+    [`https://${REF}.supabase.co:8443`, null],
+    [`https://${REF}.supabase.co/rest/v1`, null],
+    [`https://${REF}.supabase.co/?x=1`, null],
+    [`https://${REF}.supabase.co/#frag`, null],
+    [`https://${REF}.supabase.co.evil.example`, null],
+    [`https://${REF}.example.com`, null],
+    [`https://${REF}.supabase.org`, null],
+    [`https://${REF}.supabase.co.uk`, null],
     ["https://a.supabase.co", null],
     ["https://example.com", null],
     ["", null],
@@ -393,6 +402,14 @@ describe("helpers", () => {
     expect(text).toContain("VITE_SUPABASE_URL");
     expect(text).toContain("SUPABASE_SERVICE_ROLE_KEY");
     expect(text).toContain("CLOUD_SYNC_ENABLED");
+  });
+
+  it("control characters in a variable NAME are neutralised in the failure text", () => {
+    const text = formatBuildProfileFailure(
+      validateBuildEnv(pub({ "SUPABASE_\u001b[2JX": "v" })),
+    ).join("\n");
+    expect(text).not.toContain("\u001b");
+    expect(text).toContain("SUPABASE_??2JX");
   });
 
   it("is a pure function: the input object is not modified", () => {

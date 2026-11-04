@@ -80,6 +80,18 @@ export function supabaseRefFromUrl(url) {
   try {
     const u = new URL(url.trim());
     if (u.protocol !== "https:") return null;
+    // Only a bare origin is accepted: credentials, port, path, query or fragment would be baked
+    // into the bundle and make the ref check ambiguous.
+    if (
+      u.username ||
+      u.password ||
+      u.port ||
+      (u.pathname !== "/" && u.pathname !== "") ||
+      u.search ||
+      u.hash
+    ) {
+      return null;
+    }
     const host = u.hostname.toLowerCase();
     if (!host.endsWith(".supabase.co")) return null;
     const ref = host.slice(0, -".supabase.co".length);
@@ -325,5 +337,8 @@ export function resolveViteBuildProfile(processEnv, fileViews) {
  * @returns {string[]}
  */
 export function formatBuildProfileFailure(result) {
-  return result.errors.map((e) => `${e.code}: ${e.names.join(", ")}`);
+  // Names come from the environment: neutralise anything that is not a plain identifier character
+  // so a crafted variable name cannot inject control sequences into build logs.
+  const safe = (n) => n.replace(/[^A-Za-z0-9_ .,-]/g, "?");
+  return result.errors.map((e) => `${e.code}: ${e.names.map(safe).join(", ")}`);
 }

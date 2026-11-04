@@ -59,6 +59,26 @@ describe("loadEnvFilesSync", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+  it("views come back in sorted name order whatever order the files were created in", () => {
+    const names = [
+      ".env",
+      ".env.development",
+      ".env.local",
+      ".env.production",
+      ".env.production.local",
+      ".env.test",
+    ];
+    for (const order of [names, [...names].reverse()]) {
+      const root = mkdtempSync(join(tmpdir(), "mjc-p1-envorder-"));
+      try {
+        for (const n of order) writeFileSync(join(root, n), `ORDER=${n}\n`);
+        expect(loadEnvFileViewsSync(root).map((v) => v["ORDER"])).toEqual(names);
+        expect(loadEnvFilesSync(root)).toEqual({ ORDER: ".env.test" });
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    }
+  });
   it("returns an empty object for a missing directory", () => {
     expect(loadEnvFilesSync(join(tmpdir(), "mjc-p1-definitely-missing-dir"))).toEqual({});
   });
