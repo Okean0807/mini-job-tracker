@@ -314,7 +314,7 @@ describe("compatibility entry points and wiring", () => {
     expect(vite).toContain(
       "resolveViteBuildProfile(process.env, loadEnvFileViewsSync(process.cwd()))",
     );
-    expect(vite).toContain('decision.kind === "profile"');
+    expect(vite).toContain('profileDecision.kind === "profile"');
     expect(vite).toContain("process.env[name] = value");
   });
   it("the gate runs without writing anything into the cwd", () => {

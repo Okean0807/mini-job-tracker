@@ -26,3 +26,7 @@ export function resolveViteBuildProfile(
   processEnv: Record<string, unknown>,
   fileViews: Record<string, unknown>[],
 ): { kind: "legacy" } | { kind: "profile"; profile: string; overrides: Record<string, string> };
+export function enforceProfileForViteCommand(
+  decision: { kind: "legacy" } | { kind: "profile"; profile: string; overrides: Record<string, string> },
+  command: unknown,
+): void;

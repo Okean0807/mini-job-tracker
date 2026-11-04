@@ -10,23 +10,28 @@
 // expected; see docs/VERCEL_PREVIEW.md.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 import { VitePWA } from "vite-plugin-pwa";
-import { resolveViteBuildProfile } from "./src/lib/cloud/build-profile.mjs";
+import type { ConfigEnv, Plugin } from "vite";
+import {
+  enforceProfileForViteCommand,
+  resolveViteBuildProfile,
+} from "./src/lib/cloud/build-profile.mjs";
 import { loadEnvFileViewsSync } from "./src/lib/cloud/env-files.mjs";
 
-// Build profile (P1). With an explicit MJC_BUILD_PROFILE the same validation as
-// scripts/assert-build-profile.mjs runs here too (defence in depth if `vite build` is called
-// directly): an invalid configuration aborts with variable NAMES only. The profile decides the
-// VITE_CLOUD_SYNC_ENABLED value baked into the bundle ("false" for public-local, "true" for the
-// cloud profiles) and whether SUPABASE_* is bridged to VITE_* (never in public-local).
-// Without MJC_BUILD_PROFILE (e.g. `vite dev` in the editor) nothing is enforced here - the
-// `build` script's assert step stops builds without a profile - and the legacy bridge applies.
-(() => {
-  const decision = resolveViteBuildProfile(process.env, loadEnvFileViewsSync(process.cwd()));
-  if (decision.kind === "profile") {
-    for (const [name, value] of Object.entries(decision.overrides)) process.env[name] = value;
-    return;
+// Build profile (P1 / P1.1).
+// With an explicit MJC_BUILD_PROFILE (process.env or any .env file) the full validation runs here
+// (invalid configuration throws, names only), the profile decides the baked VITE_CLOUD_SYNC_ENABLED
+// and whether SUPABASE_* is bridged to VITE_* (never in public-local).
+// FAIL-CLOSED per Vite command: the plugin below runs in Vite's `config` hook, which knows the real
+// command. Only `serve` (editor `vite dev`) may run without a profile; `vite build` in ANY mode
+// (also --mode development) and any unknown command is refused without one. This sits in the
+// config, not in an npm script, so a direct `vite build` cannot bypass the gate.
+const profileDecision = resolveViteBuildProfile(process.env, loadEnvFileViewsSync(process.cwd()));
+if (profileDecision.kind === "profile") {
+  for (const [name, value] of Object.entries(profileDecision.overrides)) {
+    process.env[name] = value;
   }
-  // Legacy (profile-less) bridge SUPABASE_* → VITE_* when VITE_* is empty/missing.
+} else {
+  // Dev-server only (serve): legacy SUPABASE_* → VITE_* bridge when VITE_* is empty/missing.
   // Vite only statically replaces import.meta.env.VITE_* into client chunks;
   // Vercel often has SUPABASE_* for SSR while VITE_* was unset → empty bake.
   const url = process.env["VITE_SUPABASE_URL"]?.trim();
@@ -37,7 +42,15 @@ import { loadEnvFileViewsSync } from "./src/lib/cloud/env-files.mjs";
   if (!key && process.env["SUPABASE_PUBLISHABLE_KEY"]?.trim()) {
     process.env["VITE_SUPABASE_PUBLISHABLE_KEY"] = process.env["SUPABASE_PUBLISHABLE_KEY"].trim();
   }
-})();
+}
+
+const buildProfileGate: Plugin = {
+  name: "mjc-build-profile-gate",
+  enforce: "pre",
+  config(_config: unknown, env: ConfigEnv) {
+    enforceProfileForViteCommand(profileDecision, env.command);
+  },
+};
 
 // Nitro vercel preset emits hashed client assets to .vercel/output/static (not Vite's dist).
 // vite-plugin-pwa defaults globDirectory/swDest to vite.build.outDir (dist), so we remap outDir
@@ -55,6 +68,7 @@ export default defineConfig({
   },
   vite: {
     plugins: [
+      buildProfileGate,
       VitePWA({
         registerType: "autoUpdate",
         injectRegister: null,

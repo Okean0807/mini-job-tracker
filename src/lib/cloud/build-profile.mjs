@@ -332,6 +332,24 @@ export function resolveViteBuildProfile(processEnv, fileViews) {
 }
 
 /**
+ * Fail-closed rule per Vite command (P1.1). Only the editor/dev server (`serve`) may run without
+ * a build profile. EVERY other command - `build` in any mode (production, development, custom),
+ * and any command value that is missing or unknown - requires a validated profile, so a direct
+ * `vite build`, `vite build --mode development` or a differently named script cannot bypass the
+ * gate. Called from a Vite plugin `config` hook, which receives the real command.
+ * @param {{ kind: "legacy" } | { kind: "profile", profile: string, overrides: Record<string, string> }} decision
+ * @param {unknown} command the Vite `ConfigEnv.command`
+ */
+export function enforceProfileForViteCommand(decision, command) {
+  if (command === "serve") return;
+  if (decision && decision.kind === "profile") return;
+  throw new Error(
+    "vite.config: this Vite command requires MJC_BUILD_PROFILE (public-local | cloud-enabled | d41-pilot); " +
+      "a build without a profile is refused (fail-closed). Only `vite dev` may run without it.",
+  );
+}
+
+/**
  * Human-readable failure text: codes and variable NAMES only.
  * @param {BuildProfileResult} result
  * @returns {string[]}
