@@ -4,6 +4,7 @@ import {
   BUILD_PROFILES,
   computeViteEnvOverrides,
   formatBuildProfileFailure,
+  resolveViteBuildProfile,
   supabaseRefFromUrl,
   validateBuildEnv,
   validateBuildEnvAcrossViews,
@@ -442,5 +443,67 @@ describe("validateBuildEnvAcrossViews (AF-1)", () => {
     expect(res.ok).toBe(false);
     expect(JSON.stringify(res)).not.toContain(URL_OK);
     expect(JSON.stringify(res)).not.toContain(SECRET);
+  });
+});
+
+describe("resolveViteBuildProfile (vite.config.ts decision)", () => {
+  it("no profile anywhere -> legacy mode (editor dev server keeps working, nothing enforced)", () => {
+    expect(resolveViteBuildProfile({}, [])).toEqual({ kind: "legacy" });
+    expect(resolveViteBuildProfile({ MJC_BUILD_PROFILE: "" }, [{ MJC_BUILD_PROFILE: "" }])).toEqual(
+      { kind: "legacy" },
+    );
+    expect(resolveViteBuildProfile({ MJC_BUILD_PROFILE: "   " }, [])).toEqual({ kind: "legacy" });
+    expect(
+      resolveViteBuildProfile({ SUPABASE_URL: URL_OK, CLOUD_SYNC_ENABLED: "true" }, []),
+    ).toEqual({ kind: "legacy" });
+  });
+  it("public-local: overrides force the baked flag to false and never bridge", () => {
+    expect(resolveViteBuildProfile(pub(), [])).toEqual({
+      kind: "profile",
+      profile: "public-local",
+      overrides: { VITE_CLOUD_SYNC_ENABLED: "false" },
+    });
+    expect(resolveViteBuildProfile({}, [{ MJC_BUILD_PROFILE: "public-local" }]).kind).toBe(
+      "profile",
+    );
+  });
+  it("cloud profile: flag true plus the SUPABASE_* bridge", () => {
+    const env = cloudEnv("cloud-enabled", {
+      VITE_SUPABASE_URL: undefined,
+      VITE_SUPABASE_PUBLISHABLE_KEY: undefined,
+      SUPABASE_URL: URL_OK,
+      SUPABASE_PUBLISHABLE_KEY: KEY_OK,
+    });
+    const d = resolveViteBuildProfile(env, []);
+    expect(d).toEqual({
+      kind: "profile",
+      profile: "cloud-enabled",
+      overrides: {
+        VITE_CLOUD_SYNC_ENABLED: "true",
+        VITE_SUPABASE_URL: URL_OK,
+        VITE_SUPABASE_PUBLISHABLE_KEY: KEY_OK,
+      },
+    });
+  });
+  it.each([
+    [pub({ CLOUD_SYNC_ENABLED: "true" })],
+    [pub({ VITE_SUPABASE_URL: URL_OK })],
+    [{ MJC_BUILD_PROFILE: "bogus" }],
+    [{ MJC_BUILD_PROFILE: " public-local" }],
+    [cloudEnv("cloud-enabled", { VITE_CLOUD_SYNC_ENABLED: "false" })],
+    [cloudEnv("d41-pilot", { MJC_DENIED_SUPABASE_REFS: REF })],
+  ] as Env[][])("an invalid explicit configuration throws with names only: %j", (env) => {
+    expect(() => resolveViteBuildProfile(env, [])).toThrowError(
+      /build profile check failed \(names only\)/,
+    );
+    try {
+      resolveViteBuildProfile(env, []);
+    } catch (e) {
+      const msg = String((e as Error).message);
+      for (const v of [URL_OK, KEY_OK, SECRET, REF]) expect(msg).not.toContain(v);
+    }
+  });
+  it("a risky .env file view throws for public-local even though process.env is clean", () => {
+    expect(() => resolveViteBuildProfile(pub(), [{ VITE_CLOUD_SYNC_ENABLED: "true" }])).toThrow();
   });
 });

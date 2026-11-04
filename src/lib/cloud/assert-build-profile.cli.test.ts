@@ -311,8 +311,7 @@ describe("compatibility entry points and wiring", () => {
   });
   it("vite.config.ts uses the shared validation and the profile-driven flag/bridge", () => {
     const vite = readFileSync(resolve(process.cwd(), "vite.config.ts"), "utf8");
-    expect(vite).toContain("validateBuildEnvAcrossViews");
-    expect(vite).toContain("computeViteEnvOverrides");
+    expect(vite).toContain("resolveViteBuildProfile");
     expect(vite).toContain("loadEnvFileViewsSync");
   });
   it("the gate runs without writing anything into the cwd", () => {

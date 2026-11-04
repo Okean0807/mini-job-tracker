@@ -22,3 +22,7 @@ export function computeViteEnvOverrides(
   result: BuildProfileResult,
 ): Record<string, string>;
 export function formatBuildProfileFailure(result: BuildProfileResult): string[];
+export function resolveViteBuildProfile(
+  processEnv: Record<string, unknown>,
+  fileViews: Record<string, unknown>[],
+): { kind: "legacy" } | { kind: "profile"; profile: string; overrides: Record<string, string> };

@@ -293,6 +293,33 @@ export function computeViteEnvOverrides(env, result) {
 }
 
 /**
+ * Decision used by vite.config.ts. With an explicit MJC_BUILD_PROFILE (process.env or any .env
+ * file) the full validation runs and an invalid configuration THROWS (names only); the result
+ * carries the process.env overrides to apply. Without a profile (editor `vite dev`) nothing is
+ * enforced here (the `build` script's gate stops builds without a profile) and the legacy
+ * SUPABASE_* -> VITE_* bridge applies.
+ * @param {Record<string, unknown>} processEnv
+ * @param {Record<string, unknown>[]} fileViews
+ * @returns {{ kind: "legacy" } | { kind: "profile", profile: string, overrides: Record<string, string> }}
+ */
+export function resolveViteBuildProfile(processEnv, fileViews) {
+  const merged = Object.assign({}, ...fileViews, processEnv);
+  const declared = merged["MJC_BUILD_PROFILE"];
+  if (typeof declared !== "string" || declared.trim() === "") return { kind: "legacy" };
+  const result = validateBuildEnvAcrossViews(processEnv, fileViews);
+  if (!result.ok) {
+    throw new Error(
+      `vite.config: build profile check failed (names only): ${formatBuildProfileFailure(result).join("; ")}`,
+    );
+  }
+  return {
+    kind: "profile",
+    profile: String(result.profile),
+    overrides: computeViteEnvOverrides(merged, result),
+  };
+}
+
+/**
  * Human-readable failure text: codes and variable NAMES only.
  * @param {BuildProfileResult} result
  * @returns {string[]}

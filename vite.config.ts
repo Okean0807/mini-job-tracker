@@ -10,11 +10,7 @@
 // expected; see docs/VERCEL_PREVIEW.md.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 import { VitePWA } from "vite-plugin-pwa";
-import {
-  computeViteEnvOverrides,
-  formatBuildProfileFailure,
-  validateBuildEnvAcrossViews,
-} from "./src/lib/cloud/build-profile.mjs";
+import { resolveViteBuildProfile } from "./src/lib/cloud/build-profile.mjs";
 import { loadEnvFileViewsSync } from "./src/lib/cloud/env-files.mjs";
 
 // Build profile (P1). With an explicit MJC_BUILD_PROFILE the same validation as
@@ -25,19 +21,9 @@ import { loadEnvFileViewsSync } from "./src/lib/cloud/env-files.mjs";
 // Without MJC_BUILD_PROFILE (e.g. `vite dev` in the editor) nothing is enforced here - the
 // `build` script's assert step stops builds without a profile - and the legacy bridge applies.
 (() => {
-  const explicitProfile = process.env["MJC_BUILD_PROFILE"]?.trim();
-  if (explicitProfile) {
-    const fileViews = loadEnvFileViewsSync(process.cwd());
-    const merged = Object.assign({}, ...fileViews, process.env);
-    const result = validateBuildEnvAcrossViews(process.env, fileViews);
-    if (!result.ok) {
-      throw new Error(
-        `vite.config: build profile check failed (names only): ${formatBuildProfileFailure(result).join("; ")}`,
-      );
-    }
-    for (const [name, value] of Object.entries(computeViteEnvOverrides(merged, result))) {
-      process.env[name] = value;
-    }
+  const decision = resolveViteBuildProfile(process.env, loadEnvFileViewsSync(process.cwd()));
+  if (decision.kind === "profile") {
+    for (const [name, value] of Object.entries(decision.overrides)) process.env[name] = value;
     return;
   }
   // Legacy (profile-less) bridge SUPABASE_* → VITE_* when VITE_* is empty/missing.
