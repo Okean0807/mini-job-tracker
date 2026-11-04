@@ -309,10 +309,13 @@ describe("compatibility entry points and wiring", () => {
     expect(pkg.scripts["assert:build-profile"]).toBe("node scripts/assert-build-profile.mjs");
     expect(pkg.scripts["assert:vite-supabase-env"]).toBe("node scripts/assert-build-profile.mjs");
   });
-  it("vite.config.ts uses the shared validation and the profile-driven flag/bridge", () => {
+  it("vite.config.ts calls the shared resolver with process.env and the .env file views, and applies its overrides", () => {
     const vite = readFileSync(resolve(process.cwd(), "vite.config.ts"), "utf8");
-    expect(vite).toContain("resolveViteBuildProfile");
-    expect(vite).toContain("loadEnvFileViewsSync");
+    expect(vite).toContain(
+      "resolveViteBuildProfile(process.env, loadEnvFileViewsSync(process.cwd()))",
+    );
+    expect(vite).toContain('decision.kind === "profile"');
+    expect(vite).toContain("process.env[name] = value");
   });
   it("the gate runs without writing anything into the cwd", () => {
     const dir = mkdtempSync(join(tmpdir(), "mjc-p1-cwd-"));
