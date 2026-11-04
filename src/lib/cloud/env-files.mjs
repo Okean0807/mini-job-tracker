@@ -6,6 +6,10 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
+/** @typedef {{ existsSync: (p: string) => boolean, readdirSync: (p: string) => string[], readFileSync: (p: string, enc: "utf8") => string }} FsLike */
+/** @type {FsLike} */
+const defaultFs = { existsSync, readdirSync, readFileSync };
+
 /** @param {string} text */
 export function parseEnvText(text) {
   /** @type {Record<string, string>} */
@@ -31,11 +35,13 @@ export function parseEnvText(text) {
 /**
  * The `.env` and `.env.*` files in `root` (except `*.example` templates) in a stable order.
  * @param {string} root
+ * @param {FsLike} fs
  * @returns {string[]}
  */
-function envFileNames(root) {
-  if (!existsSync(root)) return [];
-  return readdirSync(root)
+function envFileNames(root, fs) {
+  if (!fs.existsSync(root)) return [];
+  return fs
+    .readdirSync(root)
     .filter((n) => n === ".env" || (n.startsWith(".env.") && !n.endsWith(".example")))
     .sort();
 }
@@ -44,14 +50,15 @@ function envFileNames(root) {
  * One object per env file (no merging) - lets the public-local gate reject a risky value in ANY
  * file even if a higher-priority file would override it for one particular Vite mode.
  * @param {string} root
+ * @param {FsLike} [fs] injectable for tests
  * @returns {Record<string, string>[]}
  */
-export function loadEnvFileViewsSync(root) {
+export function loadEnvFileViewsSync(root, fs = defaultFs) {
   /** @type {Record<string, string>[]} */
   const views = [];
-  for (const n of envFileNames(root)) {
+  for (const n of envFileNames(root, fs)) {
     try {
-      views.push(parseEnvText(readFileSync(join(root, n), "utf8")));
+      views.push(parseEnvText(String(fs.readFileSync(join(root, n), "utf8"))));
     } catch {
       /* unreadable file or directory: ignore (Vite would fail on its own) */
     }
@@ -62,8 +69,9 @@ export function loadEnvFileViewsSync(root) {
 /**
  * All env files merged in a stable order (later names win).
  * @param {string} root
+ * @param {FsLike} [fs] injectable for tests
  * @returns {Record<string, string>}
  */
-export function loadEnvFilesSync(root) {
-  return Object.assign({}, ...loadEnvFileViewsSync(root));
+export function loadEnvFilesSync(root, fs = defaultFs) {
+  return Object.assign({}, ...loadEnvFileViewsSync(root, fs));
 }
