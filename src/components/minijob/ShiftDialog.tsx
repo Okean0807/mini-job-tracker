@@ -1,3 +1,4 @@
+import { isGpsCaptureAvailable } from "@/lib/cloud/cloud-mode";
 import {
   CalendarDays,
   Camera,
@@ -174,6 +175,8 @@ export function ShiftDialog({
   const [zip, setZip] = useState("");
   const [city, setCity] = useState("");
   const [gpsBusy, setGpsBusy] = useState(false);
+  // Public Local: no GPS capture and no address lookup (Phase D1). Existing coordinates stay visible, read-only.
+  const gpsCapture = isGpsCaptureAvailable();
   // Position waiting for the user's decision on the (third-party) address lookup.
   const [geoPrompt, setGeoPrompt] = useState<{ lat: number; lng: number } | null>(null);
   const geoPromptRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -639,7 +642,7 @@ export function ShiftDialog({
     const pos = geoPromptRef.current;
     geoPromptRef.current = null;
     setGeoPrompt(null);
-    if (!pos) return;
+    if (!pos || !gpsCapture) return;
     setGpsBusy(true);
     try {
       const previous = { street, houseNo, zip, city };
@@ -1586,7 +1589,7 @@ export function ShiftDialog({
                     </div>
                   ) : null}
 
-                  {isWork ? (
+                  {isWork && (gpsCapture || gps) ? (
                     <div className="grid gap-2" data-testid="worklog-geo-controls">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-sm font-medium">{t("worklog.gps")}</p>
@@ -1605,29 +1608,31 @@ export function ShiftDialog({
                         </p>
                       ) : null}
                       <div className="flex gap-2">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          className="h-11 bg-card px-3.5"
-                          disabled={gpsBusy}
-                          onClick={async () => {
-                            setGpsBusy(true);
-                            try {
-                              const pos = await currentPosition();
-                              setGps(pos);
-                              // The address lookup sends the coordinates to a third party
-                              // (Nominatim): ask the user first; declining keeps the GPS only.
-                              promptGeoLookup(pos);
-                            } catch {
-                              toast.error(t("worklog.gpsError"));
-                            } finally {
-                              setGpsBusy(false);
-                            }
-                          }}
-                        >
-                          <MapPin className="size-4" />
-                          {gpsBusy ? t("worklog.gpsLookingUp") : t("worklog.gpsAdd")}
-                        </Button>
+                        {gpsCapture ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="h-11 bg-card px-3.5"
+                            disabled={gpsBusy}
+                            onClick={async () => {
+                              setGpsBusy(true);
+                              try {
+                                const pos = await currentPosition();
+                                setGps(pos);
+                                // The address lookup sends the coordinates to a third party
+                                // (Nominatim): ask the user first; declining keeps the GPS only.
+                                promptGeoLookup(pos);
+                              } catch {
+                                toast.error(t("worklog.gpsError"));
+                              } finally {
+                                setGpsBusy(false);
+                              }
+                            }}
+                          >
+                            <MapPin className="size-4" />
+                            {gpsBusy ? t("worklog.gpsLookingUp") : t("worklog.gpsAdd")}
+                          </Button>
+                        ) : null}
                         {gps ? (
                           <Button
                             type="button"
@@ -1683,7 +1688,7 @@ export function ShiftDialog({
       </Dialog>
 
       <AlertDialog
-        open={geoPrompt !== null}
+        open={gpsCapture && geoPrompt !== null}
         onOpenChange={(next) => {
           if (!next) declineGeoLookup();
         }}

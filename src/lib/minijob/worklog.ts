@@ -1,6 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
+import { GpsCaptureUnavailableError, isGpsCaptureAvailable } from "@/lib/cloud/cloud-mode";
 import { t, type TFunction } from "@/lib/i18n";
 import { td, DOCUMENT_LOCALE } from "./document-i18n";
 
@@ -68,6 +69,8 @@ export async function compressPhoto(file: File, max = 900, quality = 0.6): Promi
 }
 
 export async function currentPosition(): Promise<{ lat: number; lng: number }> {
+  // Public Local: refuse BEFORE the browser's Geolocation API is touched (no permission prompt, no read).
+  if (!isGpsCaptureAvailable()) throw new GpsCaptureUnavailableError("geolocation");
   return new Promise((resolve, reject) => {
     if (!("geolocation" in navigator)) {
       reject(new Error("unsupported"));

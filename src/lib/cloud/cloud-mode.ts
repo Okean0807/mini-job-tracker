@@ -17,6 +17,23 @@ export function isPublicLocalBuild(): boolean {
   return !isCloudMode();
 }
 
+/**
+ * Phase D1 (GPS privacy): capturing the device position and turning it into an address (reverse geocoding
+ * through a third-party service) exists only in builds with the cloud flag ON. Public Local never asks the
+ * browser for the position and never sends coordinates anywhere. Same single decision point as the cloud
+ * itself - there is no second profile mechanism.
+ */
+export function isGpsCaptureAvailable(): boolean {
+  return isCloudMode();
+}
+
+export class GpsCaptureUnavailableError extends Error {
+  constructor(feature: string) {
+    super(`gps-unavailable: ${feature} is not available in this build`);
+    this.name = "GpsCaptureUnavailableError";
+  }
+}
+
 export class CloudDisabledError extends Error {
   constructor(feature: string) {
     super(`cloud-disabled: ${feature} is not available in this build`);

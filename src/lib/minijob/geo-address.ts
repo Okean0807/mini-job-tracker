@@ -5,6 +5,8 @@
  * geocode fails or is too inaccurate — GPS stays in `shift.gps` only.
  */
 
+import { isGpsCaptureAvailable } from "@/lib/cloud/cloud-mode";
+
 export interface GermanAddress {
   street?: string;
   houseNo?: string;
@@ -121,6 +123,8 @@ export async function reverseGeocodeGerman(
   lng: number,
   fetchImpl: typeof fetch = fetch,
 ): Promise<GermanAddress | null> {
+  // Public Local: refuse BEFORE any request is built - coordinates never leave the device.
+  if (!isGpsCaptureAvailable()) return null;
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
 
