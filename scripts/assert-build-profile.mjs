@@ -26,7 +26,11 @@ if (!result.ok) {
     "assert-build-profile: FAIL - build stopped (names only, values are never printed):",
   );
   for (const line of formatBuildProfileFailure(result)) console.error(`  - ${line}`);
-  console.error("Set MJC_BUILD_PROFILE to exactly one of: public-local, cloud-enabled, d41-pilot.");
+  if (result.errors.some((e) => e.code === "PROFILE_MISSING" || e.code === "PROFILE_UNKNOWN")) {
+    console.error(
+      "Set MJC_BUILD_PROFILE to exactly one of: public-local, cloud-enabled, d41-pilot.",
+    );
+  }
   process.exit(1);
 }
 

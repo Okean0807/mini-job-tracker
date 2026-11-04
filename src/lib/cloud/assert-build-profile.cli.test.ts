@@ -129,6 +129,15 @@ describe("build gate - profile selection (PRT-009)", () => {
   });
 });
 
+describe("build gate - messages", () => {
+  it("the profile hint is printed only for profile errors", () => {
+    expect(gate({}).stderr).toContain("Set MJC_BUILD_PROFILE to exactly one of");
+    const other = gate({ MJC_BUILD_PROFILE: "public-local", CLOUD_SYNC_ENABLED: "true" });
+    expect(other.code).toBe(1);
+    expect(other.stderr).not.toContain("Set MJC_BUILD_PROFILE to exactly one of");
+  });
+});
+
 describe("build gate - cloud-enabled / d41-pilot (PRT-010, PRT-011, PRT-012, PRT-014, PRT-138..141)", () => {
   it.each(["cloud-enabled", "d41-pilot"])(
     "%s with correct synthetic values -> exit 0, no values printed (PRT-014)",
