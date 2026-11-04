@@ -79,6 +79,10 @@ describe("build runner argument policy (pure)", () => {
     [["--config", "alt.mjs", "--mode", "development"]],
     [["--mode", "development", "./x"]],
     [["--configLoader", "runner"]],
+    [["--modedevelopment"]],
+    [["--mode-development"]],
+    [["--modes=development"]],
+    [["--mode:development"]],
     [["--Config", "alt.mjs"]],
     [[""]],
   ])("refuses %j", (argv) => {
