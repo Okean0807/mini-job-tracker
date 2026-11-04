@@ -10,11 +10,38 @@
 // expected; see docs/VERCEL_PREVIEW.md.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 import { VitePWA } from "vite-plugin-pwa";
+import {
+  computeViteEnvOverrides,
+  formatBuildProfileFailure,
+  validateBuildEnv,
+} from "./src/lib/cloud/build-profile.mjs";
+import { loadEnvFilesSync } from "./src/lib/cloud/env-files.mjs";
 
-// Bridge SUPABASE_* → VITE_* at config load when VITE_* is empty/missing.
-// Vite only statically replaces import.meta.env.VITE_* into client chunks;
-// Vercel often has SUPABASE_* for SSR while VITE_* was unset → empty bake.
+// Build profile (P1). With an explicit MJC_BUILD_PROFILE the same validation as
+// scripts/assert-build-profile.mjs runs here too (defence in depth if `vite build` is called
+// directly): an invalid configuration aborts with variable NAMES only. The profile decides the
+// VITE_CLOUD_SYNC_ENABLED value baked into the bundle ("false" for public-local, "true" for the
+// cloud profiles) and whether SUPABASE_* is bridged to VITE_* (never in public-local).
+// Without MJC_BUILD_PROFILE (e.g. `vite dev` in the editor) nothing is enforced here - the
+// `build` script's assert step stops builds without a profile - and the legacy bridge applies.
 (() => {
+  const explicitProfile = process.env["MJC_BUILD_PROFILE"]?.trim();
+  if (explicitProfile) {
+    const merged = { ...loadEnvFilesSync(process.cwd()), ...process.env };
+    const result = validateBuildEnv(merged);
+    if (!result.ok) {
+      throw new Error(
+        `vite.config: build profile check failed (names only): ${formatBuildProfileFailure(result).join("; ")}`,
+      );
+    }
+    for (const [name, value] of Object.entries(computeViteEnvOverrides(merged, result))) {
+      process.env[name] = value;
+    }
+    return;
+  }
+  // Legacy (profile-less) bridge SUPABASE_* → VITE_* when VITE_* is empty/missing.
+  // Vite only statically replaces import.meta.env.VITE_* into client chunks;
+  // Vercel often has SUPABASE_* for SSR while VITE_* was unset → empty bake.
   const url = process.env["VITE_SUPABASE_URL"]?.trim();
   if (!url && process.env["SUPABASE_URL"]?.trim()) {
     process.env["VITE_SUPABASE_URL"] = process.env["SUPABASE_URL"].trim();
