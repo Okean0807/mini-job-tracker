@@ -145,6 +145,12 @@ describe("Public Local (cloud flag OFF): no GPS capture", () => {
       expect(document.body.textContent).not.toMatch(/Nominatim|Adresse aus Standort/);
     }
   });
+  it("the collapsed 'more details' hint no longer advertises a location", () => {
+    openEditor(null);
+    expect(need('[data-testid="entry-more-summary"]').textContent).toBe(
+      "Überstunden, Fotos, Notiz",
+    );
+  });
   it("opening, expanding, editing and saving the form never touches the Geolocation API or the network", () => {
     openEditor("s-nogps", "2026-09-25");
     expandAll();
@@ -319,6 +325,12 @@ describe("cloud-enabled / d41-pilot (cloud flag ON): behaviour unchanged", () =>
     );
     expect(need<HTMLInputElement>("#strasse").value).toBe("Unter den Linden");
     expect(need<HTMLInputElement>("#ort").value).toBe("Berlin");
+  });
+  it("the collapsed 'more details' hint still mentions the location", () => {
+    openEditor(null);
+    expect(need('[data-testid="entry-more-summary"]').textContent).toBe(
+      "Überstunden, Fotos, Standort, Notiz",
+    );
   });
   it("existing coordinates keep the remove button next to the capture button", () => {
     openEditor("s-addr");

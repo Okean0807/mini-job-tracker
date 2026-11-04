@@ -1445,7 +1445,9 @@ export function ShiftDialog({
                     className="block truncate text-xs text-muted-foreground"
                     data-testid="entry-more-summary"
                   >
-                    {extrasSummary.length > 0 ? extrasSummary.join(" · ") : t("entry.extrasEmpty")}
+                    {extrasSummary.length > 0
+                      ? extrasSummary.join(" · ")
+                      : t(gpsCapture ? "entry.extrasEmpty" : "entry.extrasEmptyNoGps")}
                   </span>
                 </span>
                 <ChevronDown
