@@ -44,6 +44,8 @@ export const docsDict: Bundle = {
     "doc.allCategories": "Alle Kategorien",
     "doc.source.generated": "Export",
     "doc.source.upload": "Upload",
+    "doc.localOnlyNotice":
+      "Diese Version speichert alles lokal auf deinem Gerät. Das Hochladen eigener Dateien ist hier nicht verfügbar; Exporte der App bleiben lokal sichtbar.",
     "doc.signedOutUploads": "Für Cloud-Uploads bitte anmelden. App-Exporte bleiben lokal sichtbar.",
 
     "doc.tags": "Schlagwörter",
@@ -111,6 +113,8 @@ export const docsDict: Bundle = {
     "doc.allCategories": "All categories",
     "doc.source.generated": "Export",
     "doc.source.upload": "Upload",
+    "doc.localOnlyNotice":
+      "This version keeps everything on your device. Uploading your own files is not available here; app exports stay visible locally.",
     "doc.signedOutUploads": "Sign in for cloud uploads. App exports stay visible locally.",
 
     "doc.tags": "Tags",
@@ -178,6 +182,8 @@ export const docsDict: Bundle = {
     "doc.allCategories": "Все категории",
     "doc.source.generated": "Экспорт",
     "doc.source.upload": "Загрузка",
+    "doc.localOnlyNotice":
+      "Эта версия хранит всё на вашем устройстве. Загрузка собственных файлов здесь недоступна; экспорты приложения остаются видны локально.",
     "doc.signedOutUploads": "Войдите для облачных загрузок. Экспорты приложения видны локально.",
 
     "doc.tags": "Теги",
@@ -245,6 +251,8 @@ export const docsDict: Bundle = {
     "doc.allCategories": "Tüm kategoriler",
     "doc.source.generated": "Dışa aktarım",
     "doc.source.upload": "Yükleme",
+    "doc.localOnlyNotice":
+      "Bu sürüm her şeyi cihazınızda saklar. Kendi dosyalarınızı yükleme burada kullanılamaz; uygulama dışa aktarımları yerelde görünür.",
     "doc.signedOutUploads": "Bulut yüklemeleri için giriş yapın. Uygulama dışa aktarımları yerelde görünür.",
 
     "doc.tags": "Etiketler",
@@ -312,6 +320,8 @@ export const docsDict: Bundle = {
     "doc.allCategories": "Wszystkie kategorie",
     "doc.source.generated": "Eksport",
     "doc.source.upload": "Przesłany",
+    "doc.localOnlyNotice":
+      "Ta wersja przechowuje wszystko na Twoim urządzeniu. Wgrywanie własnych plików nie jest tu dostępne; eksporty aplikacji są widoczne lokalnie.",
     "doc.signedOutUploads": "Zaloguj się, aby przesyłać do chmury. Eksporty aplikacji są widoczne lokalnie.",
 
     "doc.tags": "Tagi",

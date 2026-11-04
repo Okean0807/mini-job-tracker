@@ -3,6 +3,7 @@ import { Download, FileText, FolderPlus, Pencil, Trash2, Upload } from "lucide-r
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuthSession } from "@/hooks/use-auth-session";
+import { isCloudMode } from "@/lib/cloud/cloud-mode";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 
@@ -72,6 +73,7 @@ function DocumentsPage() {
   const { t } = useT();
   const { jobs } = useAppData();
   const { status: authStatus, session } = useAuthSession();
+  const cloudMode = isCloudMode();
   const [docs, setDocs] = useState<DocumentRow[]>([]);
   const [generated, setGenerated] = useState<GeneratedDocument[]>([]);
   const [folders, setFolders] = useState<FolderRow[]>([]);
@@ -258,7 +260,7 @@ function DocumentsPage() {
         <>
           {authStatus === "signed_out" ? (
             <div className="mt-4 rounded-2xl border border-dashed p-4 text-center text-sm text-muted-foreground">
-              {t("doc.signedOutUploads")}
+              {cloudMode ? t("doc.signedOutUploads") : t("doc.localOnlyNotice")}
             </div>
           ) : null}
 
@@ -450,7 +452,9 @@ function DocumentsPage() {
                             {t(`doc.cat.${doc.category}`)} · {t("doc.source.generated")} ·{" "}
                             {formatSize(doc.size)}
                             {createdDay ? ` · ${formatDate(createdDay)}` : ""}
-                            {doc.payloadStatus === "downloaded_only" ? ` · ${t("doc.downloadedOnly")}` : ""}
+                            {doc.payloadStatus === "downloaded_only"
+                              ? ` · ${t("doc.downloadedOnly")}`
+                              : ""}
                           </p>
                         </button>
                         <Button

@@ -2,6 +2,7 @@ import { ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { useAuthSession } from "@/hooks/use-auth-session";
+import { isCloudMode } from "@/lib/cloud/cloud-mode";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 
@@ -41,6 +42,7 @@ import {
   WIZARD_STEP_COUNT,
   WIZARD_STEP_INDEX,
   canAdvancePastCloud,
+  neighbourStep,
   oauthResumeStep,
   resolveWizardResumeStep,
 } from "@/lib/minijob/wizard-flow";
@@ -67,6 +69,8 @@ export function OnboardingWizard({ settings, onDone }: Props) {
   const [mode, setMode] = useState<WorkMode>(draft?.mode ?? "flex");
 
   const localDemoMode = settings.localDemoMode === true;
+  // Public Local build: no Cloud/Google step, nobody has to register - data lives in the guest scope.
+  const cloudAvailable = isCloudMode();
   const STEPS = [
     t("wiz.step.welcome"),
     t("wiz.step.cloud"),
@@ -77,12 +81,18 @@ export function OnboardingWizard({ settings, onDone }: Props) {
     t("wiz.step.firstJob"),
   ];
 
+  // Steps shown to the user (the Cloud step is omitted in a Public Local build).
+  const shownSteps = STEPS.map((label, i) => ({ label, i })).filter(
+    ({ i }) => cloudAvailable || i !== WIZARD_STEP_INDEX.cloud,
+  );
+
   // After Google: Cloud → Work Mode. Signed-out: cannot stay past Cloud (unless demo).
   useEffect(() => {
     if (authStatus === "loading") return;
     setStep((current) => {
       const resolved = resolveWizardResumeStep(current, authStatus, {
         localDemoMode,
+        cloudAvailable,
       });
       if (resolved !== current) {
         persistOnboardingProgress({
@@ -95,7 +105,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
       }
       return resolved;
     });
-  }, [authStatus, mode, localDemoMode]);
+  }, [authStatus, mode, localDemoMode, cloudAvailable]);
   const [country, setCountry] = useState(settings.country);
   const [bundesland, setBundesland] = useState(settings.bundesland);
   const [rate, setRate] = useState(String(settings.defaultRate));
@@ -148,11 +158,14 @@ export function OnboardingWizard({ settings, onDone }: Props) {
 
   function goNext() {
     // Google required before later steps — unless local demo mode.
-    if (step === WIZARD_STEP_INDEX.cloud && !canAdvancePastCloud(authStatus, localDemoMode)) {
+    if (
+      step === WIZARD_STEP_INDEX.cloud &&
+      !canAdvancePastCloud(authStatus, localDemoMode, cloudAvailable)
+    ) {
       toast.error(t("wiz.cloud.required"));
       return;
     }
-    const next = Math.min(step + 1, STEPS.length - 1);
+    const next = neighbourStep(step, 1, cloudAvailable);
     persistProgress(next);
     setStep(next);
   }
@@ -172,7 +185,7 @@ export function OnboardingWizard({ settings, onDone }: Props) {
   }
 
   function goBack() {
-    const prev = Math.max(step - 1, 0);
+    const prev = neighbourStep(step, -1, cloudAvailable);
     // Keep all entered data; only move the index.
     persistProgress(prev);
     setStep(prev);
@@ -260,13 +273,17 @@ export function OnboardingWizard({ settings, onDone }: Props) {
       <div className="mx-auto flex min-h-[100dvh] max-w-lg flex-col px-4 pt-6 pb-0">
         <header className="shrink-0">
           <p className="text-xs font-medium text-muted-foreground">
-            {t("wiz.stepOf", { current: step + 1, total: STEPS.length, step: STEPS[step] ?? "" })}
+            {t("wiz.stepOf", {
+              current: shownSteps.findIndex((x) => x.i === step) + 1,
+              total: shownSteps.length,
+              step: STEPS[step] ?? "",
+            })}
           </p>
           <h1 className="mt-1 text-2xl font-extrabold tracking-tight">
             {step === WIZARD_STEP_INDEX.welcome ? t("wiz.welcome.title") : t("wiz.title")}
           </h1>
           <div className="mt-3 flex gap-1" aria-hidden>
-            {STEPS.map((s, i) => (
+            {shownSteps.map(({ label: s, i }) => (
               <span
                 key={`${s}-${i}`}
                 className={cn("h-1.5 flex-1 rounded-full", i <= step ? "bg-primary" : "bg-muted")}
@@ -285,7 +302,10 @@ export function OnboardingWizard({ settings, onDone }: Props) {
 
         <div className="mt-6 flex-1 space-y-4 pb-4">
           {step === WIZARD_STEP_INDEX.welcome ? (
-            <Card title={t("wiz.welcome.cardTitle")} hint={t("wiz.welcome.body")}>
+            <Card
+              title={t("wiz.welcome.cardTitle")}
+              hint={cloudAvailable ? t("wiz.welcome.body") : t("wiz.welcome.bodyLocal")}
+            >
               <p className="text-sm font-semibold">{t("wiz.language.select")}</p>
               <FieldHelp>{t("wiz.language.hint")}</FieldHelp>
               {LANGUAGES.map((l) => (

@@ -28,7 +28,8 @@
 import { useSyncExternalStore } from "react";
 
 import { t } from "@/lib/i18n";
-import { supabase } from "@/integrations/supabase/client";
+import { cloudClient } from "@/integrations/supabase/guarded-client";
+import { isCloudMode } from "@/lib/cloud/cloud-mode";
 
 import { markBackup } from "./notify";
 
@@ -212,6 +213,7 @@ function saveMeta(patch: Partial<SyncMeta>) {
 
 /** Mark that the onboarding wizard just created a job — first sync should restore cloud. */
 export function markWizardPendingFirstSync(): void {
+  if (!isCloudMode()) return; // no cloud, no "first sync" to wait for
   saveMeta({ wizardPendingFirstSync: true });
 }
 
@@ -557,7 +559,7 @@ async function push(
   // Vor dem await festhalten: wohin die Metadaten gehören.
   const snap = snapshotOwner();
   const updatedAt = new Date();
-  const { error } = await supabase.from("backups").upsert({
+  const { error } = await cloudClient().from("backups").upsert({
     user_id: userId,
     payload: payloadOf(data) as never,
     updated_at: updatedAt.toISOString(),
@@ -593,7 +595,7 @@ async function push(
 
 async function fetchRemote(): Promise<{ payload: AppData; updatedAt: number } | null> {
   if (!userId) throw new Error(t("error.notSignedIn"));
-  const { data, error } = await supabase
+  const { data, error } = await cloudClient()
     .from("backups")
     .select("payload, updated_at")
     .eq("user_id", userId)
@@ -1062,7 +1064,7 @@ export async function performSignOut(): Promise<{
 }> {
   let signOutError: unknown = null;
   try {
-    const { error } = await supabase.auth.signOut();
+    const { error } = await cloudClient().auth.signOut();
     signOutError = error ?? null;
   } catch (error) {
     signOutError = error;
@@ -1072,7 +1074,7 @@ export async function performSignOut(): Promise<{
     // SIGNED_OUT). Maßgeblich ist daher der tatsächliche Session-Stand.
     let stillSignedIn = true;
     try {
-      const { data } = await supabase.auth.getSession();
+      const { data } = await cloudClient().auth.getSession();
       stillSignedIn = Boolean(data.session);
     } catch {
       stillSignedIn = true;
@@ -1171,6 +1173,9 @@ let initialized = false;
 
 export function initCloudSync() {
   if (initialized || typeof window === "undefined") return;
+  // Public Local build: cloud sync does not exist. No auth listener, no session restore, no backup
+  // scheduling, no online/offline retry hooks - nothing may reach the Supabase client.
+  if (!isCloudMode()) return;
   initialized = true;
 
   loadMetaForActiveScope();
@@ -1201,7 +1206,7 @@ export function initCloudSync() {
   }
 
   try {
-    void supabase.auth
+    void cloudClient().auth
       .getSession()
       .then(({ data, error }) => {
         if (data.session) {
@@ -1222,7 +1227,7 @@ export function initCloudSync() {
         console.error("[cloud] getSession failed; cloud sync disabled", error);
       });
 
-    supabase.auth.onAuthStateChange((event, session) => {
+    cloudClient().auth.onAuthStateChange((event, session) => {
       const nextId = session?.user.id ?? null;
       if (nextId) bindSession(nextId);
       else {

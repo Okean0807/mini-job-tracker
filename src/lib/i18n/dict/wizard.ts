@@ -19,6 +19,8 @@ export const wizard: Bundle = {
 
     "wiz.welcome.title": "Willkommen bei MiniJob Companion",
     "wiz.welcome.cardTitle": "Kurz erklärt",
+    "wiz.welcome.bodyLocal":
+      "Erfasse Schichten, behalte Verdienst und Minijob-Grenze im Blick – alle Daten bleiben auf diesem Gerät.",
     "wiz.welcome.body":
       "Erfasse Schichten, behalte Verdienst und Minijob-Grenze im Blick – lokal und mit optionalem Cloud-Backup.",
 
@@ -119,6 +121,8 @@ export const wizard: Bundle = {
 
     "wiz.welcome.title": "Welcome to MiniJob Companion",
     "wiz.welcome.cardTitle": "In short",
+    "wiz.welcome.bodyLocal":
+      "Log shifts, track earnings and the minijob limit – all data stays on this device.",
     "wiz.welcome.body":
       "Log shifts, track earnings and the minijob limit – locally, with optional cloud backup.",
 
@@ -219,6 +223,8 @@ export const wizard: Bundle = {
 
     "wiz.welcome.title": "Добро пожаловать в MiniJob Companion",
     "wiz.welcome.cardTitle": "Кратко",
+    "wiz.welcome.bodyLocal":
+      "Записывайте смены, следите за заработком и лимитом миниджоба – все данные остаются на этом устройстве.",
     "wiz.welcome.body":
       "Учитывайте смены, доход и лимит миниджоба — локально и с облачным резервом.",
 
@@ -319,6 +325,8 @@ export const wizard: Bundle = {
 
     "wiz.welcome.title": "MiniJob Companion'a hoş geldin",
     "wiz.welcome.cardTitle": "Kısaca",
+    "wiz.welcome.bodyLocal":
+      "Vardiyaları kaydedin, kazancı ve minijob limitini takip edin – tüm veriler bu cihazda kalır.",
     "wiz.welcome.body":
       "Vardiyaları kaydet, kazancı ve minijob limitini takip et – yerelde, isteğe bağlı bulut yedekle.",
 
@@ -419,6 +427,8 @@ export const wizard: Bundle = {
 
     "wiz.welcome.title": "Witamy w MiniJob Companion",
     "wiz.welcome.cardTitle": "W skrócie",
+    "wiz.welcome.bodyLocal":
+      "Rejestruj zmiany, śledź zarobki i limit minijob – wszystkie dane pozostają na tym urządzeniu.",
     "wiz.welcome.body":
       "Rejestruj zmiany, śledź zarobki i limit minijoba – lokalnie, z opcjonalną kopią w chmurze.",
 

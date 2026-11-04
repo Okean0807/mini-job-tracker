@@ -13,10 +13,10 @@ const srcPath = join(dirname(fileURLToPath(import.meta.url)), "auth-attacher.ts"
 const src = readFileSync(srcPath, "utf8");
 
 describe("attachSupabaseAuth soft-fail (auth-attacher.ts)", () => {
-  it("wraps supabase.auth.getSession in try/catch", () => {
+  it("wraps cloudClient().auth.getSession in try/catch", () => {
     expect(src).toMatch(/try\s*\{/);
     expect(src).toMatch(/catch\s*\(/);
-    expect(src).toMatch(/supabase\.auth\.getSession\(\)/);
+    expect(src).toMatch(/cloudClient\(\)\.auth\.getSession\(\)/);
     expect(src).toMatch(/\[auth-attacher\] Supabase auth unavailable/);
   });
 

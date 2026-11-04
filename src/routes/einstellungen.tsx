@@ -45,6 +45,7 @@ import {
   type BiometricCapability,
 } from "@/lib/minijob/biometric";
 import { setupBiometricInScope } from "@/lib/minijob/biometric-setup";
+import { isCloudMode } from "@/lib/cloud/cloud-mode";
 import { restoreLocalBackupFile } from "@/lib/minijob/local-backup-restore";
 import { syncActionErrorMessage } from "@/lib/minijob/sync-action-error";
 import { isValidPin, validatePinConfirm } from "@/lib/minijob/pin";
@@ -113,6 +114,8 @@ function SettingsPage() {
   const selectedUiMode: UiMode = previewMode ?? settings.uiMode;
   const previewPending = isPreviewPending(settings.uiMode, previewMode);
 
+  // Public Local build: no account, no cloud backup, no premium switch.
+  const cloudMode = isCloudMode();
   return (
     <main className="mx-auto max-w-lg px-4 pt-6">
       <h1 className="text-2xl font-extrabold tracking-tight">{t("set.title")}</h1>
@@ -128,9 +131,11 @@ function SettingsPage() {
           <TabsTrigger value="lohn" className="flex-1">
             {t("set.tabs.wage")}
           </TabsTrigger>
-          <TabsTrigger value="konto" className="flex-1">
-            {t("set.tabs.account")}
-          </TabsTrigger>
+          {cloudMode ? (
+            <TabsTrigger value="konto" className="flex-1">
+              {t("set.tabs.account")}
+            </TabsTrigger>
+          ) : null}
         </TabsList>
 
         <TabsContent value="allgemein" className="mt-4 space-y-4 pb-6">
@@ -484,6 +489,8 @@ function SettingsPage() {
           <DataMigration shiftCount={shifts.length} />
 
           <LocalBackup shiftCount={shifts.length} />
+          {/* Public Local build: no account tab - offer the on-device legacy import here (renders nothing when there is nothing to import). */}
+          {cloudMode ? null : <LocalDataImportSection />}
 
           <Section title={t("set.setup.title")}>
             <p className="text-xs text-muted-foreground">{t("set.setup.desc")}</p>
@@ -737,21 +744,23 @@ function SettingsPage() {
           />
         </TabsContent>
 
-        <TabsContent value="konto" className="mt-4 space-y-4 pb-6">
-          <Section title={t("premium.settingsTitle")}>
-            <ToggleRow
-              title={settings.premium ? t("premium.active") : t("premium.unlock")}
-              description={t("premium.settingsDesc")}
-              checked={settings.premium === true}
-              onChange={(v) => updateSettings({ premium: v })}
+        {cloudMode ? (
+          <TabsContent value="konto" className="mt-4 space-y-4 pb-6">
+            <Section title={t("premium.settingsTitle")}>
+              <ToggleRow
+                title={settings.premium ? t("premium.active") : t("premium.unlock")}
+                description={t("premium.settingsDesc")}
+                checked={settings.premium === true}
+                onChange={(v) => updateSettings({ premium: v })}
+              />
+            </Section>
+            <CloudSync
+              autoBackup={settings.autoBackup}
+              localDemoMode={settings.localDemoMode === true}
             />
-          </Section>
-          <CloudSync
-            autoBackup={settings.autoBackup}
-            localDemoMode={settings.localDemoMode === true}
-          />
-          <LocalDataImportSection />
-        </TabsContent>
+            <LocalDataImportSection />
+          </TabsContent>
+        ) : null}
       </Tabs>
 
       <div className="mb-6 mt-6" id="rechtliches">
@@ -1040,18 +1049,28 @@ function SyncStatusRow({ busy, setBusy }: { busy: boolean; setBusy: (value: bool
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs font-medium">{t("set.account.cloud.sync.status")}</p>
         <span className="text-[11px] text-muted-foreground">
-          {sync.lastSyncedAt ? new Date(sync.lastSyncedAt).toLocaleString() : t("set.account.cloud.sync.never")}
+          {sync.lastSyncedAt
+            ? new Date(sync.lastSyncedAt).toLocaleString()
+            : t("set.account.cloud.sync.never")}
         </span>
       </div>
       <p className={`mt-1 text-xs ${tone}`}>{label}</p>
       <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
         <div className="rounded-lg border bg-background/70 p-2">
           <div className="font-medium text-foreground">{t("set.account.cloud.sync.device")}</div>
-          <div>{sync.pending ? t("set.account.cloud.sync.localChanges") : t("set.account.cloud.sync.localReady")}</div>
+          <div>
+            {sync.pending
+              ? t("set.account.cloud.sync.localChanges")
+              : t("set.account.cloud.sync.localReady")}
+          </div>
         </div>
         <div className="rounded-lg border bg-background/70 p-2">
           <div className="font-medium text-foreground">{t("set.account.cloud.sync.cloud")}</div>
-          <div>{sync.lastSyncedAt ? t("set.account.cloud.sync.cloudAvailable") : t("set.account.cloud.sync.cloudUnknown")}</div>
+          <div>
+            {sync.lastSyncedAt
+              ? t("set.account.cloud.sync.cloudAvailable")
+              : t("set.account.cloud.sync.cloudUnknown")}
+          </div>
         </div>
       </div>
       {sync.status === "conflict" ? (
@@ -1159,14 +1178,28 @@ function CloudSync({
       <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
         <p className="text-xs font-medium">{t("set.account.cloud.backupStatus")}</p>
         <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-          <div><span className="text-muted-foreground">{t("set.account.cloud.lastBackup")}</span><br />
-            <span className="font-medium">{lastBackupAt ? new Date(lastBackupAt).toLocaleString() : t("set.account.cloud.notYet")}</span>
+          <div>
+            <span className="text-muted-foreground">{t("set.account.cloud.lastBackup")}</span>
+            <br />
+            <span className="font-medium">
+              {lastBackupAt
+                ? new Date(lastBackupAt).toLocaleString()
+                : t("set.account.cloud.notYet")}
+            </span>
           </div>
-          <div><span className="text-muted-foreground">{t("set.account.cloud.cloudCopy")}</span><br />
-            <span className="font-medium">{sync.lastSyncedAt ? t("set.account.cloud.available") : t("set.account.cloud.notAvailable")}</span>
+          <div>
+            <span className="text-muted-foreground">{t("set.account.cloud.cloudCopy")}</span>
+            <br />
+            <span className="font-medium">
+              {sync.lastSyncedAt
+                ? t("set.account.cloud.available")
+                : t("set.account.cloud.notAvailable")}
+            </span>
           </div>
         </div>
-        <p className="mt-2 text-[11px] text-muted-foreground">{t("set.account.cloud.backupWhat")}</p>
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          {t("set.account.cloud.backupWhat")}
+        </p>
       </div>
 
       <ToggleRow

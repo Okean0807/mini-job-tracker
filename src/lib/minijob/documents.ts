@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { cloudClient } from "@/integrations/supabase/guarded-client";
 
 import {
   GENERATED_DOC_CATEGORIES,
@@ -70,7 +70,7 @@ export function parseTags(input: string): string[] {
 }
 
 export async function listDocuments(): Promise<DocumentRow[]> {
-  const { data, error } = await supabase
+  const { data, error } = await cloudClient()
     .from("documents")
     .select(SELECT)
     .order("created_at", { ascending: false });
@@ -79,7 +79,7 @@ export async function listDocuments(): Promise<DocumentRow[]> {
 }
 
 export async function listFolders(): Promise<FolderRow[]> {
-  const { data, error } = await supabase
+  const { data, error } = await cloudClient()
     .from("document_folders")
     .select("id,name,color")
     .order("name", { ascending: true });
@@ -88,22 +88,22 @@ export async function listFolders(): Promise<FolderRow[]> {
 }
 
 export async function createFolder(name: string, color: string): Promise<void> {
-  const { data: auth } = await supabase.auth.getUser();
+  const { data: auth } = await cloudClient().auth.getUser();
   const userId = auth.user?.id;
   if (!userId) throw new Error("not-signed-in");
-  const { error } = await supabase
+  const { error } = await cloudClient()
     .from("document_folders")
     .insert({ user_id: userId, name, color });
   if (error) throw error;
 }
 
 export async function updateFolder(id: string, patch: Partial<FolderRow>): Promise<void> {
-  const { error } = await supabase.from("document_folders").update(patch).eq("id", id);
+  const { error } = await cloudClient().from("document_folders").update(patch).eq("id", id);
   if (error) throw error;
 }
 
 export async function deleteFolder(id: string): Promise<void> {
-  const { error } = await supabase.from("document_folders").delete().eq("id", id);
+  const { error } = await cloudClient().from("document_folders").delete().eq("id", id);
   if (error) throw error;
 }
 
@@ -137,7 +137,7 @@ export async function uploadDocument(
     throw new DocumentUploadError("file-type-not-allowed");
   }
 
-  const { data: auth } = await supabase.auth.getUser();
+  const { data: auth } = await cloudClient().auth.getUser();
   if (!auth.user?.id) throw new DocumentUploadError("not-signed-in");
 
   const body = new FormData();
@@ -148,7 +148,7 @@ export async function uploadDocument(
   if (meta.note) body.append("note", meta.note);
   body.append("tags", JSON.stringify(meta.tags ?? []));
 
-  const { error } = await supabase.functions.invoke("upload-document", { body });
+  const { error } = await cloudClient().functions.invoke("upload-document", { body });
   if (error) throw error;
 }
 
@@ -163,19 +163,19 @@ export async function updateDocument(
     note?: string | null;
   },
 ): Promise<void> {
-  const { error } = await supabase.from("documents").update(patch).eq("id", id);
+  const { error } = await cloudClient().from("documents").update(patch).eq("id", id);
   if (error) throw error;
 }
 
 export async function documentUrl(path: string): Promise<string> {
-  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 600);
+  const { data, error } = await cloudClient().storage.from(BUCKET).createSignedUrl(path, 600);
   if (error || !data) throw error ?? new Error("no-url");
   return data.signedUrl;
 }
 
 export async function deleteDocument(doc: DocumentRow): Promise<void> {
-  await supabase.storage.from(BUCKET).remove([doc.path]);
-  const { error } = await supabase.from("documents").delete().eq("id", doc.id);
+  await cloudClient().storage.from(BUCKET).remove([doc.path]);
+  const { error } = await cloudClient().from("documents").delete().eq("id", doc.id);
   if (error) throw error;
 }
 

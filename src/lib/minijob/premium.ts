@@ -1,10 +1,16 @@
+import { isPublicLocalBuild } from "@/lib/cloud/cloud-mode";
+
 import type { Settings } from "./types";
 
 /** Premium-Funktionen (Flag-basiert, noch ohne Bezahlung). */
 export type PremiumFeature = "multiJob" | "ai" | "cloud" | "excel" | "advancedReports" | "forecast";
 
+/**
+ * Public Local release: free, full functionality, no subscription and no unlock switch - every feature
+ * (several employers, Excel export, ...) is available. Cloud builds keep the flag-based gating.
+ */
 export function isPremium(settings: Pick<Settings, "premium">): boolean {
-  return settings.premium === true;
+  return isPublicLocalBuild() || settings.premium === true;
 }
 
 export function canUse(settings: Pick<Settings, "premium">, _feature: PremiumFeature): boolean {

@@ -45,7 +45,7 @@ describe("useAuthSession soft-fail (hook)", () => {
     expect(hook).toMatch(/try\s*\{/);
     expect(hook).toMatch(/catch\s*\(/);
     expect(hook).toMatch(/\[useAuthSession\] Supabase auth unavailable/);
-    expect(hook).toMatch(/bindAuthSession\(supabase,/);
+    expect(hook).toMatch(/bindAuthSession\(cloudClient\(\),/);
   });
 });
 

@@ -1,7 +1,9 @@
 import type { Session } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
 
-import { supabase } from "@/integrations/supabase/client";
+import { isCloudMode } from "@/lib/cloud/cloud-mode";
+
+import { cloudClient } from "@/integrations/supabase/guarded-client";
 import {
   authSessionStatus,
   bindAuthSession,
@@ -24,8 +26,15 @@ export function useAuthSession(): AuthSessionState {
   const [phase, setPhase] = useState<"pending" | "ready">("pending");
 
   useEffect(() => {
+    // Public Local build: there is no account. Never touch the Supabase client (no auth listener,
+    // no session restore, no token refresh) - the user is simply "signed out" on this device.
+    if (!isCloudMode()) {
+      setSession(null);
+      setPhase("ready");
+      return undefined;
+    }
     try {
-      return bindAuthSession(supabase, (next) => {
+      return bindAuthSession(cloudClient(), (next) => {
         setSession(next);
         setPhase("ready");
       });

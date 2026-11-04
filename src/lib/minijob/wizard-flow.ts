@@ -84,6 +84,11 @@ export function shouldShowOnboardingWizard(
 export type WizardResumeOptions = {
   /** When true, allow past Cloud without signed_in (local demo path). */
   localDemoMode?: boolean;
+  /**
+   * False in a Public Local build: there is no Cloud/Google step at all - nobody is ever asked to sign in
+   * and a draft that points at the Cloud step moves on to Work Mode. Default true (cloud builds).
+   */
+  cloudAvailable?: boolean;
 };
 
 /**
@@ -93,7 +98,9 @@ export type WizardResumeOptions = {
 export function canAdvancePastCloud(
   authStatus: WizardAuthStatus,
   localDemoMode?: boolean,
+  cloudAvailable: boolean = true,
 ): boolean {
+  if (!cloudAvailable) return true;
   if (localDemoMode === true) return true;
   return authStatus === "signed_in";
 }
@@ -119,6 +126,11 @@ export function resolveWizardResumeStep(
       : 0;
   const localDemo = options?.localDemoMode === true;
 
+  // Public Local: the Cloud step does not exist; never stay on it, never require a session.
+  if (options?.cloudAvailable === false) {
+    return step === WIZARD_STEP_INDEX.cloud ? WIZARD_STEP_INDEX.workMode : step;
+  }
+
   if (authStatus === "loading") return step;
 
   // Google required before Work Mode — unless local demo mode.
@@ -143,3 +155,13 @@ export function oauthResumeStep(): number {
   return WIZARD_STEP_INDEX.workMode;
 }
 
+
+/**
+ * Next/previous wizard step honouring a missing Cloud step (Public Local build): moving forward from
+ * Welcome lands on Work Mode, moving back from Work Mode lands on Welcome.
+ */
+export function neighbourStep(step: number, direction: 1 | -1, cloudAvailable: boolean): number {
+  const raw = step + direction;
+  const skipped = !cloudAvailable && raw === WIZARD_STEP_INDEX.cloud ? raw + direction : raw;
+  return Math.min(Math.max(skipped, 0), WIZARD_STEP_COUNT - 1);
+}

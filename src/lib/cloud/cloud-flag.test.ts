@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { validateBuildEnv } from "./build-profile.mjs";
 import {
@@ -74,6 +74,14 @@ describe("cloud flag parser (PRT-143)", () => {
 });
 
 describe("combined client/server decision (PRT-144, fail-closed)", () => {
+  // The suite default simulates a cloud-enabled build (vitest.config.ts); these cases assert the
+  // behaviour of an UNSET client flag, so the baked flag is removed for this block.
+  beforeAll(() => {
+    vi.stubEnv("VITE_CLOUD_SYNC_ENABLED", undefined);
+  });
+  afterAll(() => {
+    vi.unstubAllEnvs();
+  });
   it.each([
     ["true", "true", true],
     ["true", "false", false],

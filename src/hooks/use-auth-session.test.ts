@@ -40,7 +40,7 @@ describe("useAuthSession wiring", () => {
   const src = readFileSync(join(root, "use-auth-session.ts"), "utf8");
 
   it("wraps bindAuthSession and soft-fails to signed_out", () => {
-    expect(src).toMatch(/bindAuthSession\(supabase,/);
+    expect(src).toMatch(/bindAuthSession\(cloudClient\(\),/);
     expect(src).toMatch(/authSessionStatus\(phase,\s*session\)/);
     expect(src).toMatch(/\[useAuthSession\] Supabase auth unavailable/);
     expect(src).toMatch(/setPhase\("ready"\)/);
