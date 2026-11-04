@@ -1,5 +1,14 @@
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -187,6 +196,116 @@ describe("official build runner (real process)", () => {
   }, 60_000);
 });
 
+// A throw-away project that contains the REAL runner, gate and cloud modules but a FAKE vite binary
+// (records its argv/cwd, exits with a chosen code). Proves exactly what the runner passes to Vite,
+// that the gate runs first, and that Vite's exit status is propagated - without a slow real build.
+function fakeProject(viteExit: number): string {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "mjc-p12-proj-")));
+  mkdirSync(join(dir, "scripts"), { recursive: true });
+  mkdirSync(join(dir, "src/lib/cloud"), { recursive: true });
+  mkdirSync(join(dir, "node_modules/vite/bin"), { recursive: true });
+  for (const f of ["run-vite-build.mjs", "assert-build-profile.mjs"])
+    cpSync(resolve(ROOT, "scripts", f), join(dir, "scripts", f));
+  for (const f of readdirSync(resolve(ROOT, "src/lib/cloud")))
+    if (f.endsWith(".mjs"))
+      cpSync(resolve(ROOT, "src/lib/cloud", f), join(dir, "src/lib/cloud", f));
+  writeFileSync(join(dir, "vite.config.ts"), "export default {};\n");
+  writeFileSync(
+    join(dir, "node_modules/vite/bin/vite.js"),
+    `console.log("FAKEVITE " + JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd() })); process.exit(${viteExit});\n`,
+  );
+  return dir;
+}
+function runIn(dir: string, args: string[], env: Record<string, string>, cwd = dir): Promise<Run> {
+  return new Promise((done) => {
+    const child = spawn(process.execPath, [join(dir, "scripts/run-vite-build.mjs"), ...args], {
+      cwd,
+      env: { PATH: process.env["PATH"] ?? "", HOME: TMP, ...env },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let out = "";
+    child.stdout.on("data", (d: Buffer) => (out += d.toString()));
+    child.stderr.on("data", (d: Buffer) => (out += d.toString()));
+    child.on("close", (code) => done({ code, out }));
+  });
+}
+const fakeArgs = (out: string) =>
+  JSON.parse(
+    out
+      .split("\n")
+      .find((l) => l.startsWith("FAKEVITE "))!
+      .slice(9),
+  ) as {
+    argv: string[];
+    cwd: string;
+  };
+
+describe("official build runner (isolated project with a fake vite binary)", () => {
+  it("valid profile: starts vite exactly as `build --config <abs vite.config.ts>` from the project root, after the gate", async () => {
+    const dir = fakeProject(0);
+    const r = await runIn(dir, [], { MJC_BUILD_PROFILE: "public-local" }, TMP);
+    expect(r.code).toBe(0);
+    expect(r.out.indexOf("assert-build-profile: OK")).toBeGreaterThan(-1);
+    expect(r.out.indexOf("assert-build-profile: OK")).toBeLessThan(r.out.indexOf("FAKEVITE"));
+    const a = fakeArgs(r.out);
+    expect(a.argv).toEqual(["build", "--config", join(dir, "vite.config.ts")]);
+    expect(a.cwd).toBe(dir);
+  }, 60_000);
+  it("--mode is forwarded in every spelling, and only the validated value", async () => {
+    const dir = fakeProject(0);
+    for (const args of [["--mode", "development"], ["-m", "development"], ["--mode=development"]]) {
+      const r = await runIn(dir, args, { MJC_BUILD_PROFILE: "public-local" });
+      expect(r.code).toBe(0);
+      expect(fakeArgs(r.out).argv).toEqual([
+        "build",
+        "--config",
+        join(dir, "vite.config.ts"),
+        "--mode",
+        "development",
+      ]);
+    }
+  }, 60_000);
+  it("any gate failure (missing/unknown profile, forbidden env) means vite is never started", async () => {
+    const dir = fakeProject(0);
+    for (const env of [
+      {},
+      { MJC_BUILD_PROFILE: "bogus" },
+      { MJC_BUILD_PROFILE: "public-local", CLOUD_SYNC_ENABLED: "true" },
+    ]) {
+      const r = await runIn(dir, [], env);
+      expect(r.code).toBe(1);
+      expect(r.out).not.toContain("FAKEVITE");
+    }
+  }, 60_000);
+  it("a refused argument means neither the gate nor vite runs; a valid profile does not change that", async () => {
+    const dir = fakeProject(0);
+    const r = await runIn(dir, ["--config", ALT], { MJC_BUILD_PROFILE: "public-local" });
+    expect(r.code).toBe(1);
+    expect(r.out).toContain(REFUSED_ARGS);
+    expect(r.out).not.toContain("FAKEVITE");
+    expect(r.out).not.toContain("assert-build-profile: OK");
+  }, 60_000);
+  it("vite's exit status is propagated (a failing build is never reported as success)", async () => {
+    for (const code of [1, 7]) {
+      const dir = fakeProject(code);
+      const r = await runIn(dir, [], { MJC_BUILD_PROFILE: "public-local" });
+      expect(r.code).toBe(code);
+    }
+  }, 60_000);
+  it("missing vite binary or missing vite.config.ts is a hard failure (exit 1)", async () => {
+    const noBin = fakeProject(0);
+    rmSync(join(noBin, "node_modules/vite/bin/vite.js"));
+    const r1 = await runIn(noBin, [], { MJC_BUILD_PROFILE: "public-local" });
+    expect(r1.code).toBe(1);
+    expect(r1.out).toContain("vite is not installed");
+    const noCfg = fakeProject(0);
+    rmSync(join(noCfg, "vite.config.ts"));
+    const r2 = await runIn(noCfg, [], { MJC_BUILD_PROFILE: "public-local" });
+    expect(r2.code).toBe(1);
+    expect(r2.out).toContain("vite.config.ts not found");
+  }, 60_000);
+});
+
 describe("official build runner (static)", () => {
   const src = readFileSync(RUNNER, "utf8");
   it("runs the gate before starting Vite, and pins the project's vite.config.ts by absolute path", () => {
@@ -199,6 +318,7 @@ describe("official build runner (static)", () => {
   });
   it("forwards no user-supplied argument to Vite except the validated mode, and has no network or eval", () => {
     expect(src).not.toMatch(/spawnSync\([^)]*process\.argv/);
+    expect(src.match(/process\.argv/g)).toHaveLength(1); // only the one parseBuildRunnerArgs(...) call reads the CLI args
     expect(src).not.toMatch(/\bfetch\(|node:https?|\beval\(|new Function/);
     expect(src).toContain("parseBuildRunnerArgs(process.argv.slice(2))");
   });
