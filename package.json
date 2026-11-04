@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "node scripts/assert-build-profile.mjs && vite build",
-    "build:dev": "node scripts/assert-build-profile.mjs && vite build --mode development",
+    "build": "node scripts/run-vite-build.mjs",
+    "build:dev": "node scripts/run-vite-build.mjs --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",

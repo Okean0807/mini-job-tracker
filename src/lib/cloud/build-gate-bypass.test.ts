@@ -295,14 +295,14 @@ describe("Build Gate bypass - script inventory (static)", () => {
   const pkg = JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf8")) as {
     scripts: Record<string, string>;
   };
-  const GATE = "node scripts/assert-build-profile.mjs && ";
-  it("every script that runs `vite build` runs the profile gate first", () => {
-    const offenders = Object.entries(pkg.scripts).filter(
-      ([, v]) => /\bvite\s+build\b/.test(v) && !v.startsWith(GATE),
-    );
+  // P1.2: package scripts never call `vite build` themselves; every build goes through the runner
+  // (gate first, config pinned, no pass-through of --config). See build-runner.test.ts.
+  const RUNNER = "node scripts/run-vite-build.mjs";
+  it("no package script runs `vite build` directly; the build scripts are exactly the official runner", () => {
+    const offenders = Object.entries(pkg.scripts).filter(([, v]) => /\bvite\s+build\b/.test(v));
     expect(offenders).toEqual([]);
-    expect(pkg.scripts["build"]).toBe(`${GATE}vite build`);
-    expect(pkg.scripts["build:dev"]).toBe(`${GATE}vite build --mode development`);
+    expect(pkg.scripts["build"]).toBe(RUNNER);
+    expect(pkg.scripts["build:dev"]).toBe(`${RUNNER} --mode development`);
   });
   it("the only other Vite entry points are the dev server and preview (serve commands)", () => {
     const seen: string[] = [];
@@ -310,17 +310,10 @@ describe("Build Gate bypass - script inventory (static)", () => {
       for (const m of v.matchAll(/(?<![\w./-])vite(?![\w-])(?:\s+(\S+))?/g)) {
         const sub = m[1] ?? "";
         seen.push(`${name}: vite ${sub}`.trim());
-        expect(["dev", "preview", "build"], `script ${name}: vite ${sub}`).toContain(sub);
+        expect(["dev", "preview"], `script ${name}: vite ${sub}`).toContain(sub);
       }
     }
-    expect(seen.sort()).toEqual(
-      [
-        "build: vite build",
-        "build:dev: vite build",
-        "dev: vite dev",
-        "preview: vite preview",
-      ].sort(),
-    );
+    expect(seen.sort()).toEqual(["dev: vite dev", "preview: vite preview"].sort());
   });
   it("the Vite config registers the command-aware gate as a plugin", () => {
     const cfg = readFileSync(resolve(ROOT, "vite.config.ts"), "utf8");

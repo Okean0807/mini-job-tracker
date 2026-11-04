@@ -301,11 +301,11 @@ describe("compatibility entry points and wiring", () => {
     expect(gate({ MJC_BUILD_PROFILE: "public-local" }, { script: SHIM }).code).toBe(0);
     expect(gate({ VERCEL: "1" }, { script: SHIM }).code).toBe(1);
   });
-  it("package.json: build runs the profile gate before vite build; no stale gate reference", () => {
+  it("package.json: build goes through the official runner (which runs the profile gate before vite); no stale gate reference", () => {
     const pkg = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf8")) as {
       scripts: Record<string, string>;
     };
-    expect(pkg.scripts["build"]).toBe("node scripts/assert-build-profile.mjs && vite build");
+    expect(pkg.scripts["build"]).toBe("node scripts/run-vite-build.mjs");
     expect(pkg.scripts["assert:build-profile"]).toBe("node scripts/assert-build-profile.mjs");
     expect(pkg.scripts["assert:vite-supabase-env"]).toBe("node scripts/assert-build-profile.mjs");
   });
