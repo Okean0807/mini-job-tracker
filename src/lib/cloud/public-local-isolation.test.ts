@@ -262,9 +262,10 @@ describe("static isolation inventory", () => {
       src.indexOf("cloudClient()"),
     );
   });
-  it("app code reaches fetch() only through the Supabase client wrapper and the two server-side AI providers", () => {
+  it("every use of the global fetch in app code is inventoried (Supabase wrapper, server AI providers, consent-gated address lookup)", () => {
+    // the pattern also catches default parameters such as `fetchImpl = fetch` and `typeof fetch`.
     const users = files
-      .filter((f) => /\bfetch\(/.test(code(f)))
+      .filter((f) => /(?<![.\w/])fetch(?=\s*[(,)=;]|\s*$)/m.test(code(f)))
       .map(rel)
       .sort();
     expect(users).toEqual([
@@ -273,7 +274,24 @@ describe("static isolation inventory", () => {
       "src/integrations/supabase/client.ts",
       "src/lib/ai/gemini-provider.ts",
       "src/lib/ai/web-search/tavily-provider.ts",
+      "src/lib/minijob/geo-address.ts", // OpenStreetMap Nominatim, only after an explicit confirmation dialog (browser run E20/E21)
       "src/server.ts",
+    ]);
+  });
+  it("the address lookup is only reachable behind the confirmation handler", () => {
+    const dlg = readFileSync(resolve(ROOT, "src/components/minijob/ShiftDialog.tsx"), "utf8");
+    const calls = dlg.match(/reverseGeocodeGerman\(/g) ?? [];
+    expect(calls).toHaveLength(1);
+    expect(dlg.indexOf("async function confirmGeoLookup()")).toBeLessThan(
+      dlg.indexOf("reverseGeocodeGerman("),
+    );
+    const users = files
+      .filter((f) => /reverseGeocodeGerman\s*\(/.test(code(f)))
+      .map(rel)
+      .sort();
+    expect(users).toEqual([
+      "src/components/minijob/ShiftDialog.tsx",
+      "src/lib/minijob/geo-address.ts",
     ]);
   });
   it("no browser-side WebSocket / EventSource / sendBeacon / XMLHttpRequest in app code", () => {
