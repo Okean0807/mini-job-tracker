@@ -33,9 +33,11 @@ export const settingsDict: Bundle = {
     "set.security.pinErrorCancel": "PIN-Einrichtung abgebrochen",
     "set.security.pinSaved": "PIN gespeichert",
     "set.security.biometricUnavailable": "Passkey/WebAuthn auf diesem Gerät nicht verfügbar",
-    "set.security.biometricUnsupported": "Dieses Gerät unterstützt keine Geräte-Entsperrung (WebAuthn)",
+    "set.security.biometricUnsupported":
+      "Dieses Gerät unterstützt keine Geräte-Entsperrung (WebAuthn)",
     "set.security.biometric": "Geräte-Entsperrung / Passkey",
-    "set.security.biometricDesc": "Geräte-Entsperrung / Passkey (WebAuthn) – kein separates Fingerprint-API",
+    "set.security.biometricDesc":
+      "Geräte-Entsperrung / Passkey (WebAuthn) – kein separates Fingerprint-API",
 
     "set.notifications.title": "Benachrichtigungen",
     "set.notifications.unsupported": "Dieses Gerät unterstützt keine Benachrichtigungen.",
@@ -57,7 +59,8 @@ export const settingsDict: Bundle = {
     "set.notifications.enabled": "Benachrichtigungen aktiviert",
 
     "set.migration.title": "Datenübertragung",
-    "set.migration.desc": "{count} Einträge exportieren oder Daten aus CSV, Excel bzw. JSON importieren.",
+    "set.migration.desc":
+      "{count} Einträge exportieren oder Daten aus CSV, Excel bzw. JSON importieren.",
     "set.migration.csv": "CSV export",
     "set.migration.excel": "Excel export",
     "set.migration.import": "Daten importieren",
@@ -72,20 +75,50 @@ export const settingsDict: Bundle = {
     "set.localBackup.created": "Backup-Datei erstellt",
     "set.localBackup.restored": "Backup wiederhergestellt",
     "set.localBackup.invalid": "Backup ungültig – lokale Daten wurden nicht überschrieben",
+    "set.localBackup.createdZip":
+      "Backup mit {count} Dokument(en) erstellt (ZIP, nicht verschlüsselt)",
+    "set.localBackup.skippedCorrupt":
+      "{count} beschädigte(r) Eintrag/Einträge wurden nicht gesichert (nichts gelöscht).",
+    "set.localBackup.previewTitle": "Backup wiederherstellen?",
+    "set.localBackup.previewBody":
+      "Die Datei wurde vollständig geprüft. Sie enthält {documents} Dokument(e) ({size}), {jobs} Job(s) und {shifts} Eintrag/Einträge. {toAdd} Dokument(e) werden hinzugefügt, {kept} bereits vorhandene bleiben unverändert. Die App-Daten (Jobs, Einträge, Einstellungen) werden durch die Daten aus dem Backup ersetzt; vorhandene Dokumente werden nie gelöscht oder überschrieben.",
+    "set.localBackup.confirmRestore": "Wiederherstellen",
+    "set.localBackup.cancel": "Abbrechen (nichts wird geändert)",
+    "set.localBackup.restoredZip":
+      "Backup wiederhergestellt: {added} Dokument(e) hinzugefügt, {kept} unverändert beibehalten",
+    "set.localBackup.err.corrupt": "Backup beschädigt oder unvollständig – nichts wurde verändert.",
+    "set.localBackup.err.unsupported":
+      "Dieses Backup-Format wird nicht unterstützt – nichts wurde verändert.",
+    "set.localBackup.err.newer":
+      "Dieses Backup stammt aus einer neueren App-Version – nichts wurde verändert.",
+    "set.localBackup.err.integrity":
+      "Prüfsumme oder Größe stimmt nicht – Backup abgelehnt, nichts wurde verändert.",
+    "set.localBackup.err.tooLarge": "Backup oder Dokument zu groß – nichts wurde verändert.",
+    "set.localBackup.err.quota":
+      "Nicht genug Speicherplatz für die Dokumente – nichts wurde verändert.",
+    "set.localBackup.err.storage":
+      "Dokumentenspeicher nicht verfügbar – es wurde nichts verändert und kein unvollständiges Backup erstellt.",
+    "set.localBackup.err.commit":
+      "Wiederherstellung fehlgeschlagen und zurückgerollt – dein vorheriger Stand ist unverändert.",
+    "set.localBackup.err.rollbackIncomplete":
+      "Wiederherstellung fehlgeschlagen; das Zurückrollen war unvollständig. Bitte Dokumentenliste prüfen und ggf. erneut versuchen.",
 
     "set.setup.title": "Einrichtung",
-    "set.setup.desc": "Den Einrichtungsassistenten erneut starten (Arbeitsart, Region, Lohn, Zuschläge).",
+    "set.setup.desc":
+      "Den Einrichtungsassistenten erneut starten (Arbeitsart, Region, Lohn, Zuschläge).",
     "set.setup.start": "Assistent starten",
 
     "set.design.mode": "Modus",
     "set.design.accent": "Akzentfarbe",
 
-    "set.wage.hint": "Standard-Zuschläge für alle Jobs ohne eigene Regeln. Prozent oder fester Betrag pro Stunde.",
+    "set.wage.hint":
+      "Standard-Zuschläge für alle Jobs ohne eigene Regeln. Prozent oder fester Betrag pro Stunde.",
     "set.wage.nightFrom": "Nacht ab",
     "set.wage.nightTo": "Nacht bis",
 
     "set.account.signIn.title": "Anmelden",
-    "set.account.signIn.desc": "Melde dich an, damit deine Daten automatisch gesichert und auf einem neuen Gerät wiederhergestellt werden.",
+    "set.account.signIn.desc":
+      "Melde dich an, damit deine Daten automatisch gesichert und auf einem neuen Gerät wiederhergestellt werden.",
     "set.account.signIn.google": "Mit Google anmelden",
     "set.account.signIn.apple": "Mit Apple anmelden",
     "set.account.demo.localOnly": "Testmodus – Daten werden nur auf diesem Gerät gespeichert.",
@@ -98,7 +131,8 @@ export const settingsDict: Bundle = {
     "set.account.cloud.backup": "Sichern",
     "set.account.cloud.restore": "Laden",
     "set.account.cloud.signOut": "Abmelden",
-    "set.account.delete.confirm": "Konto und alle zugehörigen Cloud-Daten endgültig löschen? Dieser Vorgang kann nicht rückgängig gemacht werden.",
+    "set.account.delete.confirm":
+      "Konto und alle zugehörigen Cloud-Daten endgültig löschen? Dieser Vorgang kann nicht rückgängig gemacht werden.",
     "set.account.delete.button": "Konto löschen",
     "set.account.delete.failed": "Konto konnte nicht gelöscht werden.",
     "set.account.delete.success": "Konto und lokale Kontodaten wurden gelöscht.",
@@ -114,7 +148,8 @@ export const settingsDict: Bundle = {
     "set.account.cloud.sync.error": "Synchronisierung fehlgeschlagen",
     "set.account.cloud.sync.retry": "Erneut versuchen",
     "set.account.cloud.sync.conflict": "Konflikt: Gerät und Cloud wurden beide geändert",
-    "set.account.cloud.sync.conflictFirstSync": "Erste Synchronisation: Lokale Jobs und Cloud-Stand unterscheiden sich – wähle, welcher Stand gelten soll.",
+    "set.account.cloud.sync.conflictFirstSync":
+      "Erste Synchronisation: Lokale Jobs und Cloud-Stand unterscheiden sich – wähle, welcher Stand gelten soll.",
     "set.account.cloud.sync.keepLocal": "Gerät behalten",
     "set.account.cloud.sync.never": "Noch nie",
     "set.account.cloud.sync.device": "Dieses Gerät",
@@ -129,14 +164,16 @@ export const settingsDict: Bundle = {
     "set.account.cloud.cloudCopy": "Cloud-Kopie",
     "set.account.cloud.available": "Vorhanden",
     "set.account.cloud.notAvailable": "Nicht bekannt",
-    "set.account.cloud.backupWhat": "Gesichert werden deine App-Daten einschließlich Arbeitszeiten, Jobs, Einstellungen und weiterer lokaler Projektdaten.",
+    "set.account.cloud.backupWhat":
+      "Gesichert werden deine App-Daten einschließlich Arbeitszeiten, Jobs, Einstellungen und weiterer lokaler Projektdaten.",
     "set.account.cloud.sync.keepCloud": "Cloud behalten",
 
     "imp.xlsxUnsupported": "Der XLS/XLSX-Import ist derzeit deaktiviert. Bitte nutze CSV.",
     "imp.fileTooLarge": "Die Datei ist zu groß. Maximal 2 MB.",
     "imp.readError": "Die Datei konnte nicht gelesen werden.",
     "imp.title": "Daten importieren",
-    "imp.desc": "CSV, TXT oder eine JSON-Sicherung einlesen. Der Excel-Import ist derzeit deaktiviert. Daten werden vor dem Import geprüft.",
+    "imp.desc":
+      "CSV, TXT oder eine JSON-Sicherung einlesen. Der Excel-Import ist derzeit deaktiviert. Daten werden vor dem Import geprüft.",
     "imp.selectFile": "Datei auswählen",
     "imp.downloadTemplate": "CSV-Vorlage herunterladen",
     "imp.columnsHint": "Spalten: Datum, Beginn, Ende, Pause (Min.), Stundenlohn, Job, Notiz.",
@@ -210,7 +247,8 @@ export const settingsDict: Bundle = {
     "set.security.biometricUnavailable": "Passkey/WebAuthn not available on this device",
     "set.security.biometricUnsupported": "This device does not support device unlock (WebAuthn)",
     "set.security.biometric": "Device unlock / Passkey",
-    "set.security.biometricDesc": "Device unlock / passkey (WebAuthn) – not a separate fingerprint API",
+    "set.security.biometricDesc":
+      "Device unlock / passkey (WebAuthn) – not a separate fingerprint API",
 
     "set.notifications.title": "Notifications",
     "set.notifications.unsupported": "This device does not support notifications.",
@@ -247,6 +285,30 @@ export const settingsDict: Bundle = {
     "set.localBackup.created": "Backup file created",
     "set.localBackup.restored": "Backup restored",
     "set.localBackup.invalid": "Invalid backup – local data was not overwritten",
+    "set.localBackup.createdZip": "Backup with {count} document(s) created (ZIP, not encrypted)",
+    "set.localBackup.skippedCorrupt":
+      "{count} damaged entr(y/ies) were not included (nothing deleted).",
+    "set.localBackup.previewTitle": "Restore this backup?",
+    "set.localBackup.previewBody":
+      "The file was checked completely. It contains {documents} document(s) ({size}), {jobs} job(s) and {shifts} entr(y/ies). {toAdd} document(s) will be added, {kept} already present stay unchanged. The app data (jobs, entries, settings) is replaced by the data from the backup; existing documents are never deleted or overwritten.",
+    "set.localBackup.confirmRestore": "Restore",
+    "set.localBackup.cancel": "Cancel (nothing is changed)",
+    "set.localBackup.restoredZip":
+      "Backup restored: {added} document(s) added, {kept} kept unchanged",
+    "set.localBackup.err.corrupt": "Backup damaged or incomplete – nothing was changed.",
+    "set.localBackup.err.unsupported": "This backup format is not supported – nothing was changed.",
+    "set.localBackup.err.newer":
+      "This backup comes from a newer app version – nothing was changed.",
+    "set.localBackup.err.integrity":
+      "Checksum or size mismatch – backup rejected, nothing was changed.",
+    "set.localBackup.err.tooLarge": "Backup or document too large – nothing was changed.",
+    "set.localBackup.err.quota": "Not enough storage for the documents – nothing was changed.",
+    "set.localBackup.err.storage":
+      "Document storage not available – nothing was changed and no incomplete backup was created.",
+    "set.localBackup.err.commit":
+      "Restore failed and was rolled back – your previous data is unchanged.",
+    "set.localBackup.err.rollbackIncomplete":
+      "Restore failed and the rollback was incomplete. Please check the documents list and try again.",
 
     "set.setup.title": "Setup",
     "set.setup.desc": "Restart the setup assistant (work type, region, wage, supplements).",
@@ -255,12 +317,14 @@ export const settingsDict: Bundle = {
     "set.design.mode": "Mode",
     "set.design.accent": "Accent colour",
 
-    "set.wage.hint": "Default supplements for all jobs without their own rules. Percentage or fixed amount per hour.",
+    "set.wage.hint":
+      "Default supplements for all jobs without their own rules. Percentage or fixed amount per hour.",
     "set.wage.nightFrom": "Night from",
     "set.wage.nightTo": "Night until",
 
     "set.account.signIn.title": "Sign in",
-    "set.account.signIn.desc": "Sign in so your data is automatically backed up and can be restored on a new device.",
+    "set.account.signIn.desc":
+      "Sign in so your data is automatically backed up and can be restored on a new device.",
     "set.account.signIn.google": "Sign in with Google",
     "set.account.signIn.apple": "Sign in with Apple",
     "set.account.demo.localOnly": "Test mode – data is stored only on this device.",
@@ -273,7 +337,8 @@ export const settingsDict: Bundle = {
     "set.account.cloud.backup": "Back up",
     "set.account.cloud.restore": "Restore",
     "set.account.cloud.signOut": "Sign out",
-    "set.account.delete.confirm": "Permanently delete your account and all associated cloud data? This cannot be undone.",
+    "set.account.delete.confirm":
+      "Permanently delete your account and all associated cloud data? This cannot be undone.",
     "set.account.delete.button": "Delete account",
     "set.account.delete.failed": "Account could not be deleted.",
     "set.account.delete.success": "Account and local account data were deleted.",
@@ -289,7 +354,8 @@ export const settingsDict: Bundle = {
     "set.account.cloud.sync.error": "Synchronisation failed",
     "set.account.cloud.sync.retry": "Try again",
     "set.account.cloud.sync.conflict": "Conflict: device and cloud were both changed",
-    "set.account.cloud.sync.conflictFirstSync": "First sync: local jobs and cloud differ — choose which version to keep.",
+    "set.account.cloud.sync.conflictFirstSync":
+      "First sync: local jobs and cloud differ — choose which version to keep.",
     "set.account.cloud.sync.keepLocal": "Keep device",
     "set.account.cloud.sync.never": "Never",
     "set.account.cloud.sync.device": "This device",
@@ -304,14 +370,16 @@ export const settingsDict: Bundle = {
     "set.account.cloud.cloudCopy": "Cloud copy",
     "set.account.cloud.available": "Available",
     "set.account.cloud.notAvailable": "Not known",
-    "set.account.cloud.backupWhat": "The backup contains your app data, including work times, jobs, settings and other local project data.",
+    "set.account.cloud.backupWhat":
+      "The backup contains your app data, including work times, jobs, settings and other local project data.",
     "set.account.cloud.sync.keepCloud": "Keep cloud",
 
     "imp.xlsxUnsupported": "XLS/XLSX import is currently disabled. Please use CSV.",
     "imp.fileTooLarge": "The file is too large. Maximum 2 MB.",
     "imp.readError": "The file could not be read.",
     "imp.title": "Import data",
-    "imp.desc": "Read CSV, TXT or a JSON backup. Excel import is currently disabled. Data is checked before importing.",
+    "imp.desc":
+      "Read CSV, TXT or a JSON backup. Excel import is currently disabled. Data is checked before importing.",
     "imp.selectFile": "Choose file",
     "imp.downloadTemplate": "Download CSV template",
     "imp.columnsHint": "Columns: Date, Start, End, Break (min), Hourly rate, Job, Note.",
@@ -385,7 +453,8 @@ export const settingsDict: Bundle = {
     "set.security.biometricUnavailable": "Passkey/WebAuthn на этом устройстве недоступен",
     "set.security.biometricUnsupported": "Устройство не поддерживает разблокировку (WebAuthn)",
     "set.security.biometric": "Разблокировка устройства / Passkey",
-    "set.security.biometricDesc": "Разблокировка устройства / passkey (WebAuthn) – не отдельный API отпечатка",
+    "set.security.biometricDesc":
+      "Разблокировка устройства / passkey (WebAuthn) – не отдельный API отпечатка",
 
     "set.notifications.title": "Уведомления",
     "set.notifications.unsupported": "Это устройство не поддерживает уведомления.",
@@ -407,7 +476,8 @@ export const settingsDict: Bundle = {
     "set.notifications.enabled": "Уведомления включены",
 
     "set.migration.title": "Перенос данных",
-    "set.migration.desc": "Экспортировать {count} записей или импортировать данные из CSV, Excel или JSON.",
+    "set.migration.desc":
+      "Экспортировать {count} записей или импортировать данные из CSV, Excel или JSON.",
     "set.migration.csv": "Экспорт CSV",
     "set.migration.excel": "Экспорт Excel",
     "set.migration.import": "Импортировать данные",
@@ -422,6 +492,31 @@ export const settingsDict: Bundle = {
     "set.localBackup.created": "Файл резервной копии создан",
     "set.localBackup.restored": "Резервная копия восстановлена",
     "set.localBackup.invalid": "Недействительная копия – локальные данные не перезаписаны",
+    "set.localBackup.createdZip":
+      "Резервная копия с документами ({count}) создана (ZIP, без шифрования)",
+    "set.localBackup.skippedCorrupt":
+      "{count} повреждённых записей не включено (ничего не удалено).",
+    "set.localBackup.previewTitle": "Восстановить эту копию?",
+    "set.localBackup.previewBody":
+      "Файл полностью проверен. В нём {documents} документ(ов) ({size}), {jobs} работ(ы) и {shifts} записей. Будет добавлено документов: {toAdd}, уже имеющиеся ({kept}) останутся без изменений. Данные приложения (работы, записи, настройки) будут заменены данными из копии; существующие документы не удаляются и не перезаписываются.",
+    "set.localBackup.confirmRestore": "Восстановить",
+    "set.localBackup.cancel": "Отмена (ничего не меняется)",
+    "set.localBackup.restoredZip":
+      "Копия восстановлена: добавлено документов {added}, без изменений {kept}",
+    "set.localBackup.err.corrupt": "Копия повреждена или неполна – ничего не изменено.",
+    "set.localBackup.err.unsupported": "Формат копии не поддерживается – ничего не изменено.",
+    "set.localBackup.err.newer":
+      "Копия создана в более новой версии приложения – ничего не изменено.",
+    "set.localBackup.err.integrity":
+      "Контрольная сумма или размер не совпадают – копия отклонена, ничего не изменено.",
+    "set.localBackup.err.tooLarge": "Копия или документ слишком большие – ничего не изменено.",
+    "set.localBackup.err.quota": "Недостаточно места для документов – ничего не изменено.",
+    "set.localBackup.err.storage":
+      "Хранилище документов недоступно – ничего не изменено, неполная копия не создана.",
+    "set.localBackup.err.commit":
+      "Восстановление не удалось и отменено – прежние данные не изменены.",
+    "set.localBackup.err.rollbackIncomplete":
+      "Восстановление не удалось, откат неполный. Проверьте список документов и повторите.",
 
     "set.setup.title": "Настройка",
     "set.setup.desc": "Перезапустить мастер настройки (тип работы, регион, зарплата, надбавки).",
@@ -430,16 +525,19 @@ export const settingsDict: Bundle = {
     "set.design.mode": "Режим",
     "set.design.accent": "Акцентный цвет",
 
-    "set.wage.hint": "Надбавки по умолчанию для всех работ без собственных правил. Процент или фиксированная сумма за час.",
+    "set.wage.hint":
+      "Надбавки по умолчанию для всех работ без собственных правил. Процент или фиксированная сумма за час.",
     "set.wage.nightFrom": "Ночь с",
     "set.wage.nightTo": "Ночь до",
 
     "set.account.signIn.title": "Войти",
-    "set.account.signIn.desc": "Войдите, чтобы ваши данные автоматически сохранялись и восстанавливались на новом устройстве.",
+    "set.account.signIn.desc":
+      "Войдите, чтобы ваши данные автоматически сохранялись и восстанавливались на новом устройстве.",
     "set.account.signIn.google": "Войти через Google",
     "set.account.signIn.apple": "Войти через Apple",
     "set.account.demo.localOnly": "Тестовый режим — данные только на этом устройстве.",
-    "set.account.demo.signInPrompt": "Войдите через Google для облачного резерва и смены устройства.",
+    "set.account.demo.signInPrompt":
+      "Войдите через Google для облачного резерва и смены устройства.",
 
     "set.account.cloud.title": "Облачное резервное копирование",
     "set.account.cloud.signedInAs": "Вы вошли как {email}",
@@ -448,7 +546,8 @@ export const settingsDict: Bundle = {
     "set.account.cloud.backup": "Сохранить",
     "set.account.cloud.restore": "Загрузить",
     "set.account.cloud.signOut": "Выйти",
-    "set.account.delete.confirm": "Удалить аккаунт и все связанные с ним облачные данные навсегда? Это действие нельзя отменить.",
+    "set.account.delete.confirm":
+      "Удалить аккаунт и все связанные с ним облачные данные навсегда? Это действие нельзя отменить.",
     "set.account.delete.button": "Удалить аккаунт",
     "set.account.delete.failed": "Не удалось удалить аккаунт.",
     "set.account.delete.success": "Аккаунт и локальные данные аккаунта удалены.",
@@ -464,7 +563,8 @@ export const settingsDict: Bundle = {
     "set.account.cloud.sync.error": "Синхронизация не удалась",
     "set.account.cloud.sync.retry": "Повторить",
     "set.account.cloud.sync.conflict": "Конфликт: устройство и облако изменены",
-    "set.account.cloud.sync.conflictFirstSync": "Первая синхронизация: локальные работы и облако различаются — выберите версию.",
+    "set.account.cloud.sync.conflictFirstSync":
+      "Первая синхронизация: локальные работы и облако различаются — выберите версию.",
     "set.account.cloud.sync.keepLocal": "Оставить устройство",
     "set.account.cloud.sync.never": "Ещё не выполнялась",
     "set.account.cloud.sync.device": "Это устройство",
@@ -479,17 +579,20 @@ export const settingsDict: Bundle = {
     "set.account.cloud.cloudCopy": "Копия в облаке",
     "set.account.cloud.available": "Есть",
     "set.account.cloud.notAvailable": "Неизвестно",
-    "set.account.cloud.backupWhat": "Сохраняются данные приложения, включая рабочее время, Jobs, настройки и другие данные проекта.",
+    "set.account.cloud.backupWhat":
+      "Сохраняются данные приложения, включая рабочее время, Jobs, настройки и другие данные проекта.",
     "set.account.cloud.sync.keepCloud": "Оставить облако",
 
     "imp.xlsxUnsupported": "Импорт XLS/XLSX сейчас отключён. Используйте CSV.",
     "imp.fileTooLarge": "Файл слишком большой. Максимум 2 МБ.",
     "imp.readError": "Не удалось прочитать файл.",
     "imp.title": "Импорт данных",
-    "imp.desc": "Загрузите CSV, TXT или JSON-резервную копию. Импорт Excel сейчас отключён. Данные проверяются перед импортом.",
+    "imp.desc":
+      "Загрузите CSV, TXT или JSON-резервную копию. Импорт Excel сейчас отключён. Данные проверяются перед импортом.",
     "imp.selectFile": "Выбрать файл",
     "imp.downloadTemplate": "Скачать шаблон CSV",
-    "imp.columnsHint": "Столбцы: Дата, Начало, Конец, Перерыв (мин.), Ставка в час, Работа, Заметка.",
+    "imp.columnsHint":
+      "Столбцы: Дата, Начало, Конец, Перерыв (мин.), Ставка в час, Работа, Заметка.",
     "imp.jsonSuccess": "Данные JSON импортированы",
     "imp.jsonError": "Не удалось прочитать файл JSON",
     "imp.jsonInvalid": "Резервная копия JSON недействительна и не была применена",
@@ -582,7 +685,8 @@ export const settingsDict: Bundle = {
     "set.notifications.enabled": "Bildirimler etkinleştirildi",
 
     "set.migration.title": "Veri aktarımı",
-    "set.migration.desc": "{count} kaydı dışa aktarın veya CSV, Excel ya da JSON'dan veri içe aktarın.",
+    "set.migration.desc":
+      "{count} kaydı dışa aktarın veya CSV, Excel ya da JSON'dan veri içe aktarın.",
     "set.migration.csv": "CSV dışa aktar",
     "set.migration.excel": "Excel dışa aktar",
     "set.migration.import": "Veri içe aktar",
@@ -597,24 +701,53 @@ export const settingsDict: Bundle = {
     "set.localBackup.created": "Yedek dosyası oluşturuldu",
     "set.localBackup.restored": "Yedek geri yüklendi",
     "set.localBackup.invalid": "Geçersiz yedek – yerel veriler üzerine yazılmadı",
+    "set.localBackup.createdZip": "{count} belgeli yedek oluşturuldu (ZIP, şifrelenmemiş)",
+    "set.localBackup.skippedCorrupt":
+      "{count} hasarlı öğe yedeğe eklenmedi (hiçbir şey silinmedi).",
+    "set.localBackup.previewTitle": "Bu yedek geri yüklensin mi?",
+    "set.localBackup.previewBody":
+      "Dosya tamamen denetlendi. {documents} belge ({size}), {jobs} iş ve {shifts} kayıt içeriyor. {toAdd} belge eklenecek, zaten var olan {kept} belge değişmeden kalacak. Uygulama verileri (işler, kayıtlar, ayarlar) yedekteki verilerle değiştirilir; mevcut belgeler asla silinmez veya üzerine yazılmaz.",
+    "set.localBackup.confirmRestore": "Geri yükle",
+    "set.localBackup.cancel": "İptal (hiçbir şey değişmez)",
+    "set.localBackup.restoredZip":
+      "Yedek geri yüklendi: {added} belge eklendi, {kept} değişmeden bırakıldı",
+    "set.localBackup.err.corrupt": "Yedek hasarlı veya eksik – hiçbir şey değiştirilmedi.",
+    "set.localBackup.err.unsupported":
+      "Bu yedek biçimi desteklenmiyor – hiçbir şey değiştirilmedi.",
+    "set.localBackup.err.newer":
+      "Bu yedek daha yeni bir uygulama sürümünden – hiçbir şey değiştirilmedi.",
+    "set.localBackup.err.integrity":
+      "Sağlama toplamı veya boyut uyuşmuyor – yedek reddedildi, hiçbir şey değiştirilmedi.",
+    "set.localBackup.err.tooLarge": "Yedek veya belge çok büyük – hiçbir şey değiştirilmedi.",
+    "set.localBackup.err.quota": "Belgeler için yeterli alan yok – hiçbir şey değiştirilmedi.",
+    "set.localBackup.err.storage":
+      "Belge deposu kullanılamıyor – hiçbir şey değiştirilmedi ve eksik yedek oluşturulmadı.",
+    "set.localBackup.err.commit":
+      "Geri yükleme başarısız oldu ve geri alındı – önceki verileriniz değişmedi.",
+    "set.localBackup.err.rollbackIncomplete":
+      "Geri yükleme başarısız ve geri alma eksik kaldı. Belge listesini kontrol edip tekrar deneyin.",
 
     "set.setup.title": "Kurulum",
-    "set.setup.desc": "Kurulum sihirbazını yeniden başlat (çalışma türü, bölge, ücret, ek ödemeler).",
+    "set.setup.desc":
+      "Kurulum sihirbazını yeniden başlat (çalışma türü, bölge, ücret, ek ödemeler).",
     "set.setup.start": "Sihirbazı başlat",
 
     "set.design.mode": "Mod",
     "set.design.accent": "Vurgu rengi",
 
-    "set.wage.hint": "Kendi kuralı olmayan tüm işler için varsayılan ek ödemeler. Saat başına yüzde veya sabit tutar.",
+    "set.wage.hint":
+      "Kendi kuralı olmayan tüm işler için varsayılan ek ödemeler. Saat başına yüzde veya sabit tutar.",
     "set.wage.nightFrom": "Gece başlangıcı",
     "set.wage.nightTo": "Gece bitişi",
 
     "set.account.signIn.title": "Giriş yap",
-    "set.account.signIn.desc": "Verilerinizin otomatik olarak yedeklenmesi ve yeni bir cihazda geri yüklenmesi için giriş yapın.",
+    "set.account.signIn.desc":
+      "Verilerinizin otomatik olarak yedeklenmesi ve yeni bir cihazda geri yüklenmesi için giriş yapın.",
     "set.account.signIn.google": "Google ile giriş yap",
     "set.account.signIn.apple": "Apple ile giriş yap",
     "set.account.demo.localOnly": "Test modu – veriler yalnızca bu cihazda saklanır.",
-    "set.account.demo.signInPrompt": "Bulut yedekleme ve cihaz değişimi için Google ile giriş yapın.",
+    "set.account.demo.signInPrompt":
+      "Bulut yedekleme ve cihaz değişimi için Google ile giriş yapın.",
 
     "set.account.cloud.title": "Bulut yedekleme",
     "set.account.cloud.signedInAs": "{email} olarak giriş yapıldı",
@@ -623,7 +756,8 @@ export const settingsDict: Bundle = {
     "set.account.cloud.backup": "Yedekle",
     "set.account.cloud.restore": "Yükle",
     "set.account.cloud.signOut": "Çıkış yap",
-    "set.account.delete.confirm": "Hesabınızı ve ilişkili tüm bulut verilerini kalıcı olarak silmek istiyor musunuz? Bu işlem geri alınamaz.",
+    "set.account.delete.confirm":
+      "Hesabınızı ve ilişkili tüm bulut verilerini kalıcı olarak silmek istiyor musunuz? Bu işlem geri alınamaz.",
     "set.account.delete.button": "Hesabı sil",
     "set.account.delete.failed": "Hesap silinemedi.",
     "set.account.delete.success": "Hesap ve yerel hesap verileri silindi.",
@@ -639,7 +773,8 @@ export const settingsDict: Bundle = {
     "set.account.cloud.sync.error": "Eşitleme başarısız",
     "set.account.cloud.sync.retry": "Tekrar dene",
     "set.account.cloud.sync.conflict": "Çakışma: cihaz ve bulut değişti",
-    "set.account.cloud.sync.conflictFirstSync": "İlk senkronizasyon: yerel işler ve bulut farklı — hangi sürümün kalacağını seç.",
+    "set.account.cloud.sync.conflictFirstSync":
+      "İlk senkronizasyon: yerel işler ve bulut farklı — hangi sürümün kalacağını seç.",
     "set.account.cloud.sync.keepLocal": "Cihazı koru",
     "set.account.cloud.sync.never": "Henüz yok",
     "set.account.cloud.sync.device": "Bu cihaz",
@@ -654,14 +789,16 @@ export const settingsDict: Bundle = {
     "set.account.cloud.cloudCopy": "Bulut kopyası",
     "set.account.cloud.available": "Mevcut",
     "set.account.cloud.notAvailable": "Bilinmiyor",
-    "set.account.cloud.backupWhat": "Yedek; çalışma saatleri, işler, ayarlar ve diğer proje verileri dahil uygulama verilerini içerir.",
+    "set.account.cloud.backupWhat":
+      "Yedek; çalışma saatleri, işler, ayarlar ve diğer proje verileri dahil uygulama verilerini içerir.",
     "set.account.cloud.sync.keepCloud": "Bulutu koru",
 
     "imp.xlsxUnsupported": "XLS/XLSX içe aktarma şu anda devre dışı. Lütfen CSV kullanın.",
     "imp.fileTooLarge": "Dosya çok büyük. En fazla 2 MB.",
     "imp.readError": "Dosya okunamadı.",
     "imp.title": "Veri içe aktar",
-    "imp.desc": "CSV, TXT veya JSON yedeği okuyun. Excel içe aktarma şu anda devre dışı. Veriler içe aktarmadan önce kontrol edilir.",
+    "imp.desc":
+      "CSV, TXT veya JSON yedeği okuyun. Excel içe aktarma şu anda devre dışı. Veriler içe aktarmadan önce kontrol edilir.",
     "imp.selectFile": "Dosya seç",
     "imp.downloadTemplate": "CSV şablonunu indir",
     "imp.columnsHint": "Sütunlar: Tarih, Başlangıç, Bitiş, Mola (dk.), Saatlik ücret, İş, Not.",
@@ -735,7 +872,8 @@ export const settingsDict: Bundle = {
     "set.security.biometricUnavailable": "Passkey/WebAuthn niedostępny na tym urządzeniu",
     "set.security.biometricUnsupported": "Urządzenie nie obsługuje odblokowania (WebAuthn)",
     "set.security.biometric": "Odblokowanie urządzenia / Passkey",
-    "set.security.biometricDesc": "Odblokowanie urządzenia / passkey (WebAuthn) – nie osobne API odcisku",
+    "set.security.biometricDesc":
+      "Odblokowanie urządzenia / passkey (WebAuthn) – nie osobne API odcisku",
 
     "set.notifications.title": "Powiadomienia",
     "set.notifications.unsupported": "To urządzenie nie obsługuje powiadomień.",
@@ -748,9 +886,11 @@ export const settingsDict: Bundle = {
     "set.notifications.startFrom": "Początek od",
     "set.notifications.endFrom": "Koniec od",
     "set.notifications.missingShift": "Brakująca zmiana",
-    "set.notifications.missingShiftDesc": "Powiadomienie, gdy w dzień roboczy nic nie zarejestrowano",
+    "set.notifications.missingShiftDesc":
+      "Powiadomienie, gdy w dzień roboczy nic nie zarejestrowano",
     "set.notifications.backupReminder": "Przypomnienie o kopii zapasowej",
-    "set.notifications.backupReminderDesc": "Cotygodniowe przypomnienie o wykonaniu kopii zapasowej",
+    "set.notifications.backupReminderDesc":
+      "Cotygodniowe przypomnienie o wykonaniu kopii zapasowej",
     "set.notifications.limit": "Limit minijob",
     "set.notifications.limitDesc": "Ostrzeżenie przy 75%, 90% i 100% limitu",
     "set.notifications.blocked": "Powiadomienia zostały zablokowane w przeglądarce.",
@@ -772,24 +912,51 @@ export const settingsDict: Bundle = {
     "set.localBackup.created": "Utworzono plik kopii zapasowej",
     "set.localBackup.restored": "Przywrócono kopię zapasową",
     "set.localBackup.invalid": "Nieprawidłowa kopia – lokalne dane nie zostały nadpisane",
+    "set.localBackup.createdZip": "Utworzono kopię z dokumentami ({count}) (ZIP, bez szyfrowania)",
+    "set.localBackup.skippedCorrupt":
+      "{count} uszkodzonych wpisów nie dołączono (nic nie usunięto).",
+    "set.localBackup.previewTitle": "Przywrócić tę kopię?",
+    "set.localBackup.previewBody":
+      "Plik został w pełni sprawdzony. Zawiera dokumenty: {documents} ({size}), prace: {jobs}, wpisy: {shifts}. Zostanie dodanych dokumentów: {toAdd}, już istniejące ({kept}) pozostaną bez zmian. Dane aplikacji (prace, wpisy, ustawienia) zostaną zastąpione danymi z kopii; istniejące dokumenty nigdy nie są usuwane ani nadpisywane.",
+    "set.localBackup.confirmRestore": "Przywróć",
+    "set.localBackup.cancel": "Anuluj (nic się nie zmieni)",
+    "set.localBackup.restoredZip": "Przywrócono kopię: dodano dokumentów {added}, bez zmian {kept}",
+    "set.localBackup.err.corrupt": "Kopia uszkodzona lub niekompletna – nic nie zmieniono.",
+    "set.localBackup.err.unsupported": "Ten format kopii nie jest obsługiwany – nic nie zmieniono.",
+    "set.localBackup.err.newer":
+      "Ta kopia pochodzi z nowszej wersji aplikacji – nic nie zmieniono.",
+    "set.localBackup.err.integrity":
+      "Niezgodna suma kontrolna lub rozmiar – kopię odrzucono, nic nie zmieniono.",
+    "set.localBackup.err.tooLarge": "Kopia lub dokument zbyt duże – nic nie zmieniono.",
+    "set.localBackup.err.quota": "Za mało miejsca na dokumenty – nic nie zmieniono.",
+    "set.localBackup.err.storage":
+      "Magazyn dokumentów niedostępny – nic nie zmieniono i nie utworzono niepełnej kopii.",
+    "set.localBackup.err.commit":
+      "Przywracanie nie powiodło się i zostało cofnięte – poprzednie dane bez zmian.",
+    "set.localBackup.err.rollbackIncomplete":
+      "Przywracanie nie powiodło się, a cofnięcie było niepełne. Sprawdź listę dokumentów i spróbuj ponownie.",
 
     "set.setup.title": "Konfiguracja",
-    "set.setup.desc": "Uruchom ponownie asystenta konfiguracji (rodzaj pracy, region, wynagrodzenie, dodatki).",
+    "set.setup.desc":
+      "Uruchom ponownie asystenta konfiguracji (rodzaj pracy, region, wynagrodzenie, dodatki).",
     "set.setup.start": "Uruchom asystenta",
 
     "set.design.mode": "Tryb",
     "set.design.accent": "Kolor akcentu",
 
-    "set.wage.hint": "Domyślne dodatki dla wszystkich prac bez własnych reguł. Procent lub stała kwota za godzinę.",
+    "set.wage.hint":
+      "Domyślne dodatki dla wszystkich prac bez własnych reguł. Procent lub stała kwota za godzinę.",
     "set.wage.nightFrom": "Noc od",
     "set.wage.nightTo": "Noc do",
 
     "set.account.signIn.title": "Zaloguj się",
-    "set.account.signIn.desc": "Zaloguj się, aby Twoje dane były automatycznie zapisywane i przywracane na nowym urządzeniu.",
+    "set.account.signIn.desc":
+      "Zaloguj się, aby Twoje dane były automatycznie zapisywane i przywracane na nowym urządzeniu.",
     "set.account.signIn.google": "Zaloguj się przez Google",
     "set.account.signIn.apple": "Zaloguj się przez Apple",
     "set.account.demo.localOnly": "Tryb testowy – dane tylko na tym urządzeniu.",
-    "set.account.demo.signInPrompt": "Zaloguj się przez Google, aby mieć kopię w chmurze i zmianę urządzenia.",
+    "set.account.demo.signInPrompt":
+      "Zaloguj się przez Google, aby mieć kopię w chmurze i zmianę urządzenia.",
 
     "set.account.cloud.title": "Kopia zapasowa w chmurze",
     "set.account.cloud.signedInAs": "Zalogowano jako {email}",
@@ -798,7 +965,8 @@ export const settingsDict: Bundle = {
     "set.account.cloud.backup": "Zapisz",
     "set.account.cloud.restore": "Wczytaj",
     "set.account.cloud.signOut": "Wyloguj",
-    "set.account.delete.confirm": "Trwale usunąć konto i wszystkie powiązane z nim dane w chmurze? Tej operacji nie można cofnąć.",
+    "set.account.delete.confirm":
+      "Trwale usunąć konto i wszystkie powiązane z nim dane w chmurze? Tej operacji nie można cofnąć.",
     "set.account.delete.button": "Usuń konto",
     "set.account.delete.failed": "Nie udało się usunąć konta.",
     "set.account.delete.success": "Konto i lokalne dane konta zostały usunięte.",
@@ -814,7 +982,8 @@ export const settingsDict: Bundle = {
     "set.account.cloud.sync.error": "Synchronizacja nie powiodła się",
     "set.account.cloud.sync.retry": "Spróbuj ponownie",
     "set.account.cloud.sync.conflict": "Konflikt: urządzenie i chmura zostały zmienione",
-    "set.account.cloud.sync.conflictFirstSync": "Pierwsza synchronizacja: lokalne prace i chmura się różnią — wybierz wersję.",
+    "set.account.cloud.sync.conflictFirstSync":
+      "Pierwsza synchronizacja: lokalne prace i chmura się różnią — wybierz wersję.",
     "set.account.cloud.sync.keepLocal": "Zachowaj urządzenie",
     "set.account.cloud.sync.never": "Jeszcze nigdy",
     "set.account.cloud.sync.device": "To urządzenie",
@@ -829,17 +998,20 @@ export const settingsDict: Bundle = {
     "set.account.cloud.cloudCopy": "Kopia w chmurze",
     "set.account.cloud.available": "Dostępna",
     "set.account.cloud.notAvailable": "Nieznana",
-    "set.account.cloud.backupWhat": "Kopia zawiera dane aplikacji, w tym godziny pracy, stanowiska, ustawienia i inne dane projektu.",
+    "set.account.cloud.backupWhat":
+      "Kopia zawiera dane aplikacji, w tym godziny pracy, stanowiska, ustawienia i inne dane projektu.",
     "set.account.cloud.sync.keepCloud": "Zachowaj chmurę",
 
     "imp.xlsxUnsupported": "Import XLS/XLSX jest obecnie wyłączony. Użyj pliku CSV.",
     "imp.fileTooLarge": "Plik jest za duży. Maksymalnie 2 MB.",
     "imp.readError": "Nie udało się odczytać pliku.",
     "imp.title": "Importuj dane",
-    "imp.desc": "Wczytaj CSV, TXT lub kopię zapasową JSON. Import Excela jest obecnie wyłączony. Dane są sprawdzane przed importem.",
+    "imp.desc":
+      "Wczytaj CSV, TXT lub kopię zapasową JSON. Import Excela jest obecnie wyłączony. Dane są sprawdzane przed importem.",
     "imp.selectFile": "Wybierz plik",
     "imp.downloadTemplate": "Pobierz szablon CSV",
-    "imp.columnsHint": "Kolumny: Data, Początek, Koniec, Przerwa (min), Stawka godzinowa, Praca, Notatka.",
+    "imp.columnsHint":
+      "Kolumny: Data, Początek, Koniec, Przerwa (min), Stawka godzinowa, Praca, Notatka.",
     "imp.jsonSuccess": "Zaimportowano dane JSON",
     "imp.jsonError": "Nie udało się odczytać pliku JSON",
     "imp.jsonInvalid": "Kopia JSON jest nieprawidłowa i nie została zastosowana",

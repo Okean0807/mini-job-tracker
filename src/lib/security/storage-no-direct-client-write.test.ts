@@ -167,9 +167,18 @@ export function findStorageEscapes(source: string, fileName = "x.ts"): string[] 
     const { line } = sf.getLineAndCharacterOfPosition(n.getStart());
     hits.push(`${fileName}:${line + 1}:${why}`);
   };
+  // `navigator.storage` is the browser's StorageManager (quota estimate / persist()), not Supabase Storage.
+  const isBrowserStorageManager = (n: ts.Node) => {
+    const recv =
+      ts.isPropertyAccessExpression(n) || ts.isElementAccessExpression(n)
+        ? n.expression.getText(sf)
+        : "";
+    return recv === "navigator" || recv.endsWith(".navigator");
+  };
   const isStorageRef = (n: ts.Node) =>
-    (ts.isPropertyAccessExpression(n) && n.name.text === "storage") ||
-    (ts.isElementAccessExpression(n) && literalText(n.argumentExpression) === "storage");
+    !isBrowserStorageManager(n) &&
+    ((ts.isPropertyAccessExpression(n) && n.name.text === "storage") ||
+      (ts.isElementAccessExpression(n) && literalText(n.argumentExpression) === "storage"));
   const memberName = (n: ts.Node) =>
     ts.isPropertyAccessExpression(n)
       ? n.name.text
@@ -275,6 +284,30 @@ function listAllSources(dir: string, out: string[] = []): string[] {
   }
   return out;
 }
+
+describe("browser StorageManager is not Supabase Storage (Phase 2.1)", () => {
+  it("allows navigator.storage.persist()/persisted() ...", () => {
+    expect(
+      findStorageEscapes(
+        "async function f(){ const s = globalThis.navigator?.storage; return s?.persist(); }",
+        "x.ts",
+      ),
+    ).toEqual([]);
+    expect(findStorageEscapes("const s = navigator.storage; s.estimate();", "x.ts")).toEqual([]);
+  });
+  it("... and still flags every Supabase Storage reference", () => {
+    expect(
+      findStorageEscapes('const c = supabase.storage; c.from("documents");', "x.ts").length,
+    ).toBeGreaterThan(0);
+    expect(
+      findStorageEscapes('client["storage"].from("documents").upload("p", f);', "x.ts").length,
+    ).toBeGreaterThan(0);
+    expect(
+      findStorageEscapes("const { storage } = supabase;", "x.ts").length +
+        findStorageEscapes('foo.storage.from("a").remove(["x"]);', "x.ts").length,
+    ).toBeGreaterThan(0);
+  });
+});
 
 describe("storage guard gaps (QA #135)", () => {
   it.each(Object.entries(GAP_NEGATIVE))("reports gap fixture: %s", (_n, src) => {

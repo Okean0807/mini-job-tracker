@@ -7,7 +7,8 @@ export const docsDict: Bundle = {
     "doc.pageTitle": "Dokumente",
     "doc.subtitle": "Uploads und App-Exporte (PDF, Excel, Arbeitsnachweis) an einem Ort.",
     "doc.signedOut": "Bitte melde dich in den Einstellungen an, um Dokumente zu speichern.",
-    "doc.empty": "Noch keine Dokumente. Lade etwas hoch oder erstelle einen Export in der Statistik.",
+    "doc.empty":
+      "Noch keine Dokumente. Lade etwas hoch oder erstelle einen Export in der Statistik.",
     "doc.upload": "Hochladen",
     "doc.uploading": "Wird hochgeladen …",
     "doc.file": "Datei",
@@ -45,7 +46,22 @@ export const docsDict: Bundle = {
     "doc.source.generated": "Export",
     "doc.source.upload": "Upload",
     "doc.localOnlyNotice":
-      "Diese Version speichert alles lokal auf deinem Gerät. Das Hochladen eigener Dateien ist hier nicht verfügbar; Exporte der App bleiben lokal sichtbar.",
+      "Hochgeladene Dokumente werden nur in diesem Browser auf diesem Gerät gespeichert – nicht auf einem Server. Der Browser garantiert keine dauerhafte Speicherung (Browserdaten löschen oder Speichermangel können sie entfernen). Sichere sie regelmäßig über Einstellungen → Lokale Sicherung.",
+    "doc.savedLocal": "Dokument auf diesem Gerät gespeichert",
+    "doc.savingLocal": "Wird gespeichert …",
+    "doc.download": "Herunterladen",
+    "doc.deleteConfirm":
+      "Dieses Dokument von diesem Gerät löschen? Das kann nicht rückgängig gemacht werden.",
+    "doc.err.storage-full":
+      "Nicht gespeichert: Auf diesem Gerät ist nicht genug Speicherplatz frei. Es wurde nichts gelöscht – du kannst es nach dem Freigeben erneut versuchen.",
+    "doc.err.storage-unavailable":
+      "Nicht gespeichert: Der lokale Speicher (IndexedDB) ist in diesem Browser nicht verfügbar (z. B. privater Modus).",
+    "doc.err.storage-failed":
+      "Nicht gespeichert: Das Dokument konnte nicht auf diesem Gerät gespeichert werden. Bitte erneut versuchen.",
+    "doc.err.type": "Dateityp nicht erlaubt (PDF, JPEG, PNG oder WebP).",
+    "doc.persistGranted": "Der Browser hat den Speicher als dauerhaft markiert.",
+    "doc.corruptWarning":
+      "{count} gespeicherte(r) Eintrag/Einträge sind beschädigt und werden nicht angezeigt (nichts wurde gelöscht).",
     "doc.signedOutUploads": "Für Cloud-Uploads bitte anmelden. App-Exporte bleiben lokal sichtbar.",
 
     "doc.tags": "Schlagwörter",
@@ -114,7 +130,21 @@ export const docsDict: Bundle = {
     "doc.source.generated": "Export",
     "doc.source.upload": "Upload",
     "doc.localOnlyNotice":
-      "This version keeps everything on your device. Uploading your own files is not available here; app exports stay visible locally.",
+      "Uploaded documents are stored only in this browser on this device – not on a server. The browser does not guarantee permanent storage (clearing browser data or low storage can remove them). Back them up regularly via Settings → Local backup.",
+    "doc.savedLocal": "Document saved on this device",
+    "doc.savingLocal": "Saving …",
+    "doc.download": "Download",
+    "doc.deleteConfirm": "Delete this document from this device? This cannot be undone.",
+    "doc.err.storage-full":
+      "Not saved: this device has not enough free storage. Nothing was deleted – you can try again after freeing space.",
+    "doc.err.storage-unavailable":
+      "Not saved: local storage (IndexedDB) is not available in this browser (e.g. private mode).",
+    "doc.err.storage-failed":
+      "Not saved: the document could not be stored on this device. Please try again.",
+    "doc.err.type": "File type not allowed (PDF, JPEG, PNG or WebP).",
+    "doc.persistGranted": "The browser has marked this storage as persistent.",
+    "doc.corruptWarning":
+      "{count} stored entr(y/ies) are damaged and not shown (nothing was deleted).",
     "doc.signedOutUploads": "Sign in for cloud uploads. App exports stay visible locally.",
 
     "doc.tags": "Tags",
@@ -183,7 +213,21 @@ export const docsDict: Bundle = {
     "doc.source.generated": "Экспорт",
     "doc.source.upload": "Загрузка",
     "doc.localOnlyNotice":
-      "Эта версия хранит всё на вашем устройстве. Загрузка собственных файлов здесь недоступна; экспорты приложения остаются видны локально.",
+      "Загруженные документы хранятся только в этом браузере на этом устройстве – не на сервере. Браузер не гарантирует постоянное хранение (очистка данных браузера или нехватка места могут их удалить). Регулярно делайте резервную копию: Настройки → Локальная копия.",
+    "doc.savedLocal": "Документ сохранён на этом устройстве",
+    "doc.savingLocal": "Сохранение …",
+    "doc.download": "Скачать",
+    "doc.deleteConfirm": "Удалить этот документ с этого устройства? Это нельзя отменить.",
+    "doc.err.storage-full":
+      "Не сохранено: на устройстве недостаточно места. Ничего не удалено – попробуйте снова после освобождения места.",
+    "doc.err.storage-unavailable":
+      "Не сохранено: локальное хранилище (IndexedDB) недоступно в этом браузере (например, приватный режим).",
+    "doc.err.storage-failed":
+      "Не сохранено: не удалось сохранить документ на устройстве. Попробуйте ещё раз.",
+    "doc.err.type": "Тип файла не разрешён (PDF, JPEG, PNG или WebP).",
+    "doc.persistGranted": "Браузер пометил это хранилище как постоянное.",
+    "doc.corruptWarning":
+      "{count} сохранённых записей повреждено и не показано (ничего не удалено).",
     "doc.signedOutUploads": "Войдите для облачных загрузок. Экспорты приложения видны локально.",
 
     "doc.tags": "Теги",
@@ -212,7 +256,8 @@ export const docsDict: Bundle = {
   tr: {
     "nav.docs": "Belgeler",
     "doc.pageTitle": "Belgeler",
-    "doc.subtitle": "Yüklemeler ve uygulama dışa aktarımları (PDF, Excel, çalışma belgesi) tek yerde.",
+    "doc.subtitle":
+      "Yüklemeler ve uygulama dışa aktarımları (PDF, Excel, çalışma belgesi) tek yerde.",
     "doc.signedOut": "Belge saklamak için ayarlardan giriş yapın.",
     "doc.empty": "Henüz belge yok. Dosya yükle veya İstatistikten dışa aktar.",
     "doc.upload": "Yükle",
@@ -252,8 +297,21 @@ export const docsDict: Bundle = {
     "doc.source.generated": "Dışa aktarım",
     "doc.source.upload": "Yükleme",
     "doc.localOnlyNotice":
-      "Bu sürüm her şeyi cihazınızda saklar. Kendi dosyalarınızı yükleme burada kullanılamaz; uygulama dışa aktarımları yerelde görünür.",
-    "doc.signedOutUploads": "Bulut yüklemeleri için giriş yapın. Uygulama dışa aktarımları yerelde görünür.",
+      "Yüklenen belgeler yalnızca bu cihazdaki bu tarayıcıda saklanır – sunucuda değil. Tarayıcı kalıcı saklamayı garanti etmez (tarayıcı verilerini silmek veya yer azlığı onları kaldırabilir). Düzenli olarak Ayarlar → Yerel yedek ile yedekleyin.",
+    "doc.savedLocal": "Belge bu cihaza kaydedildi",
+    "doc.savingLocal": "Kaydediliyor …",
+    "doc.download": "İndir",
+    "doc.deleteConfirm": "Bu belge bu cihazdan silinsin mi? Bu işlem geri alınamaz.",
+    "doc.err.storage-full":
+      "Kaydedilmedi: Bu cihazda yeterli boş alan yok. Hiçbir şey silinmedi – yer açtıktan sonra tekrar deneyebilirsiniz.",
+    "doc.err.storage-unavailable":
+      "Kaydedilmedi: Yerel depolama (IndexedDB) bu tarayıcıda kullanılamıyor (ör. gizli mod).",
+    "doc.err.storage-failed": "Kaydedilmedi: Belge bu cihaza kaydedilemedi. Lütfen tekrar deneyin.",
+    "doc.err.type": "Dosya türüne izin verilmiyor (PDF, JPEG, PNG veya WebP).",
+    "doc.persistGranted": "Tarayıcı bu depolamayı kalıcı olarak işaretledi.",
+    "doc.corruptWarning": "{count} kayıtlı öğe hasarlı ve gösterilmiyor (hiçbir şey silinmedi).",
+    "doc.signedOutUploads":
+      "Bulut yüklemeleri için giriş yapın. Uygulama dışa aktarımları yerelde görünür.",
 
     "doc.tags": "Etiketler",
     "doc.tagsHint": "Virgülle ayırın",
@@ -281,7 +339,8 @@ export const docsDict: Bundle = {
   pl: {
     "nav.docs": "Dokumenty",
     "doc.pageTitle": "Dokumenty",
-    "doc.subtitle": "Przesyłane pliki i eksporty aplikacji (PDF, Excel, poświadczenie) w jednym miejscu.",
+    "doc.subtitle":
+      "Przesyłane pliki i eksporty aplikacji (PDF, Excel, poświadczenie) w jednym miejscu.",
     "doc.signedOut": "Zaloguj się w ustawieniach, aby zapisywać dokumenty.",
     "doc.empty": "Brak dokumentów. Wgraj plik lub utwórz eksport w Statystyce.",
     "doc.upload": "Wgraj",
@@ -321,8 +380,23 @@ export const docsDict: Bundle = {
     "doc.source.generated": "Eksport",
     "doc.source.upload": "Przesłany",
     "doc.localOnlyNotice":
-      "Ta wersja przechowuje wszystko na Twoim urządzeniu. Wgrywanie własnych plików nie jest tu dostępne; eksporty aplikacji są widoczne lokalnie.",
-    "doc.signedOutUploads": "Zaloguj się, aby przesyłać do chmury. Eksporty aplikacji są widoczne lokalnie.",
+      "Wgrane dokumenty są przechowywane tylko w tej przeglądarce na tym urządzeniu – nie na serwerze. Przeglądarka nie gwarantuje trwałego przechowywania (wyczyszczenie danych lub brak miejsca mogą je usunąć). Regularnie twórz kopię: Ustawienia → Kopia lokalna.",
+    "doc.savedLocal": "Dokument zapisany na tym urządzeniu",
+    "doc.savingLocal": "Zapisywanie …",
+    "doc.download": "Pobierz",
+    "doc.deleteConfirm": "Usunąć ten dokument z tego urządzenia? Tej operacji nie można cofnąć.",
+    "doc.err.storage-full":
+      "Nie zapisano: brak wolnego miejsca na urządzeniu. Nic nie usunięto – spróbuj ponownie po zwolnieniu miejsca.",
+    "doc.err.storage-unavailable":
+      "Nie zapisano: pamięć lokalna (IndexedDB) jest niedostępna w tej przeglądarce (np. tryb prywatny).",
+    "doc.err.storage-failed":
+      "Nie zapisano: nie udało się zapisać dokumentu na urządzeniu. Spróbuj ponownie.",
+    "doc.err.type": "Typ pliku niedozwolony (PDF, JPEG, PNG lub WebP).",
+    "doc.persistGranted": "Przeglądarka oznaczyła ten magazyn jako trwały.",
+    "doc.corruptWarning":
+      "{count} zapisanych wpisów jest uszkodzonych i nie jest wyświetlanych (nic nie usunięto).",
+    "doc.signedOutUploads":
+      "Zaloguj się, aby przesyłać do chmury. Eksporty aplikacji są widoczne lokalnie.",
 
     "doc.tags": "Tagi",
     "doc.tagsHint": "Oddziel przecinkami",

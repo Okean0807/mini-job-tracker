@@ -1,9 +1,17 @@
 import { cloudClient } from "@/integrations/supabase/guarded-client";
+import { isCloudMode } from "@/lib/cloud/cloud-mode";
 
 import {
-  GENERATED_DOC_CATEGORIES,
-  type GeneratedDocCategory,
-} from "./generated-docs";
+  DocumentStoreError,
+  getDocumentStore,
+  newDocumentId,
+  notifyDocumentsChanged,
+  requestPersistentStorage,
+  type DocumentMeta,
+  type PersistenceResult,
+} from "./document-store";
+
+import { GENERATED_DOC_CATEGORIES, type GeneratedDocCategory } from "./generated-docs";
 
 export { GENERATED_DOC_CATEGORIES };
 export type { GeneratedDocCategory };
@@ -19,10 +27,7 @@ export const DOC_CATEGORIES = [
 export type DocCategory = (typeof DOC_CATEGORIES)[number];
 
 /** Upload categories + generated export categories for hub filters. */
-export const HUB_DOC_CATEGORIES = [
-  ...DOC_CATEGORIES,
-  ...GENERATED_DOC_CATEGORIES,
-] as const;
+export const HUB_DOC_CATEGORIES = [...DOC_CATEGORIES, ...GENERATED_DOC_CATEGORIES] as const;
 
 export type HubDocCategory = (typeof HUB_DOC_CATEGORIES)[number];
 
@@ -69,7 +74,35 @@ export function parseTags(input: string): string[] {
   ).slice(0, 12);
 }
 
+/** Row shape of the Documents UI, filled from a local record (Public Local build). */
+function rowFromMeta(m: DocumentMeta): DocumentRow {
+  return {
+    id: m.id,
+    name: m.name,
+    path: m.id,
+    category: m.category,
+    job_id: m.jobId,
+    folder_id: m.folderId,
+    tags: m.tags,
+    size: m.size,
+    mime_type: m.mimeType,
+    note: m.note,
+    created_at: m.uploadedAt,
+  };
+}
+
+/** Number of stored records that failed validation in the last local listing (never deleted automatically). */
+let lastCorruptCount = 0;
+export function localCorruptDocumentCount(): number {
+  return lastCorruptCount;
+}
+
 export async function listDocuments(): Promise<DocumentRow[]> {
+  if (!isCloudMode()) {
+    const { docs, corrupt } = await getDocumentStore().list();
+    lastCorruptCount = corrupt;
+    return docs.map(rowFromMeta);
+  }
   const { data, error } = await cloudClient()
     .from("documents")
     .select(SELECT)
@@ -79,6 +112,7 @@ export async function listDocuments(): Promise<DocumentRow[]> {
 }
 
 export async function listFolders(): Promise<FolderRow[]> {
+  if (!isCloudMode()) return getDocumentStore().listFolders();
   const { data, error } = await cloudClient()
     .from("document_folders")
     .select("id,name,color")
@@ -88,6 +122,11 @@ export async function listFolders(): Promise<FolderRow[]> {
 }
 
 export async function createFolder(name: string, color: string): Promise<void> {
+  if (!isCloudMode()) {
+    await getDocumentStore().addFolder({ id: newDocumentId(), name, color });
+    notifyDocumentsChanged();
+    return;
+  }
   const { data: auth } = await cloudClient().auth.getUser();
   const userId = auth.user?.id;
   if (!userId) throw new Error("not-signed-in");
@@ -98,11 +137,25 @@ export async function createFolder(name: string, color: string): Promise<void> {
 }
 
 export async function updateFolder(id: string, patch: Partial<FolderRow>): Promise<void> {
+  if (!isCloudMode()) {
+    const { name, color } = patch;
+    await getDocumentStore().updateFolder(id, {
+      ...(name !== undefined ? { name } : {}),
+      ...(color !== undefined ? { color } : {}),
+    });
+    notifyDocumentsChanged();
+    return;
+  }
   const { error } = await cloudClient().from("document_folders").update(patch).eq("id", id);
   if (error) throw error;
 }
 
 export async function deleteFolder(id: string): Promise<void> {
+  if (!isCloudMode()) {
+    await getDocumentStore().deleteFolder(id);
+    notifyDocumentsChanged();
+    return;
+  }
   const { error } = await cloudClient().from("document_folders").delete().eq("id", id);
   if (error) throw error;
 }
@@ -126,6 +179,64 @@ export class DocumentUploadError extends Error {
   }
 }
 
+/** Browser's answer to the persistent-storage request after the last successful local save (best effort). */
+let lastPersistence: PersistenceResult | null = null;
+export function lastPersistenceResult(): PersistenceResult | null {
+  return lastPersistence;
+}
+
+function uploadErrorFor(e: unknown): DocumentUploadError {
+  const code = e instanceof DocumentStoreError ? e.code : "failed";
+  return new DocumentUploadError(
+    code === "quota"
+      ? "storage-full"
+      : code === "unavailable" || code === "blocked"
+        ? "storage-unavailable"
+        : "storage-failed",
+  );
+}
+
+async function saveLocalDocument(
+  file: File,
+  meta: { category: string; jobId?: string; note?: string; folderId?: string; tags?: string[] },
+): Promise<void> {
+  const now = new Date().toISOString();
+  const lm =
+    Number.isFinite(file.lastModified) && file.lastModified > 0
+      ? new Date(file.lastModified).toISOString()
+      : now;
+  // The Blob is stored as is (never read into a string, never turned into a Blob URL).
+  const base = {
+    name: file.name.slice(0, 255) || "document",
+    mimeType: file.type,
+    size: file.size,
+    category: meta.category,
+    jobId: meta.jobId ?? null,
+    folderId: meta.folderId ?? null,
+    tags: meta.tags ?? [],
+    note: meta.note ?? null,
+    createdAt: lm,
+    uploadedAt: now,
+    blob: file as Blob,
+  };
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      // resolves only after the IndexedDB transaction has completed
+      await getDocumentStore().add({ ...base, id: newDocumentId() });
+      notifyDocumentsChanged();
+      void requestPersistentStorage().then((r) => {
+        lastPersistence = r;
+      });
+      return;
+    } catch (e) {
+      lastErr = e;
+      if (!(e instanceof DocumentStoreError && e.code === "duplicate-id")) break;
+    }
+  }
+  throw uploadErrorFor(lastErr);
+}
+
 export async function uploadDocument(
   file: File,
   meta: { category: string; jobId?: string; note?: string; folderId?: string; tags?: string[] },
@@ -133,8 +244,15 @@ export async function uploadDocument(
   if (file.size <= 0 || file.size > MAX_DOCUMENT_SIZE) {
     throw new DocumentUploadError("file-too-large");
   }
-  if (!ALLOWED_DOCUMENT_MIME_TYPES.includes(file.type as (typeof ALLOWED_DOCUMENT_MIME_TYPES)[number])) {
+  if (
+    !ALLOWED_DOCUMENT_MIME_TYPES.includes(file.type as (typeof ALLOWED_DOCUMENT_MIME_TYPES)[number])
+  ) {
     throw new DocumentUploadError("file-type-not-allowed");
+  }
+
+  if (!isCloudMode()) {
+    await saveLocalDocument(file, meta);
+    return;
   }
 
   const { data: auth } = await cloudClient().auth.getUser();
@@ -163,17 +281,60 @@ export async function updateDocument(
     note?: string | null;
   },
 ): Promise<void> {
+  if (!isCloudMode()) {
+    const { name, category, job_id, folder_id, tags, note } = patch;
+    await getDocumentStore().update(id, {
+      ...(name !== undefined ? { name } : {}),
+      ...(category !== undefined ? { category } : {}),
+      ...(job_id !== undefined ? { jobId: job_id } : {}),
+      ...(folder_id !== undefined ? { folderId: folder_id } : {}),
+      ...(tags !== undefined ? { tags } : {}),
+      ...(note !== undefined ? { note } : {}),
+    });
+    notifyDocumentsChanged();
+    return;
+  }
   const { error } = await cloudClient().from("documents").update(patch).eq("id", id);
   if (error) throw error;
 }
 
+/** Temporary Blob URL for the stored file (Public Local). It is only a viewing handle, never the stored data. */
+const BLOB_URL_TTL_MS = 120_000;
+async function localBlobUrl(id: string): Promise<string> {
+  const doc = await getDocumentStore().get(id);
+  const url = URL.createObjectURL(doc.blob);
+  globalThis.setTimeout(() => URL.revokeObjectURL(url), BLOB_URL_TTL_MS);
+  return url;
+}
+
+/** Saves the stored file to the user's disk under its original name (Public Local). */
+export async function downloadLocalDocument(doc: Pick<DocumentRow, "id" | "name">): Promise<void> {
+  const stored = await getDocumentStore().get(doc.id);
+  const url = URL.createObjectURL(stored.blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = stored.name;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  globalThis.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
 export async function documentUrl(path: string): Promise<string> {
+  if (!isCloudMode()) return localBlobUrl(path);
   const { data, error } = await cloudClient().storage.from(BUCKET).createSignedUrl(path, 600);
   if (error || !data) throw error ?? new Error("no-url");
   return data.signedUrl;
 }
 
 export async function deleteDocument(doc: DocumentRow): Promise<void> {
+  if (!isCloudMode()) {
+    // one transaction removes metadata and Blob together
+    await getDocumentStore().delete(doc.id);
+    notifyDocumentsChanged();
+    return;
+  }
   await cloudClient().storage.from(BUCKET).remove([doc.path]);
   const { error } = await cloudClient().from("documents").delete().eq("id", doc.id);
   if (error) throw error;

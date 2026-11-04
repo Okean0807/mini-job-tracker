@@ -93,18 +93,24 @@ describe("no cloud work happens in a Public Local build", () => {
     await expect(deleteMyAccount()).rejects.toThrow(/cloud-disabled/);
     expect(h.touched).toEqual([]);
   });
-  it("cloud document functions (list/upload/download/delete/folders) are refused before any client access", async () => {
+  it("document functions run on this device (IndexedDB) and never touch the cloud client", async () => {
     vi.resetModules();
+    const { createFakeIndexedDB } = await import("@/lib/minijob/__fixtures__/fake-indexeddb");
+    const { __setIndexedDbForTests } = await import("@/lib/minijob/document-store");
+    __setIndexedDbForTests(createFakeIndexedDB().factory);
     const docs = await import("@/lib/minijob/documents");
-    const calls: Promise<unknown>[] = [
-      docs.listDocuments(),
-      docs.listFolders(),
-      docs.createFolder("x", "#000"),
-      docs.updateFolder("1", {}),
-      docs.deleteFolder("1"),
-    ];
-    for (const c of calls) await expect(c).rejects.toThrow(/cloud-disabled/);
+    expect(await docs.listDocuments()).toEqual([]);
+    expect(await docs.listFolders()).toEqual([]);
+    await docs.createFolder("x", "#000");
+    expect((await docs.listFolders()).length).toBe(1);
+    await docs.uploadDocument(new File([new Uint8Array(5)], "a.pdf", { type: "application/pdf" }), {
+      category: "vertrag",
+    });
+    const [row] = await docs.listDocuments();
+    expect(row?.name).toBe("a.pdf");
+    await docs.deleteDocument(row!);
     expect(h.touched).toEqual([]);
+    __setIndexedDbForTests(undefined);
   });
   it("markWizardPendingFirstSync writes no cloud metadata", async () => {
     vi.resetModules();

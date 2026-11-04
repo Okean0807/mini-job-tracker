@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Download, FileText, FolderPlus, Pencil, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { onDocumentsChangedElsewhere } from "@/lib/minijob/document-store";
+
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { isCloudMode } from "@/lib/cloud/cloud-mode";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,6 +27,10 @@ import {
   DOC_CATEGORIES,
   HUB_DOC_CATEGORIES,
   deleteDocument,
+  DocumentUploadError,
+  downloadLocalDocument,
+  lastPersistenceResult,
+  localCorruptDocumentCount,
   documentCreatedDay,
   documentUrl,
   formatSize,
@@ -84,6 +90,8 @@ function DocumentsPage() {
   const [tags, setTags] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [corrupt, setCorrupt] = useState(0);
+  const [persistence, setPersistence] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
   const [filterFolder, setFilterFolder] = useState<string>("all");
@@ -102,10 +110,12 @@ function DocumentsPage() {
       const [d, f] = await Promise.all([listDocuments(), listFolders()]);
       setDocs(d);
       setFolders(f);
+      setCorrupt(cloudMode ? 0 : localCorruptDocumentCount());
     } catch {
       /* ohne Anmeldung keine Cloud-Liste */
+      if (!cloudMode) toast.error(t("doc.err.storage-unavailable"), { id: "doc-list-error" });
     }
-  }, [refreshGenerated]);
+  }, [refreshGenerated, cloudMode, t]);
 
   useEffect(() => {
     refreshGenerated();
@@ -114,14 +124,29 @@ function DocumentsPage() {
     return onScopeChange(() => refreshGenerated());
   }, [refreshGenerated]);
 
+  // Public Local: documents live in this browser (IndexedDB) - load them without any account, reload on
+  // scope changes and when another tab of this app changed them.
   useEffect(() => {
+    if (cloudMode) return;
+    void refresh();
+    const off = onScopeChange(() => void refresh());
+    const offTabs = onDocumentsChangedElsewhere(() => void refresh());
+    const cleanup = () => {
+      off();
+      offTabs();
+    };
+    return cleanup;
+  }, [cloudMode, refresh]);
+
+  useEffect(() => {
+    if (!cloudMode) return;
     if (authStatus === "signed_in" && session) void refresh();
     else if (authStatus === "signed_out") {
       setDocs([]);
       setFolders([]);
       refreshGenerated();
     }
-  }, [authStatus, session, refresh, refreshGenerated]);
+  }, [cloudMode, authStatus, session, refresh, refreshGenerated]);
 
   const allTags = useMemo(
     () => Array.from(new Set(docs.flatMap((d) => d.tags ?? []))).sort(),
@@ -196,10 +221,26 @@ function DocumentsPage() {
       setFile(null);
       setNote("");
       setTags("");
-      toast.success(t("doc.uploadOk"));
+      // reached only after the IndexedDB transaction completed
+      toast.success(cloudMode ? t("doc.uploadOk") : t("doc.savedLocal"));
+      if (!cloudMode) setPersistence(lastPersistenceResult());
       await refresh();
-    } catch {
-      toast.error(t("doc.error"));
+    } catch (e) {
+      // the file stays selected so the user can simply try again; nothing was stored
+      const code = e instanceof DocumentUploadError ? e.code : "";
+      toast.error(
+        cloudMode
+          ? t("doc.error")
+          : code === "storage-full"
+            ? t("doc.err.storage-full")
+            : code === "storage-unavailable"
+              ? t("doc.err.storage-unavailable")
+              : code === "file-too-large"
+                ? t("doc.tooLarge")
+                : code === "file-type-not-allowed"
+                  ? t("doc.err.type")
+                  : t("doc.err.storage-failed"),
+      );
     } finally {
       setBusy(false);
     }
@@ -223,7 +264,16 @@ function DocumentsPage() {
     if (!downloadGeneratedDocument(doc)) toast.error(t("doc.noPayload"));
   }
 
+  async function handleDownloadLocal(doc: DocumentRow) {
+    try {
+      await downloadLocalDocument(doc);
+    } catch {
+      toast.error(t("doc.err.storage-failed"));
+    }
+  }
+
   async function handleDeleteUpload(doc: DocumentRow) {
+    if (!cloudMode && !window.confirm(t("doc.deleteConfirm"))) return;
     try {
       await deleteDocument(doc);
       toast.success(t("doc.deleteOk"));
@@ -239,7 +289,8 @@ function DocumentsPage() {
     refreshGenerated();
   }
 
-  const signedIn = authStatus === "signed_in";
+  // Public Local: no account is needed to store documents on this device.
+  const signedIn = cloudMode ? authStatus === "signed_in" : true;
   const hasAny = hubItems.length > 0;
 
   return (
@@ -247,7 +298,7 @@ function DocumentsPage() {
       <h1 className="text-2xl font-extrabold tracking-tight">{t("doc.pageTitle")}</h1>
       <p className="mt-1 text-sm text-muted-foreground">{t("doc.subtitle")}</p>
 
-      {authStatus === "loading" ? (
+      {cloudMode && authStatus === "loading" ? (
         <div
           className="mt-6 rounded-2xl border border-dashed p-8"
           aria-busy="true"
@@ -258,9 +309,23 @@ function DocumentsPage() {
         </div>
       ) : (
         <>
-          {authStatus === "signed_out" ? (
+          {cloudMode && authStatus === "signed_out" ? (
             <div className="mt-4 rounded-2xl border border-dashed p-4 text-center text-sm text-muted-foreground">
-              {cloudMode ? t("doc.signedOutUploads") : t("doc.localOnlyNotice")}
+              {t("doc.signedOutUploads")}
+            </div>
+          ) : null}
+          {!cloudMode ? (
+            <div
+              className="mt-4 space-y-1 rounded-2xl border border-dashed p-4 text-sm text-muted-foreground"
+              data-testid="doc-local-notice"
+            >
+              <p>{t("doc.localOnlyNotice")}</p>
+              {persistence === "granted" ? <p>{t("doc.persistGranted")}</p> : null}
+              {corrupt > 0 ? (
+                <p className="font-medium text-destructive" role="alert">
+                  {t("doc.corruptWarning", { count: corrupt })}
+                </p>
+              ) : null}
             </div>
           ) : null}
 
@@ -354,7 +419,7 @@ function DocumentsPage() {
 
               <Button className="w-full" onClick={() => void handleUpload()} disabled={busy}>
                 <Upload className="mr-2 size-4" />
-                {busy ? t("doc.uploading") : t("doc.upload")}
+                {busy ? (cloudMode ? t("doc.uploading") : t("doc.savingLocal")) : t("doc.upload")}
               </Button>
             </section>
           ) : null}
@@ -490,6 +555,7 @@ function DocumentsPage() {
                         type="button"
                         className="min-w-0 flex-1 text-left"
                         onClick={() => void handleOpenUpload(doc)}
+                        data-testid="doc-open"
                       >
                         <p className="truncate text-sm font-semibold">{doc.name}</p>
                         <p className="truncate text-xs text-muted-foreground">
@@ -499,6 +565,16 @@ function DocumentsPage() {
                           {job ? ` · ${job.name}` : ""}
                         </p>
                       </button>
+                      {!cloudMode ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={t("doc.download")}
+                          onClick={() => void handleDownloadLocal(doc)}
+                        >
+                          <Download className="size-4" />
+                        </Button>
+                      ) : null}
                       <Button
                         variant="ghost"
                         size="icon"

@@ -46,6 +46,25 @@ import {
 } from "@/lib/minijob/biometric";
 import { setupBiometricInScope } from "@/lib/minijob/biometric-setup";
 import { isCloudMode } from "@/lib/cloud/cloud-mode";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  commitRestore,
+  exportBackup,
+  prepareRestore,
+  BackupError,
+  type RestorePlan,
+} from "@/lib/minijob/document-backup";
+import { getDocumentStore, notifyDocumentsChanged } from "@/lib/minijob/document-store";
+import { formatSize } from "@/lib/minijob/documents";
 import { restoreLocalBackupFile } from "@/lib/minijob/local-backup-restore";
 import { syncActionErrorMessage } from "@/lib/minijob/sync-action-error";
 import { isValidPin, validatePinConfirm } from "@/lib/minijob/pin";
@@ -53,6 +72,8 @@ import {
   disableBiometric,
   getActiveScope,
   getData,
+  isPersistFailed,
+  replaceAll,
   updateSettings,
   updateSupplements,
   useAppData,
@@ -942,19 +963,69 @@ function NumberField({
 
 function LocalBackup({ shiftCount }: { shiftCount: number }) {
   const { t } = useT();
+  const [plan, setPlan] = useState<Extract<RestorePlan, { kind: "zip" }> | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  function download() {
-    const blob = new Blob([JSON.stringify(getData(), null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `minijob-backup-${isoDate(new Date())}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success(t("set.localBackup.created"));
+  function restoreErrorMessage(e: unknown): string {
+    if (!(e instanceof BackupError)) return t("error.fileRead");
+    if (e.rollbackIncomplete) return t("set.localBackup.err.rollbackIncomplete");
+    switch (e.code) {
+      case "unsupported":
+      case "not-a-backup":
+        return t("set.localBackup.err.unsupported");
+      case "newer-version":
+        return t("set.localBackup.err.newer");
+      case "integrity":
+        return t("set.localBackup.err.integrity");
+      case "too-large":
+        return t("set.localBackup.err.tooLarge");
+      case "quota":
+        return t("set.localBackup.err.quota");
+      case "storage-unavailable":
+        return t("set.localBackup.err.storage");
+      case "commit-failed":
+        return t("set.localBackup.err.commit");
+      default:
+        return t("set.localBackup.err.corrupt");
+    }
   }
 
-  function upload(file: File) {
+  async function download() {
+    try {
+      // Public Local: the backup carries the locally stored documents (ZIP). Cloud builds keep the JSON file.
+      const res = await exportBackup(getData(), { withDocuments: !isCloudMode() });
+      const url = URL.createObjectURL(res.blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = res.filename;
+      a.click();
+      globalThis.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      toast.success(
+        res.kind === "zip"
+          ? t("set.localBackup.createdZip", { count: res.documents })
+          : t("set.localBackup.created"),
+      );
+      if (res.skippedCorrupt > 0)
+        toast.warning(t("set.localBackup.skippedCorrupt", { count: res.skippedCorrupt }));
+    } catch (e) {
+      toast.error(
+        e instanceof BackupError ? t("set.localBackup.err.storage") : t("error.fileRead"),
+      );
+    }
+  }
+
+  async function upload(file: File) {
+    try {
+      const prepared = await prepareRestore(file);
+      if (prepared.kind === "zip") {
+        setPlan(prepared); // preview first: nothing has been written yet
+        return;
+      }
+    } catch (e) {
+      toast.error(restoreErrorMessage(e));
+      return;
+    }
+    // Plain JSON backup (all older backups): unchanged behaviour.
     // Datei wird async gelesen: nur in den Namensraum schreiben, der beim Start aktiv war.
     void restoreLocalBackupFile(file).then((result) => {
       if (result === "stale") return;
@@ -964,13 +1035,38 @@ function LocalBackup({ shiftCount }: { shiftCount: number }) {
     });
   }
 
+  async function confirmRestore() {
+    if (!plan) return;
+    setBusy(true);
+    try {
+      const r = await commitRestore(plan, {
+        store: getDocumentStore(),
+        getData,
+        replaceAll,
+        isPersistFailed,
+      });
+      toast.success(
+        t("set.localBackup.restoredZip", {
+          added: r.addedDocuments,
+          kept: r.keptExistingDocuments,
+        }),
+      );
+      notifyDocumentsChanged();
+    } catch (e) {
+      toast.error(restoreErrorMessage(e));
+    } finally {
+      setBusy(false);
+      setPlan(null);
+    }
+  }
+
   return (
     <Section title={t("set.localBackup.title")}>
       <p className="text-xs text-muted-foreground">
         {t("set.localBackup.desc", { count: shiftCount })}
       </p>
       <div className="grid grid-cols-2 gap-3">
-        <Button variant="outline" onClick={download}>
+        <Button variant="outline" onClick={() => void download()}>
           {t("set.localBackup.export")}
         </Button>
         <Button variant="outline" asChild>
@@ -978,17 +1074,52 @@ function LocalBackup({ shiftCount }: { shiftCount: number }) {
             {t("set.localBackup.import")}
             <input
               type="file"
-              accept="application/json"
+              accept="application/json,application/zip,.zip,.json"
               className="hidden"
+              data-testid="backup-file-input"
               onChange={(e) => {
                 const file = e.target.files?.[0];
-                if (file) upload(file);
+                if (file) void upload(file);
                 e.target.value = "";
               }}
             />
           </label>
         </Button>
       </div>
+      <AlertDialog
+        open={plan !== null}
+        onOpenChange={(open) => (!open && !busy ? setPlan(null) : undefined)}
+      >
+        <AlertDialogContent data-testid="restore-preview">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("set.localBackup.previewTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {plan
+                ? t("set.localBackup.previewBody", {
+                    documents: plan.summary.documents,
+                    size: formatSize(plan.summary.totalBytes),
+                    jobs: plan.summary.jobs,
+                    shifts: plan.summary.shifts,
+                    toAdd: plan.summary.toAdd,
+                    kept: plan.summary.alreadyPresent,
+                  })
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>{t("set.localBackup.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={busy}
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmRestore();
+              }}
+            >
+              {t("set.localBackup.confirmRestore")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Section>
   );
 }
