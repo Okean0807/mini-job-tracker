@@ -248,6 +248,19 @@ describe("static isolation inventory", () => {
     );
     expect(lovableUsers.map(rel)).toEqual([]);
   });
+  it("no other module refers to the client module at all (also not via dynamic import or re-export)", () => {
+    const refs = files
+      .filter((f) =>
+        /integrations\/supabase\/client(?!\.server)['"]|\.\.\/supabase\/client['"]|from\s+['"]\.\/client['"]|import\(\s*['"]\.\/client['"]/.test(
+          code(f),
+        ),
+      )
+      .map(rel)
+      .sort();
+    expect(refs).toEqual(
+      ["src/integrations/lovable/index.ts", "src/integrations/supabase/guarded-client.ts"].sort(),
+    );
+  });
   it("direct createClient() calls exist only in the client, the server client and the server auth middleware", () => {
     const creators = files.filter((f) => /\bcreateClient\s*[<(]/.test(code(f)));
     expect(creators.map(rel).sort()).toEqual([
