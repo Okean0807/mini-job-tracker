@@ -141,6 +141,28 @@ describe("zip reader is strict (corrupt / hostile input)", () => {
     const a = await open(z);
     await expectZipError(a.read("manifest.json"), "corrupt");
   });
+  it("rejects two entries with the same name (patched archive)", async () => {
+    const z = new Uint8Array(
+      await (
+        await buildZip([
+          { name: "aa", data: blob("1") },
+          { name: "ab", data: blob("2") },
+        ])
+      ).arrayBuffer(),
+    );
+    const text = new TextDecoder("latin1").decode(z);
+    // rename "ab" -> "aa" in the central directory (the last occurrence is the central directory record)
+    const at = text.lastIndexOf("ab");
+    z[at + 1] = "a".charCodeAt(0);
+    await expectZipError(open(z), "duplicate-entry");
+  });
+  it("rejects trailing garbage after the end-of-central-directory record", async () => {
+    const z = await good();
+    const withTail = new Uint8Array(z.length + 5);
+    withTail.set(z);
+    withTail.set([1, 2, 3, 4, 5], z.length);
+    await expectZipError(open(withTail), "corrupt");
+  });
   it("reading a missing entry fails clearly", async () => {
     const a = await open(await good());
     await expectZipError(a.read("nope"), "missing-entry");
