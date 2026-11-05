@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NumberField } from "@/components/ui/number-field";
 import { Switch } from "@/components/ui/switch";
 import { enterTestModeScope, markWizardPendingFirstSync } from "@/lib/minijob/cloud";
 import { markOAuthPending } from "@/lib/minijob/storage-scope";
@@ -555,18 +556,13 @@ export function OnboardingWizard({ settings, onDone }: Props) {
                           </div>
                           <div className="grid gap-1">
                             <Label className="text-xs">{t("wiz.help.breakLabel")}</Label>
-                            <Input
-                              type="number"
+                            <NumberField
                               inputMode="numeric"
                               className="min-h-11"
                               value={day.breakMinutes}
-                              onChange={(e) =>
+                              onValueChange={(n) =>
                                 setWeek(
-                                  week.map((d, i) =>
-                                    i === idx
-                                      ? { ...d, breakMinutes: Number(e.target.value) || 0 }
-                                      : d,
-                                  ),
+                                  week.map((d, i) => (i === idx ? { ...d, breakMinutes: n } : d)),
                                 )
                               }
                             />
@@ -636,19 +632,18 @@ export function OnboardingWizard({ settings, onDone }: Props) {
                         }
                       />
                       <span className="flex-1 text-sm font-medium">{label}</span>
-                      <Input
-                        type="number"
+                      <NumberField
                         inputMode="decimal"
                         className="min-h-11 w-20"
                         value={value.value}
                         disabled={!value.enabled}
-                        onChange={(e) =>
+                        onValueChange={(n) =>
                           setSupplements((s) => ({
                             ...s,
                             [key]: {
                               ...value,
                               mode: "prozent",
-                              value: Number(e.target.value) || 0,
+                              value: n,
                             },
                           }))
                         }

@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NumberField } from "@/components/ui/number-field";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useT } from "@/lib/i18n";
@@ -505,13 +506,12 @@ export function JobDialog({ open, onOpenChange, job, defaultRate }: JobDialogPro
                             }
                           }}
                         />
-                        <Input
-                          type="number"
-                          min="0"
+                        <NumberField
+                          min={0}
                           value={day.breakMinutes}
-                          onChange={(e) => {
+                          onValueChange={(n) => {
                             const next = week.map((d, i) =>
-                              i === idx ? { ...d, breakMinutes: Number(e.target.value) || 0 } : d,
+                              i === idx ? { ...d, breakMinutes: n } : d,
                             );
                             setWeek(next);
                             if (!weeklyTargetTouched) {
@@ -735,11 +735,10 @@ export function SupplementRow({
               {t("job.perHourShort")}
             </button>
           </div>
-          <Input
-            type="number"
+          <NumberField
             inputMode="decimal"
             value={value.value}
-            onChange={(e) => onChange({ ...value, value: Number(e.target.value) || 0 })}
+            onValueChange={(n) => onChange({ ...value, value: n })}
             className="h-9"
           />
         </div>
