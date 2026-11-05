@@ -138,13 +138,13 @@ describe("NumberField", () => {
     expect(log).toEqual([]);
   });
 
-  it("empty after a valid edit restores that last valid value", () => {
+  it("empty after a valid edit restores the value from focus start (snapshot), not the intermediate one", () => {
     const log = mount(100);
     setText("60");
     setText("");
     blur();
-    expect(input().value).toBe("60");
-    expect(log).toEqual([60]);
+    expect(input().value).toBe("100");
+    expect(log).toEqual([60, 100]);
   });
 
   it("0 is valid and persisted as the number 0", () => {
@@ -222,6 +222,248 @@ describe("NumberField", () => {
   });
 });
 
+/** Deletes the last character (Backspace at the end of the text). */
+function backspace() {
+  setText(input().value.slice(0, -1));
+}
+/** Parent state = initial value overwritten by every reported value. */
+function parentValue(initial: number, log: number[]): number {
+  return log.length ? (log[log.length - 1] ?? initial) : initial;
+}
+
+describe("NumberField: snapshot at focus start is restored when the draft is abandoned", () => {
+  // Reported regression: "80" -> Backspace ("8") -> Backspace ("") -> blur showed 8 instead of 80.
+  it("80, Backspace, Backspace, blur -> 80 (parent too); the live value 8 may be reported meanwhile", () => {
+    const log = mount(80);
+    backspace();
+    expect(input().value).toBe("8");
+    expect(parentValue(80, log)).toBe(8); // live commit of the valid intermediate value is allowed
+    backspace();
+    expect(input().value).toBe("");
+    blur();
+    expect(input().value).toBe("80");
+    expect(parentValue(80, log)).toBe(80);
+    expect(log).toEqual([8, 80]);
+  });
+
+  it.each([
+    ["8 -> empty", ["8", ""], 80],
+    ["0 -> empty", ["0", ""], 80],
+    ["080 -> empty", ["080", ""], 80],
+    ["empty only (select all + delete)", [""], 80],
+    ["8 -> 0 -> empty", ["8", "0", ""], 80],
+    ["abandon after a valid edit chain", ["70", "7", ""], 80],
+  ])("start 80: %s -> blur restores 80 in input and parent", (_name, texts, want) => {
+    const log = mount(80);
+    for (const t of texts as string[]) setText(t);
+    blur();
+    expect(input().value).toBe(String(want));
+    expect(parentValue(80, log)).toBe(want);
+  });
+
+  it("start 80: 0 -> 70 gives 70 (delete the 8 at the start, type 7 in front of the 0)", () => {
+    const log = mount(80);
+    setText("0");
+    setText("70");
+    blur();
+    expect(input().value).toBe("70");
+    expect(parentValue(80, log)).toBe(70);
+  });
+
+  it("start 80: 8 -> 7 gives 7 (the second digit really was replaced)", () => {
+    const log = mount(80);
+    setText("8");
+    setText("7");
+    blur();
+    expect(input().value).toBe("7");
+    expect(parentValue(80, log)).toBe(7);
+  });
+
+  it("start 80: no change -> 80, nothing reported", () => {
+    const log = mount(80);
+    act(() => input().focus());
+    blur();
+    expect(input().value).toBe("80");
+    expect(log).toEqual([]);
+  });
+
+  it("start 0: delete everything -> 0 (0 stays valid), nothing reported", () => {
+    const log = mount(0);
+    setText("");
+    blur();
+    expect(input().value).toBe("0");
+    expect(parentValue(0, log)).toBe(0);
+    expect(log).toEqual([]);
+  });
+
+  it("start 0: 5 -> empty restores 0 (restore is reported)", () => {
+    const log = mount(0);
+    setText("5");
+    setText("");
+    blur();
+    expect(input().value).toBe("0");
+    expect(parentValue(0, log)).toBe(0);
+  });
+
+  it("negative / invalid draft after a live edit also restores the snapshot", () => {
+    const log = mount(80);
+    setText("8");
+    setText("-5");
+    blur();
+    expect(input().value).toBe("80");
+    expect(parentValue(80, log)).toBe(80);
+  });
+
+  it("the snapshot is renewed for each focus phase", () => {
+    const log = mount(80);
+    setText("60");
+    blur();
+    expect(parentValue(80, log)).toBe(60);
+    setText("6");
+    setText("");
+    blur();
+    expect(input().value).toBe("60"); // not 80: the new focus phase began at 60
+    expect(parentValue(80, log)).toBe(60);
+  });
+
+  it("a valid draft is kept and normalised (no restore)", () => {
+    const log = mount(80);
+    setText("");
+    setText("090");
+    blur();
+    expect(input().value).toBe("90");
+    expect(parentValue(80, log)).toBe(90);
+  });
+
+  it("the snapshot is taken at focus start, not at the first change", () => {
+    function Ext({ log }: { log: number[] }) {
+      const [v, setV] = useState(80);
+      return createElement(
+        "div",
+        null,
+        createElement(NumberField, {
+          value: v,
+          onValueChange: (n: number) => {
+            log.push(n);
+            setV(n);
+          },
+        }),
+        createElement("button", { id: "ext", onClick: () => setV(50) }),
+      );
+    }
+    const log: number[] = [];
+    act(() => root.render(createElement(Ext, { log })));
+    act(() => input().focus()); // snapshot = 80
+    act(() => container.querySelector<HTMLButtonElement>("#ext")!.click()); // external change to 50
+    setText("");
+    blur();
+    expect(input().value).toBe("80");
+    expect(log).toEqual([80]);
+  });
+
+  it("a change without a focus event (e.g. autofill) still gets a fresh snapshot per phase", () => {
+    const log = mount(100);
+    const fire = (type: string) =>
+      act(() => input().dispatchEvent(new FocusEvent(type, { bubbles: true })));
+    const edit = (text: string) =>
+      act(() => {
+        setter.call(input(), text);
+        input().dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    edit("60");
+    fire("focusout"); // phase 1 ends: 60 committed
+    expect(parentValue(100, log)).toBe(60);
+    edit("6");
+    edit("");
+    fire("focusout"); // phase 2 began at 60 (not at the stale 100)
+    expect(input().value).toBe("60");
+    expect(parentValue(100, log)).toBe(60);
+  });
+
+  describe("unmount while focused (e.g. Radix tab switch unmounts before blur)", () => {
+    function Tabs({ log, initial }: { log: number[]; initial: number }) {
+      const [v, setV] = useState(initial);
+      const [shown, setShown] = useState(true);
+      return createElement(
+        "div",
+        null,
+        shown
+          ? createElement(NumberField, {
+              value: v,
+              onValueChange: (n: number) => {
+                log.push(n);
+                setV(n);
+              },
+            })
+          : createElement("span", { id: "val" }, String(v)),
+        createElement("button", { id: "hide", onClick: () => setShown(false) }),
+      );
+    }
+    const hide = () => act(() => container.querySelector<HTMLButtonElement>("#hide")!.click());
+    const shownValue = () => container.querySelector("#val")!.textContent;
+
+    it("80 -> 8 -> empty, then unmount without blur: parent is 80", () => {
+      const log: number[] = [];
+      act(() => root.render(createElement(Tabs, { log, initial: 80 })));
+      backspace();
+      backspace();
+      hide();
+      expect(shownValue()).toBe("80");
+      expect(log).toEqual([8, 80]);
+    });
+
+    it("a valid draft is kept on unmount (70 stays 70)", () => {
+      const log: number[] = [];
+      act(() => root.render(createElement(Tabs, { log, initial: 80 })));
+      setText("70");
+      hide();
+      expect(shownValue()).toBe("70");
+      expect(log).toEqual([70]);
+    });
+
+    it("select-all + delete, unmount: nothing reported, value stays", () => {
+      const log: number[] = [];
+      act(() => root.render(createElement(Tabs, { log, initial: 80 })));
+      setText("");
+      hide();
+      expect(shownValue()).toBe("80");
+      expect(log).toEqual([]);
+    });
+
+    it("after a normal blur the unmount does not restore anything again", () => {
+      const log: number[] = [];
+      act(() => root.render(createElement(Tabs, { log, initial: 80 })));
+      setText("60");
+      blur();
+      hide();
+      expect(shownValue()).toBe("60");
+      expect(log).toEqual([60]);
+    });
+
+    it("never-focused field: unmount reports nothing", () => {
+      const log: number[] = [];
+      act(() => root.render(createElement(Tabs, { log, initial: 80 })));
+      hide();
+      expect(log).toEqual([]);
+    });
+  });
+
+  it("forwards the user's onFocus", () => {
+    let focused = 0;
+    act(() =>
+      root.render(
+        createElement(NumberField, {
+          value: 1,
+          onValueChange: () => {},
+          onFocus: () => (focused += 1),
+        }),
+      ),
+    );
+    act(() => input().focus());
+    expect(focused).toBe(1);
+  });
+});
+
 describe("SupplementRow (JobDialog tab + Einstellungen > Lohn)", () => {
   function Row({ log }: { log: Supplement[] }) {
     const [s, setS] = useState<Supplement>({ ...DEFAULT_SUPPLEMENTS.holiday, enabled: true });
@@ -291,6 +533,56 @@ describe("persistence round trip (real store, Einstellungen > Lohn wiring)", () 
     expect(input().value).toBe("80");
     expect(getData().settings.supplements.holiday.value).toBe(80);
     // re-read from storage (as after a reload)
+    activateScope(DEMO_SCOPE);
+    loadFromStorage();
+    expect(getData().settings.supplements.holiday.value).toBe(80);
+    expect(typeof getData().settings.supplements.holiday.value).toBe("number");
+  });
+});
+
+describe("persistence: deleting digit by digit does not leave an intermediate value (real store)", () => {
+  function Lohn() {
+    const data = useAppData();
+    return createElement(SupplementRow, {
+      label: "Feiertag",
+      value: data.settings.supplements.holiday,
+      onChange: (v: Supplement) =>
+        updateSettings({ supplements: { ...data.settings.supplements, holiday: v } }),
+    });
+  }
+  function seed() {
+    for (let i = window.localStorage.length - 1; i >= 0; i -= 1) {
+      const key = window.localStorage.key(i);
+      if (key?.startsWith("minijob-")) window.localStorage.removeItem(key);
+    }
+    activateScope(DEMO_SCOPE);
+    replaceAll({
+      ...EMPTY_DATA,
+      settings: {
+        ...DEFAULT_SETTINGS,
+        supplements: {
+          ...DEFAULT_SUPPLEMENTS,
+          holiday: { enabled: true, mode: "prozent", value: 80 },
+        },
+      },
+    });
+  }
+  it.each([
+    ["Backspace x2", ["8", ""]],
+    ["8 -> 0 -> empty", ["0", ""]],
+    ["080 -> empty", ["080", ""]],
+    ["select all + delete", [""]],
+  ])("80, %s, blur -> store 80, number, still 80 after reload", (_n, texts) => {
+    seed();
+    act(() => root.render(createElement(Lohn)));
+    for (const t of texts) setText(t);
+    blur();
+    expect(input().value).toBe("80");
+    expect(getData().settings.supplements.holiday).toEqual({
+      enabled: true,
+      mode: "prozent",
+      value: 80,
+    });
     activateScope(DEMO_SCOPE);
     loadFromStorage();
     expect(getData().settings.supplements.holiday.value).toBe(80);
