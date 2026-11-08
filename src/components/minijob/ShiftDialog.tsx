@@ -46,9 +46,11 @@ import {
   sanitizeRateInput,
 } from "@/lib/minijob/entry-format";
 import {
+  applyContinuationTo,
   continuationStart,
   isTimeValue,
   repeatPayload,
+  reseedTimeFields,
   taskSuggestionsFromHistory,
   type ContinuationSuggestion,
 } from "@/lib/minijob/entry-suggest";
@@ -422,6 +424,7 @@ export function ShiftDialog({
    * Paket A: Befunde zu den aktuellen Eingaben (reine Funktion, einmal pro Änderung).
    * Abwesenheiten werden nicht geprüft – ihre Zeiten stammen aus dem Wochenplan.
    */
+  const storedEntry = resolvedShiftId ? getShift(resolvedShiftId) : undefined;
   const validation = useMemo(() => {
     if (kind !== "arbeit") return EMPTY_VALIDATION;
     const draftRate = parseRateInput(rate);
@@ -437,9 +440,14 @@ export function ShiftDialog({
         ...(draftRate !== undefined ? { rate: draftRate } : {}),
         ...(note.trim() ? { note: note.trim() } : {}),
       },
-      { shifts: getData().shifts },
+      {
+        shifts: getData().shifts,
+        // F1: gespeicherte Fassung des bearbeiteten Eintrags – nur sie darf eine schon so
+        // gespeicherte Kombination aus Dauer und Pause unverändert behalten.
+        ...(storedEntry ? { original: storedEntry } : {}),
+      },
     );
-  }, [kind, resolvedShiftId, jobId, entryDate, start, end, breakMinutes, rate, note]);
+  }, [kind, resolvedShiftId, jobId, entryDate, start, end, breakMinutes, rate, note, storedEntry]);
 
   // A3: Tätigkeits-Vorschläge aus der Historie DIESES Jobs. Nichts wird erzwungen, nichts gespeichert.
   const historyTasks = useMemo(
@@ -502,6 +510,10 @@ export function ShiftDialog({
         return t("entry.endsNextDay", vars);
       case "dst-transition":
         return t("entry.dstHint");
+      case "legacy-zero-duration":
+        return t("entry.legacyZeroDuration");
+      case "legacy-break-too-long":
+        return t("entry.legacyBreakTooLong");
       default:
         return "";
     }
@@ -521,18 +533,34 @@ export function ShiftDialog({
       date: nextDate,
     });
     setContinuation(next);
-    if (!startTouched) setStart(next?.sameDay ? next.start : "09:00");
-    if (!endTouched) setEnd(next?.sameDay ? "" : "17:00");
+    // F4: Zu einem selbst gewählten Beginn wird nie still die Vorgabe 17:00 als Ende gesetzt.
+    const patch = reseedTimeFields({ continuation: next, startTouched, endTouched });
+    if (patch.start !== undefined) setStart(patch.start);
+    if (patch.end !== undefined) setEnd(patch.end);
   }
 
-  /** Vorschlag ausdrücklich übernehmen (beim Folgetag wandert auch das Datum mit). */
+  /**
+   * Vorschlag ausdrücklich übernehmen. Beim Folgetag (F3/F4) wechselt das Datum ausdrücklich,
+   * das Ende wird geleert (keine stille 17:00, keine berechnete Dauer, bis es eingetragen ist)
+   * und der Vorschlag wird für den neuen Tag neu berechnet – der alte Vorschlag verschwindet.
+   */
   function applyContinuation(suggestion: ContinuationSuggestion) {
-    if (!suggestion.sameDay) setEntryDate(suggestion.date);
-    setStart(suggestion.start);
+    const applied = applyContinuationTo(getData().shifts, {
+      ...(jobId !== undefined ? { jobId } : {}),
+      suggestion,
+    });
+    if (applied.date !== entryDate) setEntryDate(applied.date);
+    setStart(applied.start);
     setStartTouched(true);
+    if (applied.end !== null) {
+      setEnd(applied.end);
+      setEndTouched(false);
+    }
+    setContinuation(applied.continuation);
     setFieldError((prev) => {
       const next = { ...prev };
       delete next.start;
+      if (applied.end !== null) delete next.end;
       return next;
     });
   }
@@ -1176,7 +1204,9 @@ export function ShiftDialog({
                       sonst als antippbarer Vorschlag (beim Folgetag wandert das Datum mit). */}
                   {continuation ? (
                     <div className="mt-1.5">
-                      {continuation.sameDay && !startTouched && start === continuation.start ? (
+                      {/* F3: Sobald der Beginn dem Vorschlag entspricht, ist der Vorschlag
+                          erledigt – dann nur noch der Hinweis, kein Knopf mit demselben Wert. */}
+                      {continuation.sameDay && start === continuation.start ? (
                         <p
                           className="text-xs text-muted-foreground"
                           data-testid="entry-continuation-hint"

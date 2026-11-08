@@ -5,13 +5,17 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applyContinuationTo,
   continuationStart,
   dayIndex,
+  DEFAULT_ENTRY_END,
+  DEFAULT_ENTRY_START,
   isoFromDayIndex,
   lastJobEntry,
   lastJobValues,
   minutesToTime,
   repeatPayload,
+  reseedTimeFields,
   shiftEndMinutes,
   taskSuggestionsFromHistory,
 } from "./entry-suggest";
@@ -353,5 +357,126 @@ describe("A3 Tätigkeits-Vorschläge", () => {
       last: [],
       frequent: [],
     });
+  });
+});
+
+describe("F3/F4 Anschluss am Folgetag übernehmen", () => {
+  const night = work({ id: "night", start: "22:00", end: "02:00" });
+
+  it("(F4) setzt das Datum ausdrücklich auf den Folgetag, den Beginn, und LEERT das Ende", () => {
+    const suggestion = continuationStart([night], { jobId: "j1", date: DAY })!;
+    expect(suggestion.sameDay).toBe(false);
+    const applied = applyContinuationTo([night], { jobId: "j1", suggestion });
+    expect(applied.date).toBe(NEXT_DAY);
+    expect(applied.start).toBe("02:00");
+    expect(applied.end).toBe("");
+    expect(applied.end).not.toBe(DEFAULT_ENTRY_END);
+  });
+
+  it("(F3) berechnet den Vorschlag für den NEUEN Tag neu – der Folgetag-Vorschlag verschwindet", () => {
+    const suggestion = continuationStart([night], { jobId: "j1", date: DAY })!;
+    const applied = applyContinuationTo([night], { jobId: "j1", suggestion });
+    // Am Folgetag endet die Nachtschicht um 02:00 – das ist jetzt ein Anschluss am SELBEN Tag.
+    expect(applied.continuation).toMatchObject({
+      sameDay: true,
+      date: NEXT_DAY,
+      start: "02:00",
+      sourceId: "night",
+    });
+  });
+
+  it("(F3) liegt am Folgetag schon ein späterer Eintrag, wird DESSEN Ende der neue Vorschlag", () => {
+    const later = work({ id: "later", date: NEXT_DAY, start: "08:00", end: "12:00" });
+    const suggestion = continuationStart([night, later], { jobId: "j1", date: DAY })!;
+    const applied = applyContinuationTo([night, later], { jobId: "j1", suggestion });
+    // Der angetippte Beginn wird übernommen …
+    expect(applied.start).toBe("02:00");
+    // … und der neu berechnete Vorschlag zeigt das tatsächliche letzte Ende des neuen Tages.
+    expect(applied.continuation).toMatchObject({
+      sameDay: true,
+      start: "12:00",
+      sourceId: "later",
+    });
+  });
+
+  it("(F3) idempotent: zweimal angewendet ergibt dasselbe", () => {
+    const suggestion = continuationStart([night], { jobId: "j1", date: DAY })!;
+    const first = applyContinuationTo([night], { jobId: "j1", suggestion });
+    const second = applyContinuationTo([night], { jobId: "j1", suggestion });
+    expect(second).toEqual(first);
+  });
+
+  it("(F3) idempotent: den neu berechneten Vorschlag anzuwenden ändert nichts mehr", () => {
+    const suggestion = continuationStart([night], { jobId: "j1", date: DAY })!;
+    const first = applyContinuationTo([night], { jobId: "j1", suggestion });
+    const again = applyContinuationTo([night], { jobId: "j1", suggestion: first.continuation! });
+    expect(again.date).toBe(first.date);
+    expect(again.start).toBe(first.start);
+    // Selber Tag: das Ende bleibt unangetastet (null = nicht ändern).
+    expect(again.end).toBeNull();
+    expect(again.continuation).toEqual(first.continuation);
+  });
+
+  it("am SELBEN Tag ändert das Übernehmen nur den Beginn, nie Datum oder Ende", () => {
+    const shifts = [work({ id: "a", start: "08:00", end: "10:30" })];
+    const suggestion = continuationStart(shifts, { jobId: "j1", date: DAY })!;
+    const applied = applyContinuationTo(shifts, { jobId: "j1", suggestion });
+    expect(applied).toEqual({ date: DAY, start: "10:30", end: null, continuation: suggestion });
+  });
+
+  it("verändert den Bestand nicht", () => {
+    const shifts = [night];
+    const snapshot = JSON.stringify(shifts);
+    const suggestion = continuationStart(shifts, { jobId: "j1", date: DAY })!;
+    applyContinuationTo(shifts, { jobId: "j1", suggestion });
+    expect(JSON.stringify(shifts)).toBe(snapshot);
+  });
+});
+
+describe("F4 Zeitfelder nach Job-, Datums- oder Artwechsel", () => {
+  const sameDay = {
+    start: "10:30",
+    date: DAY,
+    sameDay: true,
+    sourceId: "a",
+    sourceStart: "08:00",
+    sourceEnd: "10:30",
+  };
+  const nextDay = { ...sameDay, start: "02:00", date: NEXT_DAY, sameDay: false };
+
+  it("unberührte Felder + Anschluss: Beginn = Anschluss, Ende leer", () => {
+    expect(
+      reseedTimeFields({ continuation: sameDay, startTouched: false, endTouched: false }),
+    ).toEqual({ start: "10:30", end: "" });
+  });
+
+  it("unberührte Felder ohne Anschluss: das bisherige Vorgabe-Paar 09:00–17:00", () => {
+    expect(
+      reseedTimeFields({ continuation: null, startTouched: false, endTouched: false }),
+    ).toEqual({ start: DEFAULT_ENTRY_START, end: DEFAULT_ENTRY_END });
+    expect(
+      reseedTimeFields({ continuation: nextDay, startTouched: false, endTouched: false }),
+    ).toEqual({ start: DEFAULT_ENTRY_START, end: DEFAULT_ENTRY_END });
+  });
+
+  it("(F4) selbst gewählter Beginn ohne Anschluss: KEIN stilles 17:00-Ende", () => {
+    const patch = reseedTimeFields({ continuation: null, startTouched: true, endTouched: false });
+    expect(patch).toEqual({});
+    expect(patch.end).toBeUndefined();
+  });
+
+  it("(F4) selbst gewählter Beginn mit Folgetag-Vorschlag: ebenfalls kein 17:00-Ende", () => {
+    expect(
+      reseedTimeFields({ continuation: nextDay, startTouched: true, endTouched: false }),
+    ).toEqual({});
+  });
+
+  it("selbst gesetzte Felder werden nie überschrieben", () => {
+    expect(
+      reseedTimeFields({ continuation: sameDay, startTouched: true, endTouched: true }),
+    ).toEqual({});
+    expect(
+      reseedTimeFields({ continuation: sameDay, startTouched: false, endTouched: true }),
+    ).toEqual({ start: "10:30" });
   });
 });

@@ -49,6 +49,10 @@ export const entry: Bundle = {
     "entry.confirmTitle": "Trotzdem speichern?",
     "entry.confirmSave": "Trotzdem speichern",
     "entry.confirmBack": "Zurück zum Eintrag",
+    "entry.legacyZeroDuration":
+      "Gespeicherter Eintrag mit Beginn = Ende – bleibt unverändert, solange Zeiten und Pause gleich bleiben.",
+    "entry.legacyBreakTooLong":
+      "Gespeicherter Eintrag: Die Pause ist nicht kürzer als die Arbeitszeit – bleibt unverändert, solange Zeiten und Pause gleich bleiben.",
     "premium.badge": "Premium",
     "premium.title": "Premium-Funktion",
     "premium.multiJob": "Mehrere Arbeitgeber sind Teil von Premium.",
@@ -106,6 +110,10 @@ export const entry: Bundle = {
     "entry.confirmTitle": "Save anyway?",
     "entry.confirmSave": "Save anyway",
     "entry.confirmBack": "Back to the entry",
+    "entry.legacyZeroDuration":
+      "Saved entry with start = end – kept as it is while the times and the break stay unchanged.",
+    "entry.legacyBreakTooLong":
+      "Saved entry: the break is not shorter than the working time – kept as it is while the times and the break stay unchanged.",
     "premium.badge": "Premium",
     "premium.title": "Premium feature",
     "premium.multiJob": "Multiple employers are part of Premium.",
@@ -163,6 +171,10 @@ export const entry: Bundle = {
     "entry.confirmTitle": "Всё равно сохранить?",
     "entry.confirmSave": "Всё равно сохранить",
     "entry.confirmBack": "Назад к записи",
+    "entry.legacyZeroDuration":
+      "Сохранённая запись с началом = окончанием — остаётся без изменений, пока время и перерыв не меняются.",
+    "entry.legacyBreakTooLong":
+      "Сохранённая запись: перерыв не короче рабочего времени — остаётся без изменений, пока время и перерыв не меняются.",
     "premium.badge": "Premium",
     "premium.title": "Функция Premium",
     "premium.multiJob": "Несколько работодателей доступны в Premium.",
@@ -220,6 +232,10 @@ export const entry: Bundle = {
     "entry.confirmTitle": "Yine de kaydedilsin mi?",
     "entry.confirmSave": "Yine de kaydet",
     "entry.confirmBack": "Kayda dön",
+    "entry.legacyZeroDuration":
+      "Başlangıcı bitişine eşit kayıtlı giriş – saatler ve mola değişmediği sürece olduğu gibi kalır.",
+    "entry.legacyBreakTooLong":
+      "Kayıtlı giriş: mola çalışma süresinden kısa değil – saatler ve mola değişmediği sürece olduğu gibi kalır.",
     "premium.badge": "Premium",
     "premium.title": "Premium özellik",
     "premium.multiJob": "Birden fazla işveren Premium kapsamındadır.",
@@ -277,6 +293,10 @@ export const entry: Bundle = {
     "entry.confirmTitle": "Zapisać mimo to?",
     "entry.confirmSave": "Zapisz mimo to",
     "entry.confirmBack": "Wróć do wpisu",
+    "entry.legacyZeroDuration":
+      "Zapisany wpis z początkiem = końcem – pozostaje bez zmian, dopóki godziny i przerwa się nie zmienią.",
+    "entry.legacyBreakTooLong":
+      "Zapisany wpis: przerwa nie jest krótsza niż czas pracy – pozostaje bez zmian, dopóki godziny i przerwa się nie zmienią.",
     "premium.badge": "Premium",
     "premium.title": "Funkcja Premium",
     "premium.multiJob": "Wielu pracodawców to część Premium.",

@@ -298,3 +298,145 @@ describe("mehrere Befunde zugleich", () => {
     expect(validateEntry(draft(), {})).toEqual(EMPTY_VALIDATION);
   });
 });
+
+describe("F1 Altbestand: schon so gespeicherte Dauer/Pause", () => {
+  // Bestehender Arbeitseintrag, gespeichert mit Pause >= Arbeitszeit (09:00–10:00, 120 Min.).
+  const storedBreak = work({ id: "legacy", start: "09:00", end: "10:00", breakMinutes: 120 });
+  // Bestehender Arbeitseintrag, gespeichert mit Beginn = Ende.
+  const storedZero = work({ id: "zero", start: "09:00", end: "09:00", breakMinutes: 0 });
+
+  it("unverändert gespeichert: kein Fehler, nur ein Hinweis (Pause >= Arbeitszeit)", () => {
+    const result = validateEntry(
+      draft({ id: "legacy", start: "09:00", end: "10:00", breakMinutes: 120 }),
+      { shifts: [storedBreak], original: storedBreak },
+    );
+    expect(result.errors).toEqual([]);
+    expect(codes(result.infos)).toContain("legacy-break-too-long");
+  });
+
+  it("unverändert gespeichert: kein Fehler, nur ein Hinweis (Dauer 0)", () => {
+    const result = validateEntry(
+      draft({ id: "zero", start: "09:00", end: "09:00", breakMinutes: 0 }),
+      { shifts: [storedZero], original: storedZero },
+    );
+    expect(result.errors).toEqual([]);
+    expect(codes(result.infos)).toEqual(["legacy-zero-duration"]);
+  });
+
+  it("Datum, Job oder Notiz dürfen sich ändern – es zählen nur Beginn, Ende und Pause", () => {
+    const result = validateEntry(
+      draft({
+        id: "legacy",
+        jobId: "j2",
+        date: "2026-09-25",
+        note: "nur die Notiz geändert",
+        start: "09:00",
+        end: "10:00",
+        breakMinutes: 120,
+      }),
+      { shifts: [storedBreak], original: storedBreak },
+    );
+    expect(result.errors).toEqual([]);
+  });
+
+  it("geänderter Beginn, weiter ungültig: wieder streng blockiert", () => {
+    const result = validateEntry(
+      draft({ id: "legacy", start: "09:15", end: "10:00", breakMinutes: 120 }),
+      { shifts: [storedBreak], original: storedBreak },
+    );
+    expect(codes(result.errors)).toEqual(["break-too-long"]);
+  });
+
+  it("geändertes Ende, weiter ungültig: blockiert", () => {
+    const result = validateEntry(
+      draft({ id: "legacy", start: "09:00", end: "10:30", breakMinutes: 120 }),
+      { shifts: [storedBreak], original: storedBreak },
+    );
+    expect(codes(result.errors)).toEqual(["break-too-long"]);
+  });
+
+  it("geänderte Pause, weiter ungültig: blockiert", () => {
+    const result = validateEntry(
+      draft({ id: "legacy", start: "09:00", end: "10:00", breakMinutes: 90 }),
+      { shifts: [storedBreak], original: storedBreak },
+    );
+    expect(codes(result.errors)).toEqual(["break-too-long"]);
+  });
+
+  it("geänderte Zeiten, die gültig werden: kein Fehler und kein Altbestand-Hinweis", () => {
+    const result = validateEntry(
+      draft({ id: "legacy", start: "09:00", end: "10:00", breakMinutes: 15 }),
+      { shifts: [storedBreak], original: storedBreak },
+    );
+    expect(result.errors).toEqual([]);
+    expect(codes(result.infos)).not.toContain("legacy-break-too-long");
+  });
+
+  it("aus Dauer 0 wird durch geändertes Ende ein gültiger Eintrag", () => {
+    const result = validateEntry(
+      draft({ id: "zero", start: "09:00", end: "11:00", breakMinutes: 0 }),
+      { shifts: [storedZero], original: storedZero },
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.infos).toEqual([]);
+  });
+
+  it("ein NEUER Eintrag wird immer streng geprüft – auch mit identischen Werten", () => {
+    const result = validateEntry(draft({ start: "09:00", end: "10:00", breakMinutes: 120 }), {
+      shifts: [storedBreak],
+      original: storedBreak,
+    });
+    expect(codes(result.errors)).toEqual(["break-too-long"]);
+  });
+
+  it("ohne gespeicherte Fassung (Eintrag nicht mehr vorhanden) wird streng geprüft", () => {
+    const result = validateEntry(
+      draft({ id: "legacy", start: "09:00", end: "10:00", breakMinutes: 120 }),
+      { shifts: [] },
+    );
+    expect(codes(result.errors)).toEqual(["break-too-long"]);
+  });
+
+  it("die gespeicherte Fassung eines ANDEREN Eintrags zählt nicht", () => {
+    const other = work({ id: "other", start: "09:00", end: "10:00", breakMinutes: 120 });
+    const result = validateEntry(
+      draft({ id: "legacy", start: "09:00", end: "10:00", breakMinutes: 120 }),
+      { shifts: [other], original: other },
+    );
+    expect(codes(result.errors)).toEqual(["break-too-long"]);
+  });
+
+  it("eine gespeicherte Abwesenheit, die zur Arbeit wird, gilt nicht als Altbestand", () => {
+    const absence = work({
+      id: "abs",
+      kind: "urlaub",
+      start: "09:00",
+      end: "10:00",
+      breakMinutes: 120,
+    });
+    const result = validateEntry(
+      draft({ id: "abs", start: "09:00", end: "10:00", breakMinutes: 120 }),
+      { shifts: [absence], original: absence },
+    );
+    expect(codes(result.errors)).toEqual(["break-too-long"]);
+  });
+
+  it("Überschneidungen und Dubletten werden beim Altbestand weiter zur Bestätigung gemeldet (F2)", () => {
+    const neighbour = work({ id: "n", start: "08:00", end: "12:00" });
+    const result = validateEntry(
+      draft({ id: "legacy", start: "09:00", end: "10:00", breakMinutes: 120 }),
+      { shifts: [storedBreak, neighbour], original: storedBreak },
+    );
+    expect(result.errors).toEqual([]);
+    expect(codes(result.warnings)).toEqual(["overlap"]);
+  });
+
+  it("die Prüfung verändert die gespeicherte Fassung nicht", () => {
+    const snapshot = JSON.stringify(storedBreak);
+    validateEntry(draft({ id: "legacy", start: "09:00", end: "10:00", breakMinutes: 120 }), {
+      shifts: [storedBreak],
+      original: storedBreak,
+    });
+    expect(JSON.stringify(storedBreak)).toBe(snapshot);
+  });
+});

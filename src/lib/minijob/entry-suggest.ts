@@ -144,6 +144,84 @@ export function continuationStart(
   };
 }
 
+/** Vorgaben eines neuen Eintrags ohne Anschluss (unverändert gegenüber dem bisherigen Editor). */
+export const DEFAULT_ENTRY_START = "09:00";
+export const DEFAULT_ENTRY_END = "17:00";
+
+export interface TimeFieldPatch {
+  start?: string;
+  end?: string;
+}
+
+/**
+ * Welche Zeitfelder ein neu bestimmter Anschluss füllen darf, wenn Job, Datum oder Art wechseln.
+ * - Ein unberührter Beginn wird zum Anschluss (oder zur Vorgabe 09:00).
+ * - Ein unberührtes Ende wird bei einem Anschluss geleert (nur die Nutzerin kennt es).
+ * - Die Vorgabe 17:00 gehört NUR zur Vorgabe 09:00: Zu einem selbst gewählten Beginn wird nie
+ *   still ein 17:00-Ende gesetzt (F4) – ein leeres Ende bleibt leer.
+ * Felder, die die Nutzerin selbst gesetzt hat, kommen im Ergebnis nicht vor.
+ */
+export function reseedTimeFields(args: {
+  continuation: ContinuationSuggestion | null;
+  startTouched: boolean;
+  endTouched: boolean;
+}): TimeFieldPatch {
+  const sameDay = args.continuation !== null && args.continuation.sameDay;
+  const patch: TimeFieldPatch = {};
+  if (!args.startTouched) {
+    patch.start = sameDay && args.continuation ? args.continuation.start : DEFAULT_ENTRY_START;
+  }
+  if (!args.endTouched) {
+    if (sameDay) patch.end = "";
+    else if (!args.startTouched) patch.end = DEFAULT_ENTRY_END;
+  }
+  return patch;
+}
+
+export interface AppliedContinuation {
+  /** Eintragsdatum nach dem Übernehmen (beim Folgetag ausdrücklich der Folgetag). */
+  date: string;
+  start: string;
+  /** `null` = Ende unverändert lassen; `""` = Ende ausdrücklich leeren. */
+  end: string | null;
+  /** Der für das (neue) Datum neu bestimmte Vorschlag – ersetzt den angetippten. */
+  continuation: ContinuationSuggestion | null;
+}
+
+/**
+ * Einen Anschluss ausdrücklich übernehmen (Tippen auf den Vorschlag).
+ *
+ * - Selber Tag: nur der Beginn; Datum, Ende und Vorschlag bleiben.
+ * - Folgetag (F3/F4): das Datum wechselt AUSDRÜCKLICH auf den Folgetag, der Beginn wird gesetzt,
+ *   das Ende wird GELEERT (nie die stille Vorgabe 17:00), und der Vorschlag wird für den neuen
+ *   Tag neu berechnet – der alte Folgetag-Vorschlag verschwindet damit.
+ *
+ * Idempotent: erneutes Anwenden desselben Vorschlags liefert dasselbe Ergebnis.
+ */
+export function applyContinuationTo(
+  shifts: readonly Shift[],
+  args: { jobId?: string; suggestion: ContinuationSuggestion },
+): AppliedContinuation {
+  const { suggestion } = args;
+  if (suggestion.sameDay) {
+    return {
+      date: suggestion.date,
+      start: suggestion.start,
+      end: null,
+      continuation: suggestion,
+    };
+  }
+  return {
+    date: suggestion.date,
+    start: suggestion.start,
+    end: "",
+    continuation: continuationStart(shifts, {
+      ...(args.jobId !== undefined ? { jobId: args.jobId } : {}),
+      date: suggestion.date,
+    }),
+  };
+}
+
 /* ------------------------------------------- A3/A4: letzter Eintrag und Tätigkeiten je Job */
 
 /** Zuletzt gespeicherter Arbeitseintrag dieses Jobs (nach Datum, dann Ende). */

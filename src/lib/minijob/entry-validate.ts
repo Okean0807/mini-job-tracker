@@ -16,6 +16,13 @@
  * Eine legitime Nachtschicht wird NIE abgelehnt: `end < start` ist eine Information, und nur
  * eine daraus folgende Dauer über 12 Stunden gilt als verdächtig (Tippfehler-Verdacht).
  * Abwesenheiten (Urlaub/Krank/…) werden nicht geprüft: ihre Zeiten stammen aus dem Wochenplan.
+ *
+ * Altbestand (F1): Ein BESTEHENDER Arbeitseintrag, der schon so gespeichert war (Dauer 0 oder
+ * Pause ≥ Arbeitszeit), bleibt speicherbar, solange Beginn, Ende und Pause unverändert sind –
+ * sonst ließe sich z. B. nicht einmal die Notiz ändern. Gemeldet wird das als Hinweis
+ * (`legacy-zero-duration`, `legacy-break-too-long`). Sobald Beginn, Ende oder Pause geändert
+ * werden, gilt wieder die strenge Prüfung; ein neuer Eintrag wird immer streng geprüft. Die
+ * gespeicherten Werte werden dabei nie verändert – die Prüfung liest nur.
  */
 import { toMinutes } from "./calc";
 import {
@@ -39,7 +46,9 @@ export type EntryIssueCode =
   | "duplicate"
   | "overnight-long"
   | "ends-next-day"
-  | "dst-transition";
+  | "dst-transition"
+  | "legacy-zero-duration"
+  | "legacy-break-too-long";
 
 export type EntryIssueField = "start" | "end" | "break";
 
@@ -144,11 +153,39 @@ export function dstTransitionMinute(dateIso: string): number | null {
   return current > previous ? 120 : 180;
 }
 
+/* ------------------------------------------------------------------ Altbestand (F1) */
+
+/** Gespeicherte Fassung des bearbeiteten Eintrags – nur die Felder, auf die es ankommt. */
+export type StoredEntryTimes = Pick<Shift, "id" | "kind" | "start" | "end" | "breakMinutes">;
+
+/**
+ * Darf eine schon gespeicherte Kombination aus Dauer und Pause unverändert bleiben?
+ * Nur für einen BESTEHENDEN Arbeitseintrag (gleiche Id, schon als Arbeit gespeichert), dessen
+ * Beginn, Ende und Pause exakt den gespeicherten Werten entsprechen.
+ */
+function isUnchangedStoredEntry(
+  draft: EntryDraft,
+  original: StoredEntryTimes | undefined,
+  times: { start: string; end: string; breakMinutes: number },
+): boolean {
+  if (!draft.id || !original || original.id !== draft.id) return false;
+  if (original.kind !== "arbeit") return false;
+  return (
+    (original.start ?? "").trim() === times.start &&
+    (original.end ?? "").trim() === times.end &&
+    Math.max(0, Math.round(original.breakMinutes || 0)) === times.breakMinutes
+  );
+}
+
 /* ------------------------------------------------------------------ Hauptprüfung */
 
 export function validateEntry(
   draft: EntryDraft,
-  options: { shifts?: readonly Shift[] } = {},
+  options: {
+    shifts?: readonly Shift[];
+    /** Gespeicherte Fassung des bearbeiteten Eintrags (nur beim Bearbeiten, F1). */
+    original?: StoredEntryTimes;
+  } = {},
 ): EntryValidation {
   const errors: EntryIssue[] = [];
   const warnings: EntryIssue[] = [];
@@ -170,17 +207,29 @@ export function validateEntry(
   const gross = endAbs - startMin;
   const breakMinutes = Math.max(0, Math.round(draft.breakMinutes || 0));
 
+  // F1: Eine schon so gespeicherte Kombination bleibt unverändert speicherbar (Hinweis statt
+  // Sperre); jede Änderung an Beginn, Ende oder Pause wird wieder streng geprüft.
+  const keepsStoredCombination = isUnchangedStoredEntry(draft, options.original, {
+    start: startRaw,
+    end: endRaw,
+    breakMinutes,
+  });
   if (gross <= 0) {
-    errors.push({ code: "zero-duration", field: "end" });
-    return { errors, warnings, infos };
-  }
-  if (breakMinutes >= gross) {
-    errors.push({
-      code: "break-too-long",
-      field: "break",
-      vars: { break: breakMinutes, gross },
-    });
-    return { errors, warnings, infos };
+    if (!keepsStoredCombination) {
+      errors.push({ code: "zero-duration", field: "end" });
+      return { errors, warnings, infos };
+    }
+    infos.push({ code: "legacy-zero-duration" });
+  } else if (breakMinutes >= gross) {
+    if (!keepsStoredCombination) {
+      errors.push({
+        code: "break-too-long",
+        field: "break",
+        vars: { break: breakMinutes, gross },
+      });
+      return { errors, warnings, infos };
+    }
+    infos.push({ code: "legacy-break-too-long" });
   }
 
   const crossesMidnight = endMin < startMin;

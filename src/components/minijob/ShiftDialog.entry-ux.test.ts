@@ -67,10 +67,14 @@ function maybe<T extends Element = HTMLElement>(sel: string): T | null {
   return document.querySelector<T>(sel);
 }
 
-function setValue(el: HTMLInputElement | HTMLSelectElement, value: string) {
+function setValue(el: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement, value: string) {
   act(() => {
     const proto =
-      el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+      el instanceof HTMLSelectElement
+        ? HTMLSelectElement.prototype
+        : el instanceof HTMLTextAreaElement
+          ? HTMLTextAreaElement.prototype
+          : HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
     setter?.call(el, value);
     el.dispatchEvent(new Event("input", { bubbles: true }));
@@ -555,5 +559,238 @@ describe("Prüfungen vor dem Speichern", () => {
     expect(maybe('[data-testid="entry-confirm-dialog"]')).toBeNull();
     expect(getData().shifts).toHaveLength(1);
     expect(getData().shifts[0]).toMatchObject({ id: "a", start: "08:00", end: "10:30" });
+  });
+});
+
+describe("F1 Altbestand im Editor: schon so gespeicherte Pause/Dauer", () => {
+  // Historischer Eintrag mit Pause >= Arbeitszeit, so wie er im Bestand liegen kann.
+  const legacy = work({
+    id: "legacy",
+    start: "09:00",
+    end: "10:00",
+    breakMinutes: 120,
+    rate: 13.5,
+    createdAt: "2026-01-02",
+  });
+
+  function openNote() {
+    click(q('[data-testid="entry-more-toggle"]'));
+    return q<HTMLTextAreaElement>("#notiz");
+  }
+
+  it("nur die Notiz ändern: speicherbar, Zeiten/Pause/Lohn bleiben exakt wie gespeichert", () => {
+    seed([legacy]);
+    open("legacy");
+    // Hinweis statt Sperre.
+    expect(q('[data-testid="entry-time-info"]').textContent).toContain("Gespeicherter Eintrag");
+    setValue(openNote(), "Schlüssel abgegeben");
+    save();
+    expect(closed).toBe(1);
+    const saved = getData().shifts.find((s) => s.id === "legacy")!;
+    expect(saved).toMatchObject({
+      start: "09:00",
+      end: "10:00",
+      breakMinutes: 120,
+      rate: 13.5,
+      createdAt: "2026-01-02",
+      note: "Schlüssel abgegeben",
+    });
+    expect(getData().shifts).toHaveLength(1);
+  });
+
+  it("unverändert erneut speichern: kein Dialog, kein Fehler, nichts verändert", () => {
+    seed([legacy]);
+    const before = structuredClone(getData().shifts[0]);
+    open("legacy");
+    save();
+    expect(closed).toBe(1);
+    expect(maybe('[data-testid="entry-confirm-dialog"]')).toBeNull();
+    // Werte-Gleichheit (der Editor baut das Objekt beim Speichern neu auf – seit jeher; nur die
+    // Reihenfolge der Schlüssel kann sich dabei ändern, kein einziger Wert).
+    expect(getData().shifts[0]).toEqual(before);
+  });
+
+  it("Beginn geändert, weiter ungültig: blockiert, gespeicherter Eintrag unverändert", () => {
+    seed([legacy]);
+    const before = structuredClone(getData().shifts[0]);
+    open("legacy");
+    setValue(q<HTMLInputElement>("#von"), "09:30");
+    save();
+    expect(closed).toBe(0);
+    expect(q('[data-testid="entry-field-error"]').textContent).toContain("Pause");
+    expect(getData().shifts[0]).toEqual(before);
+  });
+
+  it("Ende geändert, weiter ungültig: blockiert", () => {
+    seed([legacy]);
+    open("legacy");
+    setValue(q<HTMLInputElement>("#bis"), "10:30");
+    save();
+    expect(closed).toBe(0);
+    expect(getData().shifts[0]!.end).toBe("10:00");
+  });
+
+  it("Pause geändert, weiter ungültig: blockiert", () => {
+    seed([legacy]);
+    open("legacy");
+    setValue(q<HTMLInputElement>("#pause"), "90");
+    save();
+    expect(closed).toBe(0);
+    expect(getData().shifts[0]!.breakMinutes).toBe(120);
+  });
+
+  it("Pause korrigiert: gespeichert mit dem neuen, gültigen Wert", () => {
+    seed([legacy]);
+    open("legacy");
+    setValue(q<HTMLInputElement>("#pause"), "15");
+    save();
+    expect(closed).toBe(1);
+    expect(getData().shifts[0]).toMatchObject({ start: "09:00", end: "10:00", breakMinutes: 15 });
+  });
+
+  it("zurück auf die gespeicherten Werte: wieder speicherbar (es zählt der Vergleich, nicht der Weg)", () => {
+    seed([legacy]);
+    open("legacy");
+    setValue(q<HTMLInputElement>("#von"), "09:30");
+    setValue(q<HTMLInputElement>("#von"), "09:00");
+    save();
+    expect(closed).toBe(1);
+    expect(getData().shifts[0]).toMatchObject({ start: "09:00", breakMinutes: 120 });
+  });
+
+  it("Altbestand mit Dauer 0: Notiz änderbar, Werte bleiben", () => {
+    seed([work({ id: "zero", start: "09:00", end: "09:00", breakMinutes: 0 })]);
+    open("zero");
+    setValue(openNote(), "Termin abgesagt");
+    save();
+    expect(closed).toBe(1);
+    expect(getData().shifts[0]).toMatchObject({
+      start: "09:00",
+      end: "09:00",
+      breakMinutes: 0,
+      note: "Termin abgesagt",
+    });
+  });
+
+  it("ein NEUER Eintrag mit denselben ungültigen Werten bleibt blockiert", () => {
+    seed([]);
+    open(null);
+    setValue(q<HTMLInputElement>("#von"), "09:00");
+    setValue(q<HTMLInputElement>("#bis"), "10:00");
+    setValue(q<HTMLInputElement>("#pause"), "120");
+    save();
+    expect(closed).toBe(0);
+    expect(getData().shifts).toHaveLength(0);
+  });
+
+  it("(F2) Überschneidung beim Altbestand: Rückfrage bleibt bestehen", () => {
+    seed([legacy, work({ id: "n", start: "08:00", end: "12:00" })]);
+    open("legacy");
+    save();
+    expect(closed).toBe(0);
+    expect(maybe('[data-testid="entry-confirm-dialog"]')).not.toBeNull();
+    click(q('[data-testid="entry-confirm-save"]'));
+    expect(closed).toBe(1);
+    expect(getData().shifts.find((s) => s.id === "legacy")).toMatchObject({
+      start: "09:00",
+      end: "10:00",
+      breakMinutes: 120,
+    });
+  });
+});
+
+describe("F3/F4 Anschluss am Folgetag im Editor", () => {
+  const night = work({ id: "night", start: "22:00", end: "02:00" });
+  const NEXT = "2026-09-25";
+
+  it("(F4) Datum = Folgetag, Beginn = 02:00, Ende LEER, keine berechnete Dauer", () => {
+    seed([night]);
+    open(null);
+    click(q('[data-testid="entry-continuation-apply"]'));
+    expect(q<HTMLInputElement>('[data-testid="entry-date"]').value).toBe(NEXT);
+    expect(q<HTMLInputElement>("#von").value).toBe("02:00");
+    expect(q<HTMLInputElement>("#bis").value).toBe("");
+    expect(q('[data-testid="entry-duration"]').textContent).toBe("–");
+  });
+
+  it("(F4) ohne Ende wird nicht gespeichert – nie ein stilles 17:00", () => {
+    seed([night]);
+    open(null);
+    click(q('[data-testid="entry-continuation-apply"]'));
+    save();
+    expect(closed).toBe(0);
+    expect(getData().shifts).toHaveLength(1);
+    setValue(q<HTMLInputElement>("#bis"), "06:00");
+    save();
+    const added = getData().shifts.find((s) => s.id !== "night")!;
+    expect(added).toMatchObject({ date: NEXT, start: "02:00", end: "06:00" });
+    // Die Nachtschicht selbst bleibt unverändert.
+    expect(getData().shifts.find((s) => s.id === "night")).toMatchObject({
+      date: DAY,
+      start: "22:00",
+      end: "02:00",
+    });
+  });
+
+  it("(F3) der alte Folgetag-Vorschlag verschwindet; für den neuen Tag erscheint der passende Hinweis", () => {
+    seed([night]);
+    open(null);
+    click(q('[data-testid="entry-continuation-apply"]'));
+    expect(maybe('[data-testid="entry-continuation-apply"]')).toBeNull();
+    expect(q('[data-testid="entry-continuation-hint"]').textContent).toContain("22:00");
+  });
+
+  it("(F3) liegt am Folgetag ein späterer Eintrag, wird DESSEN Ende neu vorgeschlagen", () => {
+    seed([night, work({ id: "later", date: NEXT, start: "08:00", end: "12:00" })]);
+    open(null);
+    click(q('[data-testid="entry-continuation-apply"]'));
+    expect(q<HTMLInputElement>("#von").value).toBe("02:00");
+    const chip = q('[data-testid="entry-continuation-apply"]');
+    expect(chip.textContent).toContain("12:00");
+    expect(chip.textContent).not.toContain("Folgetag");
+    // Antippen übernimmt den neuen Vorschlag, danach ist er erledigt (kein Knopf mehr).
+    click(chip);
+    expect(q<HTMLInputElement>("#von").value).toBe("12:00");
+    expect(maybe('[data-testid="entry-continuation-apply"]')).toBeNull();
+    expect(q<HTMLInputElement>('[data-testid="entry-date"]').value).toBe(NEXT);
+  });
+
+  it("(F3) idempotent: nach dem Übernehmen gibt es nichts mehr anzutippen, der Zustand bleibt", () => {
+    seed([night]);
+    open(null);
+    click(q('[data-testid="entry-continuation-apply"]'));
+    const state = () => [
+      q<HTMLInputElement>('[data-testid="entry-date"]').value,
+      q<HTMLInputElement>("#von").value,
+      q<HTMLInputElement>("#bis").value,
+    ];
+    const first = state();
+    expect(maybe('[data-testid="entry-continuation-apply"]')).toBeNull();
+    // Ein Jobwechsel hin und zurück (gleiche Vorschläge) ändert nichts mehr.
+    click(byText("Lager Süd")!);
+    click(byText("Reinigung Nord")!);
+    expect(state()).toEqual(first);
+  });
+
+  it("(F4) auch ein späterer Job- oder Datumswechsel setzt kein stilles 17:00-Ende", () => {
+    seed([night]);
+    open(null);
+    click(q('[data-testid="entry-continuation-apply"]'));
+    click(byText("Lager Süd")!); // dieser Job hat keinen Anschluss
+    expect(q<HTMLInputElement>("#von").value).toBe("02:00");
+    expect(q<HTMLInputElement>("#bis").value).toBe("");
+    setValue(q<HTMLInputElement>('[data-testid="entry-date"]'), "2026-09-28");
+    expect(q<HTMLInputElement>("#bis").value).toBe("");
+    expect(q('[data-testid="entry-duration"]').textContent).toBe("–");
+  });
+
+  it("(F3) am selben Tag verschwindet der Knopf ebenfalls, sobald sein Wert übernommen ist", () => {
+    seed([work({ id: "a", start: "08:00", end: "10:30" })]);
+    open(null);
+    setValue(q<HTMLInputElement>("#von"), "11:00");
+    click(q('[data-testid="entry-continuation-apply"]'));
+    expect(q<HTMLInputElement>("#von").value).toBe("10:30");
+    expect(maybe('[data-testid="entry-continuation-apply"]')).toBeNull();
+    expect(maybe('[data-testid="entry-continuation-hint"]')).not.toBeNull();
   });
 });
