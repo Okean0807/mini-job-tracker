@@ -219,6 +219,9 @@ describe("Eintrags-Editor (Render)", () => {
 
   it("neue Leistungsart + neue Tätigkeit im Editor → im Katalog des aktiven Scopes (settings), kein eigener Key", () => {
     open(null);
+    // Paket A: Der Beginn schließt an shift-a (08:00–12:00) an, das Ende ist bewusst leer und
+    // wird hier eingetragen. Die eigene Tätigkeit ist ohne Zwischenschritt direkt eingebbar.
+    setValue(q<HTMLInputElement>("#bis"), "16:00");
     click(
       [...document.querySelectorAll("button")].find((b) =>
         b.textContent?.includes("Neue Leistungsart"),
@@ -226,11 +229,6 @@ describe("Eintrags-Editor (Render)", () => {
     );
     setValue(q<HTMLInputElement>('[data-testid="work-code-input"]'), "FS");
     setValue(q<HTMLInputElement>('[data-testid="work-code-label-input"]'), "Fassadenschutz");
-    click(
-      [...document.querySelectorAll("button")].find((b) =>
-        b.textContent?.includes("Neue Tätigkeit"),
-      )!,
-    );
     setValue(q<HTMLInputElement>('[data-testid="custom-task-input"]'), "Rinne säubern");
     save();
     const data = getData();
@@ -326,6 +324,8 @@ describe("Eintrags-Editor – Notiz zur Leistungsart (workCodeNote)", () => {
 
   it("Feld nur sichtbar, wenn eine Leistungsart gewählt ist (neuer Eintrag)", () => {
     open(null);
+    // Paket A: Das Ende eines Anschluss-Eintrags ist leer und muss angegeben werden.
+    setValue(q<HTMLInputElement>("#bis"), "16:00");
     expect(noteInput()).toBeNull();
     setValue(q<HTMLSelectElement>('[data-testid="work-code-select"]'), "GL");
     expect(noteInput()).not.toBeNull();

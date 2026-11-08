@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Copy,
   MapPin,
   Mic,
   Minus,
@@ -11,7 +12,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { toast } from "sonner";
 
@@ -44,6 +45,19 @@ import {
   formatWorkDuration,
   sanitizeRateInput,
 } from "@/lib/minijob/entry-format";
+import {
+  continuationStart,
+  isTimeValue,
+  repeatPayload,
+  taskSuggestionsFromHistory,
+  type ContinuationSuggestion,
+} from "@/lib/minijob/entry-suggest";
+import {
+  EMPTY_VALIDATION,
+  fieldIssues,
+  validateEntry,
+  type EntryIssue,
+} from "@/lib/minijob/entry-validate";
 import { shiftPayroll } from "@/lib/minijob/payroll";
 import { absenceDayTimes } from "@/lib/minijob/schedule";
 import { holidayName } from "@/lib/minijob/holidays";
@@ -72,6 +86,7 @@ import {
   findPredefinedTaskValue,
   findWorkCodeDef,
   normalizeCatalogText,
+  normalizeTaskCompare,
   normalizeWorkCode,
   snapshotWorkCodeLabel,
 } from "@/lib/minijob/catalog";
@@ -186,8 +201,17 @@ export function ShiftDialog({
   const [advanced, setAdvanced] = useState(false);
   const [objectDetailsOpen, setObjectDetailsOpen] = useState(false);
   const [newCodeOpen, setNewCodeOpen] = useState(false);
-  const [newTaskOpen, setNewTaskOpen] = useState(false);
-  const [fieldError, setFieldError] = useState<{ start?: string; end?: string }>({});
+  const [fieldError, setFieldError] = useState<{
+    start?: string;
+    end?: string;
+    break?: string;
+  }>({});
+  // A1: Zeiten, die die Nutzerin selbst gesetzt hat, werden nie von einem Vorschlag überschrieben.
+  const [startTouched, setStartTouched] = useState(false);
+  const [endTouched, setEndTouched] = useState(false);
+  const [continuation, setContinuation] = useState<ContinuationSuggestion | null>(null);
+  // Befunde, die nur nach ausdrücklicher Bestätigung gespeichert werden dürfen.
+  const [confirmIssues, setConfirmIssues] = useState<EntryIssue[] | null>(null);
   const [entryDate, setEntryDate] = useState(date);
   const [objectId, setObjectId] = useState<string | undefined>(undefined);
   const [objectDialogOpen, setObjectDialogOpen] = useState(false);
@@ -261,9 +285,23 @@ export function ShiftDialog({
     // public holiday default to feiertag so the type matches the calendar day.
     const holidayDefault =
       !source && holidayName(initialDate, settings.bundesland) ? "feiertag" : "arbeit";
-    setKind(source?.kind ?? holidayDefault);
-    setStart(source?.start ?? "09:00");
-    setEnd(source?.end ?? "17:00");
+    const initialKind = source?.kind ?? holidayDefault;
+    setKind(initialKind);
+    // A1: Ein NEUER Arbeitseintrag schließt an das chronologisch letzte Ende desselben Jobs am
+    // selben Tag an. Das Ende bleibt leer – es ist die einzige Angabe, die nur die Nutzerin kennt.
+    const seedJobId = source?.jobId ?? fallbackJob?.id;
+    const seedContinuation =
+      !source && initialKind === "arbeit"
+        ? continuationStart(getData().shifts, {
+            ...(seedJobId !== undefined ? { jobId: seedJobId } : {}),
+            date: initialDate,
+          })
+        : null;
+    setContinuation(seedContinuation);
+    setStartTouched(false);
+    setEndTouched(false);
+    setStart(source?.start ?? (seedContinuation?.sameDay ? seedContinuation.start : "09:00"));
+    setEnd(source?.end ?? (seedContinuation?.sameDay ? "" : "17:00"));
     setBreakMinutes(String(source?.breakMinutes ?? 30));
     setRate(
       formatRateInput(
@@ -306,8 +344,8 @@ export function ShiftDialog({
     setObjectDetailsOpen(false);
     setObjectDialogTarget(null);
     setNewCodeOpen(false);
-    setNewTaskOpen(false);
     setFieldError({});
+    setConfirmIssues(null);
   }, [
     open,
     shiftId,
@@ -325,6 +363,9 @@ export function ShiftDialog({
     : undefined;
   const holiday = holidayName(entryDate, settings.bundesland);
   const selectedObject = objects.find((o) => o.id === objectId);
+  // A1: Solange das Ende fehlt, gibt es keine Dauer – die Vorschau zeigt dann "–" statt einer
+  // aus einem leeren Feld hergeleiteten Zahl.
+  const timesComplete = isTimeValue(start) && isTimeValue(end);
   // Neue Abwesenheit (jede Art außer Arbeit): Zeiten wie im Zeitraum-Dialog
   // (Wochenplan oder 09:00–17:00 ohne Pause), nie die versteckten Editor-Zeiten.
   // Bestehende Einträge behalten ihre gespeicherten Zeiten.
@@ -334,7 +375,7 @@ export function ShiftDialog({
     kind,
     date: entryDate,
     start: newAbsenceTimes?.start ?? start,
-    end: newAbsenceTimes?.end ?? end,
+    end: newAbsenceTimes?.end ?? (timesComplete ? end : start),
     breakMinutes: newAbsenceTimes?.breakMinutes ?? (Number(breakMinutes) || 0),
     overtime,
   };
@@ -377,11 +418,157 @@ export function ShiftDialog({
           labels: [] as string[],
         };
 
+  /**
+   * Paket A: Befunde zu den aktuellen Eingaben (reine Funktion, einmal pro Änderung).
+   * Abwesenheiten werden nicht geprüft – ihre Zeiten stammen aus dem Wochenplan.
+   */
+  const validation = useMemo(() => {
+    if (kind !== "arbeit") return EMPTY_VALIDATION;
+    const draftRate = parseRateInput(rate);
+    return validateEntry(
+      {
+        ...(resolvedShiftId ? { id: resolvedShiftId } : {}),
+        kind,
+        ...(jobId !== undefined ? { jobId } : {}),
+        date: entryDate,
+        start,
+        end,
+        breakMinutes: Number(breakMinutes) || 0,
+        ...(draftRate !== undefined ? { rate: draftRate } : {}),
+        ...(note.trim() ? { note: note.trim() } : {}),
+      },
+      { shifts: getData().shifts },
+    );
+  }, [kind, resolvedShiftId, jobId, entryDate, start, end, breakMinutes, rate, note]);
+
+  // A3: Tätigkeits-Vorschläge aus der Historie DIESES Jobs. Nichts wird erzwungen, nichts gespeichert.
+  const historyTasks = useMemo(
+    () =>
+      taskSuggestionsFromHistory({
+        shifts: getData().shifts,
+        ...(jobId !== undefined ? { jobId } : {}),
+        exclude: tasks,
+        ...(resolvedShiftId ? { excludeId: resolvedShiftId } : {}),
+      }),
+    [jobId, tasks, resolvedShiftId],
+  );
+
+  // A4: Werte des letzten Eintrags – nur für neue Einträge und nur auf ausdrückliches Tippen.
+  const repeatValues = useMemo(
+    () =>
+      isEditing
+        ? null
+        : repeatPayload({
+            shifts: getData().shifts,
+            objects,
+            ...(jobId !== undefined ? { jobId } : {}),
+          }),
+    [isEditing, jobId, objects],
+  );
+
+  /** Meldungstext eines Befundes; Minutenangaben werden als Dauer formatiert. */
+  function issueText(issue: EntryIssue): string {
+    const minutes = issue.vars?.["minutes"];
+    const vars = {
+      ...(issue.vars ?? {}),
+      ...(typeof minutes === "number"
+        ? {
+            duration: formatWorkDuration(minutes / 60, {
+              hour: t("entry.hoursShort"),
+              minute: t("entry.minutesShort"),
+            }),
+          }
+        : {}),
+    };
+    switch (issue.code) {
+      case "start-missing":
+        return t("entry.requiredStart");
+      case "end-missing":
+        return t("entry.requiredEnd");
+      case "invalid-start":
+      case "invalid-end":
+        return t("entry.errInvalidTime");
+      case "zero-duration":
+        return t("entry.errZeroDuration");
+      case "break-too-long":
+        return t("entry.errBreakTooLong");
+      case "overlap":
+        return t("entry.warnOverlap", vars);
+      case "duplicate":
+        return t("entry.warnDuplicate");
+      case "overnight-long":
+        return t("entry.warnOvernightLong", vars);
+      case "ends-next-day":
+        return t("entry.endsNextDay", vars);
+      case "dst-transition":
+        return t("entry.dstHint");
+      default:
+        return "";
+    }
+  }
+
+  /**
+   * A1: Vorschlag neu bestimmen, wenn Job, Datum oder Art wechseln. Felder, die die Nutzerin
+   * selbst gesetzt hat, bleiben unberührt.
+   */
+  function reseedTimes(nextJobId: string | undefined, nextDate: string, nextKind: ShiftKind) {
+    if (isEditing || nextKind !== "arbeit") {
+      setContinuation(null);
+      return;
+    }
+    const next = continuationStart(getData().shifts, {
+      ...(nextJobId !== undefined ? { jobId: nextJobId } : {}),
+      date: nextDate,
+    });
+    setContinuation(next);
+    if (!startTouched) setStart(next?.sameDay ? next.start : "09:00");
+    if (!endTouched) setEnd(next?.sameDay ? "" : "17:00");
+  }
+
+  /** Vorschlag ausdrücklich übernehmen (beim Folgetag wandert auch das Datum mit). */
+  function applyContinuation(suggestion: ContinuationSuggestion) {
+    if (!suggestion.sameDay) setEntryDate(suggestion.date);
+    setStart(suggestion.start);
+    setStartTouched(true);
+    setFieldError((prev) => {
+      const next = { ...prev };
+      delete next.start;
+      return next;
+    });
+  }
+
+  /**
+   * A4 "Letzten Eintrag übernehmen": nur nicht-zeitliche Angaben. Datum, Zeiten, Lohn, Notiz,
+   * Fotos, Standort, Überstunden-Schalter und die Id bleiben beim neuen Eintrag; Verdienst und
+   * Summen entstehen wie immer erst aus der Berechnung.
+   */
+  function applyRepeat() {
+    if (!repeatValues) return;
+    setObjectId(repeatValues.objectId);
+    setWorkplace(repeatValues.workplace ?? "");
+    setStreet(repeatValues.street ?? "");
+    setHouseNo(repeatValues.houseNo ?? "");
+    setZip(repeatValues.zip ?? "");
+    setCity(repeatValues.city ?? "");
+    setFloor(repeatValues.floor ?? "");
+    setDoorSide(repeatValues.doorSide ?? "");
+    setWorkCode(repeatValues.workCode ?? "");
+    setNewCode(repeatValues.workCode ?? "");
+    setNewCodeLabel(repeatValues.workCodeLabel ?? "");
+    setWorkCodeNote(repeatValues.workCodeNote ?? "");
+    setTasks([...repeatValues.tasks]);
+    setBreakMinutes(String(repeatValues.breakMinutes));
+    setCustomerId(repeatValues.customerId);
+    setProjectId(repeatValues.projectId);
+    toast.success(t("entry.repeatApplied"));
+  }
+
   // Die Art wird immer direkt im Editor gewählt – der Block ART mit allen
   // 6 Arten bleibt sichtbar. Mehrtägige Abwesenheiten bleiben über den
   // optionalen Zeitraum-Link erreichbar (kein automatischer Wechsel mehr).
   function selectKind(next: ShiftKind) {
     setKind(next);
+    reseedTimes(jobId, entryDate, next);
   }
 
   const absenceRangeKind =
@@ -467,15 +654,34 @@ export function ShiftDialog({
     setObjectDetailsOpen(true);
   }
 
+  /**
+   * Paket A: Unmögliche Einträge werden am Feld gemeldet und nicht gespeichert; verdächtige
+   * (Überschneidung, Dublette, Ende weit vor dem Beginn) erst nach ausdrücklicher Bestätigung.
+   * Eine legitime Nachtschicht wird nie abgelehnt.
+   */
   function save() {
-    if (kind === "arbeit" && (!start || !end)) {
-      setFieldError({
-        ...(start ? {} : { start: t("entry.requiredStart") }),
-        ...(end ? {} : { end: t("entry.requiredEnd") }),
-      });
-      return;
+    if (kind === "arbeit") {
+      if (validation.errors.length > 0) {
+        const byField = fieldIssues(validation);
+        setFieldError({
+          ...(byField.start ? { start: issueText(byField.start) } : {}),
+          ...(byField.end ? { end: issueText(byField.end) } : {}),
+          ...(byField.break ? { break: issueText(byField.break) } : {}),
+        });
+        return;
+      }
+      if (validation.warnings.length > 0) {
+        setFieldError({});
+        setConfirmIssues(validation.warnings);
+        return;
+      }
     }
     setFieldError({});
+    commit();
+  }
+
+  function commit() {
+    setConfirmIssues(null);
     const editingId = editingIdRef.current;
     const existing = editingId ? getShift(editingId) : undefined;
     const saveAbsenceTimes =
@@ -598,6 +804,20 @@ export function ShiftDialog({
     },
   );
 
+  // A3: Reihenfolge der Vorschläge – Zuletzt, Häufig, Eigene. Jede Tätigkeit erscheint nur einmal.
+  const suggestedFromHistory = new Set(
+    [...historyTasks.last, ...historyTasks.frequent].map((value) => normalizeTaskCompare(value)),
+  );
+  const ownCatalogTasks = customTasksCatalog.filter((label) => !tasks.includes(label));
+  const ownTaskSuggestions = ownCatalogTasks.filter(
+    (label) => !suggestedFromHistory.has(normalizeTaskCompare(label)),
+  );
+  const taskGroups = [
+    { key: "last", label: t("entry.taskLast"), values: historyTasks.last },
+    { key: "frequent", label: t("entry.taskFrequent"), values: historyTasks.frequent },
+    { key: "own", label: t("entry.taskOwn"), values: ownTaskSuggestions },
+  ].filter((group) => group.values.length > 0);
+
   function bumpBreak(delta: number) {
     setBreakMinutes(String(Math.max(0, breakValue + delta)));
   }
@@ -713,7 +933,10 @@ export function ShiftDialog({
                   type="date"
                   aria-label={t("label.date")}
                   value={entryDate}
-                  onChange={(e) => setEntryDate(e.target.value)}
+                  onChange={(e) => {
+                    setEntryDate(e.target.value);
+                    reseedTimes(jobId, e.target.value, kind);
+                  }}
                   onFocus={keepFieldVisible}
                   className="absolute inset-0 cursor-pointer opacity-0"
                 />
@@ -731,6 +954,7 @@ export function ShiftDialog({
                         setRate(
                           formatRateInput(suggestedRate({ jobId: j.id }, { jobs, settings })),
                         );
+                        reseedTimes(j.id, entryDate, kind);
                       }}
                       className={cn(
                         "inline-flex h-11 max-w-full items-center gap-2 rounded-full px-3.5 text-sm font-medium",
@@ -756,6 +980,21 @@ export function ShiftDialog({
                   </span>
                 </p>
               )}
+
+              {/* A4: Einsatzort, Leistungsart und Tätigkeiten des letzten Eintrags dieses Jobs
+                  übernehmen. Datum und Zeiten gelten für DIESEN Eintrag, der Lohn ergibt sich
+                  wie immer aus den Einstellungen zum Eintragsdatum. */}
+              {!isEditing && isWork && repeatValues ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-11 w-full justify-start bg-card px-3.5 text-primary"
+                  data-testid="entry-repeat-last"
+                  onClick={applyRepeat}
+                >
+                  <Copy className="size-4" aria-hidden /> {t("entry.repeatLast")}
+                </Button>
+              ) : null}
             </div>
 
             <section>
@@ -842,6 +1081,7 @@ export function ShiftDialog({
                           type="time"
                           value={start}
                           onChange={(e) => {
+                            setStartTouched(true);
                             setFieldError((prev) => {
                               const next = { ...prev };
                               delete next.start;
@@ -862,6 +1102,7 @@ export function ShiftDialog({
                           type="time"
                           value={end}
                           onChange={(e) => {
+                            setEndTouched(true);
                             setFieldError((prev) => {
                               const next = { ...prev };
                               delete next.end;
@@ -920,7 +1161,7 @@ export function ShiftDialog({
                           className="block text-base font-semibold tabular-nums"
                           data-testid="entry-duration"
                         >
-                          {durationText}
+                          {timesComplete || !isWork ? durationText : "–"}
                         </span>
                         {breakValue > 0 ? (
                           <span className="block text-xs text-muted-foreground">
@@ -931,9 +1172,51 @@ export function ShiftDialog({
                     </div>
                   </div>
 
-                  {fieldError.start || fieldError.end ? (
-                    <p className="mt-1.5 text-sm text-destructive">
-                      {[fieldError.start, fieldError.end].filter(Boolean).join(" · ")}
+                  {/* A1: Der Anschluss an den vorigen Eintrag – als Hinweis, solange er gilt,
+                      sonst als antippbarer Vorschlag (beim Folgetag wandert das Datum mit). */}
+                  {continuation ? (
+                    <div className="mt-1.5">
+                      {continuation.sameDay && !startTouched && start === continuation.start ? (
+                        <p
+                          className="text-xs text-muted-foreground"
+                          data-testid="entry-continuation-hint"
+                        >
+                          {t("entry.continuationHint", {
+                            start: continuation.sourceStart,
+                            end: continuation.sourceEnd,
+                          })}
+                        </p>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="h-11 bg-card px-3.5 text-primary"
+                          data-testid="entry-continuation-apply"
+                          onClick={() => applyContinuation(continuation)}
+                        >
+                          {t(
+                            continuation.sameDay
+                              ? "entry.continuationApply"
+                              : "entry.continuationNextDay",
+                            { time: continuation.start },
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  ) : null}
+                  {fieldError.start || fieldError.end || fieldError.break ? (
+                    <p className="mt-1.5 text-sm text-destructive" data-testid="entry-field-error">
+                      {[fieldError.start, fieldError.end, fieldError.break]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  ) : null}
+                  {validation.infos.length > 0 ? (
+                    <p
+                      className="mt-1.5 text-xs text-muted-foreground"
+                      data-testid="entry-time-info"
+                    >
+                      {validation.infos.map((issue) => issueText(issue)).join(" · ")}
                     </p>
                   ) : null}
                   {preview.bonus > 0 ? (
@@ -1350,37 +1633,14 @@ export function ShiftDialog({
                       ) : null}
                     </select>
                   </div>
-                  {customTasksCatalog.filter((label) => !tasks.includes(label)).length > 0 ? (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {customTasksCatalog
-                        .filter((label) => !tasks.includes(label))
-                        .map((label) => (
-                          <button
-                            key={label}
-                            type="button"
-                            onClick={() => applyTaskSelection(label)}
-                            className="h-11 max-w-full truncate rounded-full bg-card px-3.5 text-sm text-muted-foreground"
-                          >
-                            {label}
-                          </button>
-                        ))}
-                    </div>
-                  ) : null}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="mt-1 h-11 px-3 text-primary"
-                    aria-expanded={newTaskOpen}
-                    onClick={() => setNewTaskOpen((v) => !v)}
-                  >
-                    <Plus className="size-4" /> {t("worklog.newTask")}
-                  </Button>
-                  <div className={cn("mt-2 flex gap-2", !newTaskOpen && "hidden")}>
+                  {/* A2 Manuell (Standard, ohne KI): Die Tätigkeit wird direkt eingegeben –
+                      kein zusätzlicher Schritt, keine Umschaltung, keine Anfrage nach außen. */}
+                  <div className="mt-2 flex gap-2">
                     <Input
                       id="eigene-taetigkeit"
                       data-testid="custom-task-input"
                       value={customTask}
-                      placeholder={t("worklog.customTask")}
+                      placeholder={t("entry.taskManual")}
                       onChange={(e) => setCustomTask(e.target.value)}
                       onFocus={keepFieldVisible}
                       onKeyDown={(e) => {
@@ -1401,6 +1661,25 @@ export function ShiftDialog({
                       {t("worklog.addTask")}
                     </Button>
                   </div>
+                  {/* A3: Vorschläge dieses Jobs (Zuletzt, Häufig) und der eigene Katalog.
+                      Nur Angebote – nichts wird erzwungen und nichts dadurch gespeichert. */}
+                  {taskGroups.map((group) => (
+                    <div key={group.key} className="mt-2" data-testid={`task-group-${group.key}`}>
+                      <p className="mb-1 text-xs text-muted-foreground">{group.label}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {group.values.map((value) => (
+                          <button
+                            key={`${group.key}-${value}`}
+                            type="button"
+                            onClick={() => applyTaskSelection(value)}
+                            className="h-11 max-w-full truncate rounded-full bg-card px-3.5 text-sm text-muted-foreground"
+                          >
+                            {taskEntryLabel(value)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </section>
               </>
             ) : null}
@@ -1697,6 +1976,30 @@ export function ShiftDialog({
             <AlertDialogCancel>{t("worklog.geoNotice.decline")}</AlertDialogCancel>
             <AlertDialogAction onClick={() => void confirmGeoLookup()}>
               {t("worklog.geoNotice.confirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Paket A: Verdächtige, aber mögliche Einträge (Überschneidung, Dublette, Ende weit vor
+          dem Beginn) werden nur nach ausdrücklicher Bestätigung gespeichert. */}
+      <AlertDialog
+        open={confirmIssues !== null}
+        onOpenChange={(next) => {
+          if (!next) setConfirmIssues(null);
+        }}
+      >
+        <AlertDialogContent data-testid="entry-confirm-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("entry.confirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {(confirmIssues ?? []).map((issue) => issueText(issue)).join(" ")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("entry.confirmBack")}</AlertDialogCancel>
+            <AlertDialogAction data-testid="entry-confirm-save" onClick={commit}>
+              {t("entry.confirmSave")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
