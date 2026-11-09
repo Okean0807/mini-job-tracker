@@ -21,9 +21,9 @@ import {
   newId,
   nextJobColor,
   saveJob,
-  saveShifts,
   getData,
 } from "@/lib/minijob/store";
+import { saveManyShifts } from "@/lib/minijob/service";
 import { importJsonBackupFile } from "@/lib/minijob/json-backup-import";
 import type { Job, Settings } from "@/lib/minijob/types";
 import { useT } from "@/lib/i18n";
@@ -124,8 +124,10 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
     const jobsAfterCreation = getData().jobs;
     const duplicateIndexes = duplicateShiftIndexes(incoming, getData().shifts, jobsAfterCreation);
     const shifts = incoming.filter((_, index) => !duplicateIndexes.has(index));
-    saveShifts(shifts);
-    toast.success(t("imp.imported", { count: shifts.length }));
+    // K2: der Import läuft über die Schreibgrenze des Service; ungültige Zeilen werden nicht gespeichert.
+    const { saved, rejected } = saveManyShifts(shifts);
+    toast.success(t("imp.imported", { count: saved.length }));
+    if (rejected.length > 0) toast.message(t("imp.skippedInvalid", { count: rejected.length }));
     onOpenChange(false);
     reset();
   }

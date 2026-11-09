@@ -62,6 +62,16 @@ export const dashboard: Bundle = {
     "timer.start": "Start",
     "timer.startedToast": "Arbeit gestartet",
     "timer.savedToast": "Arbeitszeit gespeichert",
+    "timer.notSaved": "Nicht gespeichert – der Timer läuft weiter.",
+    "timer.fixTitle": "Pause korrigieren",
+    "timer.fixBody":
+      "Die Pause ({pause} Min.) ist nicht kürzer als die erfasste Zeit ({elapsed} Min.). Es wurde nichts gespeichert, der Timer läuft weiter. Korrigiere die Pause und speichere erneut.",
+    "timer.fixBreakLabel": "Pause in Minuten",
+    "timer.fixNoBreak": "Keine Pause",
+    "timer.fixSave": "Pause korrigieren und speichern",
+    "timer.fixCancel": "Abbrechen – Timer läuft weiter",
+    "timer.fixStillInvalid":
+      "Die Pause muss kürzer als die erfasste Zeit sein. Nichts wurde gespeichert.",
 
     "cal.prevMonth": "Vorheriger Monat",
     "cal.nextMonth": "Nächster Monat",
@@ -159,6 +169,15 @@ export const dashboard: Bundle = {
     "timer.start": "Start",
     "timer.startedToast": "Work started",
     "timer.savedToast": "Working time saved",
+    "timer.notSaved": "Not saved – the timer keeps running.",
+    "timer.fixTitle": "Correct the break",
+    "timer.fixBody":
+      "The break ({pause} min) is not shorter than the tracked time ({elapsed} min). Nothing was saved and the timer keeps running. Correct the break and save again.",
+    "timer.fixBreakLabel": "Break in minutes",
+    "timer.fixNoBreak": "No break",
+    "timer.fixSave": "Correct break and save",
+    "timer.fixCancel": "Cancel – timer keeps running",
+    "timer.fixStillInvalid": "The break must be shorter than the tracked time. Nothing was saved.",
 
     "cal.prevMonth": "Previous month",
     "cal.nextMonth": "Next month",
@@ -256,6 +275,15 @@ export const dashboard: Bundle = {
     "timer.start": "Старт",
     "timer.startedToast": "Работа начата",
     "timer.savedToast": "Рабочее время сохранено",
+    "timer.notSaved": "Не сохранено — таймер продолжает работать.",
+    "timer.fixTitle": "Исправить перерыв",
+    "timer.fixBody":
+      "Перерыв ({pause} мин) не короче учтённого времени ({elapsed} мин). Ничего не сохранено, таймер продолжает работать. Исправьте перерыв и сохраните снова.",
+    "timer.fixBreakLabel": "Перерыв в минутах",
+    "timer.fixNoBreak": "Без перерыва",
+    "timer.fixSave": "Исправить перерыв и сохранить",
+    "timer.fixCancel": "Отмена — таймер продолжает работать",
+    "timer.fixStillInvalid": "Перерыв должен быть короче учтённого времени. Ничего не сохранено.",
 
     "cal.prevMonth": "Предыдущий месяц",
     "cal.nextMonth": "Следующий месяц",
@@ -353,6 +381,15 @@ export const dashboard: Bundle = {
     "timer.start": "Başlat",
     "timer.startedToast": "Çalışma başlatıldı",
     "timer.savedToast": "Çalışma süresi kaydedildi",
+    "timer.notSaved": "Kaydedilmedi – zamanlayıcı çalışmaya devam ediyor.",
+    "timer.fixTitle": "Molayı düzelt",
+    "timer.fixBody":
+      "Mola ({pause} dk) kaydedilen süreden ({elapsed} dk) kısa değil. Hiçbir şey kaydedilmedi, zamanlayıcı çalışmaya devam ediyor. Molayı düzeltip yeniden kaydedin.",
+    "timer.fixBreakLabel": "Mola (dakika)",
+    "timer.fixNoBreak": "Mola yok",
+    "timer.fixSave": "Molayı düzelt ve kaydet",
+    "timer.fixCancel": "İptal – zamanlayıcı çalışmaya devam ediyor",
+    "timer.fixStillInvalid": "Mola, kaydedilen süreden kısa olmalı. Hiçbir şey kaydedilmedi.",
 
     "cal.prevMonth": "Önceki ay",
     "cal.nextMonth": "Sonraki ay",
@@ -450,6 +487,15 @@ export const dashboard: Bundle = {
     "timer.start": "Start",
     "timer.startedToast": "Praca rozpoczęta",
     "timer.savedToast": "Czas pracy zapisany",
+    "timer.notSaved": "Nie zapisano – stoper działa dalej.",
+    "timer.fixTitle": "Popraw przerwę",
+    "timer.fixBody":
+      "Przerwa ({pause} min) nie jest krótsza niż zarejestrowany czas ({elapsed} min). Nic nie zapisano, stoper działa dalej. Popraw przerwę i zapisz ponownie.",
+    "timer.fixBreakLabel": "Przerwa w minutach",
+    "timer.fixNoBreak": "Bez przerwy",
+    "timer.fixSave": "Popraw przerwę i zapisz",
+    "timer.fixCancel": "Anuluj – stoper działa dalej",
+    "timer.fixStillInvalid": "Przerwa musi być krótsza niż zarejestrowany czas. Nic nie zapisano.",
 
     "cal.prevMonth": "Poprzedni miesiąc",
     "cal.nextMonth": "Następny miesiąc",
