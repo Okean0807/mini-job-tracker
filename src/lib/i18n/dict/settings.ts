@@ -503,6 +503,7 @@ export const settingsDict: Bundle = {
     "imp.otherFile": "Другой файл",
     "imp.confirm": "Импортировать {count}",
     "imp.imported": "{count} записей импортировано",
+    "imp.skippedInvalid": "{count} строк пропущено (неверное время)",
 
     "pin.locked": "Приложение заблокировано",
     "pin.enterPin": "Введите PIN-код",
@@ -678,6 +679,7 @@ export const settingsDict: Bundle = {
     "imp.otherFile": "Başka dosya",
     "imp.confirm": "{count} kaydı içe aktar",
     "imp.imported": "{count} kayıt içe aktarıldı",
+    "imp.skippedInvalid": "{count} satır atlandı (geçersiz saat)",
 
     "pin.locked": "Uygulama kilitli",
     "pin.enterPin": "Lütfen PIN girin",
@@ -853,6 +855,7 @@ export const settingsDict: Bundle = {
     "imp.otherFile": "Inny plik",
     "imp.confirm": "Importuj {count}",
     "imp.imported": "Zaimportowano {count} wpisów",
+    "imp.skippedInvalid": "Pominięto {count} wierszy (nieprawidłowa godzina)",
 
     "pin.locked": "Aplikacja zablokowana",
     "pin.enterPin": "Wprowadź PIN",

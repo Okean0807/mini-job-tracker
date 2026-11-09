@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LANGUAGES } from "@/lib/i18n/core";
 import { dashboard } from "@/lib/i18n/dict/dashboard";
+import { settingsDict } from "@/lib/i18n/dict/settings";
 import { tl } from "@/lib/i18n";
 import { shiftHours } from "@/lib/minijob/calc";
 import { DEMO_SCOPE } from "@/lib/minijob/storage-scope";
@@ -229,9 +230,15 @@ describe("(4) Abbrechen", () => {
     runningTimer(15, 10);
     const before = structuredClone(getData().timer);
     click(stopButton());
+    // Vorbedingung: der Dialog ist offen – sonst würde der Test unten trivial bestehen.
+    expect(dialogOpen()).toBe(true);
     act(() => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     });
+    // Escape schließt den Dialog tatsächlich (nicht nur: es ändert sich nichts) …
+    expect(dialogOpen()).toBe(false);
+    expect(q("timer-break-fix-input")).toBeNull();
+    // … und wirkt wie Abbrechen: nichts gespeichert, Timer samt Pause unverändert.
     expect(getData().shifts).toEqual([]);
     expect(getData().timer).toEqual(before);
   });
@@ -303,6 +310,21 @@ describe("(7) Texte in allen fünf Sprachen", () => {
       expect(text, lang).toContain("15");
       expect(text, lang).toContain("10");
       expect(text, lang).not.toMatch(/\{[a-z]+\}/i);
+    }
+  });
+
+  it("imp.skippedInvalid (Import-Hinweis der Schreibgrenze) existiert in allen fünf Sprachen und ist übersetzt", () => {
+    const de = (settingsDict.de as Record<string, string>)["imp.skippedInvalid"];
+    for (const lang of langs) {
+      const own = (settingsDict[lang] as Record<string, string>)["imp.skippedInvalid"];
+      // Eigener Eintrag je Sprache – nicht still über den deutschen Fallback von tl() abgedeckt.
+      expect(typeof own, lang).toBe("string");
+      expect(own?.trim().length, lang).toBeGreaterThan(0);
+      expect(own, lang).toContain("{count}");
+      const text = tl(lang, "imp.skippedInvalid", { count: 3 });
+      expect(text, lang).toContain("3");
+      expect(text, lang).not.toMatch(/\{[a-z]+\}/i);
+      if (lang !== "de") expect(own, lang).not.toBe(de);
     }
   });
 
