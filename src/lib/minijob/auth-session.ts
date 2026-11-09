@@ -40,10 +40,18 @@ export function bindAuthSession(
   return () => data.subscription.unsubscribe();
 }
 
-/** Prefer Account after OAuth so Settings remounts with callback params present. */
+/**
+ * Path the OAuth provider returns to. It stays `/einstellungen` on purpose: this exact
+ * redirect URL is the one known to be allowed in the Supabase Auth configuration, and the
+ * Auth settings are not changed from the app code. The user is NOT meant to stay there:
+ * `post-auth-landing.ts` moves a signed-in user to `/` once the session and the first
+ * profile restore are settled.
+ */
+export const OAUTH_RETURN_PATH = "/einstellungen";
+
 export function oauthRedirectTo(origin: string = typeof window !== "undefined" ? window.location.origin : ""): string {
   const base = origin.replace(/\/$/, "");
-  return `${base}/einstellungen`;
+  return `${base}${OAUTH_RETURN_PATH}`;
 }
 
 /** UI auth phase: pending until first bindAuthSession callback. */
