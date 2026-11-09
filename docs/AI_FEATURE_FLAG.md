@@ -25,4 +25,8 @@ Single, server-side master switch for every external AI call (Gemini and Tavily)
 2. Make sure `GEMINI_API_KEY` (and optionally `TAVILY_API_KEY`) are set in the platform secrets.
 3. Set `AI_FEATURES_ENABLED=true` on **Preview** first, redeploy, test chat, sources and rate limit.
 4. If the notice text changed, bump `AI_NOTICE_KEY_BASE` in `src/lib/minijob/ai-notice.ts`.
+   Also restore the texts that were reduced for the free launch: the AI wording in `premium.settingsDesc`
+   (`src/lib/i18n/dict/entry.ts`, all five languages), the static `head` description of `/assistent`
+   (`src/routes/assistent.tsx`) and, after the legal review, `/datenschutz` and `/ki-hinweise`. The test
+   `src/lib/ai-disclosure-consistency.test.ts` guards the "AI off" wording and must be updated with them.
 5. Set it on Production and redeploy. Rollback = remove the variable and redeploy.

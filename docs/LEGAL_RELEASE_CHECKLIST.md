@@ -9,19 +9,25 @@ This checklist records what the current source code supports and what still requ
 - User documents can be stored in the private `documents` storage bucket.
 - The document upload Edge Function authenticates the bearer token, validates file type/content/size, scopes the storage path to the authenticated user and removes an uploaded object if the database insert fails.
 - Account deletion has a server-side Edge Function which authenticates the user and deletes the user's document objects, application rows and auth user.
-- The AI assistant can receive app context containing work/earnings information when that context is selected for an AI request.
-- The current AI implementation uses Gemini as the LLM provider and Tavily for current-information web search. API keys are resolved server-side; they are not intended to be exposed through Vite client environment variables.
+- The AI assistant is switched off in the current version: it is enabled only when the server variable `AI_FEATURES_ENABLED` is exactly `"true"`, and with it off no request is sent to Gemini or Tavily and no AI context is built (PR #161, `docs/AI_FEATURE_FLAG.md`). The text below about the AI applies only to a later re-enable.
+- The stored AI implementation (not active) uses Gemini as the LLM provider and Tavily for current-information web search; when re-enabled the assistant can receive app context containing work/earnings information. API keys are resolved server-side; they are not intended to be exposed through Vite client environment variables.
 - AI request rate limiting is enforced through the database RPC and is designed to fail closed when the security check cannot be evaluated.
 
 ## Must be completed before public release
 
-- Replace the placeholder Impressum with the real provider identity and legally required provider information.
+- Impressum: the operator's real provider data (name, address, e-mail, Telegram as an additional channel) has been prepared in the separate PR #163. The Impressum is **not** to be treated as complete until PR #163 is merged and checked; whether this contact set and its content satisfy § 5 DDG remains a legal question.
 - Complete the privacy notice with the actual controller, purposes, legal bases, recipients/processors, international-transfer information, retention periods and data-subject rights applicable to the deployed configuration.
-- Confirm the contractual/privacy status of the configured Gemini and Tavily services for the intended deployment and document the applicable processors/sub-processors and transfer mechanisms.
-- Decide and document whether AI requests are optional and how users can avoid sending work/earnings context to the AI service.
 - Verify production Supabase settings, including leaked-password protection and relevant Auth security settings.
 - Verify production RLS/storage policies and account deletion with a real test account.
 - Rotate any historical secret that was previously exposed and verify repository secret-scanning status.
+
+## Required before the AI is re-enabled (not part of the first free launch)
+
+The AI is off in the current version, so these items do not block the first free launch. They must all be done before `AI_FEATURES_ENABLED` is set to `"true"` anywhere (see `docs/AI_FEATURE_FLAG.md`):
+
+- Confirm the contractual/privacy status of the configured Gemini and Tavily services for the intended deployment and document the applicable processors/sub-processors and transfer mechanisms.
+- Decide and document whether and under which conditions AI requests are permitted (optional use, consent/notice, and how users can avoid sending work/earnings context to the AI service).
+- Update the Datenschutzerklärung, KI-Hinweise and, if kept, the Nutzungsbedingungen to describe the re-enabled processing.
 
 ## Important distinction
 
