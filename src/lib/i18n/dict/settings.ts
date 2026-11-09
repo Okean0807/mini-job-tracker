@@ -57,7 +57,7 @@ export const settingsDict: Bundle = {
     "set.notifications.enabled": "Benachrichtigungen aktiviert",
 
     "set.migration.title": "Datenübertragung",
-    "set.migration.desc": "{count} Einträge exportieren oder Daten aus CSV, Excel bzw. JSON importieren.",
+    "set.migration.desc": "{count} Einträge exportieren oder Daten aus CSV bzw. JSON importieren.",
     "set.migration.csv": "CSV export",
     "set.migration.excel": "Excel export",
     "set.migration.import": "Daten importieren",
@@ -232,7 +232,7 @@ export const settingsDict: Bundle = {
     "set.notifications.enabled": "Notifications enabled",
 
     "set.migration.title": "Data migration",
-    "set.migration.desc": "Export {count} entries or import data from CSV, Excel or JSON.",
+    "set.migration.desc": "Export {count} entries or import data from CSV or JSON.",
     "set.migration.csv": "CSV export",
     "set.migration.excel": "Excel export",
     "set.migration.import": "Import data",
@@ -407,7 +407,7 @@ export const settingsDict: Bundle = {
     "set.notifications.enabled": "Уведомления включены",
 
     "set.migration.title": "Перенос данных",
-    "set.migration.desc": "Экспортировать {count} записей или импортировать данные из CSV, Excel или JSON.",
+    "set.migration.desc": "Экспортировать {count} записей или импортировать данные из CSV или JSON.",
     "set.migration.csv": "Экспорт CSV",
     "set.migration.excel": "Экспорт Excel",
     "set.migration.import": "Импортировать данные",
@@ -582,7 +582,7 @@ export const settingsDict: Bundle = {
     "set.notifications.enabled": "Bildirimler etkinleştirildi",
 
     "set.migration.title": "Veri aktarımı",
-    "set.migration.desc": "{count} kaydı dışa aktarın veya CSV, Excel ya da JSON'dan veri içe aktarın.",
+    "set.migration.desc": "{count} kaydı dışa aktarın veya CSV ya da JSON'dan veri içe aktarın.",
     "set.migration.csv": "CSV dışa aktar",
     "set.migration.excel": "Excel dışa aktar",
     "set.migration.import": "Veri içe aktar",
@@ -757,7 +757,7 @@ export const settingsDict: Bundle = {
     "set.notifications.enabled": "Powiadomienia włączone",
 
     "set.migration.title": "Migracja danych",
-    "set.migration.desc": "Eksportuj {count} wpisów lub importuj dane z CSV, Excel lub JSON.",
+    "set.migration.desc": "Eksportuj {count} wpisów lub importuj dane z CSV lub JSON.",
     "set.migration.csv": "Eksport CSV",
     "set.migration.excel": "Eksport Excel",
     "set.migration.import": "Importuj dane",
