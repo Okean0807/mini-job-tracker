@@ -62,6 +62,7 @@ export const dashboard: Bundle = {
     "timer.start": "Start",
     "timer.startedToast": "Arbeit gestartet",
     "timer.savedToast": "Arbeitszeit gespeichert",
+    "timer.notSaved": "Nicht gespeichert – der Timer läuft weiter.",
 
     "cal.prevMonth": "Vorheriger Monat",
     "cal.nextMonth": "Nächster Monat",
@@ -159,6 +160,7 @@ export const dashboard: Bundle = {
     "timer.start": "Start",
     "timer.startedToast": "Work started",
     "timer.savedToast": "Working time saved",
+    "timer.notSaved": "Not saved – the timer keeps running.",
 
     "cal.prevMonth": "Previous month",
     "cal.nextMonth": "Next month",
@@ -256,6 +258,7 @@ export const dashboard: Bundle = {
     "timer.start": "Старт",
     "timer.startedToast": "Работа начата",
     "timer.savedToast": "Рабочее время сохранено",
+    "timer.notSaved": "Не сохранено — таймер продолжает работать.",
 
     "cal.prevMonth": "Предыдущий месяц",
     "cal.nextMonth": "Следующий месяц",
@@ -353,6 +356,7 @@ export const dashboard: Bundle = {
     "timer.start": "Başlat",
     "timer.startedToast": "Çalışma başlatıldı",
     "timer.savedToast": "Çalışma süresi kaydedildi",
+    "timer.notSaved": "Kaydedilmedi – zamanlayıcı çalışmaya devam ediyor.",
 
     "cal.prevMonth": "Önceki ay",
     "cal.nextMonth": "Sonraki ay",
@@ -450,6 +454,7 @@ export const dashboard: Bundle = {
     "timer.start": "Start",
     "timer.startedToast": "Praca rozpoczęta",
     "timer.savedToast": "Czas pracy zapisany",
+    "timer.notSaved": "Nie zapisano – stoper działa dalej.",
 
     "cal.prevMonth": "Poprzedni miesiąc",
     "cal.nextMonth": "Następny miesiąc",

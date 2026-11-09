@@ -151,6 +151,7 @@ export const settingsDict: Bundle = {
     "imp.otherFile": "Andere Datei",
     "imp.confirm": "{count} importieren",
     "imp.imported": "{count} Einträge importiert",
+    "imp.skippedInvalid": "{count} Zeilen übersprungen (ungültige Zeiten)",
 
     "pin.locked": "App gesperrt",
     "pin.enterPin": "Bitte PIN eingeben",
@@ -326,6 +327,7 @@ export const settingsDict: Bundle = {
     "imp.otherFile": "Other file",
     "imp.confirm": "Import {count}",
     "imp.imported": "{count} entries imported",
+    "imp.skippedInvalid": "{count} rows skipped (invalid times)",
 
     "pin.locked": "App locked",
     "pin.enterPin": "Please enter PIN",

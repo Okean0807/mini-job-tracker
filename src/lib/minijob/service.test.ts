@@ -100,7 +100,14 @@ describe("service shift CRUD", () => {
   });
 
   it("persistDialogShift without editingId creates exactly one new Shift", () => {
-    const a = addShift({ ...base, date: "2026-09-19", start: "06:00", end: "06:15", workCode: "SA" });
+    const a = addShift({
+      ...base,
+      date: "2026-09-19",
+      start: "06:00",
+      end: "06:15",
+      breakMinutes: 0, // 15 min: the default 30 min break would now (correctly) be rejected
+      workCode: "SA",
+    });
     const created = persistDialogShift({
       ...base,
       date: "2026-09-19",
@@ -113,7 +120,14 @@ describe("service shift CRUD", () => {
   });
 
   it("persistDialogShift on one of three same-day Shifts leaves the others unchanged", () => {
-    const a = addShift({ ...base, date: "2026-09-19", start: "06:00", end: "06:15", workCode: "SA" });
+    const a = addShift({
+      ...base,
+      date: "2026-09-19",
+      start: "06:00",
+      end: "06:15",
+      breakMinutes: 0, // 15 min: the default 30 min break would now (correctly) be rejected
+      workCode: "SA",
+    });
     const b = addShift({ ...base, date: "2026-09-19", start: "06:15", end: "16:30", workCode: "ER" });
     const c = addShift({ ...base, date: "2026-09-19", start: "17:00", end: "18:00", workCode: "FR" });
     persistDialogShift({ ...b, workCode: "GL", workCodeLabel: "Glasreinigung" }, b.id);

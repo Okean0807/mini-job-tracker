@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n";
 import { formatClock, isoDate, timeFromDate } from "@/lib/minijob/calc";
 import { suggestedRate } from "@/lib/minijob/rate";
-import { addShift } from "@/lib/minijob/service";
+import { addShift, ShiftValidationError } from "@/lib/minijob/service";
 import { clearTimer, startTimer, updateTimerBreak } from "@/lib/minijob/store";
 import type { Job, RunningTimer, Settings } from "@/lib/minijob/types";
 
@@ -42,15 +42,33 @@ export function WorkTimer({ timer, jobs, settings }: WorkTimerProps) {
     if (!timer) return;
     const startedAt = new Date(timer.startedAt);
     const now = new Date();
-    addShift({
-      kind: "arbeit" as const,
-      date: isoDate(startedAt),
-      start: timeFromDate(startedAt),
-      end: timeFromDate(now),
-      breakMinutes: timer.breakMinutes,
-      rate: suggestedRate({ jobId: activeJob?.id }, { jobs, settings }),
-      ...(timer.jobId ? { jobId: timer.jobId } : {}),
-    });
+    try {
+      addShift({
+        kind: "arbeit" as const,
+        date: isoDate(startedAt),
+        start: timeFromDate(startedAt),
+        end: timeFromDate(now),
+        breakMinutes: timer.breakMinutes,
+        rate: suggestedRate({ jobId: activeJob?.id }, { jobs, settings }),
+        ...(timer.jobId ? { jobId: timer.jobId } : {}),
+      });
+    } catch (error) {
+      // K2: Die Schreibgrenze lehnt eine unmögliche Schicht ab (z. B. Beginn = Ende bei Start und
+      // Stopp in derselben Minute). Es wird nichts gespeichert und der Timer läuft weiter –
+      // keine Zeit geht still verloren, und es entsteht kein 0-Stunden-Eintrag.
+      if (error instanceof ShiftValidationError) {
+        const code = error.issues[0]?.code;
+        const reason =
+          code === "zero-duration"
+            ? t("entry.errZeroDuration")
+            : code === "break-too-long"
+              ? t("entry.errBreakTooLong")
+              : t("entry.errInvalidTime");
+        toast.error(`${t("timer.notSaved")} ${reason}`);
+        return;
+      }
+      throw error;
+    }
     clearTimer();
     toast.success(t("timer.savedToast"));
   }

@@ -1,5 +1,6 @@
 import { t } from "@/lib/i18n";
 import { td } from "./document-i18n";
+import { validateEntry } from "./entry-validate";
 
 import { newId } from "./store";
 import type { Job, Shift } from "./types";
@@ -153,6 +154,20 @@ export function parseCsv(
     if (!end) errors.push(t("csv.error.end"));
     const breakMinutes = parseNumber(breakCell);
     if (breakMinutes === null || breakMinutes < 0) errors.push(t("csv.error.break"));
+    // K2: dieselbe Regel wie beim Speichern – eine Zeile mit Dauer 0 oder Pause >= Arbeitszeit
+    // wird in der Vorschau als ungültig gemeldet statt als 0-Stunden-Eintrag importiert.
+    if (start && end && breakMinutes !== null && breakMinutes >= 0) {
+      for (const issue of validateEntry({
+        kind: "arbeit",
+        date: date ?? "",
+        start,
+        end,
+        breakMinutes,
+      }).errors) {
+        if (issue.code === "zero-duration") errors.push(t("csv.error.zeroDuration"));
+        else if (issue.code === "break-too-long") errors.push(t("csv.error.breakTooLong"));
+      }
+    }
     const rate = parseRateCell(rateCell);
     if (rate === null || (rate !== undefined && rate < 0)) errors.push(t("csv.error.rate"));
 
