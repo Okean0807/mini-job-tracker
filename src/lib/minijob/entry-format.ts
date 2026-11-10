@@ -33,12 +33,16 @@ export function formatRateInput(value: number | undefined): string {
   return value.toFixed(2).replace(".", ",");
 }
 
-/** Tastatureingabe auf Ziffern und ein Dezimaltrennzeichen begrenzen. */
+/**
+ * Tastatureingabe auf Ziffern und ein Dezimaltrennzeichen begrenzen.
+ * K1: Nachkommastellen werden hier NICHT abgeschnitten ("12,345" bleibt "12,345") – gerundet wird
+ * erst beim Verlassen des Felds bzw. Speichern (parseEditedRateInput), nie stillschweigend gekürzt.
+ */
 export function sanitizeRateInput(raw: string): string {
   const cleaned = raw.replace(/[^\d.,]/g, "").replace(/\./g, ",");
   const [head, ...rest] = cleaned.split(",");
   if (rest.length === 0) return head ?? "";
-  return `${head},${rest.join("").slice(0, 2)}`;
+  return `${head},${rest.join("")}`;
 }
 
 export interface ExtrasSummaryInput {

@@ -63,7 +63,7 @@ import {
 import { shiftPayroll } from "@/lib/minijob/payroll";
 import { absenceDayTimes } from "@/lib/minijob/schedule";
 import { holidayName } from "@/lib/minijob/holidays";
-import { parseRateInput, suggestedRate } from "@/lib/minijob/rate";
+import { parseEditedRateInput, rateFieldValue, suggestedRate } from "@/lib/minijob/rate";
 import { ObjectDialog } from "@/components/minijob/ObjectDialog";
 import { persistDialogShift, removeShift, getShift } from "@/lib/minijob/service";
 import { getData } from "@/lib/minijob/store";
@@ -177,6 +177,10 @@ export function ShiftDialog({
   const [end, setEnd] = useState("17:00");
   const [breakMinutes, setBreakMinutes] = useState("30");
   const [rate, setRate] = useState(String(settings.defaultRate));
+  // K1: Das Feld zeigt den Satz auf zwei Stellen formatiert. Gespeichert wird aber der exakte
+  // Ausgangswert (rateSource), solange die Nutzerin den Text nicht selbst geändert hat (rateDirty).
+  const [rateSource, setRateSource] = useState<number | undefined>(settings.defaultRate);
+  const [rateDirty, setRateDirty] = useState(false);
   const [note, setNote] = useState("");
   const [overtime, setOvertime] = useState(false);
   const [customerId, setCustomerId] = useState<string | undefined>(undefined);
@@ -273,6 +277,30 @@ export function ShiftDialog({
     setCustomTask("");
   }
 
+  /**
+   * K1: Feld beim Jobwechsel mit dem Vorschlag des Jobs befüllen. Die Anzeige wird formatiert, der
+   * exakte Wert bleibt in rateSource – das ist KEINE Bearbeitung.
+   */
+  function seedRate(value: number | undefined) {
+    setRate(formatRateInput(value));
+    setRateSource(value);
+    setRateDirty(false);
+  }
+
+  /** K1: Nur eine echte Textänderung durch die Nutzerin gilt als Bearbeitung. */
+  function editRate(raw: string) {
+    const nextText = sanitizeRateInput(raw);
+    if (nextText === rate) return;
+    setRate(nextText);
+    setRateDirty(true);
+  }
+
+  /** K1: Beim Verlassen nur einen bearbeiteten Satz formatieren (gerundet wie beim Speichern). */
+  function formatEditedRate() {
+    if (!rateDirty) return;
+    setRate(formatRateInput(parseEditedRateInput(rate)));
+  }
+
   useEffect(() => {
     if (!open) return;
     const id = (shiftId ?? shift?.id ?? "").trim() || undefined;
@@ -305,11 +333,13 @@ export function ShiftDialog({
     setStart(source?.start ?? (seedContinuation?.sameDay ? seedContinuation.start : "09:00"));
     setEnd(source?.end ?? (seedContinuation?.sameDay ? "" : "17:00"));
     setBreakMinutes(String(source?.breakMinutes ?? 30));
-    setRate(
-      formatRateInput(
-        source ? source.rate : suggestedRate({ jobId: fallbackJob?.id }, { jobs, settings }),
-      ),
-    );
+    // K1: exakten Satz merken, nur die Anzeige formatieren (Setter direkt: stabile Referenzen).
+    const initialRate = source
+      ? source.rate
+      : suggestedRate({ jobId: fallbackJob?.id }, { jobs, settings });
+    setRate(formatRateInput(initialRate));
+    setRateSource(initialRate);
+    setRateDirty(false);
     setNote(source?.note ?? "");
     setOvertime(source?.overtime ?? false);
     setCustomerId(source?.customerId);
@@ -381,8 +411,9 @@ export function ShiftDialog({
     breakMinutes: newAbsenceTimes?.breakMinutes ?? (Number(breakMinutes) || 0),
     overtime,
   };
-  const parsedRate = parseRateInput(rate);
-  if (parsedRate !== undefined) draft.rate = parsedRate;
+  // K1: ein Wert für Vorschau, Prüfung und Speichern – unberührt exakt, bearbeitet gerundet.
+  const rateValue = rateFieldValue({ text: rate, dirty: rateDirty, source: rateSource });
+  if (rateValue !== undefined) draft.rate = rateValue;
   if (jobId) draft.jobId = jobId;
   // Ein bearbeiteter Krankheitstag gehört weiter zu seinem Krankheitsfall: ohne die Fall-ID würde die
   // Vorschau ihn als eigenen Fall (Tag 1) bewerten.
@@ -427,7 +458,6 @@ export function ShiftDialog({
   const storedEntry = resolvedShiftId ? getShift(resolvedShiftId) : undefined;
   const validation = useMemo(() => {
     if (kind !== "arbeit") return EMPTY_VALIDATION;
-    const draftRate = parseRateInput(rate);
     return validateEntry(
       {
         ...(resolvedShiftId ? { id: resolvedShiftId } : {}),
@@ -437,7 +467,7 @@ export function ShiftDialog({
         start,
         end,
         breakMinutes: Number(breakMinutes) || 0,
-        ...(draftRate !== undefined ? { rate: draftRate } : {}),
+        ...(rateValue !== undefined ? { rate: rateValue } : {}),
         ...(note.trim() ? { note: note.trim() } : {}),
       },
       {
@@ -447,7 +477,18 @@ export function ShiftDialog({
         ...(storedEntry ? { original: storedEntry } : {}),
       },
     );
-  }, [kind, resolvedShiftId, jobId, entryDate, start, end, breakMinutes, rate, note, storedEntry]);
+  }, [
+    kind,
+    resolvedShiftId,
+    jobId,
+    entryDate,
+    start,
+    end,
+    breakMinutes,
+    rateValue,
+    note,
+    storedEntry,
+  ]);
 
   // A3: Tätigkeits-Vorschläge aus der Historie DIESES Jobs. Nichts wird erzwungen, nichts gespeichert.
   const historyTasks = useMemo(
@@ -730,7 +771,6 @@ export function ShiftDialog({
       },
       entryDate,
     );
-    const rateValue = parseRateInput(rate);
     if (rateValue !== undefined) next.rate = rateValue;
     if (jobId) next.jobId = jobId;
     if (note.trim()) next.note = note.trim();
@@ -816,7 +856,6 @@ export function ShiftDialog({
     minute: t("entry.minutesShort"),
   });
   const breakValue = Math.max(0, Number(breakMinutes) || 0);
-  const rateValue = parseRateInput(rate);
   const extrasSummary = extrasSummaryParts(
     {
       photos: photos.length,
@@ -979,9 +1018,7 @@ export function ShiftDialog({
                       aria-pressed={jobId === j.id}
                       onClick={() => {
                         setJobId(j.id);
-                        setRate(
-                          formatRateInput(suggestedRate({ jobId: j.id }, { jobs, settings })),
-                        );
+                        seedRate(suggestedRate({ jobId: j.id }, { jobs, settings }));
                         reseedTimes(j.id, entryDate, kind);
                       }}
                       className={cn(
@@ -1265,8 +1302,8 @@ export function ShiftDialog({
                         type="text"
                         inputMode="decimal"
                         value={rate}
-                        onChange={(e) => setRate(sanitizeRateInput(e.target.value))}
-                        onBlur={() => setRate(formatRateInput(parseRateInput(rate)))}
+                        onChange={(e) => editRate(e.target.value)}
+                        onBlur={formatEditedRate}
                         onFocus={keepFieldVisible}
                         className="h-11 w-24 border-0 bg-transparent px-0 text-right text-base font-semibold tabular-nums shadow-none focus-visible:ring-0"
                       />
@@ -1808,8 +1845,8 @@ export function ShiftDialog({
                         type="text"
                         inputMode="decimal"
                         value={rate}
-                        onChange={(e) => setRate(sanitizeRateInput(e.target.value))}
-                        onBlur={() => setRate(formatRateInput(parseRateInput(rate)))}
+                        onChange={(e) => editRate(e.target.value)}
+                        onBlur={formatEditedRate}
                         onFocus={keepFieldVisible}
                         className="h-11 w-24 border-0 bg-transparent px-0 text-right text-base font-semibold tabular-nums shadow-none focus-visible:ring-0"
                       />

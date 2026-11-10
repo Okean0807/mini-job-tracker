@@ -5,7 +5,9 @@ import { parseCsv, shiftsToCsv } from "./csv";
 import {
   effectiveHourlyFromMonthly,
   effectiveShiftRate,
+  parseEditedRateInput,
   parseRateInput,
+  rateFieldValue,
   resolveRate,
 } from "./rate";
 import { makeResolver } from "./resolve";
@@ -149,6 +151,83 @@ describe("Eingabefeld (UI)", () => {
 
   it("akzeptiert Komma als Dezimaltrenner", () => {
     expect(parseRateInput("13,5")).toBe(13.5);
+  });
+});
+
+describe("K1: bearbeiteter Satz (parseEditedRateInput)", () => {
+  it("rundet kaufmännisch auf zwei Nachkommastellen", () => {
+    expect(parseEditedRateInput("13,5")).toBe(13.5);
+    expect(parseEditedRateInput("12,345")).toBe(12.35);
+    expect(parseEditedRateInput("14,006")).toBe(14.01);
+    expect(parseEditedRateInput("15")).toBe(15);
+    expect(parseEditedRateInput("12,344")).toBe(12.34);
+    expect(parseEditedRateInput("12,3449999")).toBe(12.34);
+    expect(parseEditedRateInput("13,999")).toBe(14);
+    expect(parseEditedRateInput("9,995")).toBe(10);
+    expect(parseEditedRateInput("0,004")).toBe(0);
+    expect(parseEditedRateInput("0,005")).toBe(0.01);
+  });
+
+  it("rundet dezimale Halbfälle richtig, bei denen Gleitkomma-Rundung abrundet", () => {
+    // Belegt das Problem: der naive Weg liefert für diese Eingaben den falschen Cent.
+    expect((1.005).toFixed(2)).toBe("1.00");
+    expect(Math.round(1.005 * 100) / 100).toBe(1);
+    expect(parseEditedRateInput("1,005")).toBe(1.01);
+    expect(parseEditedRateInput("1.005")).toBe(1.01);
+    expect(parseEditedRateInput("8,345")).toBe(8.35);
+    expect(parseEditedRateInput("1,255")).toBe(1.26);
+    expect(parseEditedRateInput("10,075")).toBe(10.08);
+    expect(parseEditedRateInput("2,675")).toBe(2.68);
+  });
+
+  it("liefert für jeden Cent-Halbfall 0,005 … 99,995 exakt den aufgerundeten Cent", () => {
+    for (let cents = 0; cents < 10000; cents += 1) {
+      const text = `${Math.floor(cents / 100)},${String(cents % 100).padStart(2, "0")}5`;
+      expect(parseEditedRateInput(text)).toBe((cents + 1) / 100);
+    }
+  });
+
+  it("lässt Werte mit höchstens zwei Nachkommastellen unverändert", () => {
+    for (let cents = 0; cents <= 10000; cents += 1) {
+      const text = `${Math.floor(cents / 100)},${String(cents % 100).padStart(2, "0")}`;
+      expect(parseEditedRateInput(text)).toBe(cents / 100);
+      expect(parseEditedRateInput(text)).toBe(parseRateInput(text));
+    }
+    expect(parseEditedRateInput("7")).toBe(7);
+    expect(parseEditedRateInput("7,")).toBe(7);
+    expect(parseEditedRateInput(",5")).toBe(0.5);
+    expect(parseEditedRateInput(" 13,5 ")).toBe(13.5);
+  });
+
+  it("behält die Semantik leer = nicht gesetzt, 0 = bewusst 0", () => {
+    expect(parseEditedRateInput("")).toBeUndefined();
+    expect(parseEditedRateInput("   ")).toBeUndefined();
+    expect(parseEditedRateInput(",")).toBeUndefined();
+    expect(parseEditedRateInput("abc")).toBeUndefined();
+    expect(parseEditedRateInput("1,2,3")).toBeUndefined();
+    expect(parseEditedRateInput("0")).toBe(0);
+    expect(parseEditedRateInput("0,00")).toBe(0);
+  });
+});
+
+describe("K1: Feldzustand -> zu speichernder Satz (rateFieldValue)", () => {
+  it("unberührt: der exakte Ausgangswert, nicht die formatierte Anzeige", () => {
+    for (const source of [12.345, 12.3456, 13.999, 14.006, 0.001, 18.46153846153846, 15, 0]) {
+      const text = source.toFixed(2).replace(".", ",");
+      expect(rateFieldValue({ text, dirty: false, source })).toBe(source);
+    }
+  });
+
+  it("unberührt ohne Ausgangswert: nicht gesetzt", () => {
+    expect(rateFieldValue({ text: "", dirty: false, source: undefined })).toBeUndefined();
+    expect(rateFieldValue({ text: "", dirty: false, source: Number.NaN })).toBeUndefined();
+  });
+
+  it("bearbeitet: der eingegebene Text zählt, gerundet auf zwei Stellen", () => {
+    expect(rateFieldValue({ text: "12,345", dirty: true, source: 12.345 })).toBe(12.35);
+    expect(rateFieldValue({ text: "13,5", dirty: true, source: 12.345 })).toBe(13.5);
+    expect(rateFieldValue({ text: "0", dirty: true, source: 12.345 })).toBe(0);
+    expect(rateFieldValue({ text: "", dirty: true, source: 12.345 })).toBeUndefined();
   });
 });
 

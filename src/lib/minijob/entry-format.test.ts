@@ -33,12 +33,18 @@ describe("rate input", () => {
     expect(formatRateInput(undefined)).toBe("");
   });
 
-  it("keeps typing usable: comma or dot, max two decimals", () => {
+  it("keeps typing usable: comma or dot, only digits and one separator", () => {
     expect(sanitizeRateInput("13.5")).toBe("13,5");
     expect(sanitizeRateInput("13,50")).toBe("13,50");
-    expect(sanitizeRateInput("13,507")).toBe("13,50");
     expect(sanitizeRateInput("1a3€")).toBe("13");
+    expect(sanitizeRateInput("1,2,3")).toBe("1,23");
     expect(sanitizeRateInput("")).toBe("");
+  });
+
+  it("K1: never truncates typed decimals (rounding happens on blur/save, not while typing)", () => {
+    expect(sanitizeRateInput("13,507")).toBe("13,507");
+    expect(sanitizeRateInput("12.345")).toBe("12,345");
+    expect(sanitizeRateInput("1,005")).toBe("1,005");
   });
 });
 

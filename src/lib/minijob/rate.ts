@@ -93,6 +93,51 @@ export function parseRateInput(value: string): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+/**
+ * K1: Von der Nutzerin EINGEGEBENER Lohnsatz, kaufmännisch auf zwei Nachkommastellen gerundet
+ * ("12,345" -> 12.35, "14,006" -> 14.01, "1,005" -> 1.01).
+ *
+ * Gerundet wird auf den eingegebenen Dezimalziffern, nicht auf dem Gleitkommawert:
+ * `Math.round(1.005 * 100) / 100` und `(1.005).toFixed(2)` ergeben beide 1.00, weil 1.005 binär
+ * knapp unter der Hälfte liegt. Die Ziffernfolge kennt dieses Problem nicht.
+ *
+ * Leeres/unparsbares Feld ergibt undefined (nicht gesetzt), eine eingegebene 0 ergibt 0 –
+ * dieselbe Semantik wie parseRateInput. Das Feld lässt nur Ziffern und ein Dezimaltrennzeichen zu.
+ */
+export function parseEditedRateInput(value: string): number | undefined {
+  const match = /^(\d*)(?:[.,](\d*))?$/.exec(value.trim());
+  if (!match) return undefined;
+  const whole = match[1] ?? "";
+  const fraction = match[2] ?? "";
+  if (!whole && !fraction) return undefined;
+  const cents = Number(`${whole || "0"}${`${fraction}00`.slice(0, 2)}`);
+  const roundUp = fraction.length > 2 && fraction.charCodeAt(2) >= 53; // dritte Nachkommastelle >= 5
+  const rounded = (cents + (roundUp ? 1 : 0)) / 100;
+  return Number.isFinite(rounded) ? rounded : undefined;
+}
+
+/** K1: Zustand des Lohnsatz-Felds im Eintrag-Editor. */
+export interface RateFieldState {
+  /** Angezeigter Text (deutsches Komma). */
+  text: string;
+  /** true erst, wenn die Nutzerin den Text wirklich geändert hat. */
+  dirty: boolean;
+  /** Exakter Satz, mit dem das Feld befüllt wurde (gespeicherte Schicht bzw. Vorschlag). */
+  source: number | undefined;
+}
+
+/**
+ * K1: Zu speichernder Lohnsatz. Unberührt bleibt der exakte Ausgangswert erhalten – die auf zwei
+ * Stellen formatierte Anzeige wird NICHT zurückgeschrieben. Erst eine echte Eingabe zählt und wird
+ * dann nach parseEditedRateInput gerundet.
+ */
+export function rateFieldValue(field: RateFieldState): number | undefined {
+  if (field.dirty) return parseEditedRateInput(field.text);
+  return typeof field.source === "number" && Number.isFinite(field.source)
+    ? field.source
+    : undefined;
+}
+
 export interface RateContext {
   job?: Job | undefined;
   defaultRate?: number | undefined;
