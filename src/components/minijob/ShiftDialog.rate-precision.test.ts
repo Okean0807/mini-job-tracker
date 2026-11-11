@@ -161,7 +161,7 @@ afterEach(() => {
   container.remove();
 });
 
-const PRECISE = [12.345, 12.3456, 13.999, 14.006, 0.001];
+const PRECISE = [12.345, 12.3456, 13.999, 14.006, 0.001, 13.9, 15.5];
 
 describe("K1 unberührter Satz bleibt exakt erhalten", () => {
   it.each(PRECISE)("öffnen und speichern ohne Änderung: %s bleibt exakt", (value) => {
@@ -476,4 +476,77 @@ describe("K1 Abrechnung rechnet mit dem erhaltenen Satz", () => {
     expect(effectiveShiftRate({}, { job: HOURLY, defaultRate: 9 })).toBe(14);
     expect(effectiveShiftRate({}, { defaultRate: 9 })).toBe(9);
   });
+});
+
+describe("K1 Regressionsmatrix je Wert (A–E)", () => {
+  // Erwartung nach bewusster Eingabe desselben Werts: kaufmännisch auf zwei Stellen.
+  const matrix: Array<[value: number, typed: string, afterEdit: number]> = [
+    [12.345, "12,345", 12.35],
+    [12.3456, "12,3456", 12.35],
+    [13.999, "13,999", 14],
+    [14.006, "14,006", 14.01],
+    [0.001, "0,001", 0],
+    [13.9, "13,90", 13.9],
+    [15.5, "15,50", 15.5],
+  ];
+  const cancelButton = () => q('[data-testid="entry-save"]').previousElementSibling;
+  const close = () => act(() => root.render(createElement("div")));
+
+  it.each(matrix)("C: %s – Eingabe %s wird als %s gespeichert", (value, typed, afterEdit) => {
+    seed([shiftWith(value)]);
+    open("s1");
+    setValue(rateField(), typed);
+    blur(rateField());
+    save();
+    expect(stored()?.rate).toBe(afterEdit);
+  });
+
+  it.each(matrix)("D: %s – Abbrechen ändert nichts, auch nach einer Eingabe", (value) => {
+    seed([shiftWith(value)]);
+    const before = JSON.stringify(getData().shifts);
+    open("s1");
+    click(cancelButton());
+    close();
+    expect(JSON.stringify(getData().shifts)).toBe(before);
+
+    open("s1");
+    setValue(rateField(), "99,999");
+    blur(rateField());
+    click(cancelButton());
+    close();
+    expect(JSON.stringify(getData().shifts)).toBe(before);
+    expect(stored()?.rate).toBe(value);
+  });
+
+  it.each(matrix)("E: %s – nach Speichern erneut öffnen und speichern bleibt exakt", (value) => {
+    seed([shiftWith(value)]);
+    open("s1");
+    save();
+    close();
+    act(() => {
+      loadFromStorage();
+    });
+    expect(stored()?.rate).toBe(value);
+    open("s1");
+    const shown = rateField().value;
+    save();
+    close();
+    expect(stored()?.rate).toBe(value);
+    open("s1");
+    expect(rateField().value).toBe(shown);
+  });
+
+  it.each(matrix)(
+    "E: %s – bearbeiteter Satz bleibt nach erneutem Öffnen stabil",
+    (_v, typed, afterEdit) => {
+      seed([shiftWith(20)]);
+      open("s1");
+      setValue(rateField(), typed);
+      save();
+      close();
+      open("s1");
+      save();
+      expect(stored()?.rate).toBe(afterEdit);
+    },
+  );
 });
