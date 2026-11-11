@@ -335,12 +335,12 @@ describe("K1 bewusst bearbeiteter Satz wird kaufmännisch auf zwei Stellen gerun
     },
   );
 
-  it("den exakten alten Wert neu einzutippen ist eine Bearbeitung und wird gerundet", () => {
+  it("K1-M1: eine Eingabe, die wieder dieselbe Anzeige ergibt (12,345 -> 12,35), ändert nichts", () => {
     seed([shiftWith(12.345)]);
     open("s1");
     setValue(rateField(), "12,345");
     save();
-    expect(stored()?.rate).toBe(12.35);
+    expect(stored()?.rate).toBe(12.345);
   });
 
   it("ein bearbeiteter Satz gilt auch für einen neuen Eintrag", () => {
@@ -446,9 +446,9 @@ describe("K1 Jobwechsel", () => {
     seed([], JOBS);
     open(null);
     click(jobButton("Lager Süd"));
-    setValue(rateField(), "16,125");
+    setValue(rateField(), "16,5");
     save();
-    expect(onlyShift().rate).toBe(16.13);
+    expect(onlyShift().rate).toBe(16.5);
   });
 });
 
@@ -492,14 +492,29 @@ describe("K1 Regressionsmatrix je Wert (A–E)", () => {
   const cancelButton = () => q('[data-testid="entry-save"]').previousElementSibling;
   const close = () => act(() => root.render(createElement("div")));
 
-  it.each(matrix)("C: %s – Eingabe %s wird als %s gespeichert", (value, typed, afterEdit) => {
-    seed([shiftWith(value)]);
-    open("s1");
-    setValue(rateField(), typed);
-    blur(rateField());
-    save();
-    expect(stored()?.rate).toBe(afterEdit);
-  });
+  it.each(matrix)(
+    "C: %s – Eingabe %s über einen anderen Satz wird als %s gespeichert",
+    (_v, typed, afterEdit) => {
+      seed([shiftWith(20)]);
+      open("s1");
+      setValue(rateField(), typed);
+      blur(rateField());
+      save();
+      expect(stored()?.rate).toBe(afterEdit);
+    },
+  );
+
+  it.each(matrix)(
+    "C (K1-M1): %s – denselben Wert (%s) erneut eintippen ergibt dieselbe Anzeige und ändert nichts",
+    (value, typed) => {
+      seed([shiftWith(value)]);
+      open("s1");
+      setValue(rateField(), typed);
+      blur(rateField());
+      save();
+      expect(stored()?.rate).toBe(value);
+    },
+  );
 
   it.each(matrix)("D: %s – Abbrechen ändert nichts, auch nach einer Eingabe", (value) => {
     seed([shiftWith(value)]);
@@ -549,4 +564,138 @@ describe("K1 Regressionsmatrix je Wert (A–E)", () => {
       expect(stored()?.rate).toBe(afterEdit);
     },
   );
+});
+
+describe("K1-M1 gleiche Anzeige nach dem Bearbeiten = exakter Ausgangswert", () => {
+  const close = () => act(() => root.render(createElement("div")));
+  const cancelButton = () => q('[data-testid="entry-save"]').previousElementSibling;
+  /** Zweite Eingabestelle: Monatslohn-Job, Feld im Block "Mehr". */
+  const openSecond = (rate: number) => {
+    seed([shiftWith(rate)], [MONTHLY]);
+    open("s1");
+    click(q('[data-testid="entry-more-toggle"]'));
+  };
+  const places: Array<[label: string, start: (rate: number) => void]> = [
+    [
+      "erste Eingabestelle",
+      (rate) => {
+        seed([shiftWith(rate)]);
+        open("s1");
+      },
+    ],
+    ["zweite Eingabestelle", openSecond],
+  ];
+
+  describe.each(places)("%s", (_label, start) => {
+    it("12.345 (12,35): löschen und neu tippen -> 12.345", () => {
+      start(12.345);
+      expect(rateField().value).toBe("12,35");
+      setValue(rateField(), "");
+      setValue(rateField(), "1");
+      setValue(rateField(), "12,3");
+      setValue(rateField(), "12,35");
+      save();
+      expect(stored()?.rate).toBe(12.345);
+    });
+
+    it("12.345: ein Zeichen löschen und wieder tippen, mit Verlassen des Felds -> 12.345", () => {
+      start(12.345);
+      setValue(rateField(), "12,3");
+      setValue(rateField(), "12,35");
+      blur(rateField());
+      expect(rateField().value).toBe("12,35");
+      save();
+      expect(stored()?.rate).toBe(12.345);
+    });
+
+    it("12.3456: anderen Wert tippen, Feld verlassen, Anzeige wiederherstellen -> 12.3456", () => {
+      start(12.3456);
+      setValue(rateField(), "20");
+      blur(rateField());
+      expect(rateField().value).toBe("20,00");
+      setValue(rateField(), "12,35");
+      blur(rateField());
+      save();
+      expect(stored()?.rate).toBe(12.3456);
+    });
+
+    it("13.999 (14,00): '14' wiederherstellen -> 13.999", () => {
+      start(13.999);
+      expect(rateField().value).toBe("14,00");
+      setValue(rateField(), "1");
+      setValue(rateField(), "14");
+      save();
+      expect(stored()?.rate).toBe(13.999);
+    });
+
+    it("12.345: wirklich anderer Wert 12,36 -> 12.36", () => {
+      start(12.345);
+      setValue(rateField(), "12,36");
+      save();
+      expect(stored()?.rate).toBe(12.36);
+    });
+
+    it("12.345: wiederhergestellt, dann doch geändert -> der neue Wert zählt", () => {
+      start(12.345);
+      setValue(rateField(), "12,3");
+      setValue(rateField(), "12,35");
+      setValue(rateField(), "12,355");
+      blur(rateField());
+      expect(rateField().value).toBe("12,36");
+      save();
+      expect(stored()?.rate).toBe(12.36);
+    });
+
+    it("Abbrechen nach dem Bearbeiten speichert nichts", () => {
+      start(12.345);
+      const before = JSON.stringify(getData().shifts);
+      setValue(rateField(), "12,3");
+      setValue(rateField(), "12,35");
+      setValue(rateField(), "99");
+      click(cancelButton());
+      close();
+      expect(JSON.stringify(getData().shifts)).toBe(before);
+    });
+  });
+
+  it("12.345: nur die Notiz ändern -> 12.345", () => {
+    seed([shiftWith(12.345)]);
+    open("s1");
+    click(q('[data-testid="entry-more-toggle"]'));
+    setValue(q<HTMLTextAreaElement>("#notiz"), "nur Notiz");
+    save();
+    expect(stored()?.rate).toBe(12.345);
+    expect(stored()?.note).toBe("nur Notiz");
+  });
+
+  it("Satz wiederhergestellt und dazu die Notiz geändert -> Satz exakt, Notiz gespeichert", () => {
+    seed([shiftWith(12.345)]);
+    open("s1");
+    setValue(rateField(), "");
+    setValue(rateField(), "12,35");
+    click(q('[data-testid="entry-more-toggle"]'));
+    setValue(q<HTMLTextAreaElement>("#notiz"), "x");
+    save();
+    expect(stored()?.rate).toBe(12.345);
+    expect(stored()?.note).toBe("x");
+  });
+
+  it("Eintrag ohne Satz: getippt und wieder geleert bleibt ungesetzt", () => {
+    seed([shiftWith(undefined)]);
+    open("s1");
+    setValue(rateField(), "15");
+    setValue(rateField(), "");
+    save();
+    expect(stored()).toBeDefined();
+    expect("rate" in (stored() as Shift)).toBe(false);
+  });
+
+  it("neuer Eintrag: Vorschlag 13.999 gelöscht und '14' getippt -> 13.999", () => {
+    seed([], [{ ...HOURLY, rate: 13.999 }]);
+    open(null);
+    setValue(rateField(), "");
+    setValue(rateField(), "14");
+    save();
+    expect(onlyShift().rate).toBe(13.999);
+  });
 });

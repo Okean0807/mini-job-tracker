@@ -181,6 +181,8 @@ export function ShiftDialog({
   // Ausgangswert (rateSource), solange die Nutzerin den Text nicht selbst geändert hat (rateDirty).
   const [rateSource, setRateSource] = useState<number | undefined>(settings.defaultRate);
   const [rateDirty, setRateDirty] = useState(false);
+  // K1-M1: Anzeige beim Befüllen – gleiche Anzeige nach dem Bearbeiten heißt "nichts geändert".
+  const [rateSeedText, setRateSeedText] = useState(String(settings.defaultRate));
   const [note, setNote] = useState("");
   const [overtime, setOvertime] = useState(false);
   const [customerId, setCustomerId] = useState<string | undefined>(undefined);
@@ -283,6 +285,7 @@ export function ShiftDialog({
    */
   function seedRate(value: number | undefined) {
     setRate(formatRateInput(value));
+    setRateSeedText(formatRateInput(value));
     setRateSource(value);
     setRateDirty(false);
   }
@@ -338,6 +341,7 @@ export function ShiftDialog({
       ? source.rate
       : suggestedRate({ jobId: fallbackJob?.id }, { jobs, settings });
     setRate(formatRateInput(initialRate));
+    setRateSeedText(formatRateInput(initialRate));
     setRateSource(initialRate);
     setRateDirty(false);
     setNote(source?.note ?? "");
@@ -412,7 +416,12 @@ export function ShiftDialog({
     overtime,
   };
   // K1: ein Wert für Vorschau, Prüfung und Speichern – unberührt exakt, bearbeitet gerundet.
-  const rateValue = rateFieldValue({ text: rate, dirty: rateDirty, source: rateSource });
+  const rateValue = rateFieldValue({
+    text: rate,
+    dirty: rateDirty,
+    source: rateSource,
+    seedText: rateSeedText,
+  });
   if (rateValue !== undefined) draft.rate = rateValue;
   if (jobId) draft.jobId = jobId;
   // Ein bearbeiteter Krankheitstag gehört weiter zu seinem Krankheitsfall: ohne die Fall-ID würde die

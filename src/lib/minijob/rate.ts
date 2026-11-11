@@ -124,18 +124,32 @@ export interface RateFieldState {
   dirty: boolean;
   /** Exakter Satz, mit dem das Feld befüllt wurde (gespeicherte Schicht bzw. Vorschlag). */
   source: number | undefined;
+  /** Anzeige, mit der das Feld befüllt wurde (formatierter `source`), z. B. "12,35" für 12.345. */
+  seedText: string;
+}
+
+/** Eingabetext in der Anzeigeform des Felds: gerundet, zwei Nachkommastellen, Komma; leer = "". */
+export function normalizeRateText(text: string): string {
+  const value = parseEditedRateInput(text);
+  return value === undefined ? "" : value.toFixed(2).replace(".", ",");
 }
 
 /**
  * K1: Zu speichernder Lohnsatz. Unberührt bleibt der exakte Ausgangswert erhalten – die auf zwei
  * Stellen formatierte Anzeige wird NICHT zurückgeschrieben. Erst eine echte Eingabe zählt und wird
  * dann nach parseEditedRateInput gerundet.
+ *
+ * K1-M1: Steht nach dem Bearbeiten wieder dieselbe Anzeige im Feld wie beim Befüllen (z. B. "12,35"
+ * gelöscht und neu getippt), hat sich für die Nutzerin nichts geändert – der exakte Ausgangswert
+ * bleibt. Der Vergleich ist rein aus dem aktuellen Zustand abgeleitet (kein Zurücksetzen von
+ * `dirty`), damit er nicht von der Reihenfolge von Blur/Render abhängt.
  */
 export function rateFieldValue(field: RateFieldState): number | undefined {
-  if (field.dirty) return parseEditedRateInput(field.text);
-  return typeof field.source === "number" && Number.isFinite(field.source)
-    ? field.source
-    : undefined;
+  const untouched =
+    typeof field.source === "number" && Number.isFinite(field.source) ? field.source : undefined;
+  if (!field.dirty) return untouched;
+  if (normalizeRateText(field.text) === field.seedText) return untouched;
+  return parseEditedRateInput(field.text);
 }
 
 export interface RateContext {
