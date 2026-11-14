@@ -19,6 +19,7 @@ export const entry: Bundle = {
     "entry.hoursShort": "Std.",
     "entry.rateExact":
       "Gespeicherter genauer Wert: {value}. Mit diesem Wert wird gerechnet; das Feld zeigt ihn gerundet.",
+    "entry.rateAccept": "{value} als neuen Wert übernehmen",
     "entry.minutesShort": "Min.",
     "entry.afterBreak": "nach {minutes} Min. Pause",
     "entry.break": "Pause",
@@ -83,6 +84,7 @@ export const entry: Bundle = {
     "entry.hoursShort": "hrs",
     "entry.rateExact":
       "Exact stored value: {value}. Calculations use this value; the field shows it rounded.",
+    "entry.rateAccept": "Use {value} as the new value",
     "entry.minutesShort": "min",
     "entry.afterBreak": "after {minutes} min break",
     "entry.break": "Break",
@@ -146,6 +148,7 @@ export const entry: Bundle = {
     "entry.hoursShort": "ч",
     "entry.rateExact":
       "Сохранённое точное значение: {value}. Расчёт ведётся по нему; в поле оно показано округлённо.",
+    "entry.rateAccept": "Принять {value} как новое значение",
     "entry.minutesShort": "мин",
     "entry.afterBreak": "после перерыва {minutes} мин",
     "entry.break": "Перерыв",
@@ -209,6 +212,7 @@ export const entry: Bundle = {
     "entry.hoursShort": "sa",
     "entry.rateExact":
       "Kayıtlı tam değer: {value}. Hesaplama bu değerle yapılır; alan yuvarlanmış gösterir.",
+    "entry.rateAccept": "{value} değerini yeni değer olarak kabul et",
     "entry.minutesShort": "dk",
     "entry.afterBreak": "{minutes} dk moladan sonra",
     "entry.break": "Mola",
@@ -272,6 +276,7 @@ export const entry: Bundle = {
     "entry.hoursShort": "godz.",
     "entry.rateExact":
       "Zapisana dokładna wartość: {value}. Obliczenia używają tej wartości; pole pokazuje ją zaokrągloną.",
+    "entry.rateAccept": "Przyjmij {value} jako nową wartość",
     "entry.minutesShort": "min",
     "entry.afterBreak": "po przerwie {minutes} min",
     "entry.break": "Przerwa",

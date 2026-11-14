@@ -870,3 +870,230 @@ describe("K1-L1 Zahlenformat des Hinweises in allen Sprachen", () => {
     });
   });
 });
+
+describe("K1 ausdrücklich den angezeigten Wert übernehmen", () => {
+  const hint = () => maybe('[data-testid="entry-rate-exact"]');
+  const accept = () => maybe<HTMLButtonElement>('[data-testid="entry-rate-accept"]');
+  const cancelButton = () => q('[data-testid="entry-save"]').previousElementSibling;
+  const places: Array<[label: string, start: (rate: number) => void]> = [
+    [
+      "erste Eingabestelle",
+      (rate) => {
+        seed([shiftWith(rate)]);
+        open("s1");
+      },
+    ],
+    [
+      "zweite Eingabestelle",
+      (rate) => {
+        seed([shiftWith(rate)], [MONTHLY]);
+        open("s1");
+        click(q('[data-testid="entry-more-toggle"]'));
+      },
+    ],
+  ];
+  /** Dialog schließen und denselben Eintrag neu öffnen (gleicher Ort). */
+  const reopen = (second: boolean) => {
+    act(() => root.render(createElement("div")));
+    open("s1");
+    if (second) click(q('[data-testid="entry-more-toggle"]'));
+  };
+
+  describe.each(places)("%s", (label, start) => {
+    const second = label.startsWith("zweite");
+
+    it("A: 13.999 -> 14,00 übernehmen, speichern: exakt 14, Hinweis weg", () => {
+      start(13.999);
+      expect(rateField().value).toBe("14,00");
+      expect(hint()?.textContent).toContain("13,999\u00a0€");
+      expect(accept()?.textContent).toContain("14,00\u00a0€");
+      click(accept());
+      expect(hint()).toBeNull();
+      expect(accept()).toBeNull();
+      expect(rateField().value).toBe("14,00");
+      save();
+      expect(stored()?.rate).toBe(14);
+      reopen(second);
+      expect(rateField().value).toBe("14,00");
+      expect(hint()).toBeNull();
+      expect(accept()).toBeNull();
+      save();
+      expect(stored()?.rate).toBe(14);
+    });
+
+    it("B: 0.001 -> 0,00 übernehmen: gespeichert wird numerisch 0, nicht unset", () => {
+      start(0.001);
+      expect(rateField().value).toBe("0,00");
+      expect(hint()?.textContent).toContain("0,001\u00a0€");
+      click(accept());
+      expect(hint()).toBeNull();
+      save();
+      const row = getData().shifts.find((x) => x.id === "s1") as Shift;
+      expect("rate" in row).toBe(true);
+      expect(row.rate).toBe(0);
+      expect(Object.is(row.rate, 0)).toBe(true);
+      reopen(second);
+      expect(rateField().value).toBe("0,00");
+      expect(hint()).toBeNull();
+      save();
+      expect(stored()?.rate).toBe(0);
+    });
+
+    it("12.345 -> 12,35 übernehmen: der neue Wert fließt in Vorschau und Speicherung", () => {
+      start(12.345);
+      click(accept());
+      expect(rateField().value).toBe("12,35");
+      save();
+      expect(stored()?.rate).toBe(12.35);
+    });
+
+    it("C: ohne Übernahme speichern: 12.345 bleibt exakt", () => {
+      start(12.345);
+      expect(rateField().value).toBe("12,35");
+      expect(hint()?.textContent).toContain("12,345\u00a0€");
+      save();
+      expect(stored()?.rate).toBe(12.345);
+    });
+
+    it("D: M1 – löschen und neu tippen, ohne Übernahme: exakter Wert bleibt, Knopf bleibt", () => {
+      start(12.345);
+      setValue(rateField(), "");
+      setValue(rateField(), "12,35");
+      blur(rateField());
+      expect(hint()).not.toBeNull();
+      expect(accept()).not.toBeNull();
+      save();
+      expect(stored()?.rate).toBe(12.345);
+    });
+
+    it("E: Übernahme gedrückt, dann Abbrechen: nichts wird gespeichert", () => {
+      start(13.999);
+      const before = JSON.stringify(getData().shifts);
+      click(accept());
+      expect(hint()).toBeNull();
+      click(cancelButton());
+      act(() => root.render(createElement("div")));
+      expect(JSON.stringify(getData().shifts)).toBe(before);
+      expect(stored()?.rate).toBe(13.999);
+      reopen(second);
+      expect(hint()?.textContent).toContain("13,999\u00a0€");
+    });
+
+    it("F: Notiz, Ende und Pause ändern ohne Übernahme: exakter Satz bleibt", () => {
+      start(12.345);
+      setValue(q<HTMLInputElement>("#bis"), "16:00");
+      setValue(q<HTMLInputElement>("#pause"), "15");
+      if (!maybe("#notiz")) click(q('[data-testid="entry-more-toggle"]'));
+      setValue(q<HTMLTextAreaElement>("#notiz"), "nur Notiz");
+      expect(hint()).not.toBeNull();
+      save();
+      const row = stored() as Shift;
+      expect(row.rate).toBe(12.345);
+      expect(row.end).toBe("16:00");
+      expect(row.breakMinutes).toBe(15);
+      expect(row.note).toBe("nur Notiz");
+    });
+
+    it("Öffnen, Fokus und Verlassen übernehmen nichts", () => {
+      start(13.999);
+      rateField().dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+      blur(rateField());
+      expect(hint()).not.toBeNull();
+      save();
+      expect(stored()?.rate).toBe(13.999);
+    });
+
+    it("G: anderer Wert wird weiter halb aufgerundet; der Knopf verschwindet dabei", () => {
+      start(12.345);
+      setValue(rateField(), "12,355");
+      expect(hint()).toBeNull();
+      expect(accept()).toBeNull();
+      blur(rateField());
+      expect(rateField().value).toBe("12,36");
+      save();
+      expect(stored()?.rate).toBe(12.36);
+    });
+
+    it("nach Übernahme weiter bearbeiten: der neue Wert zählt, gerundet", () => {
+      start(13.999);
+      click(accept());
+      setValue(rateField(), "15,555");
+      blur(rateField());
+      save();
+      expect(stored()?.rate).toBe(15.56);
+    });
+
+    it("kein Knopf bei gewöhnlichen Zwei-Stellen-Sätzen", () => {
+      for (const rate of [13.9, 15.5, 14, 0, 12.35]) {
+        start(rate);
+        expect(accept()).toBeNull();
+        expect(hint()).toBeNull();
+        act(() => root.render(createElement("div")));
+      }
+    });
+
+    it("Knopf ist ein echter Button mit Namen, per Tastatur auslösbar und vom Feld getrennt", () => {
+      start(13.999);
+      const el = accept();
+      expect(el?.tagName).toBe("BUTTON");
+      expect(el?.getAttribute("type")).toBe("button");
+      expect(el?.textContent?.trim()).toBe("14,00\u00a0€ als neuen Wert übernehmen");
+      expect(el?.disabled).toBe(false);
+      expect(el?.className).toContain("focus-visible:ring");
+      // Hinweis bleibt der beschreibende Text des Feldes, der Knopf liegt außerhalb davon
+      expect(rateField().getAttribute("aria-describedby")).toBe(hint()?.id);
+      expect(hint()?.contains(el as Node)).toBe(false);
+      // Enter/Leertaste lösen bei einem <button> den Klick aus; ein Klick genügt für die Übernahme
+      click(el);
+      expect(accept()).toBeNull();
+    });
+  });
+
+  it("verstecktes Feld: Knopf erst mit dem Feld sichtbar", () => {
+    seed([shiftWith(13.999)], [MONTHLY]);
+    open("s1");
+    expect(maybe("#lohn")).toBeNull();
+    expect(accept()).toBeNull();
+    click(q('[data-testid="entry-more-toggle"]'));
+    expect(accept()).not.toBeNull();
+  });
+
+  it("neuer Eintrag: kein Knopf (der Satz ist ein Vorschlag, nichts Gespeichertes)", () => {
+    seed([], [{ ...HOURLY, rate: 13.999 }]);
+    open(null);
+    expect(accept()).toBeNull();
+  });
+
+  describe.each([
+    ["de", "14,00\u00a0€ als neuen Wert übernehmen"],
+    ["en", "Use 14,00\u00a0€ as the new value"],
+    ["ru", "Принять 14,00\u00a0€ как новое значение"],
+    ["tr", "14,00\u00a0€ değerini yeni değer olarak kabul et"],
+    ["pl", "Przyjmij 14,00\u00a0€ jako nową wartość"],
+  ])("Sprache %s", (lang, text) => {
+    it.each([false, true])("Beschriftung und Übernahme (zweite Stelle: %s)", (second) => {
+      const jobs = [second ? MONTHLY : HOURLY];
+      act(() => {
+        activateScope(DEMO_SCOPE);
+        replaceAll({
+          ...EMPTY_DATA,
+          jobs,
+          shifts: [shiftWith(13.999)],
+          settings: {
+            ...DEFAULT_SETTINGS,
+            onboarded: true,
+            localDemoMode: true,
+            activeJobId: jobs[0]?.id,
+            language: lang,
+          },
+        } as never);
+      });
+      open("s1");
+      if (second) click(q('[data-testid="entry-more-toggle"]'));
+      expect(accept()?.textContent?.trim()).toBe(text);
+      click(accept());
+      save();
+      expect(stored()?.rate).toBe(14);
+    });
+  });
+});

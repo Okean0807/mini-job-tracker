@@ -300,6 +300,21 @@ export function ShiftDialog({
     setRateDirty(true);
   }
 
+  /**
+   * K1: Ausdrückliche Entscheidung der Nutzerin, den ANGEZEIGTEN gerundeten Wert (z. B. 14,00 für
+   * 13.999) als neuen Satz zu übernehmen. Nur dieser Weg ersetzt einen genaueren gespeicherten Satz
+   * durch seine Anzeige. Die Quelle wird auf den angezeigten Zwei-Stellen-Wert gesetzt, danach gilt
+   * der Satz als nicht mehr genauer als das Feld – der Hinweis entfällt. Wird nur vom Knopf
+   * aufgerufen, nie beim Öffnen, Fokussieren, Verlassen oder Speichern.
+   */
+  function acceptDisplayedRate() {
+    const accepted = parseEditedRateInput(rateSeedText);
+    if (accepted === undefined) return;
+    setRate(rateSeedText);
+    setRateSource(accepted);
+    setRateDirty(false);
+  }
+
   /** K1: Beim Verlassen nur einen bearbeiteten Satz formatieren (gerundet wie beim Speichern). */
   function formatEditedRate() {
     if (!rateDirty) return;
@@ -437,14 +452,28 @@ export function ShiftDialog({
   // Wert daneben. Nach einer echten Änderung (anderer Wert) oder einem Jobwechsel entfällt er.
   const showExactRate =
     editSource !== undefined && rateValue === editSource.rate && hasHiddenRatePrecision(rateValue);
+  const acceptedRate = showExactRate ? parseEditedRateInput(rateSeedText) : undefined;
   const rateExactHint = showExactRate ? (
-    <p
-      id="lohn-exact"
-      data-testid="entry-rate-exact"
-      className="mt-1.5 px-1 text-xs leading-snug text-muted-foreground break-words"
-    >
-      {t("entry.rateExact", { value: formatExactRate(rateValue as number) })}
-    </p>
+    <div className="mt-1.5 px-1">
+      <p
+        id="lohn-exact"
+        data-testid="entry-rate-exact"
+        className="text-xs leading-snug text-muted-foreground break-words"
+      >
+        {t("entry.rateExact", { value: formatExactRate(rateValue as number) })}
+      </p>
+      {acceptedRate !== undefined ? (
+        <Button
+          type="button"
+          variant="link"
+          data-testid="entry-rate-accept"
+          className="h-auto min-h-11 justify-start whitespace-normal px-0 py-1 text-left text-xs"
+          onClick={acceptDisplayedRate}
+        >
+          {t("entry.rateAccept", { value: formatExactRate(acceptedRate) })}
+        </Button>
+      ) : null}
+    </div>
   ) : null;
 
   const workPreview = shiftBreakdown(draft, {
