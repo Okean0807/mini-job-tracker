@@ -443,7 +443,7 @@ export function ShiftDialog({
       data-testid="entry-rate-exact"
       className="mt-1.5 px-1 text-xs leading-snug text-muted-foreground break-words"
     >
-      {t("entry.rateExact", { value: formatExactRate(rateValue as number, locale) })}
+      {t("entry.rateExact", { value: formatExactRate(rateValue as number) })}
     </p>
   ) : null;
 

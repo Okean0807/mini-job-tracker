@@ -54,14 +54,21 @@ export function hasHiddenRatePrecision(value: number | undefined): value is numb
   return Number(value.toFixed(2)) !== value;
 }
 
-/** K1: Exakter Satz als Betrag in Landesschreibweise, ohne Rundung: 12.345 -> "12,345 €". */
-export function formatExactRate(value: number, locale: string): string {
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: "EUR",
+/**
+ * K1: Exakter Satz für den Hinweis unter dem Feld, ohne Rundung: 12.345 -> "12,345 €".
+ *
+ * Das Eingabefeld zeigt den Satz in jeder Sprache mit Dezimalkomma (formatRateInput). Der Hinweis
+ * nutzt dieselbe Konvention und ist deshalb unabhängig von der Oberflächensprache: "€12.345"
+ * (en) oder "€12,345" (tr) neben "12,35" im Feld ließe sich als andere Größenordnung lesen.
+ * Keine Tausendertrennung, Währungszeichen wie im Feld hinter dem Wert.
+ */
+export function formatExactRate(value: number): string {
+  const digits = new Intl.NumberFormat("de-DE", {
+    useGrouping: false,
     minimumFractionDigits: 2,
     maximumFractionDigits: 20,
   }).format(value);
+  return `${digits}\u00a0€`;
 }
 
 export interface ExtrasSummaryInput {

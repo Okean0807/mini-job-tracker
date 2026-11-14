@@ -81,11 +81,23 @@ describe("K1 exact stored rate hint helpers", () => {
     expect(hasHiddenRatePrecision(Number.NaN)).toBe(false);
   });
 
-  it("formats the exact value in the locale without rounding", () => {
-    expect(formatExactRate(12.345, "de-DE")).toBe("12,345\u00a0€");
-    expect(formatExactRate(13.999, "de-DE")).toBe("13,999\u00a0€");
-    expect(formatExactRate(0.001, "de-DE")).toBe("0,001\u00a0€");
-    expect(formatExactRate(12.3456, "de-DE")).toBe("12,3456\u00a0€");
-    expect(formatExactRate(12.345, "en-US")).toBe("€12.345");
+  it("formats the exact value with decimal comma, like the field, without rounding", () => {
+    expect(formatExactRate(12.345)).toBe("12,345\u00a0€");
+    expect(formatExactRate(12.3456)).toBe("12,3456\u00a0€");
+    expect(formatExactRate(13.999)).toBe("13,999\u00a0€");
+    expect(formatExactRate(0.001)).toBe("0,001\u00a0€");
+    expect(formatExactRate(1234.5678)).toBe("1234,5678\u00a0€");
+  });
+
+  it("uses the same decimal convention as the rate field", () => {
+    for (const v of [12.345, 12.3456, 13.999, 0.001]) {
+      const field = formatRateInput(v); // "12,35"
+      const hint = formatExactRate(v); // "12,345 €"
+      expect(hint).toContain(",");
+      expect(hint).not.toContain(".");
+      // Feld und Hinweis liegen in derselben Größenordnung (Aufrunden: 14,00 neben 13,999)
+      expect(Math.abs(Number(field.replace(",", ".")) - v)).toBeLessThan(0.006);
+      expect(Number(hint.replace("\u00a0€", "").replace(",", "."))).toBe(v);
+    }
   });
 });

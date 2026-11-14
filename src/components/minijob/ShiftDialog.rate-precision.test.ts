@@ -808,3 +808,65 @@ describe("K1 Hinweis auf den gespeicherten genauen Wert (M-A)", () => {
     expect(hint()).toBeNull();
   });
 });
+
+describe("K1-L1 Zahlenformat des Hinweises in allen Sprachen", () => {
+  const hint = () => maybe('[data-testid="entry-rate-exact"]');
+  const langs: Array<[lang: string, label: string]> = [
+    ["de", "Gespeicherter genauer Wert"],
+    ["en", "Exact stored value"],
+    ["ru", "Сохранённое точное значение"],
+    ["tr", "Kayıtlı tam değer"],
+    ["pl", "Zapisana dokładna wartość"],
+  ];
+  const values: Array<[rate: number, shown: string, exact: string]> = [
+    [12.345, "12,35", "12,345\u00a0€"],
+    [12.3456, "12,35", "12,3456\u00a0€"],
+    [13.999, "14,00", "13,999\u00a0€"],
+    [0.001, "0,00", "0,001\u00a0€"],
+  ];
+  const seedLang = (rate: number, lang: string, second: boolean) => {
+    const jobs = [second ? MONTHLY : HOURLY];
+    act(() => {
+      activateScope(DEMO_SCOPE);
+      replaceAll({
+        ...EMPTY_DATA,
+        jobs,
+        shifts: [shiftWith(rate)],
+        settings: {
+          ...DEFAULT_SETTINGS,
+          onboarded: true,
+          localDemoMode: true,
+          activeJobId: jobs[0]?.id,
+          language: lang,
+        },
+      } as never);
+    });
+    open("s1");
+    if (second) click(q('[data-testid="entry-more-toggle"]'));
+  };
+
+  describe.each(langs)("%s", (lang, label) => {
+    describe.each([
+      ["erste Eingabestelle", false],
+      ["zweite Eingabestelle", true],
+    ] as const)("%s", (_where, second) => {
+      it.each(values)("%s: Feld %s, Hinweis enthält %s", (rate, shown, exact) => {
+        seedLang(rate, lang, second);
+        expect(rateField().value).toBe(shown);
+        const text = hint()?.textContent ?? "";
+        expect(text).toContain(label);
+        expect(text).toContain(exact);
+        // dieselbe Dezimalkonvention wie das Feld: Komma, kein Punkt, Währung dahinter
+        expect(text.includes(exact.replace(",", "."))).toBe(false);
+        expect(text).not.toMatch(/€\d/);
+        save();
+        expect(stored()?.rate).toBe(rate);
+      });
+
+      it.each([13.9, 15.5])("%s: kein Hinweis", (rate) => {
+        seedLang(rate, lang, second);
+        expect(hint()).toBeNull();
+      });
+    });
+  });
+});
