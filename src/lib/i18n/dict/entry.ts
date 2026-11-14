@@ -19,6 +19,7 @@ export const entry: Bundle = {
     "entry.hoursShort": "Std.",
     "entry.rateExact":
       "Gespeicherter genauer Wert: {value}. Mit diesem Wert wird gerechnet; das Feld zeigt ihn gerundet.",
+    "entry.rateUseJob": "Satz von „{job}“ verwenden: {value}",
     "entry.rateAccept": "{value} als neuen Wert übernehmen",
     "entry.minutesShort": "Min.",
     "entry.afterBreak": "nach {minutes} Min. Pause",
@@ -84,6 +85,7 @@ export const entry: Bundle = {
     "entry.hoursShort": "hrs",
     "entry.rateExact":
       "Exact stored value: {value}. Calculations use this value; the field shows it rounded.",
+    "entry.rateUseJob": "Use rate from {job}: {value}",
     "entry.rateAccept": "Use {value} as the new value",
     "entry.minutesShort": "min",
     "entry.afterBreak": "after {minutes} min break",
@@ -148,6 +150,7 @@ export const entry: Bundle = {
     "entry.hoursShort": "ч",
     "entry.rateExact":
       "Сохранённое точное значение: {value}. Расчёт ведётся по нему; в поле оно показано округлённо.",
+    "entry.rateUseJob": "Использовать ставку из «{job}»: {value}",
     "entry.rateAccept": "Принять {value} как новое значение",
     "entry.minutesShort": "мин",
     "entry.afterBreak": "после перерыва {minutes} мин",
@@ -212,6 +215,7 @@ export const entry: Bundle = {
     "entry.hoursShort": "sa",
     "entry.rateExact":
       "Kayıtlı tam değer: {value}. Hesaplama bu değerle yapılır; alan yuvarlanmış gösterir.",
+    "entry.rateUseJob": "{job} işinin ücretini kullan: {value}",
     "entry.rateAccept": "{value} değerini yeni değer olarak kabul et",
     "entry.minutesShort": "dk",
     "entry.afterBreak": "{minutes} dk moladan sonra",
@@ -276,6 +280,7 @@ export const entry: Bundle = {
     "entry.hoursShort": "godz.",
     "entry.rateExact":
       "Zapisana dokładna wartość: {value}. Obliczenia używają tej wartości; pole pokazuje ją zaokrągloną.",
+    "entry.rateUseJob": "Użyj stawki z „{job}”: {value}",
     "entry.rateAccept": "Przyjmij {value} jako nową wartość",
     "entry.minutesShort": "min",
     "entry.afterBreak": "po przerwie {minutes} min",
