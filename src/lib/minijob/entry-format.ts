@@ -33,12 +33,42 @@ export function formatRateInput(value: number | undefined): string {
   return value.toFixed(2).replace(".", ",");
 }
 
-/** Tastatureingabe auf Ziffern und ein Dezimaltrennzeichen begrenzen. */
+/**
+ * Tastatureingabe auf Ziffern und ein Dezimaltrennzeichen begrenzen.
+ * K1: Nachkommastellen werden hier NICHT abgeschnitten ("12,345" bleibt "12,345") – gerundet wird
+ * erst beim Verlassen des Felds bzw. Speichern (parseEditedRateInput), nie stillschweigend gekürzt.
+ */
 export function sanitizeRateInput(raw: string): string {
   const cleaned = raw.replace(/[^\d.,]/g, "").replace(/\./g, ",");
   const [head, ...rest] = cleaned.split(",");
   if (rest.length === 0) return head ?? "";
-  return `${head},${rest.join("").slice(0, 2)}`;
+  return `${head},${rest.join("")}`;
+}
+
+/**
+ * K1: Hat der Satz mehr Genauigkeit, als das Feld zeigt (zwei Nachkommastellen)?
+ * 12.345 -> true (Feld zeigt "12,35"), 13.9 / 15.5 / 14 -> false.
+ */
+export function hasHiddenRatePrecision(value: number | undefined): value is number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return false;
+  return Number(value.toFixed(2)) !== value;
+}
+
+/**
+ * K1: Exakter Satz für den Hinweis unter dem Feld, ohne Rundung: 12.345 -> "12,345 €".
+ *
+ * Das Eingabefeld zeigt den Satz in jeder Sprache mit Dezimalkomma (formatRateInput). Der Hinweis
+ * nutzt dieselbe Konvention und ist deshalb unabhängig von der Oberflächensprache: "€12.345"
+ * (en) oder "€12,345" (tr) neben "12,35" im Feld ließe sich als andere Größenordnung lesen.
+ * Keine Tausendertrennung, Währungszeichen wie im Feld hinter dem Wert.
+ */
+export function formatExactRate(value: number): string {
+  const digits = new Intl.NumberFormat("de-DE", {
+    useGrouping: false,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 20,
+  }).format(value);
+  return `${digits}\u00a0€`;
 }
 
 export interface ExtrasSummaryInput {

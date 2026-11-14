@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   extrasSummaryParts,
+  formatExactRate,
   formatRateInput,
   formatWorkDuration,
+  hasHiddenRatePrecision,
   sanitizeRateInput,
   splitHoursMinutes,
 } from "./entry-format";
@@ -33,12 +35,18 @@ describe("rate input", () => {
     expect(formatRateInput(undefined)).toBe("");
   });
 
-  it("keeps typing usable: comma or dot, max two decimals", () => {
+  it("keeps typing usable: comma or dot, only digits and one separator", () => {
     expect(sanitizeRateInput("13.5")).toBe("13,5");
     expect(sanitizeRateInput("13,50")).toBe("13,50");
-    expect(sanitizeRateInput("13,507")).toBe("13,50");
     expect(sanitizeRateInput("1a3€")).toBe("13");
+    expect(sanitizeRateInput("1,2,3")).toBe("1,23");
     expect(sanitizeRateInput("")).toBe("");
+  });
+
+  it("K1: never truncates typed decimals (rounding happens on blur/save, not while typing)", () => {
+    expect(sanitizeRateInput("13,507")).toBe("13,507");
+    expect(sanitizeRateInput("12.345")).toBe("12,345");
+    expect(sanitizeRateInput("1,005")).toBe("1,005");
   });
 });
 
@@ -60,5 +68,36 @@ describe("extrasSummaryParts", () => {
     expect(
       extrasSummaryParts({ photos: 0, gps: false, note: false, overtime: false }, labels),
     ).toEqual([]);
+  });
+});
+
+describe("K1 exact stored rate hint helpers", () => {
+  it("detects precision the two-decimal field cannot show", () => {
+    for (const v of [12.345, 12.3456, 13.999, 14.006, 0.001, 1.005]) {
+      expect(hasHiddenRatePrecision(v)).toBe(true);
+    }
+    for (const v of [13.9, 15.5, 14, 0, 12.35]) expect(hasHiddenRatePrecision(v)).toBe(false);
+    expect(hasHiddenRatePrecision(undefined)).toBe(false);
+    expect(hasHiddenRatePrecision(Number.NaN)).toBe(false);
+  });
+
+  it("formats the exact value with decimal comma, like the field, without rounding", () => {
+    expect(formatExactRate(12.345)).toBe("12,345\u00a0€");
+    expect(formatExactRate(12.3456)).toBe("12,3456\u00a0€");
+    expect(formatExactRate(13.999)).toBe("13,999\u00a0€");
+    expect(formatExactRate(0.001)).toBe("0,001\u00a0€");
+    expect(formatExactRate(1234.5678)).toBe("1234,5678\u00a0€");
+  });
+
+  it("uses the same decimal convention as the rate field", () => {
+    for (const v of [12.345, 12.3456, 13.999, 0.001]) {
+      const field = formatRateInput(v); // "12,35"
+      const hint = formatExactRate(v); // "12,345 €"
+      expect(hint).toContain(",");
+      expect(hint).not.toContain(".");
+      // Feld und Hinweis liegen in derselben Größenordnung (Aufrunden: 14,00 neben 13,999)
+      expect(Math.abs(Number(field.replace(",", ".")) - v)).toBeLessThan(0.006);
+      expect(Number(hint.replace("\u00a0€", "").replace(",", "."))).toBe(v);
+    }
   });
 });
