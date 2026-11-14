@@ -65,7 +65,12 @@ import {
 import { shiftPayroll } from "@/lib/minijob/payroll";
 import { absenceDayTimes } from "@/lib/minijob/schedule";
 import { holidayName } from "@/lib/minijob/holidays";
-import { parseEditedRateInput, rateFieldValue, suggestedRate } from "@/lib/minijob/rate";
+import {
+  normalizeRateText,
+  parseEditedRateInput,
+  rateFieldValue,
+  suggestedRate,
+} from "@/lib/minijob/rate";
 import { ObjectDialog } from "@/components/minijob/ObjectDialog";
 import { persistDialogShift, removeShift, getShift } from "@/lib/minijob/service";
 import { getData } from "@/lib/minijob/store";
@@ -315,15 +320,37 @@ export function ShiftDialog({
     setRateDirty(false);
   }
 
+  /**
+   * NEW-01: Ausdrückliche Übernahme des Satzes des gewählten Jobs in einen bestehenden Eintrag.
+   * Setzt Anzeige, Quelle, Ausgangsanzeige und Bearbeitungsmarke gemeinsam wie beim Befüllen; der
+   * exakte Satz des Jobs wird übernommen (nicht der gerundete). Nur vom Knopf aufgerufen – nie durch
+   * die Auswahl eines Jobs.
+   */
+  function applyJobRate(value: number) {
+    seedRate(value);
+  }
+
   /** K1: Beim Verlassen nur einen bearbeiteten Satz formatieren (gerundet wie beim Speichern). */
   function formatEditedRate() {
     if (!rateDirty) return;
     setRate(formatRateInput(parseEditedRateInput(rate)));
   }
 
+  // NEW-01: Das Formular wird nur beim Öffnen bzw. beim Wechsel von Eintrag oder Datum befüllt. Ändern
+  // sich während der Bearbeitung nur Jobs, Standardsatz, aktiver Job oder Bundesland (z. B. durch
+  // einen Cloud-Abgleich), darf das nicht alle Eingaben der Nutzerin zurücksetzen. Waren beim Öffnen
+  // noch keine Jobs geladen, wird weiter neu befüllt, sobald welche da sind.
+  const initKeyRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      initKeyRef.current = null;
+      return;
+    }
     const id = (shiftId ?? shift?.id ?? "").trim() || undefined;
+    const initKey = `${id ?? ""}|${date}|${jobs.length > 0 ? "jobs" : "nojobs"}`;
+    if (initKeyRef.current === initKey) return;
+    initKeyRef.current = initKey;
     editingIdRef.current = id;
     const source = id ? (getShift(id) ?? shift ?? null) : null;
     const fallbackJob = jobs.find((j) => j.id === settings.activeJobId) ?? jobs[0];
@@ -450,6 +477,33 @@ export function ShiftDialog({
   // is only for not working. Preview uses payroll for absences and breakdown for work.
   // K1: Zeigt das Feld weniger Stellen als der GESPEICHERTE Satz, der weiter gilt, steht der exakte
   // Wert daneben. Nach einer echten Änderung (anderer Wert) oder einem Jobwechsel entfällt er.
+  // NEW-01: Satz zählt als unberührt, solange er nicht bearbeitet wurde oder die Eingabe nach dem
+  // Bearbeiten wieder dieselbe Anzeige ergibt (M1). Nur dann folgt ein NEUER Eintrag dem Job.
+  const rateUntouched = !rateDirty || normalizeRateText(rate) === rateSeedText;
+  // NEW-01: Angebot, den Satz des gewählten Jobs ausdrücklich zu übernehmen. Nur bei einem
+  // bestehenden Eintrag mit eigenem Satz, dessen Job gewechselt wurde und dessen Satz abweicht.
+  const jobRate = job ? suggestedRate({ jobId: job.id }, { jobs, settings }) : undefined;
+  const showJobRateApply =
+    editSource !== undefined &&
+    job !== undefined &&
+    jobId !== editSource.jobId &&
+    jobRate !== undefined &&
+    rateValue !== undefined &&
+    rateValue !== jobRate;
+  const rateJobApply =
+    showJobRateApply && job && jobRate !== undefined ? (
+      <div className="px-1">
+        <Button
+          type="button"
+          variant="link"
+          data-testid="entry-rate-use-job"
+          className="h-auto min-h-11 justify-start whitespace-normal px-0 py-1 text-left text-xs"
+          onClick={() => applyJobRate(jobRate)}
+        >
+          {t("entry.rateUseJob", { job: job.name, value: formatExactRate(jobRate) })}
+        </Button>
+      </div>
+    ) : null;
   const showExactRate =
     editSource !== undefined && rateValue === editSource.rate && hasHiddenRatePrecision(rateValue);
   const acceptedRate = showExactRate ? parseEditedRateInput(rateSeedText) : undefined;
@@ -1071,8 +1125,17 @@ export function ShiftDialog({
                       type="button"
                       aria-pressed={jobId === j.id}
                       onClick={() => {
+                        // NEW-01: denselben Job noch einmal antippen ändert gar nichts.
+                        if (j.id === jobId) return;
                         setJobId(j.id);
-                        seedRate(suggestedRate({ jobId: j.id }, { jobs, settings }));
+                        // NEW-01: Nur ein NEUER Eintrag mit unberührtem Satz folgt dem Vorschlag
+                        // des Jobs. Ein bestehender Eintrag behält seinen Satz (auch einen nicht
+                        // gespeicherten getippten) – ein Satz wird nur auf ausdrückliche Handlung
+                        // übernommen (applyJobRate). Ein Eintrag ohne eigenen Satz bleibt ohne und
+                        // erbt den Satz des neuen Jobs nach den bestehenden Rechenregeln.
+                        if (!isEditing && rateUntouched) {
+                          seedRate(suggestedRate({ jobId: j.id }, { jobs, settings }));
+                        }
                         reseedTimes(j.id, entryDate, kind);
                       }}
                       className={cn(
@@ -1365,7 +1428,12 @@ export function ShiftDialog({
                       <span className="text-base font-semibold text-muted-foreground">€</span>
                     </div>
                   ) : null}
-                  {hourlyPay ? rateExactHint : null}
+                  {hourlyPay ? (
+                    <>
+                      {rateExactHint}
+                      {rateJobApply}
+                    </>
+                  ) : null}
                   {rateValue !== undefined && preview.total > 0 ? (
                     <p className="mt-1.5 px-1 text-xs text-muted-foreground">
                       {t("label.earnings")}: {formatEuro(preview.total, locale)}
@@ -1910,7 +1978,12 @@ export function ShiftDialog({
                       <span className="text-base font-semibold text-muted-foreground">€</span>
                     </div>
                   ) : null}
-                  {isWork && !hourlyPay ? rateExactHint : null}
+                  {isWork && !hourlyPay ? (
+                    <>
+                      {rateExactHint}
+                      {rateJobApply}
+                    </>
+                  ) : null}
 
                   {isWork ? (
                     <div className="flex min-h-11 items-center justify-between gap-3 rounded-2xl border bg-card px-3 py-2">
