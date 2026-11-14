@@ -41,8 +41,10 @@ import { useT } from "@/lib/i18n";
 import { formatEuro, isoDate, shiftBreakdown } from "@/lib/minijob/calc";
 import {
   extrasSummaryParts,
+  formatExactRate,
   formatRateInput,
   formatWorkDuration,
+  hasHiddenRatePrecision,
   sanitizeRateInput,
 } from "@/lib/minijob/entry-format";
 import {
@@ -431,6 +433,20 @@ export function ShiftDialog({
 
   // Work on a public holiday must pay hours×rate (optional surcharge). Kind "feiertag"
   // is only for not working. Preview uses payroll for absences and breakdown for work.
+  // K1: Zeigt das Feld weniger Stellen als der GESPEICHERTE Satz, der weiter gilt, steht der exakte
+  // Wert daneben. Nach einer echten Änderung (anderer Wert) oder einem Jobwechsel entfällt er.
+  const showExactRate =
+    editSource !== undefined && rateValue === editSource.rate && hasHiddenRatePrecision(rateValue);
+  const rateExactHint = showExactRate ? (
+    <p
+      id="lohn-exact"
+      data-testid="entry-rate-exact"
+      className="mt-1.5 px-1 text-xs leading-snug text-muted-foreground break-words"
+    >
+      {t("entry.rateExact", { value: formatExactRate(rateValue as number, locale) })}
+    </p>
+  ) : null;
+
   const workPreview = shiftBreakdown(draft, {
     job,
     supplements: job?.supplements ?? settings.supplements,
@@ -1314,11 +1330,13 @@ export function ShiftDialog({
                         onChange={(e) => editRate(e.target.value)}
                         onBlur={formatEditedRate}
                         onFocus={keepFieldVisible}
+                        aria-describedby={showExactRate ? "lohn-exact" : undefined}
                         className="h-11 w-24 border-0 bg-transparent px-0 text-right text-base font-semibold tabular-nums shadow-none focus-visible:ring-0"
                       />
                       <span className="text-base font-semibold text-muted-foreground">€</span>
                     </div>
                   ) : null}
+                  {hourlyPay ? rateExactHint : null}
                   {rateValue !== undefined && preview.total > 0 ? (
                     <p className="mt-1.5 px-1 text-xs text-muted-foreground">
                       {t("label.earnings")}: {formatEuro(preview.total, locale)}
@@ -1857,11 +1875,13 @@ export function ShiftDialog({
                         onChange={(e) => editRate(e.target.value)}
                         onBlur={formatEditedRate}
                         onFocus={keepFieldVisible}
+                        aria-describedby={showExactRate ? "lohn-exact" : undefined}
                         className="h-11 w-24 border-0 bg-transparent px-0 text-right text-base font-semibold tabular-nums shadow-none focus-visible:ring-0"
                       />
                       <span className="text-base font-semibold text-muted-foreground">€</span>
                     </div>
                   ) : null}
+                  {isWork && !hourlyPay ? rateExactHint : null}
 
                   {isWork ? (
                     <div className="flex min-h-11 items-center justify-between gap-3 rounded-2xl border bg-card px-3 py-2">

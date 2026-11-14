@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   extrasSummaryParts,
+  formatExactRate,
   formatRateInput,
   formatWorkDuration,
+  hasHiddenRatePrecision,
   sanitizeRateInput,
   splitHoursMinutes,
 } from "./entry-format";
@@ -66,5 +68,24 @@ describe("extrasSummaryParts", () => {
     expect(
       extrasSummaryParts({ photos: 0, gps: false, note: false, overtime: false }, labels),
     ).toEqual([]);
+  });
+});
+
+describe("K1 exact stored rate hint helpers", () => {
+  it("detects precision the two-decimal field cannot show", () => {
+    for (const v of [12.345, 12.3456, 13.999, 14.006, 0.001, 1.005]) {
+      expect(hasHiddenRatePrecision(v)).toBe(true);
+    }
+    for (const v of [13.9, 15.5, 14, 0, 12.35]) expect(hasHiddenRatePrecision(v)).toBe(false);
+    expect(hasHiddenRatePrecision(undefined)).toBe(false);
+    expect(hasHiddenRatePrecision(Number.NaN)).toBe(false);
+  });
+
+  it("formats the exact value in the locale without rounding", () => {
+    expect(formatExactRate(12.345, "de-DE")).toBe("12,345\u00a0€");
+    expect(formatExactRate(13.999, "de-DE")).toBe("13,999\u00a0€");
+    expect(formatExactRate(0.001, "de-DE")).toBe("0,001\u00a0€");
+    expect(formatExactRate(12.3456, "de-DE")).toBe("12,3456\u00a0€");
+    expect(formatExactRate(12.345, "en-US")).toBe("€12.345");
   });
 });

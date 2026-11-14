@@ -699,3 +699,112 @@ describe("K1-M1 gleiche Anzeige nach dem Bearbeiten = exakter Ausgangswert", () 
     expect(onlyShift().rate).toBe(13.999);
   });
 });
+
+describe("K1 Hinweis auf den gespeicherten genauen Wert (M-A)", () => {
+  const hint = () => maybe('[data-testid="entry-rate-exact"]');
+  const places: Array<[label: string, start: (rate: number) => void]> = [
+    [
+      "erste Eingabestelle",
+      (rate) => {
+        seed([shiftWith(rate)]);
+        open("s1");
+      },
+    ],
+    [
+      "zweite Eingabestelle",
+      (rate) => {
+        seed([shiftWith(rate)], [MONTHLY]);
+        open("s1");
+        click(q('[data-testid="entry-more-toggle"]'));
+      },
+    ],
+  ];
+
+  describe.each(places)("%s", (_label, start) => {
+    it("(1) 12.345, Eingabe 12,354: Satz bleibt 12.345, Hinweis bleibt sichtbar", () => {
+      start(12.345);
+      expect(hint()?.textContent).toContain("12,345\u00a0€");
+      setValue(rateField(), "12,354");
+      expect(hint()?.textContent).toContain("12,345\u00a0€");
+      blur(rateField());
+      expect(rateField().value).toBe("12,35");
+      expect(hint()?.textContent).toContain("12,345\u00a0€");
+      save();
+      expect(stored()?.rate).toBe(12.345);
+    });
+
+    it("(2) 0.001, Eingabe 0: Satz bleibt 0.001, Hinweis nennt den genauen Wert", () => {
+      start(0.001);
+      expect(rateField().value).toBe("0,00");
+      expect(hint()?.textContent).toContain("0,001\u00a0€");
+      setValue(rateField(), "0");
+      blur(rateField());
+      expect(hint()?.textContent).toContain("0,001\u00a0€");
+      save();
+      expect(stored()?.rate).toBe(0.001);
+    });
+
+    it("(3) 12.345, Eingabe 12,355: Satz wird 12.36, der alte Hinweis verschwindet", () => {
+      start(12.345);
+      expect(hint()).not.toBeNull();
+      setValue(rateField(), "12,355");
+      expect(hint()).toBeNull();
+      blur(rateField());
+      expect(rateField().value).toBe("12,36");
+      expect(hint()).toBeNull();
+      save();
+      expect(stored()?.rate).toBe(12.36);
+    });
+
+    it("(4) 13.999 unberührt: Satz bleibt 13.999, Hinweis zeigt 13,999 €", () => {
+      start(13.999);
+      expect(rateField().value).toBe("14,00");
+      expect(hint()?.textContent).toContain("13,999\u00a0€");
+      save();
+      expect(stored()?.rate).toBe(13.999);
+    });
+
+    it.each([13.9, 15.5, 14, 0])("(5) %s: kein überflüssiger Hinweis", (rate) => {
+      start(rate);
+      expect(hint()).toBeNull();
+      expect(rateField().getAttribute("aria-describedby")).toBeNull();
+    });
+
+    it("der Hinweis ist mit dem Feld verknüpft und erklärt die Berechnung", () => {
+      start(12.345);
+      const el = hint();
+      expect(el?.tagName).toBe("P");
+      expect(rateField().getAttribute("aria-describedby")).toBe(el?.id);
+      expect(el?.textContent).toContain("Gespeicherter genauer Wert");
+      expect(el?.textContent).toContain("gerechnet");
+    });
+
+    it("zwischendurch anderer Wert, dann Anzeige wiederhergestellt: Hinweis kommt zurück", () => {
+      start(12.345);
+      setValue(rateField(), "20");
+      expect(hint()).toBeNull();
+      setValue(rateField(), "12,35");
+      expect(hint()?.textContent).toContain("12,345\u00a0€");
+    });
+  });
+
+  it("verstecktes Feld: Hinweis erst mit dem Feld sichtbar, danach wieder weg", () => {
+    seed([shiftWith(12.345)], [MONTHLY]);
+    open("s1");
+    expect(maybe("#lohn")).toBeNull();
+    expect(hint()).toBeNull();
+    click(q('[data-testid="entry-more-toggle"]'));
+    expect(hint()?.textContent).toContain("12,345\u00a0€");
+    click(q('[data-testid="entry-more-toggle"]'));
+    expect(hint()).toBeNull();
+    save();
+    expect(stored()?.rate).toBe(12.345);
+  });
+
+  it("neuer Eintrag: kein Hinweis auf einen gespeicherten Wert", () => {
+    seed([], [{ ...HOURLY, rate: 13.999 }]);
+    open(null);
+    expect(rateField().value).toBe("14,00");
+    expect(hint()).toBeNull();
+  });
+});

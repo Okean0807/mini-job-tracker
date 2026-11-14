@@ -17,6 +17,8 @@ export const entry: Bundle = {
     "entry.removeObject": "Objekt entfernen",
     "entry.entryAddress": "Adresse dieses Eintrags",
     "entry.hoursShort": "Std.",
+    "entry.rateExact":
+      "Gespeicherter genauer Wert: {value}. Mit diesem Wert wird gerechnet; das Feld zeigt ihn gerundet.",
     "entry.minutesShort": "Min.",
     "entry.afterBreak": "nach {minutes} Min. Pause",
     "entry.break": "Pause",
@@ -79,6 +81,8 @@ export const entry: Bundle = {
     "entry.removeObject": "Remove site",
     "entry.entryAddress": "Address for this entry",
     "entry.hoursShort": "hrs",
+    "entry.rateExact":
+      "Exact stored value: {value}. Calculations use this value; the field shows it rounded.",
     "entry.minutesShort": "min",
     "entry.afterBreak": "after {minutes} min break",
     "entry.break": "Break",
@@ -140,6 +144,8 @@ export const entry: Bundle = {
     "entry.removeObject": "Убрать объект",
     "entry.entryAddress": "Адрес этой записи",
     "entry.hoursShort": "ч",
+    "entry.rateExact":
+      "Сохранённое точное значение: {value}. Расчёт ведётся по нему; в поле оно показано округлённо.",
     "entry.minutesShort": "мин",
     "entry.afterBreak": "после перерыва {minutes} мин",
     "entry.break": "Перерыв",
@@ -201,6 +207,8 @@ export const entry: Bundle = {
     "entry.removeObject": "Nesneyi kaldır",
     "entry.entryAddress": "Bu kaydın adresi",
     "entry.hoursShort": "sa",
+    "entry.rateExact":
+      "Kayıtlı tam değer: {value}. Hesaplama bu değerle yapılır; alan yuvarlanmış gösterir.",
     "entry.minutesShort": "dk",
     "entry.afterBreak": "{minutes} dk moladan sonra",
     "entry.break": "Mola",
@@ -262,6 +270,8 @@ export const entry: Bundle = {
     "entry.removeObject": "Usuń obiekt",
     "entry.entryAddress": "Adres tego wpisu",
     "entry.hoursShort": "godz.",
+    "entry.rateExact":
+      "Zapisana dokładna wartość: {value}. Obliczenia używają tej wartości; pole pokazuje ją zaokrągloną.",
     "entry.minutesShort": "min",
     "entry.afterBreak": "po przerwie {minutes} min",
     "entry.break": "Przerwa",

@@ -45,6 +45,25 @@ export function sanitizeRateInput(raw: string): string {
   return `${head},${rest.join("")}`;
 }
 
+/**
+ * K1: Hat der Satz mehr Genauigkeit, als das Feld zeigt (zwei Nachkommastellen)?
+ * 12.345 -> true (Feld zeigt "12,35"), 13.9 / 15.5 / 14 -> false.
+ */
+export function hasHiddenRatePrecision(value: number | undefined): value is number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return false;
+  return Number(value.toFixed(2)) !== value;
+}
+
+/** K1: Exakter Satz als Betrag in Landesschreibweise, ohne Rundung: 12.345 -> "12,345 €". */
+export function formatExactRate(value: number, locale: string): string {
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 20,
+  }).format(value);
+}
+
 export interface ExtrasSummaryInput {
   photos: number;
   gps: boolean;
