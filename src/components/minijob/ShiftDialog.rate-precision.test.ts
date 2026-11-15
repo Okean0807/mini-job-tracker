@@ -431,15 +431,20 @@ describe("K1 Jobwechsel", () => {
     expect(onlyShift().rate).toBe(13.999);
   });
 
-  it("ein Jobwechsel nach einer Eingabe ersetzt sie durch den exakten Vorschlag", () => {
+  // NEW-01 (Option B): Ein Jobwechsel ersetzt eine eigene Eingabe NICHT mehr. Geprueft bleibt,
+  // dass der Jobwechsel den Job wechselt und dass der Satz nach K1 kaufmaennisch gerundet wird -
+  // nur eben der selbst getippte Wert statt des Vorschlags.
+  it("ein Jobwechsel nach einer Eingabe laesst die Eingabe stehen (K1-Rundung bleibt)", () => {
     seed([], JOBS);
     open(null);
     setValue(rateField(), "20,555");
     click(jobButton("Lager Süd"));
-    expect(rateField().value).toBe("16,13");
+    expect(rateField().value).toBe("20,555");
     blur(rateField());
+    expect(rateField().value).toBe("20,56");
     save();
-    expect(onlyShift().rate).toBe(16.125);
+    expect(onlyShift().jobId).toBe("j2");
+    expect(onlyShift().rate).toBe(20.56);
   });
 
   it("eine Eingabe nach dem Jobwechsel zählt wieder als Bearbeitung", () => {
@@ -1095,5 +1100,402 @@ describe("K1 ausdrücklich den angezeigten Wert übernehmen", () => {
       save();
       expect(stored()?.rate).toBe(14);
     });
+  });
+});
+
+/**
+ * NEW-01 (Option B): Ein Jobwechsel aendert nur den Job.
+ *
+ * Vorher ersetzte jeder Klick auf einen Job den Lohnsatz durch den Vorschlag des neuen Jobs - der
+ * exakte gespeicherte Satz eines bestehenden Eintrags (12.345) und eine selbst getippte, noch nicht
+ * gespeicherte Eingabe gingen dabei still verloren. Jetzt gilt:
+ *  - bestehender Eintrag: der Satz bleibt unberuehrt (auch ohne Satz bleibt er ungesetzt),
+ *  - neuer Eintrag: nur ein noch unberuehrtes Feld folgt dem Vorschlag des Jobs,
+ *  - derselbe Job: vollstaendiges No-op (kein Satz, keine Zeiten),
+ *  - der Satz des gewaehlten Jobs wird nur auf ausdrueckliches Antippen uebernommen.
+ *
+ * K1 bleibt unangetastet: unberuehrte Saetze exakt, eigene Eingaben kaufmaennisch gerundet,
+ * Abbrechen speichert nichts, der Hinweis auf den gespeicherten Satz bleibt richtig.
+ */
+describe("NEW-01 Jobwechsel ruehrt den Lohnsatz nicht an", () => {
+  const A = "Reinigung Nord";
+  const B = "Lager Süd";
+  const PAIR: Job[] = [
+    { id: "j1", name: A, color: "#0d9488", mode: "flex", rate: 13.999 },
+    { id: "j2", name: B, color: "#2563eb", mode: "flex", rate: 16.125 },
+  ];
+  /** Zweite Eingabestelle: Selbststaendige sehen das Satz-Feld erst unter "Weitere Angaben". */
+  const PAIR_SELF: Job[] = PAIR.map((j) => ({ ...j, mode: "selbststaendig" }) as Job);
+
+  const hint = () => maybe('[data-testid="entry-rate-exact"]');
+  const accept = () => maybe<HTMLButtonElement>('[data-testid="entry-rate-accept"]');
+  const useJob = () => maybe<HTMLButtonElement>('[data-testid="entry-rate-use-job"]');
+  const cancelButton = () => q('[data-testid="entry-save"]').previousElementSibling;
+  const times = () => [q<HTMLInputElement>("#von").value, q<HTMLInputElement>("#bis").value];
+  /** Nur die Job-Auswahl (aria-pressed), nie der Uebernahme-Knopf mit demselben Jobnamen. */
+  const jobChip = (name: string) =>
+    [...document.querySelectorAll("button[aria-pressed]")].find((b) =>
+      b.textContent?.includes(name),
+    );
+
+  describe.each([
+    ["erste Eingabestelle", false, PAIR],
+    ["zweite Eingabestelle", true, PAIR_SELF],
+  ] as Array<[string, boolean, Job[]]>)("%s", (_label, second, pair) => {
+    const start = (shifts: Shift[], id: string | null) => {
+      seed(shifts, pair);
+      open(id);
+      if (second) click(q('[data-testid="entry-more-toggle"]'));
+    };
+    const reopen = (id: string) => {
+      act(() => root.render(createElement("div")));
+      open(id);
+      if (second) click(q('[data-testid="entry-more-toggle"]'));
+    };
+
+    it("(1) gespeicherte 12.345: A -> B -> A und speichern bleibt exakt", () => {
+      start([shiftWith(12.345)], "s1");
+      expect(rateField().value).toBe("12,35");
+      click(jobChip(B));
+      expect(rateField().value).toBe("12,35");
+      click(jobChip(A));
+      expect(rateField().value).toBe("12,35");
+      save();
+      expect(stored()?.rate).toBe(12.345);
+      expect(stored()?.jobId).toBe("j1");
+    });
+
+    it("(2) gespeicherte 12.345, getippt 99,5, dann Jobwechsel: der eigene Wert bleibt", () => {
+      start([shiftWith(12.345)], "s1");
+      setValue(rateField(), "99,5");
+      click(jobChip(B));
+      expect(rateField().value).toBe("99,5");
+      blur(rateField());
+      expect(rateField().value).toBe("99,50");
+      save();
+      expect(stored()?.rate).toBe(99.5);
+      expect(stored()?.jobId).toBe("j2");
+    });
+
+    it("(3) Eintrag ohne eigenen Satz: der Jobwechsel legt keinen an", () => {
+      start([shiftWith(undefined)], "s1");
+      expect(rateField().value).toBe("");
+      click(jobChip(B));
+      expect(rateField().value).toBe("");
+      save();
+      const row = stored() as Shift;
+      expect("rate" in row).toBe(false);
+      expect(row.jobId).toBe("j2");
+      // Der Satz ergibt sich weiter aus dem gewaehlten Job (Prioritaet Schicht > Job > Standard).
+      expect(effectiveShiftRate(row, { job: pair[1]!, defaultRate: 9 })).toBe(16.125);
+    });
+
+    it("(4) Abbrechen nach dem Jobwechsel speichert nichts", () => {
+      start([shiftWith(12.345)], "s1");
+      const before = JSON.stringify(getData().shifts);
+      click(jobChip(B));
+      setValue(rateField(), "77");
+      click(cancelButton());
+      act(() => root.render(createElement("div")));
+      expect(JSON.stringify(getData().shifts)).toBe(before);
+      expect(stored()?.rate).toBe(12.345);
+      expect(stored()?.jobId).toBe("j1");
+    });
+
+    it("(5) neuer Eintrag: der Vorschlag folgt dem Job, solange nichts getippt wurde", () => {
+      start([], null);
+      expect(rateField().value).toBe("14,00");
+      click(jobChip(B));
+      expect(rateField().value).toBe("16,13");
+      // Nichts zu uebernehmen: der Satz IST schon der des Jobs.
+      expect(useJob()).toBeNull();
+      save();
+      expect(onlyShift().rate).toBe(16.125);
+      expect(onlyShift().jobId).toBe("j2");
+    });
+
+    it("(6) neuer Eintrag: getippte 18 uebersteht den Jobwechsel", () => {
+      start([], null);
+      setValue(rateField(), "18");
+      click(jobChip(B));
+      expect(rateField().value).toBe("18");
+      save();
+      expect(onlyShift().rate).toBe(18);
+      expect(onlyShift().jobId).toBe("j2");
+    });
+
+    it.each([12.3456, 13.999, 0.001, 14.006, 12.345])(
+      "(7) exakt gespeicherte %s uebersteht den Jobwechsel",
+      (rate) => {
+        start([shiftWith(rate)], "s1");
+        click(jobChip(B));
+        save();
+        expect(stored()?.rate).toBe(rate);
+      },
+    );
+
+    it("(8) derselbe Job: kein Satzwechsel und kein neues Zeit-Seeding", () => {
+      start([shiftWith(14, { id: "a", start: "08:00", end: "10:30" })], null);
+      // A1: Der Anschluss hat den Beginn vorbelegt, das Ende bleibt leer.
+      expect(times()).toEqual(["10:30", ""]);
+      setValue(rateField(), "17,5");
+      click(jobChip(A));
+      expect(rateField().value).toBe("17,5");
+      expect(times()).toEqual(["10:30", ""]);
+      expect(useJob()).toBeNull();
+      setValue(q<HTMLInputElement>("#bis"), "12:00");
+      save();
+      const added = getData().shifts.find((x) => x.id !== "a") as Shift;
+      expect(added.rate).toBe(17.5);
+      expect(added.jobId).toBe("j1");
+    });
+
+    it("(11) Satz des Jobs ausdruecklich uebernehmen: exakt und als Aenderung gewertet", () => {
+      start([shiftWith(12.345)], "s1");
+      expect(hint()).not.toBeNull();
+      click(jobChip(B));
+      const button = useJob();
+      expect(button?.tagName).toBe("BUTTON");
+      expect(button?.textContent).toContain("16,125 €");
+      click(button);
+      expect(rateField().value).toBe("16,13");
+      // Der gespeicherte Satz des Eintrags gilt nicht mehr: kein Hinweis, kein Angebot.
+      expect(hint()).toBeNull();
+      expect(accept()).toBeNull();
+      expect(useJob()).toBeNull();
+      save();
+      expect(stored()?.rate).toBe(16.125);
+      expect(stored()?.jobId).toBe("j2");
+    });
+
+    it("(12) Uebernahme und dann Abbrechen speichert nichts", () => {
+      start([shiftWith(12.345)], "s1");
+      const before = JSON.stringify(getData().shifts);
+      click(jobChip(B));
+      click(useJob());
+      click(cancelButton());
+      act(() => root.render(createElement("div")));
+      expect(JSON.stringify(getData().shifts)).toBe(before);
+      expect(stored()?.rate).toBe(12.345);
+    });
+
+    it("(13) der K1-Hinweis bleibt beim Jobwechsel und endet erst mit der Uebernahme", () => {
+      start([shiftWith(12.345)], "s1");
+      expect(hint()?.textContent).toContain("12,345 €");
+      click(jobChip(B));
+      // Der gespeicherte Satz gilt weiter -> der Hinweis bleibt richtig stehen.
+      expect(hint()?.textContent).toContain("12,345 €");
+      expect(accept()).not.toBeNull();
+      expect(useJob()).not.toBeNull();
+      // Zurueck zum Ausgangsjob: nichts mehr zu uebernehmen, der Hinweis bleibt.
+      click(jobChip(A));
+      expect(useJob()).toBeNull();
+      expect(hint()?.textContent).toContain("12,345 €");
+      click(jobChip(B));
+      click(useJob());
+      expect(hint()).toBeNull();
+    });
+
+    it("(14) erneutes Oeffnen und Speichern bewahrt das Ergebnis", () => {
+      start([shiftWith(12.345)], "s1");
+      click(jobChip(B));
+      click(useJob());
+      save();
+      expect(stored()?.rate).toBe(16.125);
+      reopen("s1");
+      expect(rateField().value).toBe("16,13");
+      // Jetzt ist 16.125 der gespeicherte Satz - K1 zeigt wieder seinen exakten Wert.
+      expect(hint()?.textContent).toContain("16,125 €");
+      expect(useJob()).toBeNull();
+      save();
+      expect(stored()?.rate).toBe(16.125);
+      expect(stored()?.jobId).toBe("j2");
+    });
+
+    it("neuer Eintrag: nach eigener Eingabe laesst sich der Job-Satz ausdruecklich holen", () => {
+      start([], null);
+      setValue(rateField(), "18");
+      click(jobChip(B));
+      expect(useJob()?.textContent).toContain("16,125 €");
+      click(useJob());
+      expect(rateField().value).toBe("16,13");
+      save();
+      expect(onlyShift().rate).toBe(16.125);
+    });
+
+    it("nach der Uebernahme zaehlt eine Eingabe wieder als Bearbeitung (K1-Rundung)", () => {
+      start([shiftWith(12.345)], "s1");
+      click(jobChip(B));
+      click(useJob());
+      setValue(rateField(), "15,555");
+      blur(rateField());
+      save();
+      expect(stored()?.rate).toBe(15.56);
+    });
+
+    it("Oeffnen ohne Jobwechsel zeigt kein Angebot, auch wenn der Job anders zahlt", () => {
+      start([shiftWith(12.345)], "s1");
+      expect(useJob()).toBeNull();
+      save();
+      expect(stored()?.rate).toBe(12.345);
+    });
+  });
+
+  it("(9) Monatslohn-Job: der Wechsel auf einen Stundenlohn-Job ersetzt den Satz nicht", () => {
+    const monthly = {
+      id: "j1",
+      name: "Büro Monatslohn",
+      color: "#2563eb",
+      mode: "fest",
+      payType: "monthly",
+      monthlyGross: 3000,
+      week: EMPTY_WEEK,
+    } as Job;
+    const hourly: Job = { id: "j2", name: B, color: "#0d9488", mode: "flex", rate: 16.125 };
+    seed([shiftWith(12.345)], [monthly, hourly]);
+    open("s1");
+    // Beim Monatslohn-Job ist das Satz-Feld nicht sichtbar.
+    expect(maybe("#lohn")).toBeNull();
+    click(jobChip(B));
+    // Der Wechsel macht das Feld sichtbar - mit dem UNVERAENDERTEN Satz des Eintrags.
+    expect(rateField().value).toBe("12,35");
+    save();
+    expect(stored()?.rate).toBe(12.345);
+    expect(stored()?.jobId).toBe("j2");
+  });
+
+  it("(9) Wechsel AUF einen Monatslohn-Job: der Satz bleibt, obwohl das Feld verschwindet", () => {
+    const monthly = {
+      id: "j1",
+      name: "Büro Monatslohn",
+      color: "#2563eb",
+      mode: "fest",
+      payType: "monthly",
+      monthlyGross: 3000,
+      week: EMPTY_WEEK,
+    } as Job;
+    const hourly: Job = { id: "j2", name: B, color: "#0d9488", mode: "flex", rate: 16.125 };
+    seed([shiftWith(12.345, { jobId: "j2" })], [monthly, hourly]);
+    open("s1");
+    expect(rateField().value).toBe("12,35");
+    click(jobChip("Büro Monatslohn"));
+    expect(maybe("#lohn")).toBeNull();
+    save();
+    expect(stored()?.rate).toBe(12.345);
+    expect(stored()?.jobId).toBe("j1");
+  });
+
+  it("der Knopf ist ein echter Button mit Namen, per Tastatur ausloesbar und vom Feld getrennt", () => {
+    seed([shiftWith(12.345)], PAIR);
+    open("s1");
+    click(jobChip(B));
+    const el = useJob();
+    expect(el?.tagName).toBe("BUTTON");
+    expect(el?.getAttribute("type")).toBe("button");
+    expect(el?.textContent?.trim()).toBe("Satz von Lager Süd übernehmen: 16,125 €");
+    expect(el?.disabled).toBe(false);
+    expect(el?.className).toContain("focus-visible:ring");
+    // Der Knopf steht neben dem Feld, nicht in dessen Beschreibung (aria-describedby).
+    expect(rateField().getAttribute("aria-describedby")).toBe(hint()?.id);
+    expect(hint()?.contains(el as Node)).toBe(false);
+    // Enter/Leertaste loesen bei einem <button> den Klick aus; ein Klick genuegt.
+    click(el);
+    expect(useJob()).toBeNull();
+  });
+
+  describe.each([
+    ["de", "Satz von Lager Süd übernehmen: 16,125 €"],
+    ["en", "Use rate from Lager Süd: 16,125 €"],
+    ["ru", "Взять ставку из Lager Süd: 16,125 €"],
+    ["tr", "Lager Süd işinin ücretini kullan: 16,125 €"],
+    ["pl", "Użyj stawki z Lager Süd: 16,125 €"],
+  ])("Sprache %s", (lang, text) => {
+    it.each([false, true])("Beschriftung und Uebernahme (zweite Stelle: %s)", (second) => {
+      const pair = second ? PAIR_SELF : PAIR;
+      act(() => {
+        activateScope(DEMO_SCOPE);
+        replaceAll({
+          ...EMPTY_DATA,
+          jobs: pair,
+          shifts: [shiftWith(12.345)],
+          settings: {
+            ...DEFAULT_SETTINGS,
+            onboarded: true,
+            localDemoMode: true,
+            activeJobId: "j1",
+            language: lang,
+          },
+        } as never);
+      });
+      open("s1");
+      if (second) click(q('[data-testid="entry-more-toggle"]'));
+      click(jobChip(B));
+      expect(useJob()?.textContent?.trim()).toBe(text);
+      click(useJob());
+      save();
+      expect(stored()?.rate).toBe(16.125);
+    });
+  });
+});
+
+/**
+ * NEW-01/INIT: Das Befuellen des Formulars haengt an der Prop `jobs`. Liefert die Eltern-Komponente
+ * beim Neu-Rendern eine NEUE Array-Referenz mit gleichem Inhalt (ueblich bei abgeleiteten Listen),
+ * lief der Init-Effekt erneut und setzte den gesamten Editor zurueck - mitten im Bearbeiten.
+ */
+describe("NEW-01/INIT neue jobs-Referenz setzt das offene Formular nicht zurueck", () => {
+  const PAIR: Job[] = [
+    { id: "j1", name: "Reinigung Nord", color: "#0d9488", mode: "flex", rate: 13.999 },
+    { id: "j2", name: "Lager Süd", color: "#2563eb", mode: "flex", rate: 16.125 },
+  ];
+
+  /** Jede neue `rev` liefert eine frische jobs-Referenz mit identischem Inhalt. */
+  function FreshJobsHarness(props: { shiftId: string | null; rev: number }) {
+    const d = useAppData();
+    const shift = props.shiftId ? (d.shifts.find((s) => s.id === props.shiftId) ?? null) : null;
+    return createElement(ShiftDialog, {
+      open: true,
+      onOpenChange: () => undefined,
+      date: DAY,
+      shift,
+      shiftId: props.shiftId,
+      jobs: d.jobs.map((j) => ({ ...j })),
+      customers: d.customers,
+      projects: d.projects,
+      settings: d.settings,
+      objects: d.objects,
+      history: d.shifts,
+    });
+  }
+
+  const render = (rev: number) =>
+    act(() => root.render(createElement(FreshJobsHarness, { shiftId: "s1", rev })));
+
+  it("Eingaben, Job und Satz ueberleben ein Neu-Rendern der Eltern", () => {
+    seed([shiftWith(12.345)], PAIR);
+    render(1);
+    expect(rateField().value).toBe("12,35");
+    setValue(rateField(), "19,5");
+    setValue(q<HTMLInputElement>("#bis"), "16:00");
+    click(
+      [...document.querySelectorAll("button[aria-pressed]")].find((b) =>
+        b.textContent?.includes("Lager Süd"),
+      ),
+    );
+    render(2);
+    expect(rateField().value).toBe("19,5");
+    expect(q<HTMLInputElement>("#bis").value).toBe("16:00");
+    save();
+    expect(stored()?.rate).toBe(19.5);
+    expect(stored()?.jobId).toBe("j2");
+  });
+
+  it("ein unberuehrter exakter Satz bleibt ueber ein Neu-Rendern exakt", () => {
+    seed([shiftWith(12.345)], PAIR);
+    render(1);
+    render(2);
+    render(3);
+    save();
+    expect(stored()?.rate).toBe(12.345);
   });
 });

@@ -46,6 +46,20 @@ describe("entry editor German formats", () => {
     expect(src).not.toMatch(/formatHours\(/);
   });
 
+  // NEW-01: Die Uebernahme des Job-Satzes ist eine antippbare Aktion neben dem Feld - auf 360 px
+  // mit voller Tippflaeche (min-h-11 = 44 px) und umbruchfaehigem Text, nie im Feld selbst.
+  it("offers the job rate as a tappable action with a 44px target in both rate places", () => {
+    const offer = src.slice(src.indexOf("const jobRateOffer"), src.indexOf("const workPreview"));
+    expect(offer).toMatch(/data-testid="entry-rate-use-job"/);
+    expect(offer).toMatch(/type="button"/);
+    expect(offer).toMatch(/min-h-11/);
+    expect(offer).toMatch(/whitespace-normal/);
+    expect(offer).toMatch(/entry\.rateUseJob/);
+    // beide Eingabestellen (Schnellerfassung und "Weitere Angaben")
+    expect(src.match(/\{hourlyPay \? jobRateOffer : null\}/g)).toHaveLength(1);
+    expect(src.match(/\{isWork && !hourlyPay \? jobRateOffer : null\}/g)).toHaveLength(1);
+  });
+
   it("uses a German decimal rate field with a € suffix", () => {
     expect(src).toMatch(/sanitizeRateInput/);
     expect(src).toMatch(/formatRateInput/);

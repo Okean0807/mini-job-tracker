@@ -215,6 +215,31 @@ describe("A1 Zeit-Anschluss im Editor", () => {
     expect(q('[data-testid="entry-continuation-apply"]').textContent).toContain("10:30");
   });
 
+  // NEW-01: Die Auswahl des SCHON gewählten Jobs ist ein vollständiges No-op - sie darf weder die
+  // Zeiten noch den Anschluss-Vorschlag neu bestimmen (und erst recht nicht den Lohnsatz, s. K1).
+  it("derselbe Job: kein neues Zeit-Seeding und kein neuer Anschluss-Vorschlag", () => {
+    seed([work({ id: "a", start: "08:00", end: "10:30" })]);
+    open(null);
+    const state = () => [
+      q<HTMLInputElement>('[data-testid="entry-date"]').value,
+      q<HTMLInputElement>("#von").value,
+      q<HTMLInputElement>("#bis").value,
+      q<HTMLInputElement>("#lohn").value,
+      maybe('[data-testid="entry-continuation-hint"]')?.textContent ?? "",
+    ];
+    const before = state();
+    expect(before[1]).toBe("10:30");
+    click(byText("Reinigung Nord")!);
+    expect(state()).toEqual(before);
+    // Auch nach eigenen Eingaben bleibt die erneute Auswahl desselben Jobs folgenlos.
+    setValue(q<HTMLInputElement>("#von"), "11:00");
+    setValue(q<HTMLInputElement>("#bis"), "14:00");
+    setValue(q<HTMLInputElement>("#lohn"), "15,5");
+    const edited = state();
+    click(byText("Reinigung Nord")!);
+    expect(state()).toEqual(edited);
+  });
+
   it("(5) Pause zwischen zwei Einträgen: späterer Beginn, keine Rückfrage, keine Überschneidung", () => {
     seed([work({ id: "a", start: "08:00", end: "10:30" })]);
     open(null);
