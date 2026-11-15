@@ -15,19 +15,26 @@ vi.mock("@tanstack/react-router", () => ({
 
 import { TodayImportantCard } from "./TodayImportantCard";
 import { t } from "@/lib/i18n";
+import { formatEuro } from "@/lib/minijob/calc";
 import { makeResolver } from "@/lib/minijob/resolve";
+import type { LegalWarningStatus } from "@/lib/minijob/legal/warnings";
 import { DEFAULT_SETTINGS, EMPTY_WEEK, type Job, type Shift } from "@/lib/minijob/types";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const TODAY = "2026-09-30"; // Mittwoch
 const settings = { ...DEFAULT_SETTINGS, defaultRate: 15 };
-const usage = (share: number) => ({ share, earnings: 0, earningsLimit: 603 });
+const usage = (share: number, earningsLimit = 603) => ({ share, earnings: 0, earningsLimit });
 
 let container: HTMLDivElement;
 let root: Root;
 
-function render(jobs: Job[], shifts: Shift[] = [], share = 0) {
+function render(
+  jobs: Job[],
+  shifts: Shift[] = [],
+  share = 0,
+  extra: { yearShare?: number; forecastStatus?: LegalWarningStatus } = {},
+) {
   act(() => {
     root.render(
       createElement(TodayImportantCard, {
@@ -37,7 +44,8 @@ function render(jobs: Job[], shifts: Shift[] = [], share = 0) {
         settings,
         resolve: makeResolver(jobs, settings),
         monthUsage: usage(share),
-        yearUsage: usage(0),
+        yearUsage: usage(extra.yearShare ?? 0, 7236),
+        ...(extra.forecastStatus ? { forecastStatus: extra.forecastStatus } : {}),
         onNewEntry: () => {},
       }),
     );
@@ -120,5 +128,41 @@ describe("TodayImportantCard – Beschäftigungsart / Grenze", () => {
   it("only Hauptbeschäftigung → no limit warning even at a high share", () => {
     const main = [job({ employmentType: "hauptbeschaeftigung" })];
     expect(render(main, [], 95)).not.toContain(t("dash.todayLimit", { percent: 95 }));
+  });
+});
+
+describe("TodayImportantCard – AUD-09A: Grenzwarnung ohne falsche Überschreitung", () => {
+  const mini = [job({ employmentType: "minijob" })];
+  const yearOver = t("dash.limitYearOver", { amount: formatEuro(7236) });
+
+  it("exactly 100 % of the monthly reference is informative (100 %), not 'exceeded'", () => {
+    const text = render(mini, [], 100);
+    expect(text).toContain(t("dash.todayLimit", { percent: 100 }));
+    expect(text).not.toContain(yearOver);
+  });
+
+  it("a month above the reference shows the month-above hint, not an exceedance", () => {
+    const text = render(mini, [], 165.8, { yearShare: 13.8, forecastStatus: "OK" });
+    expect(text).toContain(
+      t("dash.limitMonthAbove", { amount: formatEuro(603), yearAmount: formatEuro(7236) }),
+    );
+    expect(text).not.toContain(yearOver);
+    expect(text).not.toContain(t("dash.todayLimit", { percent: 166 }));
+  });
+
+  it("a genuinely exceeded annual limit is shown as exceeded", () => {
+    const text = render(mini, [], 10, { yearShare: 103.6 });
+    expect(text).toContain(yearOver);
+  });
+
+  it("an exceeded legal forecast uses the forecast card's own wording", () => {
+    const text = render(mini, [], 10, { yearShare: 40, forecastStatus: "MAXIMUM_EXCEEDED" });
+    expect(text).toContain(t("legalForecast.statusMaximum"));
+  });
+
+  it("no limit line when everything is below the 85 % threshold", () => {
+    const text = render(mini, [], 50, { yearShare: 20, forecastStatus: "OK" });
+    expect(text).not.toContain(yearOver);
+    expect(text).not.toContain(t("legalForecast.statusMaximum"));
   });
 });

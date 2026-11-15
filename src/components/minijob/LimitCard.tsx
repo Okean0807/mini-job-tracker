@@ -4,6 +4,7 @@ import { Gauge } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useT } from "@/lib/i18n";
 import { formatEuro, formatHours } from "@/lib/minijob/calc";
+import { sharePastLimit } from "@/lib/minijob/legal/amounts";
 import type { LimitUsage } from "@/lib/minijob/limits";
 import { cn } from "@/lib/utils";
 
@@ -14,9 +15,22 @@ interface LimitCardProps {
   auto: boolean;
   /** Self-employed: employee Minijob limit not applicable. */
   notApplicable?: boolean;
+  /**
+   * `year` (default): the limit is the annual limit – exceeding it is a genuine
+   * exceedance. `month`: the limit is only the monthly reference amount; a month
+   * above it is not automatically an exceedance (the annual earnings decide).
+   */
+  scope?: "month" | "year";
 }
 
-export function LimitCard({ usage, scopeLabel, rate, auto, notApplicable }: LimitCardProps) {
+export function LimitCard({
+  usage,
+  scopeLabel,
+  rate,
+  auto,
+  notApplicable,
+  scope = "year",
+}: LimitCardProps) {
   const { t } = useT();
   const titleId = useId();
   if (notApplicable) {
@@ -67,11 +81,20 @@ export function LimitCard({ usage, scopeLabel, rate, auto, notApplicable }: Limi
         }
       />
 
-      {usage.earningsShare >= 100 || usage.hoursShare >= 100 ? (
-        <div className="mt-3 space-y-1 rounded-xl border border-destructive/30 bg-destructive/5 p-2.5">
-          <p className="text-xs leading-relaxed text-destructive">{t("limit.overExplain")}</p>
-          <p className="text-xs leading-relaxed text-muted-foreground">{t("limit.disclaimer")}</p>
-        </div>
+      {/* The limit is an upper bound: exactly 100 % is within it, only more exceeds it. */}
+      {sharePastLimit(usage.earningsShare) || sharePastLimit(usage.hoursShare) ? (
+        scope === "month" ? (
+          <div className="mt-3 rounded-xl border bg-muted/40 p-2.5">
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {t("limit.monthAboveNote")}
+            </p>
+          </div>
+        ) : (
+          <div className="mt-3 space-y-1 rounded-xl border border-destructive/30 bg-destructive/5 p-2.5">
+            <p className="text-xs leading-relaxed text-destructive">{t("limit.overExplain")}</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">{t("limit.disclaimer")}</p>
+          </div>
+        )
       ) : null}
     </div>
   );

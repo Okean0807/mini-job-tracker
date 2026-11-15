@@ -37,7 +37,8 @@ import { legalIncomeForMonth } from "@/lib/minijob/service";
 import { isAbsenceKind, type AbsenceKind } from "@/lib/minijob/absence-range";
 import { monthTimeAccount } from "@/lib/minijob/fest-time-account";
 import { jobsApplyMinijobLimit, primaryWorkMode } from "@/lib/minijob/work-mode";
-import { limitAlertLevel } from "@/lib/minijob/limit-alert";
+import { forecastExceededTextKey, limitAlertLevel } from "@/lib/minijob/limit-alert";
+import { evaluateRollingWarning } from "@/lib/minijob/legal";
 import { payPeriods } from "@/lib/minijob/payday";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { useAppData } from "@/lib/minijob/store";
@@ -119,7 +120,10 @@ function DashboardPage() {
   const limitShare = monthLimit.share;
   const yearShare = yearLimit.share;
   const appliesMinijobLimit = jobsApplyMinijobLimit(jobs);
-  const limitAlert = limitAlertLevel(appliesMinijobLimit, limitShare, yearShare);
+  // One decision for banner, "Heute wichtig" card and notifications; the forecast
+  // status comes from the same rolling assessment the forecast card shows.
+  const forecastStatus = evaluateRollingWarning(legalForecast.rolling).status;
+  const limitAlert = limitAlertLevel(appliesMinijobLimit, limitShare, yearShare, forecastStatus);
   const workMode = primaryWorkMode(jobs, settings.activeJobId);
   const isFest = workMode === "fest";
   const isSelf = workMode === "selbststaendig";
@@ -202,6 +206,7 @@ function DashboardPage() {
     limitMonth: (
       <LimitCard
         usage={monthLimit}
+        scope="month"
         scopeLabel={`${t("limit.month")} · ${monthLabel}`}
         rate={settings.defaultRate}
         auto={settings.hoursLimitAuto || settings.hoursLimitMonthly <= 0}
@@ -212,6 +217,7 @@ function DashboardPage() {
     limitYear: (
       <LimitCard
         usage={yearLimit}
+        scope="year"
         scopeLabel={`${t("limit.year")} · ${year}`}
         rate={settings.defaultRate}
         auto={settings.hoursLimitAuto || settings.hoursLimitMonthly <= 0}
@@ -290,13 +296,24 @@ function DashboardPage() {
       {limitAlert === "over" ? (
         <LimitBanner
           tone="over"
-          text={
-            limitShare >= 100
-              ? t("dash.limitMonthOver", { amount: formatEuro(monthLimit.earningsLimit) })
-              : t("dash.limitYearOver", { amount: formatEuro(yearLimit.earningsLimit) })
-          }
+          text={t("dash.limitYearOver", { amount: formatEuro(yearLimit.earningsLimit) })}
           detail={t("dash.limitOverExplain")}
           disclaimer={t("dash.limitDisclaimer")}
+        />
+      ) : limitAlert === "forecastOver" ? (
+        <LimitBanner
+          tone="over"
+          text={t(forecastExceededTextKey(forecastStatus))}
+          detail={t("dash.limitOverExplain")}
+          disclaimer={t("dash.limitDisclaimer")}
+        />
+      ) : limitAlert === "monthAbove" ? (
+        <LimitBanner
+          tone="near"
+          text={t("dash.limitMonthAbove", {
+            amount: formatEuro(monthLimit.earningsLimit),
+            yearAmount: formatEuro(yearLimit.earningsLimit),
+          })}
         />
       ) : limitAlert === "near" ? (
         <LimitBanner
@@ -335,6 +352,7 @@ function DashboardPage() {
           resolve={resolve}
           monthUsage={monthLimit}
           yearUsage={yearLimit}
+          forecastStatus={forecastStatus}
           onNewEntry={() => openNew(isoDate(new Date()))}
         />
       </div>

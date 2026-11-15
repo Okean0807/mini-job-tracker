@@ -1,3 +1,4 @@
+import { exceedsAmount } from "./amounts";
 import type { ForecastMonth, Rolling12ForecastResult } from "./rolling";
 
 /** User-facing warning states. These are product states, not legal conclusions. */
@@ -18,6 +19,19 @@ export interface LegalWarningAssessment {
   reason: "within_limit" | "near_limit" | "regular_exceeded" | "special_rule_may_apply" | "maximum_exceeded";
 }
 
+/**
+ * True for the states in which the (rolling) legal assessment says the regular
+ * limit is exceeded. Every surface that shows a limit warning derives its
+ * "exceeded" state from this, so it cannot contradict the legal forecast.
+ */
+export function isLegalExceedanceStatus(status: LegalWarningStatus): boolean {
+  return (
+    status === "REGULAR_LIMIT_EXCEEDED" ||
+    status === "UNPREDICTABLE_EXCEEDANCE_POSSIBLE" ||
+    status === "MAXIMUM_EXCEEDED"
+  );
+}
+
 /** Business/UX rule (not legal): "near limit" from 85 % of the limit on. */
 export const NEAR_LIMIT_RATIO = 0.85;
 
@@ -33,7 +47,7 @@ export function evaluateForecastMonthWarning(
   const ratio = month.limit > 0 ? month.projected / month.limit : 0;
   const remainingSpecialMonths = Math.max(0, 2 - usedSpecialMonths);
 
-  if (month.projected > month.limit * 2) {
+  if (exceedsAmount(month.projected, month.limit * 2)) {
     return {
       status: "MAXIMUM_EXCEEDED",
       ratio,
@@ -45,7 +59,7 @@ export function evaluateForecastMonthWarning(
     };
   }
 
-  if (month.projected > month.limit) {
+  if (exceedsAmount(month.projected, month.limit)) {
     const specialPossible = month.unpredictable && remainingSpecialMonths > 0;
     return {
       status: specialPossible ? "UNPREDICTABLE_EXCEEDANCE_POSSIBLE" : "REGULAR_LIMIT_EXCEEDED",

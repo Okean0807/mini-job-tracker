@@ -1,4 +1,5 @@
 import { minijobIncomeLimitFor } from "./index";
+import { exceedsAmount } from "./amounts";
 import type { MonthlyIncome } from "./exceedance";
 
 export interface Rolling12MonthResult {
@@ -80,11 +81,11 @@ export function evaluateRolling12Months(
   const unpredictableMonths = months.filter(
     (month) =>
       Boolean(month.unpredictable) &&
-      month.earnings > minijobIncomeLimitFor(month.date),
+      exceedsAmount(month.earnings, minijobIncomeLimitFor(month.date)),
   ).length;
   const documentedExtra = months.reduce((sum, month) => {
     const limit = minijobIncomeLimitFor(month.date);
-    return sum + (month.unpredictable && month.earnings > limit ? limit : 0);
+    return sum + (month.unpredictable && exceedsAmount(month.earnings, limit) ? limit : 0);
   }, 0);
 
   const earnings = months.reduce((sum, month) => sum + month.earnings, 0);
@@ -97,7 +98,7 @@ export function evaluateRolling12Months(
     regularLimit,
     maximumAllowedIncome: maximum,
     unpredictableMonths,
-    allowed: unpredictableMonths <= 2 && earnings <= maximum,
+    allowed: unpredictableMonths <= 2 && !exceedsAmount(earnings, maximum),
   };
 }
 
@@ -141,8 +142,8 @@ export function forecastMonth(
     expectedAdditional,
     projected,
     limit,
-    exceedsRegularLimit: projected > limit,
-    exceedsMaximumUnpredictableLimit: projected > limit * 2,
+    exceedsRegularLimit: exceedsAmount(projected, limit),
+    exceedsMaximumUnpredictableLimit: exceedsAmount(projected, limit * 2),
     unpredictable: Boolean(input.unpredictable),
   };
 }
@@ -205,12 +206,12 @@ export function forecastRolling12Months(
 
   const regularLimit = months.reduce((sum, month) => sum + month.limit, 0);
   const unpredictableMonths = months.filter(
-    (month) => month.unpredictable && month.projected > month.limit,
+    (month) => month.unpredictable && exceedsAmount(month.projected, month.limit),
   ).length;
   const extraAllowance = months.reduce(
     (sum, month) =>
       sum +
-      (month.unpredictable && month.projected > month.limit ? month.limit : 0),
+      (month.unpredictable && exceedsAmount(month.projected, month.limit) ? month.limit : 0),
     0,
   );
   const projectedEarnings = months.reduce((sum, month) => sum + month.projected, 0);
@@ -223,10 +224,10 @@ export function forecastRolling12Months(
     regularLimit,
     maximumAllowedIncome,
     unpredictableMonths,
-    exceedsRegularLimit: projectedEarnings > regularLimit,
-    exceedsMaximumAllowedIncome: projectedEarnings > maximumAllowedIncome,
+    exceedsRegularLimit: exceedsAmount(projectedEarnings, regularLimit),
+    exceedsMaximumAllowedIncome: exceedsAmount(projectedEarnings, maximumAllowedIncome),
     allowedIfForecastRealized:
-      unpredictableMonths <= 2 && projectedEarnings <= maximumAllowedIncome &&
+      unpredictableMonths <= 2 && !exceedsAmount(projectedEarnings, maximumAllowedIncome) &&
       months.every((month) => !month.exceedsMaximumUnpredictableLimit),
   };
 }

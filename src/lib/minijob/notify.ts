@@ -3,6 +3,8 @@ import { t } from "@/lib/i18n";
 import { formatDate, formatEuro, isoDate, shiftsInYear, timeFromDate } from "./calc";
 import { payrollTotals } from "./payroll";
 import { monthUsage, yearUsage } from "./limits";
+import { limitAlertLevel } from "./limit-alert";
+import { assessLegalIncome, evaluateRollingWarning, type LegalWarningStatus } from "./legal";
 import { jobsApplyMinijobLimit } from "./work-mode";
 import { payPeriods } from "./payday";
 import { makeResolver } from "./resolve";
@@ -163,6 +165,8 @@ export interface LimitStatus {
   monthShare: number;
   monthHoursShare: number;
   yearShare: number;
+  /** Status of the rolling legal forecast for the current month (same as the forecast card). */
+  forecastStatus?: LegalWarningStatus;
 }
 
 export function limitStatus(): LimitStatus {
@@ -175,16 +179,27 @@ export function limitStatus(): LimitStatus {
   const now = new Date();
   const month = monthUsage(shifts, resolve, settings, now.getFullYear(), now.getMonth());
   const year = yearUsage(shifts, resolve, settings, now.getFullYear());
+  const forecast = assessLegalIncome(getData(), `${isoDate(now).slice(0, 7)}-01`);
   return {
     monthShare: month.earningsShare,
     monthHoursShare: month.hoursShare,
     yearShare: year.earningsShare,
+    forecastStatus: evaluateRollingWarning(forecast.rolling).status,
   };
 }
 
-/** Minijob-Schwellen 75 / 90 / 100 Prozent – einmal pro Monat je Stufe. */
+/**
+ * Minijob-Hinweise – einmal pro Monat je Stufe. Die Stufe kommt aus derselben
+ * Entscheidung wie Dashboard und Heute-Karte (`limitAlertLevel`):
+ * - "Minijob-Limit überschritten" nur bei tatsächlich überschrittener Jahresgrenze,
+ * - Prognose-Hinweis, wenn die gleitende 12-Monats-Prognose eine Überschreitung zeigt,
+ * - ein Monat über dem Monatsrichtwert ist ein Hinweis, keine Überschreitung,
+ * - 75 / 90 Prozent des Monatsrichtwerts bleiben informative Schwellen.
+ * Genau 100 % ist keine Überschreitung.
+ */
 export function checkLimits() {
-  const { monthShare, monthHoursShare } = limitStatus();
+  const { monthShare, monthHoursShare, yearShare, forecastStatus } = limitStatus();
+  const level = limitAlertLevel(true, monthShare, yearShare, forecastStatus);
   const stamp = isoDate(new Date()).slice(0, 7);
   if (monthHoursShare >= 90) {
     notifyOnce(
@@ -194,8 +209,22 @@ export function checkLimits() {
       t("notify.limitHours.body", { percent: Math.round(monthHoursShare) }),
     );
   }
-  if (monthShare >= 100) {
+  if (level === "over") {
     notifyOnce("limit-100", stamp, t("notify.limit100.title"), t("notify.limit100.body"));
+  } else if (level === "forecastOver") {
+    notifyOnce(
+      "limit-forecast",
+      stamp,
+      t("notify.limitForecast.title"),
+      t("notify.limitForecast.body"),
+    );
+  } else if (level === "monthAbove") {
+    notifyOnce(
+      "limit-month-above",
+      stamp,
+      t("notify.limitMonthAbove.title"),
+      t("notify.limitMonthAbove.body"),
+    );
   } else if (monthShare >= 90) {
     notifyOnce("limit-90", stamp, t("notify.limit90.title"), t("notify.limit90.body"));
   } else if (monthShare >= 75) {

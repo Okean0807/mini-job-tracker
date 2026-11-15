@@ -15,6 +15,7 @@ export const v2: Bundle = {
     "limit.notApplicableHint": "Die Minijob-Grenze gilt nur für Jobs mit der Beschäftigungsart Minijob – unabhängig von flexibler oder fester Planung.",
     "limit.overExplain": "Eine Überschreitung kann steuer- und sozialversicherungsrechtlich relevant sein. Die genaue Behandlung hängt von deiner persönlichen Situation ab.",
     "limit.disclaimer": "Kein individueller Steuer- oder Rechtsrat. Die App berechnet keine Steuern oder Abgaben.",
+    "limit.monthAboveNote": "Über dem Monatsrichtwert – nicht automatisch eine Überschreitung. Maßgeblich ist das Jahresentgelt.",
 
     "pay.title": "Zahltag",
     "pay.period": "Abrechnung {month}",
@@ -92,6 +93,7 @@ export const v2: Bundle = {
     "limit.notApplicableHint": "The minijob limit only applies to jobs with employment type minijob – regardless of flexible or fixed planning.",
     "limit.overExplain": "Exceeding the limit can matter for tax and social-security treatment. The exact outcome depends on your personal circumstances.",
     "limit.disclaimer": "Not individual tax or legal advice. The app does not calculate taxes or social contributions.",
+    "limit.monthAboveNote": "Above the monthly reference – not automatically an exceedance. The annual earnings are what matter.",
 
     "pay.title": "Payday",
     "pay.period": "Payroll {month}",
@@ -169,6 +171,7 @@ export const v2: Bundle = {
     "limit.notApplicableHint": "Лимит миниджоба для работников здесь не действует.",
     "limit.overExplain": "Превышение лимита может иметь значение для налогов и соцстрахования. Точные последствия зависят от вашей ситуации.",
     "limit.disclaimer": "Это не индивидуальная налоговая или юридическая консультация. Приложение не рассчитывает налоги или взносы.",
+    "limit.monthAboveNote": "Выше месячного ориентира — это не обязательно превышение. Решающее значение имеет годовой заработок.",
 
     "pay.title": "День выплаты",
     "pay.period": "Расчёт за {month}",
@@ -246,6 +249,7 @@ export const v2: Bundle = {
     "limit.notApplicableHint": "Çalışan minijob limiti burada geçerli değildir.",
     "limit.overExplain": "Sınırın aşılması vergi ve sosyal güvenlik açısından önemli olabilir. Kesin sonuç kişisel durumuna bağlıdır.",
     "limit.disclaimer": "Bireysel vergi veya hukuk danışmanlığı değildir. Uygulama vergi veya prim hesaplamaz.",
+    "limit.monthAboveNote": "Aylık referans değerin üzerinde – kendiliğinden bir aşım değildir. Belirleyici olan yıllık kazançtır.",
 
     "pay.title": "Ödeme günü",
     "pay.period": "{month} bordrosu",
@@ -323,6 +327,7 @@ export const v2: Bundle = {
     "limit.notApplicableHint": "Limit minijoba dla pracowników tutaj nie obowiązuje.",
     "limit.overExplain": "Przekroczenie limitu może mieć znaczenie podatkowe i ubezpieczeniowe. Dokładne skutki zależą od Twojej sytuacji.",
     "limit.disclaimer": "To nie jest indywidualna porada podatkowa ani prawna. Aplikacja nie oblicza podatków ani składek.",
+    "limit.monthAboveNote": "Powyżej miesięcznej wartości referencyjnej – nie jest to automatycznie przekroczenie. Decyduje zarobek roczny.",
 
     "pay.title": "Dzień wypłaty",
     "pay.period": "Rozliczenie {month}",
