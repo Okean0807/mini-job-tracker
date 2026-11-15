@@ -5,7 +5,7 @@ import { LANGUAGES, detectLanguage } from "@/lib/i18n/core";
 import { normalizeDashboard } from "./dashboard";
 import { isPlainRecord } from "./payload";
 import { isValidPin, withConsistentPinSettings } from "./pin";
-import { KNOWN_LEGAL_MONTHLY_LIMITS } from "./legal";
+import { KNOWN_LEGAL_MONTHLY_LIMITS, minimumWageFor } from "./legal";
 import {
   GUEST_SCOPE,
   ownerOfScope,
@@ -116,6 +116,26 @@ export const EMPTY_DATA: AppData = {
   settings: DEFAULT_SETTINGS,
   timer: null,
 };
+
+/**
+ * B6-1: Standard-Stundenlohn für einen NEUEN Datenstand = gesetzlicher Mindestlohn
+ * zum Stichtag (z. B. ab 01.01.2027 14,60 €). Bestehende, gespeicherte Sätze werden
+ * nie automatisch verändert – diese Funktion wird nur beim Erststart verwendet.
+ */
+export function initialDefaultRate(date: string): number {
+  try {
+    return minimumWageFor(date);
+  } catch {
+    return DEFAULT_SETTINGS.defaultRate;
+  }
+}
+
+function freshData(language: Settings["language"]): AppData {
+  return {
+    ...EMPTY_DATA,
+    settings: { ...EMPTY_DATA.settings, language, defaultRate: initialDefaultRate(todayIso()) },
+  };
+}
 
 let state: AppData = EMPTY_DATA;
 let loaded = false;
@@ -310,7 +330,7 @@ function loadScopeState(
     return next !== stored ? { data: next, filled: true } : { data: stored, filled: false };
   }
   return {
-    data: { ...EMPTY_DATA, settings: { ...EMPTY_DATA.settings, language: languageSeed } },
+    data: freshData(languageSeed),
     filled: false,
   };
 }
@@ -330,7 +350,7 @@ export function loadFromStorage() {
     return;
   }
   // Erststart: Sprache aus dem Browser übernehmen (später manuell änderbar)
-  state = { ...EMPTY_DATA, settings: { ...EMPTY_DATA.settings, language: detectLanguage() } };
+  state = freshData(detectLanguage());
   emit(false);
 }
 
