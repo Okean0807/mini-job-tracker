@@ -174,6 +174,9 @@ export function ShiftDialog({
 }: ShiftDialogProps) {
   const { t, locale } = useT();
   const [jobId, setJobId] = useState<string | undefined>(undefined);
+  // NEW-01: Job, mit dem der Editor befüllt wurde. Nur wenn die Auswahl davon abweicht, kann die
+  // Nutzerin den Satz des gewählten Jobs ausdrücklich übernehmen – von selbst geschieht das nie.
+  const [seedJobId, setSeedJobId] = useState<string | undefined>(undefined);
   const [kind, setKind] = useState<ShiftKind>("arbeit");
   const [start, setStart] = useState("09:00");
   const [end, setEnd] = useState("17:00");
@@ -230,6 +233,8 @@ export function ShiftDialog({
   const editingIdRef = useRef<string | undefined>(undefined);
   const resolvedShiftId = (shiftId ?? shift?.id ?? "").trim() || undefined;
   const isEditing = Boolean(resolvedShiftId);
+  // NEW-01/INIT: stabile Kennung der Job-Liste fuer das Befuellen des Formulars (siehe useEffect).
+  const jobsKey = jobs.map((j) => j.id).join("|");
   const customCodes = settings.workCodes ?? [];
   const customTasksCatalog = settings.customTasks ?? [];
   const predefinedTaskLabels = CLEANING_TASKS.map((key) => ({
@@ -315,6 +320,17 @@ export function ShiftDialog({
     setRateDirty(false);
   }
 
+  /**
+   * NEW-01: Ausdrueckliche Uebernahme des Satzes des GEWAEHLTEN Jobs. Ein Jobwechsel allein aendert
+   * den Satz nie (weder bei bestehenden Eintraegen noch nach eigener Eingabe) - erst dieser Knopf
+   * ersetzt ihn, mit dem exakten Vorschlagswert des Jobs. Danach gilt der Satz als bewusst gesetzt:
+   * der Hinweis auf den gespeicherten Satz des Eintrags entfaellt, weil dieser nicht mehr gilt.
+   */
+  function applyJobRate(value: number | undefined) {
+    if (value === undefined || !Number.isFinite(value)) return;
+    seedRate(value);
+  }
+
   /** K1: Beim Verlassen nur einen bearbeiteten Satz formatieren (gerundet wie beim Speichern). */
   function formatEditedRate() {
     if (!rateDirty) return;
@@ -331,6 +347,7 @@ export function ShiftDialog({
     setEntryDate(initialDate);
     setObjectId(source?.objectId);
     setJobId(source?.jobId ?? fallbackJob?.id);
+    setSeedJobId(source?.jobId ?? fallbackJob?.id);
     // Existing entries keep their kind (incl. Feiertag). New entries on a
     // public holiday default to feiertag so the type matches the calendar day.
     const holidayDefault =
@@ -399,11 +416,14 @@ export function ShiftDialog({
     setNewCodeOpen(false);
     setFieldError({});
     setConfirmIssues(null);
+    // NEW-01/INIT: `jobs` ist eine Prop-Liste; eine neue Array-Referenz mit gleichem Inhalt darf
+    // das offene Formular NICHT neu befüllen (sonst verliert die Nutzerin ihre Eingaben). Welcher
+    // Job gewählt wird, hängt nur an den IDs – deshalb steht hier `jobsKey` statt `jobs`.
   }, [
     open,
     shiftId,
     shift?.id,
-    jobs,
+    jobsKey,
     settings.activeJobId,
     settings.defaultRate,
     settings.bundesland,
@@ -449,7 +469,9 @@ export function ShiftDialog({
   // Work on a public holiday must pay hours×rate (optional surcharge). Kind "feiertag"
   // is only for not working. Preview uses payroll for absences and breakdown for work.
   // K1: Zeigt das Feld weniger Stellen als der GESPEICHERTE Satz, der weiter gilt, steht der exakte
-  // Wert daneben. Nach einer echten Änderung (anderer Wert) oder einem Jobwechsel entfällt er.
+  // Wert daneben. Nach einer echten Änderung (anderer Wert) entfällt er.
+  // NEW-01: Ein Jobwechsel ändert den Satz nicht mehr - der Hinweis bleibt deshalb stehen, bis der
+  // Satz des gewählten Jobs ausdrücklich übernommen wird.
   const showExactRate =
     editSource !== undefined && rateValue === editSource.rate && hasHiddenRatePrecision(rateValue);
   const acceptedRate = showExactRate ? parseEditedRateInput(rateSeedText) : undefined;
@@ -475,6 +497,36 @@ export function ShiftDialog({
       ) : null}
     </div>
   ) : null;
+  // NEW-01: Der gewählte Job schlägt einen Satz vor. Übernommen wird er nur auf ausdrückliches
+  // Antippen und nur, solange das etwas ändert: anderer Job als beim Befüllen UND anderer Satz als
+  // der aktuelle. Das Antippen selbst ist die Entscheidung - die Jobauswahl bleibt folgenlos.
+  const selectedJobRate =
+    jobId !== undefined ? suggestedRate({ jobId }, { jobs, settings }) : undefined;
+  const offeredJobRate =
+    jobId !== undefined &&
+    jobId !== seedJobId &&
+    selectedJobRate !== undefined &&
+    Number.isFinite(selectedJobRate) &&
+    rateValue !== selectedJobRate
+      ? selectedJobRate
+      : undefined;
+  const jobRateOffer =
+    offeredJobRate !== undefined ? (
+      <div className="mt-1.5 px-1">
+        <Button
+          type="button"
+          variant="link"
+          data-testid="entry-rate-use-job"
+          className="h-auto min-h-11 justify-start whitespace-normal px-0 py-1 text-left text-xs"
+          onClick={() => applyJobRate(offeredJobRate)}
+        >
+          {t("entry.rateUseJob", {
+            job: job?.name ?? "",
+            value: formatExactRate(offeredJobRate),
+          })}
+        </Button>
+      </div>
+    ) : null;
 
   const workPreview = shiftBreakdown(draft, {
     job,
@@ -632,6 +684,21 @@ export function ShiftDialog({
     const patch = reseedTimeFields({ continuation: next, startTouched, endTouched });
     if (patch.start !== undefined) setStart(patch.start);
     if (patch.end !== undefined) setEnd(patch.end);
+  }
+
+  /**
+   * NEW-01: Jobauswahl. Der Job wechselt, der Lohnsatz bleibt unberuehrt:
+   *  - bestehender Eintrag: der gespeicherte (exakte) Satz gilt weiter, ebenso ein getippter Wert;
+   *  - neuer Eintrag: nur ein noch UNBERUEHRTES Feld folgt dem Vorschlag des Jobs.
+   * Derselbe Job ist ein vollstaendiges No-op: kein Satz, keine Zeiten, kein neuer Vorschlag.
+   */
+  function selectJob(nextJobId: string) {
+    if (nextJobId === jobId) return;
+    setJobId(nextJobId);
+    if (!isEditing && !rateDirty) {
+      seedRate(suggestedRate({ jobId: nextJobId }, { jobs, settings }));
+    }
+    reseedTimes(nextJobId, entryDate, kind);
   }
 
   /**
@@ -1070,11 +1137,7 @@ export function ShiftDialog({
                       key={j.id}
                       type="button"
                       aria-pressed={jobId === j.id}
-                      onClick={() => {
-                        setJobId(j.id);
-                        seedRate(suggestedRate({ jobId: j.id }, { jobs, settings }));
-                        reseedTimes(j.id, entryDate, kind);
-                      }}
+                      onClick={() => selectJob(j.id)}
                       className={cn(
                         "inline-flex h-11 max-w-full items-center gap-2 rounded-full px-3.5 text-sm font-medium",
                         jobId === j.id
@@ -1366,6 +1429,7 @@ export function ShiftDialog({
                     </div>
                   ) : null}
                   {hourlyPay ? rateExactHint : null}
+                  {hourlyPay ? jobRateOffer : null}
                   {rateValue !== undefined && preview.total > 0 ? (
                     <p className="mt-1.5 px-1 text-xs text-muted-foreground">
                       {t("label.earnings")}: {formatEuro(preview.total, locale)}
@@ -1911,6 +1975,7 @@ export function ShiftDialog({
                     </div>
                   ) : null}
                   {isWork && !hourlyPay ? rateExactHint : null}
+                  {isWork && !hourlyPay ? jobRateOffer : null}
 
                   {isWork ? (
                     <div className="flex min-h-11 items-center justify-between gap-3 rounded-2xl border bg-card px-3 py-2">
