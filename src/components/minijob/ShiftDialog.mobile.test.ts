@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ShiftDialog.tsx"), "utf8");
+const dir = dirname(fileURLToPath(import.meta.url));
+const src = readFileSync(join(dir, "ShiftDialog.tsx"), "utf8");
+const pickerSrc = readFileSync(join(dir, "ObjectPicker.tsx"), "utf8");
 
 describe("entry editor mobile shell", () => {
   it("keeps a sticky header and a bottom action bar with Speichern as primary", () => {
@@ -92,7 +94,11 @@ describe("entry editor optional block", () => {
 
 describe("entry editor accessibility", () => {
   it("labels the overlay selects and the icon-only controls", () => {
-    expect(src).toMatch(/htmlFor="objekt-auswahl"/);
+    // Der Einsatzort-Picker ist eine Combobox mit beschrifteter Listbox und beschriftetem Suchfeld.
+    expect(pickerSrc).toMatch(/role="combobox"/);
+    expect(pickerSrc).toMatch(/role="listbox"/);
+    expect(pickerSrc).toMatch(/aria-label=\{t\("object\.pickerSearch"\)\}/);
+    expect(pickerSrc).toMatch(/aria-label=\{t\("object\.select"\)\}/);
     expect(src).toMatch(/htmlFor="leistungsart-auswahl"/);
     expect(src).toMatch(/htmlFor="taetigkeit-auswahl"/);
     expect(src).toMatch(/aria-label=\{t\("action\.back"\)\}/);

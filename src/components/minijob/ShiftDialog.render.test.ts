@@ -190,7 +190,8 @@ describe("Eintrags-Editor (Render)", () => {
 
   it("Objekt, gespeicherte Leistungsart und Tätigkeit wählen → speichern → erneut öffnen: Werte erhalten", () => {
     open("shift-a");
-    setValue(q<HTMLSelectElement>('[data-testid="object-select"]'), "obj-1");
+    click(q('[data-testid="object-picker-trigger"]'));
+    click(q('[data-testid="object-option-obj-1"]'));
     setValue(q<HTMLSelectElement>('[data-testid="work-code-select"]'), "GL");
     setValue(q<HTMLSelectElement>('[data-testid="task-select"]'), "Dachfenster reinigen");
     save();
@@ -204,7 +205,9 @@ describe("Eintrags-Editor (Render)", () => {
 
     unmount();
     open("shift-a");
-    expect(q<HTMLSelectElement>('[data-testid="object-select"]').value).toBe("obj-1");
+    expect(q('[data-testid="entry-object"]').getAttribute("data-object")).toBe("set");
+    expect(q('[data-testid="object-picker-trigger"]').textContent).toContain("Bürohaus Mitte");
+    expect(q('[data-testid="object-picker-trigger"]').textContent).toContain("Hauptstraße 5");
     expect(q<HTMLSelectElement>('[data-testid="work-code-select"]').value).toBe("GL");
     expect(q('[data-testid="entry-tasks"]').getAttribute("data-task-count")).toBe("1");
     expect(q('[data-testid="entry-tasks"]').textContent).toContain("Dachfenster reinigen");

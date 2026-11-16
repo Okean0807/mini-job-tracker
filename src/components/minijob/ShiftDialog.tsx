@@ -38,6 +38,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/lib/i18n";
+import { ObjectPicker } from "./ObjectPicker";
 import { PauseChips } from "./PauseChips";
 import { formatEuro, isoDate, shiftBreakdown } from "@/lib/minijob/calc";
 import {
@@ -58,6 +59,7 @@ import {
   taskSuggestionsFromHistory,
   type ContinuationSuggestion,
 } from "@/lib/minijob/entry-suggest";
+import { objectUsageFromHistory } from "@/lib/minijob/entry-objects";
 import {
   EMPTY_VALIDATION,
   fieldIssues,
@@ -556,6 +558,18 @@ export function ShiftDialog({
         ...(resolvedShiftId ? { excludeId: resolvedShiftId } : {}),
       }),
     [jobId, tasks, resolvedShiftId],
+  );
+
+  // B3: Letzter / häufig genutzter Einsatzort dieses Jobs – nur Anzeige im Picker.
+  const objectUsage = useMemo(
+    () =>
+      objectUsageFromHistory({
+        shifts: getData().shifts,
+        objects,
+        ...(jobId !== undefined ? { jobId } : {}),
+        ...(resolvedShiftId ? { excludeId: resolvedShiftId } : {}),
+      }),
+    [jobId, objects, resolvedShiftId],
   );
 
   // B2: Pausen-Vorschlag aus der Historie dieses Jobs – nur Anzeige, gesetzt wird nur per Tipp.
@@ -1402,44 +1416,35 @@ export function ShiftDialog({
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     {t("worklog.workplace")}
                   </p>
-                  <div className="relative rounded-2xl bg-card px-3 py-3">
-                    <p
+                  <ObjectPicker
+                    objects={objects}
+                    usage={objectUsage}
+                    selectedId={objectId}
+                    onSelect={applyObjectSelection}
+                    t={t}
+                  >
+                    <span
                       className={cn(
-                        "pr-6 text-[15px] font-semibold",
+                        "block pr-6 text-[15px] font-semibold",
                         hasObjectData ? "" : "text-muted-foreground",
                       )}
                     >
                       {objectTitle}
-                    </p>
+                    </span>
                     {objectAddressLines.map((line) => (
-                      <p key={line} className="mt-0.5 pr-6 text-sm text-muted-foreground">
+                      <span key={line} className="mt-0.5 block pr-6 text-sm text-muted-foreground">
                         {line}
-                      </p>
+                      </span>
                     ))}
-                    <ChevronRight
-                      className="absolute right-3 top-4 size-4 text-muted-foreground"
-                      aria-hidden
-                    />
-                    <Label htmlFor="objekt-auswahl" className="sr-only">
-                      {t("object.select")}
-                    </Label>
-                    <select
-                      id="objekt-auswahl"
-                      data-testid="object-select"
-                      value={objectId ?? ""}
-                      onChange={(e) => applyObjectSelection(e.target.value)}
-                      className="absolute inset-0 cursor-pointer opacity-0"
+                  </ObjectPicker>
+                  {objectId && !selectedObject ? (
+                    <p
+                      className="mt-1 px-1 text-xs text-muted-foreground"
+                      data-testid="object-unavailable"
                     >
-                      <option value="">
-                        {hasObjectData ? t("object.none") : t("entry.chooseObject")}
-                      </option>
-                      {objects.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                      {t("object.unavailable")}
+                    </p>
+                  ) : null}
                   {/* Nur die Aktionen des aktuellen Zustands: ohne Objekt anlegen/wählen,
                       mit Objekt bearbeiten/entfernen. */}
                   <div className="mt-2 flex flex-wrap gap-1">
