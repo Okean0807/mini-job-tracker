@@ -38,6 +38,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/lib/i18n";
+import {
+  clearEntryDraft,
+  entryDraftStorageKey,
+  loadEntryDraft,
+  saveEntryDraft,
+  type EntryDraftFields,
+} from "@/lib/minijob/entry-draft";
+import { DurationChips } from "./DurationChips";
+import { ObjectPicker } from "./ObjectPicker";
+import { PauseChips } from "./PauseChips";
 import { formatEuro, isoDate, shiftBreakdown } from "@/lib/minijob/calc";
 import {
   extrasSummaryParts,
@@ -50,12 +60,15 @@ import {
 import {
   applyContinuationTo,
   continuationStart,
+  endFromDuration,
   isTimeValue,
+  pauseSuggestionFromHistory,
   repeatPayload,
   reseedTimeFields,
   taskSuggestionsFromHistory,
   type ContinuationSuggestion,
 } from "@/lib/minijob/entry-suggest";
+import { objectUsageFromHistory } from "@/lib/minijob/entry-objects";
 import {
   EMPTY_VALIDATION,
   fieldIssues,
@@ -68,7 +81,7 @@ import { holidayName } from "@/lib/minijob/holidays";
 import { parseEditedRateInput, rateFieldValue, suggestedRate } from "@/lib/minijob/rate";
 import { ObjectDialog } from "@/components/minijob/ObjectDialog";
 import { persistDialogShift, removeShift, getShift } from "@/lib/minijob/service";
-import { getData } from "@/lib/minijob/store";
+import { getData, isPersistFailed } from "@/lib/minijob/store";
 import {
   type Customer,
   type Job,
@@ -228,6 +241,22 @@ export function ShiftDialog({
   // Gesetzt = gespeichertes Objekt bearbeiten, null = neues Objekt anlegen.
   const [objectDialogTarget, setObjectDialogTarget] = useState<WorkObject | null>(null);
   const editingIdRef = useRef<string | undefined>(undefined);
+  // B5: Kontext (Tag und Job) für den nächsten Eintrag nach "Speichern & Neuer Eintrag". Alles
+  // andere startet wie bei einem frisch geöffneten neuen Eintrag. `resetNonce` löst dafür genau
+  // die bestehende Initialisierung (Effekt unten) erneut aus – es gibt keinen zweiten Reset-Pfad.
+  const nextEntryRef = useRef<{ date: string; jobId: string | undefined } | null>(null);
+  const [resetNonce, setResetNonce] = useState(0);
+  const pendingSaveModeRef = useRef<"close" | "new">("close");
+  // B6: Entwurf eines neuen Eintrags. `touchedRef` = die Nutzerin hat im Formular etwas getan
+  // (nur dann wird geschrieben, nie beim bloßen Öffnen). `draftJobRef` = unter welchem Job der
+  // Entwurf in dieser Sitzung liegt; `draftScopeKeyRef` = Namensraum beim Öffnen (Schutz vor
+  // Kontowechsel bei offenem Dialog).
+  const touchedRef = useRef(false);
+  const draftJobRef = useRef<{ jobId: string | undefined } | null>(null);
+  const draftScopeKeyRef = useRef("");
+  const [draftActive, setDraftActive] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const submittingRef = useRef(false);
   const resolvedShiftId = (shiftId ?? shift?.id ?? "").trim() || undefined;
   const isEditing = Boolean(resolvedShiftId);
   const customCodes = settings.workCodes ?? [];
@@ -325,9 +354,16 @@ export function ShiftDialog({
     if (!open) return;
     const id = (shiftId ?? shift?.id ?? "").trim() || undefined;
     editingIdRef.current = id;
+    touchedRef.current = false;
+    draftJobRef.current = null;
+    draftScopeKeyRef.current = entryDraftStorageKey();
+    setDraftActive(false);
     const source = id ? (getShift(id) ?? shift ?? null) : null;
-    const fallbackJob = jobs.find((j) => j.id === settings.activeJobId) ?? jobs[0];
-    const initialDate = resolveEntryDate(source ?? undefined, date);
+    const carry = id ? null : nextEntryRef.current;
+    nextEntryRef.current = null;
+    const carriedJob = carry?.jobId ? jobs.find((j) => j.id === carry.jobId) : undefined;
+    const fallbackJob = carriedJob ?? jobs.find((j) => j.id === settings.activeJobId) ?? jobs[0];
+    const initialDate = carry ? carry.date : resolveEntryDate(source ?? undefined, date);
     setEntryDate(initialDate);
     setObjectId(source?.objectId);
     setJobId(source?.jobId ?? fallbackJob?.id);
@@ -399,6 +435,49 @@ export function ShiftDialog({
     setNewCodeOpen(false);
     setFieldError({});
     setConfirmIssues(null);
+    // B6: Entwurf des neuen Eintrags (nur für dieses Konto und diesen Job) wiederherstellen.
+    // Nie beim Bearbeiten und nie direkt nach "Speichern & Neuer Eintrag" / Verwerfen (`carry`).
+    const draft = !id && !carry ? loadEntryDraft(fallbackJob?.id) : null;
+    if (draft) {
+      draftJobRef.current = { jobId: fallbackJob?.id };
+      setDraftActive(true);
+      setEntryDate(draft.date);
+      setKind("arbeit");
+      setStart(draft.start);
+      setEnd(draft.end);
+      setStartTouched(draft.startTouched);
+      setEndTouched(draft.endTouched);
+      setContinuation(
+        continuationStart(getData().shifts, {
+          ...(fallbackJob?.id !== undefined ? { jobId: fallbackJob.id } : {}),
+          date: draft.date,
+        }),
+      );
+      setBreakMinutes(draft.breakMinutes);
+      if (draft.rate !== undefined) {
+        setRate(draft.rate);
+        setRateDirty(true);
+      }
+      setNote(draft.note ?? "");
+      setOvertime(draft.overtime ?? false);
+      setCustomerId(draft.customerId);
+      setProjectId(draft.projectId);
+      setObjectId(draft.objectId);
+      setWorkplace(draft.workplace ?? "");
+      setStreet(draft.street ?? "");
+      setHouseNo(draft.houseNo ?? "");
+      setZip(draft.zip ?? "");
+      setCity(draft.city ?? "");
+      setFloor(draft.floor ?? "");
+      setDoorSide(draft.doorSide ?? "");
+      setWorkCode(draft.workCode ?? "");
+      setNewCode(draft.workCode ?? "");
+      setNewCodeLabel(draft.workCodeLabel ?? "");
+      setWorkCodeNote(draft.workCodeNote ?? "");
+      setTasks([...draft.tasks]);
+      setCustomTask(draft.customTask ?? "");
+      setAdvanced(Boolean(draft.note || draft.overtime || draft.customerId || draft.projectId));
+    }
   }, [
     open,
     shiftId,
@@ -408,6 +487,7 @@ export function ShiftDialog({
     settings.defaultRate,
     settings.bundesland,
     date,
+    resetNonce,
   ]);
 
   const job = jobs.find((j) => j.id === jobId);
@@ -554,6 +634,29 @@ export function ShiftDialog({
         ...(resolvedShiftId ? { excludeId: resolvedShiftId } : {}),
       }),
     [jobId, tasks, resolvedShiftId],
+  );
+
+  // B3: Letzter / häufig genutzter Einsatzort dieses Jobs – nur Anzeige im Picker.
+  const objectUsage = useMemo(
+    () =>
+      objectUsageFromHistory({
+        shifts: getData().shifts,
+        objects,
+        ...(jobId !== undefined ? { jobId } : {}),
+        ...(resolvedShiftId ? { excludeId: resolvedShiftId } : {}),
+      }),
+    [jobId, objects, resolvedShiftId],
+  );
+
+  // B2: Pausen-Vorschlag aus der Historie dieses Jobs – nur Anzeige, gesetzt wird nur per Tipp.
+  const pauseSuggestion = useMemo(
+    () =>
+      pauseSuggestionFromHistory({
+        shifts: getData().shifts,
+        ...(jobId !== undefined ? { jobId } : {}),
+        ...(resolvedShiftId ? { excludeId: resolvedShiftId } : {}),
+      }),
+    [jobId, resolvedShiftId],
   );
 
   // A4: Werte des letzten Eintrags – nur für neue Einträge und nur auf ausdrückliches Tippen.
@@ -703,6 +806,23 @@ export function ShiftDialog({
     if (holiday && kind === "feiertag") setKind("arbeit");
   }
 
+  /**
+   * B4: Ende aus Beginn + Dauer. Nur auf ausdrückliches Tippen und nie über ein selbst
+   * eingetragenes Ende (die Chips sind dann gesperrt). Über Mitternacht entsteht ein Ende vor
+   * dem Beginn – die bestehende Folgetag-Regel. Dauer und Verdienst rechnet weiter der Rechenkern.
+   */
+  function applyDuration(hours: number) {
+    const next = endFromDuration(start, hours * 60);
+    if (next === null) return;
+    if (endTouched && end.trim() !== "") return;
+    setFieldError((prev) => {
+      const rest = { ...prev };
+      delete rest.end;
+      return rest;
+    });
+    onEndChange(next);
+  }
+
   function onEndChange(value: string) {
     setEnd(value);
     if (holiday && kind === "feiertag") setKind("arbeit");
@@ -782,7 +902,7 @@ export function ShiftDialog({
    * (Überschneidung, Dublette, Ende weit vor dem Beginn) erst nach ausdrücklicher Bestätigung.
    * Eine legitime Nachtschicht wird nie abgelehnt.
    */
-  function save() {
+  function save(mode: "close" | "new" = "close") {
     if (kind === "arbeit") {
       if (validation.errors.length > 0) {
         const byField = fieldIssues(validation);
@@ -795,15 +915,27 @@ export function ShiftDialog({
       }
       if (validation.warnings.length > 0) {
         setFieldError({});
+        pendingSaveModeRef.current = mode;
         setConfirmIssues(validation.warnings);
         return;
       }
     }
     setFieldError({});
-    commit();
+    commit(mode);
   }
 
-  function commit() {
+  function commit(mode: "close" | "new" = "close") {
+    // B5: kein zweiter Speichervorgang, solange einer läuft (Doppeltippen).
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    try {
+      commitEntry(mode);
+    } finally {
+      submittingRef.current = false;
+    }
+  }
+
+  function commitEntry(mode: "close" | "new") {
     setConfirmIssues(null);
     const editingId = editingIdRef.current;
     const existing = editingId ? getShift(editingId) : undefined;
@@ -874,8 +1006,33 @@ export function ShiftDialog({
     // (sonst würde der Tag zu einem eigenen Fall und die 42-Tage-Frist begänne neu).
     const caseId = keptSickCaseId(existing ?? shift ?? undefined, kind, jobId);
     if (caseId) next.sickCaseId = caseId;
-    persistDialogShift(next, editingId);
+    let saved: Shift;
+    try {
+      saved = persistDialogShift(next, editingId);
+    } catch (error) {
+      if (mode === "close") throw error;
+      // B5: nichts wurde gespeichert – das Formular bleibt unverändert offen.
+      toast.error(t("entry.saveFailed"));
+      return;
+    }
+    if (mode === "new") {
+      if (isPersistFailed()) {
+        // Der Speicher des Geräts hat abgelehnt (der Hinweis erscheint global). Der Eintrag liegt
+        // im Arbeitsspeicher: Das Formular bleibt offen und wird an DIESE Id gebunden, damit ein
+        // erneutes Speichern ihn aktualisiert statt zu verdoppeln.
+        editingIdRef.current = saved.id;
+        toast.error(t("entry.saveNotPersisted"));
+        return;
+      }
+      toast.success(t("entry.savedNew"));
+      clearDraftAfterSave();
+      nextEntryRef.current = { date: entryDate, jobId };
+      setResetNonce((n) => n + 1);
+      return;
+    }
     toast.success(editingId ? t("shift.updated") : t("shift.saved"));
+    // B6: Hat der Gerätespeicher abgelehnt, bleibt der Entwurf als Sicherung erhalten.
+    if (!isPersistFailed()) clearDraftAfterSave();
     onOpenChange(false);
   }
 
@@ -938,6 +1095,84 @@ export function ShiftDialog({
     { key: "frequent", label: t("entry.taskFrequent"), values: historyTasks.frequent },
     { key: "own", label: t("entry.taskOwn"), values: ownTaskSuggestions },
   ].filter((group) => group.values.length > 0);
+
+  /**
+   * B6: Entwurf der Eingaben (ohne Fotos, GPS, Id, Verdienst oder andere berechnete Werte).
+   * Nur für neue Arbeitseinträge; der Lohn nur, wenn er ausdrücklich getippt wurde.
+   */
+  const draftFields: EntryDraftFields | null =
+    isWork && !isEditing
+      ? {
+          date: entryDate,
+          start,
+          end,
+          startTouched,
+          endTouched,
+          breakMinutes,
+          tasks,
+          ...(rateDirty && rate.trim() ? { rate: rate.trim() } : {}),
+          ...(note.trim() ? { note } : {}),
+          ...(overtime ? { overtime: true } : {}),
+          ...(customerId ? { customerId } : {}),
+          ...(projectId ? { projectId } : {}),
+          ...(objectId ? { objectId } : {}),
+          ...(workplace ? { workplace } : {}),
+          ...(street ? { street } : {}),
+          ...(houseNo ? { houseNo } : {}),
+          ...(zip ? { zip } : {}),
+          ...(city ? { city } : {}),
+          ...(floor ? { floor } : {}),
+          ...(doorSide ? { doorSide } : {}),
+          ...(activeWorkCode ? { workCode: activeWorkCode } : {}),
+          ...(newCodeLabel.trim() ? { workCodeLabel: newCodeLabel.trim() } : {}),
+          ...(activeWorkCode && workCodeNote.trim() ? { workCodeNote } : {}),
+          ...(customTask.trim() ? { customTask } : {}),
+        }
+      : null;
+  const draftSnapshot = draftFields ? JSON.stringify(draftFields) : "";
+
+  // Schreibt nur nach einer Eingabe der Nutzerin (nie beim bloßen Öffnen) und nur im Namensraum,
+  // in dem der Dialog geöffnet wurde.
+  useEffect(() => {
+    if (!open || !draftSnapshot || !touchedRef.current) return;
+    if (draftScopeKeyRef.current !== entryDraftStorageKey()) return;
+    const fields = JSON.parse(draftSnapshot) as EntryDraftFields;
+    // Der Entwurf bleibt unter dem Job, unter dem er begonnen wurde. Ein Jobwechsel im offenen
+    // Dialog verschiebt ihn nicht und überschreibt nie den Entwurf eines anderen Jobs.
+    const anchor = draftJobRef.current ?? { jobId };
+    if (saveEntryDraft(anchor.jobId, fields)) {
+      draftJobRef.current = anchor;
+      setDraftActive(true);
+    }
+  }, [open, draftSnapshot, jobId]);
+
+  function markTouched(event: { target: EventTarget }) {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest?.("[data-draft-ignore]")) return;
+    touchedRef.current = true;
+  }
+
+  /** Nach erfolgreichem Speichern eines NEUEN Eintrags: dessen Entwurf entfernen. */
+  function clearDraftAfterSave() {
+    touchedRef.current = false;
+    if (isEditing) return;
+    const stored = draftJobRef.current;
+    if (stored) clearEntryDraft(stored.jobId);
+    draftJobRef.current = null;
+    setDraftActive(false);
+  }
+
+  /** Ausdrückliches Verwerfen: nur der Entwurf dieses Kontos und Jobs, danach ein leerer Eintrag. */
+  function discardDraft() {
+    const stored = draftJobRef.current;
+    if (stored) clearEntryDraft(stored.jobId);
+    touchedRef.current = false;
+    draftJobRef.current = null;
+    setDraftActive(false);
+    setDiscardOpen(false);
+    nextEntryRef.current = { date: entryDate, jobId };
+    setResetNonce((n) => n + 1);
+  }
 
   function bumpBreak(delta: number) {
     setBreakMinutes(String(Math.max(0, breakValue + delta)));
@@ -1013,6 +1248,7 @@ export function ShiftDialog({
           data-work={isWork ? "1" : "0"}
         >
           <header
+            data-draft-ignore
             data-testid="entry-header"
             className="flex shrink-0 items-center gap-1 border-b bg-background px-1 pb-1.5 pt-[max(0.125rem,env(safe-area-inset-top))]"
           >
@@ -1039,7 +1275,28 @@ export function ShiftDialog({
           <div
             data-testid="entry-editor-scroll"
             className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-4 pb-4 pt-3"
+            onInputCapture={markTouched}
+            onChangeCapture={markTouched}
+            onClickCapture={markTouched}
           >
+            {draftActive && !isEditing ? (
+              <div
+                data-draft-ignore
+                data-testid="entry-draft-banner"
+                className="flex min-h-11 items-center justify-between gap-2 rounded-xl bg-muted/60 px-3 py-1.5 text-sm"
+              >
+                <span className="text-muted-foreground">{t("entry.draftSaved")}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-11 shrink-0 px-3 text-primary"
+                  data-testid="entry-draft-discard"
+                  onClick={() => setDiscardOpen(true)}
+                >
+                  {t("entry.draftDiscard")}
+                </Button>
+              </div>
+            ) : null}
             <div className="space-y-3">
               <label className="relative flex min-h-11 items-center gap-3 rounded-xl bg-card px-3 py-2">
                 <CalendarDays className="size-5 shrink-0 text-primary" aria-hidden />
@@ -1069,6 +1326,7 @@ export function ShiftDialog({
                     <button
                       key={j.id}
                       type="button"
+                      data-draft-ignore
                       aria-pressed={jobId === j.id}
                       onClick={() => {
                         setJobId(j.id);
@@ -1235,6 +1493,14 @@ export function ShiftDialog({
                       </div>
                     </div>
 
+                    <DurationChips
+                      start={start}
+                      end={end}
+                      endLocked={endTouched && end.trim() !== ""}
+                      onSelect={applyDuration}
+                      t={t}
+                    />
+
                     <div className="flex items-center gap-2 border-t border-border/70 px-3 py-2">
                       <Label htmlFor="pause" className="flex-1 text-sm">
                         {t("entry.break")}
@@ -1272,6 +1538,13 @@ export function ShiftDialog({
                         {t("entry.minutesShort")}
                       </span>
                     </div>
+
+                    <PauseChips
+                      value={breakMinutes}
+                      onSelect={(minutes) => setBreakMinutes(String(minutes))}
+                      suggestion={pauseSuggestion}
+                      t={t}
+                    />
 
                     <div className="flex items-baseline justify-between gap-2 border-t border-border/70 bg-primary/5 px-3 py-2.5">
                       <span className="text-sm text-muted-foreground">{t("entry.workTime")}</span>
@@ -1382,44 +1655,35 @@ export function ShiftDialog({
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     {t("worklog.workplace")}
                   </p>
-                  <div className="relative rounded-2xl bg-card px-3 py-3">
-                    <p
+                  <ObjectPicker
+                    objects={objects}
+                    usage={objectUsage}
+                    selectedId={objectId}
+                    onSelect={applyObjectSelection}
+                    t={t}
+                  >
+                    <span
                       className={cn(
-                        "pr-6 text-[15px] font-semibold",
+                        "block pr-6 text-[15px] font-semibold",
                         hasObjectData ? "" : "text-muted-foreground",
                       )}
                     >
                       {objectTitle}
-                    </p>
+                    </span>
                     {objectAddressLines.map((line) => (
-                      <p key={line} className="mt-0.5 pr-6 text-sm text-muted-foreground">
+                      <span key={line} className="mt-0.5 block pr-6 text-sm text-muted-foreground">
                         {line}
-                      </p>
+                      </span>
                     ))}
-                    <ChevronRight
-                      className="absolute right-3 top-4 size-4 text-muted-foreground"
-                      aria-hidden
-                    />
-                    <Label htmlFor="objekt-auswahl" className="sr-only">
-                      {t("object.select")}
-                    </Label>
-                    <select
-                      id="objekt-auswahl"
-                      data-testid="object-select"
-                      value={objectId ?? ""}
-                      onChange={(e) => applyObjectSelection(e.target.value)}
-                      className="absolute inset-0 cursor-pointer opacity-0"
+                  </ObjectPicker>
+                  {objectId && !selectedObject ? (
+                    <p
+                      className="mt-1 px-1 text-xs text-muted-foreground"
+                      data-testid="object-unavailable"
                     >
-                      <option value="">
-                        {hasObjectData ? t("object.none") : t("entry.chooseObject")}
-                      </option>
-                      {objects.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                      {t("object.unavailable")}
+                    </p>
+                  ) : null}
                   {/* Nur die Aktionen des aktuellen Zustands: ohne Objekt anlegen/wählen,
                       mit Objekt bearbeiten/entfernen. */}
                   <div className="mt-2 flex flex-wrap gap-1">
@@ -2070,18 +2334,41 @@ export function ShiftDialog({
             ) : null}
           </div>
 
-          <div className="shrink-0 flex gap-2 border-t bg-background px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11 flex-1"
-              onClick={() => onOpenChange(false)}
-            >
-              {t("action.cancel")}
-            </Button>
-            <Button type="button" data-testid="entry-save" className="h-11 flex-1" onClick={save}>
-              {t("action.save")}
-            </Button>
+          <div
+            data-draft-ignore
+            className="shrink-0 grid gap-2 border-t bg-background px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+          >
+            {/* B5: nur für neue Arbeitseinträge; Bearbeiten und Abwesenheiten behalten den
+                bisherigen Ablauf. */}
+            {!isEditing && isWork ? (
+              <Button
+                type="button"
+                variant="secondary"
+                data-testid="entry-save-new"
+                className="h-11 w-full"
+                onClick={() => save("new")}
+              >
+                {t("entry.saveAndNew")}
+              </Button>
+            ) : null}
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 flex-1"
+                onClick={() => onOpenChange(false)}
+              >
+                {t("action.cancel")}
+              </Button>
+              <Button
+                type="button"
+                data-testid="entry-save"
+                className="h-11 flex-1"
+                onClick={() => save()}
+              >
+                {t("action.save")}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -2123,8 +2410,32 @@ export function ShiftDialog({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("entry.confirmBack")}</AlertDialogCancel>
-            <AlertDialogAction data-testid="entry-confirm-save" onClick={commit}>
+            <AlertDialogAction
+              data-testid="entry-confirm-save"
+              onClick={() => commit(pendingSaveModeRef.current)}
+            >
               {t("entry.confirmSave")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* B6: Verwerfen löscht den Entwurf dieses Kontos und Jobs – nach ausdrücklicher Bestätigung.
+          Schließen des Editors verwirft nie. */}
+      <AlertDialog open={discardOpen} onOpenChange={setDiscardOpen}>
+        <AlertDialogContent data-testid="entry-draft-discard-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("entry.draftDiscardTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("entry.draftDiscardDesc")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="h-11">{t("entry.confirmBack")}</AlertDialogCancel>
+            <AlertDialogAction
+              className="h-11"
+              data-testid="entry-draft-discard-confirm"
+              onClick={discardDraft}
+            >
+              {t("entry.draftDiscardConfirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

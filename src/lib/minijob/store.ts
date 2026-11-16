@@ -425,6 +425,13 @@ function learnObjectsFromShift(
   shift: Shift,
   objects: WorkObject[],
 ): { shift: Shift; objects: WorkObject[] } {
+  // Verweist der Eintrag auf eine objectId, die im Katalog nicht (mehr) existiert, bleiben ID und
+  // Adress-Schnappschuss des Eintrags unverändert: kein Ersatzobjekt, keine stille Neuverknüpfung.
+  // Nur eine ausdrückliche Auswahl im Editor setzt eine andere ID. Einträge mit gültiger oder ohne
+  // objectId lernen wie bisher.
+  if (shift.objectId && !objects.some((o) => o.id === shift.objectId)) {
+    return { shift, objects };
+  }
   const result = upsertObjectFromShiftAddress(objects, shift, { newId, now: todayIso() });
   return {
     shift: linkShiftToObject(shift, result.objectId),

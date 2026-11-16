@@ -403,7 +403,8 @@ describe("A4 Letzten Eintrag übernehmen", () => {
     open(null);
     const rateBefore = q<HTMLInputElement>("#lohn").value;
     click(q('[data-testid="entry-repeat-last"]'));
-    expect(q<HTMLSelectElement>('[data-testid="object-select"]').value).toBe("obj-1");
+    expect(q('[data-testid="entry-object"]').getAttribute("data-object")).toBe("set");
+    expect(q('[data-testid="object-picker-trigger"]').textContent).toContain("Bürohaus Mitte");
     expect(q('[data-testid="entry-work-code"]').textContent).toContain("Unterhaltsreinigung");
     expect(q('[data-testid="entry-tasks"]').getAttribute("data-task-count")).toBe("2");
     // Zeiten und Lohn gehören dem neuen Eintrag.

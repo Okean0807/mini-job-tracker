@@ -8,12 +8,15 @@ import {
   applyContinuationTo,
   continuationStart,
   dayIndex,
+  endFromDuration,
+  grossMinutes,
   DEFAULT_ENTRY_END,
   DEFAULT_ENTRY_START,
   isoFromDayIndex,
   lastJobEntry,
   lastJobValues,
   minutesToTime,
+  pauseSuggestionFromHistory,
   repeatPayload,
   reseedTimeFields,
   shiftEndMinutes,
@@ -478,5 +481,60 @@ describe("F4 Zeitfelder nach Job-, Datums- oder Artwechsel", () => {
     expect(
       reseedTimeFields({ continuation: sameDay, startTouched: false, endTouched: true }),
     ).toEqual({ start: "10:30" });
+  });
+});
+
+describe("B2 pauseSuggestionFromHistory", () => {
+  const w = (id: string, date: string, breakMinutes: number, jobId = "j1"): Shift => ({
+    ...work({ id, start: "08:00", end: "16:00", breakMinutes, date }),
+    jobId,
+  });
+
+  it("leere Historie → kein Vorschlag", () => {
+    expect(pauseSuggestionFromHistory({ shifts: [], jobId: "j1" })).toEqual({});
+  });
+
+  it("zuletzt = jüngster Eintrag, häufig = Modus; 0 ist ein gültiger Wert", () => {
+    const shifts = [w("1", "2026-09-01", 30), w("2", "2026-09-02", 30), w("3", "2026-09-03", 0)];
+    expect(pauseSuggestionFromHistory({ shifts, jobId: "j1" })).toEqual({ last: 0, frequent: 30 });
+  });
+
+  it("Gleichstand → die jüngere Pause; andere Jobs, Abwesenheiten und excludeId zählen nicht", () => {
+    const shifts = [
+      w("1", "2026-09-01", 15),
+      w("2", "2026-09-02", 45),
+      w("3", "2026-09-03", 60, "j2"),
+      { ...w("4", "2026-09-04", 99), kind: "urlaub" as const },
+    ];
+    expect(pauseSuggestionFromHistory({ shifts, jobId: "j1" })).toEqual({ last: 45, frequent: 45 });
+    expect(pauseSuggestionFromHistory({ shifts, jobId: "j1", excludeId: "2" })).toEqual({
+      last: 15,
+      frequent: 15,
+    });
+  });
+});
+
+describe("B4 endFromDuration / grossMinutes", () => {
+  it.each([2, 4, 6, 8, 10])("%i h ab 09:00", (h) => {
+    expect(endFromDuration("09:00", h * 60)).toBe(minutesToTime(9 * 60 + h * 60));
+  });
+
+  it("über Mitternacht: Ende vor Beginn (bestehende Folgetag-Regel)", () => {
+    expect(endFromDuration("22:00", 240)).toBe("02:00");
+    expect(endFromDuration("23:30", 120)).toBe("01:30");
+    expect(grossMinutes("22:00", "02:00")).toBe(240);
+    expect(grossMinutes("20:00", endFromDuration("20:00", 600)!)).toBe(600);
+  });
+
+  it("ungültiger Beginn oder unsinnige Dauer → kein Ende", () => {
+    expect(endFromDuration("", 240)).toBeNull();
+    expect(endFromDuration("25:00", 240)).toBeNull();
+    expect(endFromDuration("09:00", 0)).toBeNull();
+    expect(endFromDuration("09:00", 24 * 60)).toBeNull();
+    expect(grossMinutes("09:00", "")).toBeNull();
+  });
+
+  it("gleiche Zeit ist Dauer 0, nicht 24 h", () => {
+    expect(grossMinutes("09:00", "09:00")).toBe(0);
   });
 });

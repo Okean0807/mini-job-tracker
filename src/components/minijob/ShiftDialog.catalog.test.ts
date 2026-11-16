@@ -11,8 +11,8 @@ const jobsSrc = readFileSync(
 );
 
 describe("ShiftDialog follows Objects pattern for Leistungsart/Tätigkeiten", () => {
-  it("uses the same select + fields pattern as Objekt", () => {
-    expect(src).toMatch(/object\.select/);
+  it("uses the same pick + fields pattern as Objekt (Objekt: ObjectPicker)", () => {
+    expect(src).toMatch(/<ObjectPicker/);
     expect(src).toMatch(/applyObjectSelection/);
     expect(src).toMatch(/applyWorkCodeSelection/);
     expect(src).toMatch(/applyWorkCodeToFormFields/);
