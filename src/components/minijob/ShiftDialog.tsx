@@ -74,7 +74,7 @@ import { holidayName } from "@/lib/minijob/holidays";
 import { parseEditedRateInput, rateFieldValue, suggestedRate } from "@/lib/minijob/rate";
 import { ObjectDialog } from "@/components/minijob/ObjectDialog";
 import { persistDialogShift, removeShift, getShift } from "@/lib/minijob/service";
-import { getData } from "@/lib/minijob/store";
+import { getData, isPersistFailed } from "@/lib/minijob/store";
 import {
   type Customer,
   type Job,
@@ -234,6 +234,13 @@ export function ShiftDialog({
   // Gesetzt = gespeichertes Objekt bearbeiten, null = neues Objekt anlegen.
   const [objectDialogTarget, setObjectDialogTarget] = useState<WorkObject | null>(null);
   const editingIdRef = useRef<string | undefined>(undefined);
+  // B5: Kontext (Tag und Job) für den nächsten Eintrag nach "Speichern & Neuer Eintrag". Alles
+  // andere startet wie bei einem frisch geöffneten neuen Eintrag. `resetNonce` löst dafür genau
+  // die bestehende Initialisierung (Effekt unten) erneut aus – es gibt keinen zweiten Reset-Pfad.
+  const nextEntryRef = useRef<{ date: string; jobId: string | undefined } | null>(null);
+  const [resetNonce, setResetNonce] = useState(0);
+  const pendingSaveModeRef = useRef<"close" | "new">("close");
+  const submittingRef = useRef(false);
   const resolvedShiftId = (shiftId ?? shift?.id ?? "").trim() || undefined;
   const isEditing = Boolean(resolvedShiftId);
   const customCodes = settings.workCodes ?? [];
@@ -332,8 +339,11 @@ export function ShiftDialog({
     const id = (shiftId ?? shift?.id ?? "").trim() || undefined;
     editingIdRef.current = id;
     const source = id ? (getShift(id) ?? shift ?? null) : null;
-    const fallbackJob = jobs.find((j) => j.id === settings.activeJobId) ?? jobs[0];
-    const initialDate = resolveEntryDate(source ?? undefined, date);
+    const carry = id ? null : nextEntryRef.current;
+    nextEntryRef.current = null;
+    const carriedJob = carry?.jobId ? jobs.find((j) => j.id === carry.jobId) : undefined;
+    const fallbackJob = carriedJob ?? jobs.find((j) => j.id === settings.activeJobId) ?? jobs[0];
+    const initialDate = carry ? carry.date : resolveEntryDate(source ?? undefined, date);
     setEntryDate(initialDate);
     setObjectId(source?.objectId);
     setJobId(source?.jobId ?? fallbackJob?.id);
@@ -414,6 +424,7 @@ export function ShiftDialog({
     settings.defaultRate,
     settings.bundesland,
     date,
+    resetNonce,
   ]);
 
   const job = jobs.find((j) => j.id === jobId);
@@ -828,7 +839,7 @@ export function ShiftDialog({
    * (Überschneidung, Dublette, Ende weit vor dem Beginn) erst nach ausdrücklicher Bestätigung.
    * Eine legitime Nachtschicht wird nie abgelehnt.
    */
-  function save() {
+  function save(mode: "close" | "new" = "close") {
     if (kind === "arbeit") {
       if (validation.errors.length > 0) {
         const byField = fieldIssues(validation);
@@ -841,15 +852,27 @@ export function ShiftDialog({
       }
       if (validation.warnings.length > 0) {
         setFieldError({});
+        pendingSaveModeRef.current = mode;
         setConfirmIssues(validation.warnings);
         return;
       }
     }
     setFieldError({});
-    commit();
+    commit(mode);
   }
 
-  function commit() {
+  function commit(mode: "close" | "new" = "close") {
+    // B5: kein zweiter Speichervorgang, solange einer läuft (Doppeltippen).
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    try {
+      commitEntry(mode);
+    } finally {
+      submittingRef.current = false;
+    }
+  }
+
+  function commitEntry(mode: "close" | "new") {
     setConfirmIssues(null);
     const editingId = editingIdRef.current;
     const existing = editingId ? getShift(editingId) : undefined;
@@ -920,7 +943,29 @@ export function ShiftDialog({
     // (sonst würde der Tag zu einem eigenen Fall und die 42-Tage-Frist begänne neu).
     const caseId = keptSickCaseId(existing ?? shift ?? undefined, kind, jobId);
     if (caseId) next.sickCaseId = caseId;
-    persistDialogShift(next, editingId);
+    let saved: Shift;
+    try {
+      saved = persistDialogShift(next, editingId);
+    } catch (error) {
+      if (mode === "close") throw error;
+      // B5: nichts wurde gespeichert – das Formular bleibt unverändert offen.
+      toast.error(t("entry.saveFailed"));
+      return;
+    }
+    if (mode === "new") {
+      if (isPersistFailed()) {
+        // Der Speicher des Geräts hat abgelehnt (der Hinweis erscheint global). Der Eintrag liegt
+        // im Arbeitsspeicher: Das Formular bleibt offen und wird an DIESE Id gebunden, damit ein
+        // erneutes Speichern ihn aktualisiert statt zu verdoppeln.
+        editingIdRef.current = saved.id;
+        toast.error(t("entry.saveNotPersisted"));
+        return;
+      }
+      toast.success(t("entry.savedNew"));
+      nextEntryRef.current = { date: entryDate, jobId };
+      setResetNonce((n) => n + 1);
+      return;
+    }
     toast.success(editingId ? t("shift.updated") : t("shift.saved"));
     onOpenChange(false);
   }
@@ -2122,18 +2167,38 @@ export function ShiftDialog({
             ) : null}
           </div>
 
-          <div className="shrink-0 flex gap-2 border-t bg-background px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11 flex-1"
-              onClick={() => onOpenChange(false)}
-            >
-              {t("action.cancel")}
-            </Button>
-            <Button type="button" data-testid="entry-save" className="h-11 flex-1" onClick={save}>
-              {t("action.save")}
-            </Button>
+          <div className="shrink-0 grid gap-2 border-t bg-background px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            {/* B5: nur für neue Arbeitseinträge; Bearbeiten und Abwesenheiten behalten den
+                bisherigen Ablauf. */}
+            {!isEditing && isWork ? (
+              <Button
+                type="button"
+                variant="secondary"
+                data-testid="entry-save-new"
+                className="h-11 w-full"
+                onClick={() => save("new")}
+              >
+                {t("entry.saveAndNew")}
+              </Button>
+            ) : null}
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 flex-1"
+                onClick={() => onOpenChange(false)}
+              >
+                {t("action.cancel")}
+              </Button>
+              <Button
+                type="button"
+                data-testid="entry-save"
+                className="h-11 flex-1"
+                onClick={() => save()}
+              >
+                {t("action.save")}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -2175,7 +2240,10 @@ export function ShiftDialog({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("entry.confirmBack")}</AlertDialogCancel>
-            <AlertDialogAction data-testid="entry-confirm-save" onClick={commit}>
+            <AlertDialogAction
+              data-testid="entry-confirm-save"
+              onClick={() => commit(pendingSaveModeRef.current)}
+            >
               {t("entry.confirmSave")}
             </AlertDialogAction>
           </AlertDialogFooter>

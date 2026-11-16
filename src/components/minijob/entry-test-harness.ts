@@ -14,7 +14,13 @@ import {
   replaceAll,
   useAppData,
 } from "@/lib/minijob/store";
-import { DEFAULT_SETTINGS, type Job, type Shift, type WorkObject } from "@/lib/minijob/types";
+import {
+  DEFAULT_SETTINGS,
+  type Job,
+  type Settings,
+  type Shift,
+  type WorkObject,
+} from "@/lib/minijob/types";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -43,7 +49,14 @@ function Harness({ shiftId, date }: { shiftId: string | null; date: string }) {
   });
 }
 
-export function setup(data: { jobs?: Job[]; shifts?: Shift[]; objects?: WorkObject[] } = {}) {
+export function setup(
+  data: {
+    jobs?: Job[];
+    shifts?: Shift[];
+    objects?: WorkObject[];
+    settings?: Partial<Settings>;
+  } = {},
+) {
   for (let i = window.localStorage.length - 1; i >= 0; i -= 1) {
     const key = window.localStorage.key(i);
     if (key?.startsWith("minijob-")) window.localStorage.removeItem(key);
@@ -56,7 +69,7 @@ export function setup(data: { jobs?: Job[]; shifts?: Shift[]; objects?: WorkObje
       jobs: data.jobs ?? [{ id: "j1", name: "Reinigung Nord", color: "#0d9488", mode: "flex" }],
       objects: data.objects ?? [],
       shifts: data.shifts ?? [],
-      settings: { ...DEFAULT_SETTINGS, onboarded: true, localDemoMode: true },
+      settings: { ...DEFAULT_SETTINGS, onboarded: true, localDemoMode: true, ...data.settings },
     } as never);
   });
   closed.count = 0;
