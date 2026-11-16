@@ -143,3 +143,37 @@ export function oauthResumeStep(): number {
   return WIZARD_STEP_INDEX.workMode;
 }
 
+/**
+ * True while a signed-in user's profile on this device has not been compared with the
+ * cloud yet: the account namespace is active, no sync ever completed here, and the first
+ * sync has not reached a final state (synced / offline / error / conflict).
+ *
+ * Until then an empty local profile does not mean "new user" — the cloud may hold a
+ * complete profile — so the wizard must not be shown. Once the first sync has settled
+ * (restored complete profile → wizard hidden; incomplete or no profile → wizard), this is
+ * false. No timer is involved; it follows the sync status.
+ */
+export function isFirstProfileRestorePending(input: {
+  signedIn: boolean;
+  scopeIsUser: boolean;
+  lastSyncedAt: number | null;
+  status: "idle" | "syncing" | "synced" | "offline" | "error" | "conflict";
+}): boolean {
+  return (
+    input.signedIn &&
+    input.scopeIsUser &&
+    input.lastSyncedAt == null &&
+    (input.status === "idle" || input.status === "syncing")
+  );
+}
+
+export type WizardOverlay = "none" | "restoring" | "wizard";
+
+/** What the root shows above the app: nothing, a neutral loader, or the setup wizard. */
+export function resolveWizardOverlay(input: {
+  wizardNeeded: boolean;
+  restorePending: boolean;
+}): WizardOverlay {
+  if (!input.wizardNeeded) return "none";
+  return input.restorePending ? "restoring" : "wizard";
+}
