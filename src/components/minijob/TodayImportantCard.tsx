@@ -5,6 +5,7 @@ import { formatEuro, formatHours, isoDate, shiftHours } from "@/lib/minijob/calc
 import { payPeriods } from "@/lib/minijob/payday";
 import { jobsPlannedOn } from "@/lib/minijob/schedule";
 import { limitAlertLevel } from "@/lib/minijob/limit-alert";
+import type { LegalWarningStatus } from "@/lib/minijob/legal/warnings";
 import { jobsNeedingEmploymentType } from "@/lib/minijob/legal/employment";
 import { jobsApplyMinijobLimit } from "@/lib/minijob/work-mode";
 import { findWageViolations } from "@/lib/minijob/wage-compliance";
@@ -20,6 +21,8 @@ export function TodayImportantCard({
   resolve,
   monthUsage,
   yearUsage,
+  rollingStatus,
+  highVariation,
   onNewEntry,
 }: {
   shifts: Shift[];
@@ -29,6 +32,10 @@ export function TodayImportantCard({
   resolve: Resolver;
   monthUsage: { share: number; earnings: number; earningsLimit: number };
   yearUsage: { share: number; earnings: number; earningsLimit: number };
+  /** Status of the rolling earnings indicator, so this card cannot contradict its card. */
+  rollingStatus?: LegalWarningStatus;
+  /** hasMonthAboveDoubleReference of the rolling forecast. */
+  highVariation?: boolean;
   onNewEntry: () => void;
 }) {
   const { t } = useT();
@@ -39,8 +46,14 @@ export function TodayImportantCard({
   const overdue = periods.filter((p) => p.overdue).reduce((sum, p) => sum + p.outstanding, 0);
   const open = periods.filter((p) => p.outstanding > 0.005).reduce((sum, p) => sum + p.outstanding, 0);
   // Gleiche Regel wie das Dashboard-Banner: nur mit (bestätigtem) Minijob.
-  const nearLimit =
-    limitAlertLevel(jobsApplyMinijobLimit(jobs), monthUsage.share, yearUsage.share) !== null;
+  const limitLevel = limitAlertLevel(
+    jobsApplyMinijobLimit(jobs),
+    monthUsage.share,
+    yearUsage.share,
+    rollingStatus,
+    highVariation,
+  );
+  const nearLimit = limitLevel !== null;
   const needsEmploymentType = jobsNeedingEmploymentType(jobs);
   const monthStart = `${today.slice(0, 7)}-01`;
   const wageViolations = findWageViolations(shifts, jobs, settings.defaultRate, (s) => s.date >= monthStart && s.date <= today);
@@ -96,9 +109,22 @@ export function TodayImportantCard({
             <span>{t("dash.todayOpen")}</span><span className="font-semibold tabular-nums">{formatEuro(open)}</span>
           </div>
         ) : null}
-        {nearLimit ? (
+        {limitLevel ? (
           <div className="rounded-xl border border-accent bg-accent/10 px-3 py-2.5 text-sm">
-            {t("dash.todayLimit", { percent: Math.round(Math.max(monthUsage.share, yearUsage.share)) })}
+            {limitLevel === "rollingAbove"
+              ? `${t("rolling.statusAbove")}. ${t("rolling.aboveHint")}`
+              : limitLevel === "highVariation"
+                ? t("rolling.signal")
+                : limitLevel === "yearAbove"
+                  ? t("dash.limitYearAbove", { amount: formatEuro(yearUsage.earningsLimit) })
+                  : limitLevel === "monthAbove"
+                    ? t("dash.limitMonthAbove", {
+                        amount: formatEuro(monthUsage.earningsLimit),
+                        yearAmount: formatEuro(yearUsage.earningsLimit),
+                      })
+                    : t("dash.todayLimit", {
+                        percent: Math.round(Math.max(monthUsage.share, yearUsage.share)),
+                      })}
           </div>
         ) : null}
         {wageViolations.length > 0 ? (

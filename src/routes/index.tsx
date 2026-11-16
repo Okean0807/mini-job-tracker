@@ -7,7 +7,7 @@ import { TodayImportantCard } from "@/components/minijob/TodayImportantCard";
 import { GoalsCard } from "@/components/minijob/GoalsCard";
 import { OrdersCard } from "@/components/minijob/OrdersCard";
 import { LimitCard } from "@/components/minijob/LimitCard";
-import { LegalForecastCard } from "@/components/minijob/LegalForecastCard";
+import { RollingEarningsCard } from "@/components/minijob/RollingEarningsCard";
 import { TimeAccountCard } from "@/components/minijob/TimeAccountCard";
 import { PaydayCard } from "@/components/minijob/PaydayCard";
 import { InsightsCard } from "@/components/minijob/InsightsCard";
@@ -38,6 +38,8 @@ import { isAbsenceKind, type AbsenceKind } from "@/lib/minijob/absence-range";
 import { monthTimeAccount } from "@/lib/minijob/fest-time-account";
 import { jobsApplyMinijobLimit, primaryWorkMode } from "@/lib/minijob/work-mode";
 import { limitAlertLevel } from "@/lib/minijob/limit-alert";
+import { evaluateRollingWarning } from "@/lib/minijob/legal";
+import { hasMonthAboveDoubleReference } from "@/lib/minijob/legal/warnings";
 import { payPeriods } from "@/lib/minijob/payday";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { useAppData } from "@/lib/minijob/store";
@@ -119,7 +121,17 @@ function DashboardPage() {
   const limitShare = monthLimit.share;
   const yearShare = yearLimit.share;
   const appliesMinijobLimit = jobsApplyMinijobLimit(jobs);
-  const limitAlert = limitAlertLevel(appliesMinijobLimit, limitShare, yearShare);
+  // One decision for banner, "Heute wichtig" card and notifications; the rolling status
+  // comes from the same indicator the "Verdienste der letzten 12 Monate" card shows.
+  const rollingStatus = evaluateRollingWarning(legalForecast.rolling).status;
+  const highVariation = hasMonthAboveDoubleReference(legalForecast.rolling);
+  const limitAlert = limitAlertLevel(
+    appliesMinijobLimit,
+    limitShare,
+    yearShare,
+    rollingStatus,
+    highVariation,
+  );
   const workMode = primaryWorkMode(jobs, settings.activeJobId);
   const isFest = workMode === "fest";
   const isSelf = workMode === "selbststaendig";
@@ -202,16 +214,19 @@ function DashboardPage() {
     limitMonth: (
       <LimitCard
         usage={monthLimit}
+        scope="month"
         scopeLabel={`${t("limit.month")} · ${monthLabel}`}
         rate={settings.defaultRate}
         auto={settings.hoursLimitAuto || settings.hoursLimitMonthly <= 0}
         notApplicable={!appliesMinijobLimit}
       />
     ),
-    legalForecast: <LegalForecastCard forecast={legalForecast.rolling} />,
+    // Widget id "legalForecast" is persisted in users' dashboard settings: do not rename it.
+    legalForecast: <RollingEarningsCard rolling={legalForecast.rolling} />,
     limitYear: (
       <LimitCard
         usage={yearLimit}
+        scope="year"
         scopeLabel={`${t("limit.year")} · ${year}`}
         rate={settings.defaultRate}
         auto={settings.hoursLimitAuto || settings.hoursLimitMonthly <= 0}
@@ -287,20 +302,27 @@ function DashboardPage() {
         </Button>
       </header>
 
-      {limitAlert === "over" ? (
+      {limitAlert === "rollingAbove" ? (
         <LimitBanner
-          tone="over"
-          text={
-            limitShare >= 100
-              ? t("dash.limitMonthOver", { amount: formatEuro(monthLimit.earningsLimit) })
-              : t("dash.limitYearOver", { amount: formatEuro(yearLimit.earningsLimit) })
-          }
-          detail={t("dash.limitOverExplain")}
+          text={t("rolling.statusAbove")}
+          detail={t("rolling.aboveHint")}
           disclaimer={t("dash.limitDisclaimer")}
+        />
+      ) : limitAlert === "highVariation" ? (
+        <LimitBanner text={t("rolling.signal")} />
+      ) : limitAlert === "yearAbove" ? (
+        <LimitBanner
+          text={t("dash.limitYearAbove", { amount: formatEuro(yearLimit.earningsLimit) })}
+        />
+      ) : limitAlert === "monthAbove" ? (
+        <LimitBanner
+          text={t("dash.limitMonthAbove", {
+            amount: formatEuro(monthLimit.earningsLimit),
+            yearAmount: formatEuro(yearLimit.earningsLimit),
+          })}
         />
       ) : limitAlert === "near" ? (
         <LimitBanner
-          tone="near"
           text={t("dash.limitNear", { percent: Math.round(Math.max(limitShare, yearShare)) })}
         />
       ) : null}
@@ -335,6 +357,8 @@ function DashboardPage() {
           resolve={resolve}
           monthUsage={monthLimit}
           yearUsage={yearLimit}
+          rollingStatus={rollingStatus}
+          highVariation={highVariation}
           onNewEntry={() => openNew(isoDate(new Date()))}
         />
       </div>
@@ -395,25 +419,18 @@ function DashboardPage() {
   );
 }
 
+/** Informational amber hint. Nothing on the dashboard is worded or styled as a confirmed violation. */
 function LimitBanner({
-  tone,
   text,
   detail,
   disclaimer,
 }: {
-  tone: "near" | "over";
   text: string;
   detail?: string;
   disclaimer?: string;
 }) {
   return (
-    <div
-      className={
-        tone === "over"
-          ? "mt-4 flex items-start gap-2 rounded-2xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
-          : "mt-4 flex items-start gap-2 rounded-2xl border border-accent bg-accent/20 p-3 text-sm text-accent-foreground"
-      }
-    >
+    <div className="mt-4 flex items-start gap-2 rounded-2xl border border-accent bg-accent/20 p-3 text-sm text-accent-foreground">
       <AlertTriangle className="mt-0.5 size-4 shrink-0" />
       <div className="space-y-1.5">
         <p className="font-medium">{text}</p>

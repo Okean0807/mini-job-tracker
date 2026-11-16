@@ -45,8 +45,20 @@ describe("buildDailyMonthSeries", () => {
     const list = [shift("2026-09-20", "09:00", "16:30")];
     const series = buildDailyMonthSeries(2026, 8, list, resolve, list);
     expect(series).toHaveLength(30);
-    expect(series[0]).toMatchObject({ day: 1, tag: "1", date: "2026-09-01", verdienst: 0, stunden: 0 });
-    expect(series[29]).toMatchObject({ day: 30, tag: "30", date: "2026-09-30", verdienst: 0, stunden: 0 });
+    expect(series[0]).toMatchObject({
+      day: 1,
+      tag: "1",
+      date: "2026-09-01",
+      verdienst: 0,
+      stunden: 0,
+    });
+    expect(series[29]).toMatchObject({
+      day: 30,
+      tag: "30",
+      date: "2026-09-30",
+      verdienst: 0,
+      stunden: 0,
+    });
     const day20 = series[19]!;
     expect(day20.date).toBe("2026-09-20");
     expect(day20.stunden).toBe(7.5);
@@ -110,22 +122,27 @@ describe("dailyXAxisTicks", () => {
   });
 });
 
-describe("limit overrun disclaimer copy", () => {
-  it("enthält Erklärung + Disclaimer ohne erfundene Steuerbeträge", () => {
-    const explain = tl("de", "dash.limitOverExplain");
+describe("limit hint disclaimer copy", () => {
+  it("enthält Disclaimer ohne erfundene Steuerbeträge und ohne Rechtsurteil", () => {
     const disclaimer = tl("de", "dash.limitDisclaimer");
-    expect(explain.length).toBeGreaterThan(20);
+    const aboveHint = tl("de", "rolling.aboveHint");
     expect(disclaimer.length).toBeGreaterThan(20);
-    expect(explain.toLowerCase()).toMatch(/überschreit|relevant|umständ/i);
+    expect(aboveHint.length).toBeGreaterThan(20);
+    expect(aboveHint.toLowerCase()).toMatch(/keine rechtliche feststellung/);
     expect(disclaimer.toLowerCase()).toMatch(/keine.*steuer|rechtsberatung|keine individuelle/i);
 
-    const banned = [/musst du \d/i, /zahlst du \d/i, /\d+\s*€\s*steuer/i, /steuerbetrag/i, /you must pay/i];
+    const banned = [
+      /musst du \d/i,
+      /zahlst du \d/i,
+      /\d+\s*€\s*steuer/i,
+      /steuerbetrag/i,
+      /you must pay/i,
+    ];
     for (const key of [
-      "dash.limitOverExplain",
       "dash.limitDisclaimer",
-      "dash.limitMonthOver",
-      "limit.overExplain",
       "limit.disclaimer",
+      "rolling.aboveHint",
+      "rolling.disclaimer",
     ] as const) {
       for (const lang of ["de", "en", "ru", "tr", "pl"] as const) {
         const text = tl(lang, key);
@@ -141,13 +158,11 @@ describe("limit overrun disclaimer copy", () => {
     const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
     const indexSrc = readFileSync(join(root, "routes/index.tsx"), "utf8");
     const cardSrc = readFileSync(join(root, "components/minijob/LimitCard.tsx"), "utf8");
-    expect(indexSrc).toMatch(/dash\.limitOverExplain/);
+    expect(indexSrc).toMatch(/rolling\.aboveHint/);
     expect(indexSrc).toMatch(/dash\.limitDisclaimer/);
-    expect(cardSrc).toMatch(/limit\.overExplain/);
     expect(cardSrc).toMatch(/limit\.disclaimer/);
   });
 });
-
 
 describe("buildFestDailyMonthSeries", () => {
   it("covers every day with soll/ist/diff", () => {

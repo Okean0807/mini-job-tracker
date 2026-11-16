@@ -3,12 +3,25 @@ import { t } from "@/lib/i18n";
 import { formatDate, formatEuro, isoDate, shiftsInYear, timeFromDate } from "./calc";
 import { payrollTotals } from "./payroll";
 import { monthUsage, yearUsage } from "./limits";
+import { limitAlertLevel } from "./limit-alert";
+import { assessLegalIncome, evaluateRollingWarning, type LegalWarningStatus } from "./legal";
 import { jobsApplyMinijobLimit } from "./work-mode";
 import { payPeriods } from "./payday";
 import { makeResolver } from "./resolve";
 import { getData } from "./store";
 import { isWithinTimeWindow, previousCalendarDate } from "./notify-time";
 
+/**
+ * Ein flaches Verzeichnis (Schlüssel → Stempel) in einem einzigen localStorage-Eintrag. Jeder
+ * Schreibzugriff liest, ergänzt und schreibt zurück: Schlüssel, die dieser Code nicht kennt
+ * (und andere Benachrichtigungsarten), bleiben erhalten.
+ *
+ * Ausgemusterter Schlüssel: "limit-100" („Minijob-Limit überschritten“, bis AUD-09A). Er wird
+ * nicht mehr gelesen oder geschrieben und bewusst weder migriert noch gelöscht: Er kann keine
+ * Meldung unterdrücken oder verdoppeln (alle aktuellen Schlüssel heißen anders), und der neue
+ * Monatshinweis ("limit-month-above"), höchstens einmal im Monat der Aktualisierung, korrigiert
+ * die frühere Alarmmeldung ausdrücklich.
+ */
 const FLAG_KEY = "minijob-notify-flags";
 
 type Flags = Record<string, string>;
@@ -163,6 +176,8 @@ export interface LimitStatus {
   monthShare: number;
   monthHoursShare: number;
   yearShare: number;
+  /** Status of the rolling earnings indicator for the current month (same as its card). */
+  rollingStatus?: LegalWarningStatus;
 }
 
 export function limitStatus(): LimitStatus {
@@ -175,16 +190,40 @@ export function limitStatus(): LimitStatus {
   const now = new Date();
   const month = monthUsage(shifts, resolve, settings, now.getFullYear(), now.getMonth());
   const year = yearUsage(shifts, resolve, settings, now.getFullYear());
+  const forecast = assessLegalIncome(getData(), `${isoDate(now).slice(0, 7)}-01`);
   return {
     monthShare: month.earningsShare,
     monthHoursShare: month.hoursShare,
     yearShare: year.earningsShare,
+    rollingStatus: evaluateRollingWarning(forecast.rolling).status,
   };
 }
 
-/** Minijob-Schwellen 75 / 90 / 100 Prozent – einmal pro Monat je Stufe. */
+/**
+ * Minijob-Hinweise – einmal pro Monat je Stufe. Die Stufe kommt aus derselben
+ * Entscheidung wie Dashboard und Heute-Karte (`limitAlertLevel`):
+ * - der gleitende 12-Monats-Indikator (`evaluateRollingWarning`) meldet nur „erfasste
+ *   Verdienste über dem Orientierungsrahmen“ – ausdrücklich keine rechtliche Feststellung;
+ *   der Kalenderjahres-Ist-Verdienst ist ein statistischer Wert und löst keine Meldung aus,
+ * - ein Monat über dem Monatsrichtwert ist ein Hinweis, keine Überschreitung,
+ * - 75 / 90 Prozent des Monatsrichtwerts bleiben informative Schwellen.
+ * Genau 100 % ist keine Überschreitung.
+ *
+ * Bewusst KEINE eigene Benachrichtigung gibt es für das Signal „ein Monat über dem Doppelten des
+ * Monatsrichtwerts“ (`highVariation`): Es hängt an einem beliebigen Monat der gleitenden 12 Monate
+ * und bliebe bis zu einem Jahr bestehen – eine Meldung würde sich Monat für Monat wiederholen.
+ * Es ist ein Dashboard-/Karten-Hinweis; deshalb wird `highVariation` hier absichtlich nicht an
+ * `limitAlertLevel` übergeben. Liegt der aktuelle Monat selbst darüber, kommt der übliche
+ * Monatshinweis ("limit-month-above") – genau eine Meldung, nie zwei.
+ *
+ * Wer nicht berücksichtigt wird (nur Hauptbeschäftigung, Selbstständigkeit, kurzfristig,
+ * ungeklärter Altbestand), bekommt keine dieser Meldungen: `limitStatus` liefert dann nur Nullen
+ * (dieselbe Regel `jobsApplyMinijobLimit` wie das Dashboard); zusätzlich gelten die
+ * Benachrichtigungs-Einstellungen in `runNotificationChecks`.
+ */
 export function checkLimits() {
-  const { monthShare, monthHoursShare } = limitStatus();
+  const { monthShare, monthHoursShare, yearShare, rollingStatus } = limitStatus();
+  const level = limitAlertLevel(true, monthShare, yearShare, rollingStatus);
   const stamp = isoDate(new Date()).slice(0, 7);
   if (monthHoursShare >= 90) {
     notifyOnce(
@@ -194,8 +233,20 @@ export function checkLimits() {
       t("notify.limitHours.body", { percent: Math.round(monthHoursShare) }),
     );
   }
-  if (monthShare >= 100) {
-    notifyOnce("limit-100", stamp, t("notify.limit100.title"), t("notify.limit100.body"));
+  if (level === "rollingAbove") {
+    notifyOnce(
+      "limit-rolling",
+      stamp,
+      t("notify.limitRolling.title"),
+      t("notify.limitRolling.body"),
+    );
+  } else if (level === "monthAbove") {
+    notifyOnce(
+      "limit-month-above",
+      stamp,
+      t("notify.limitMonthAbove.title"),
+      t("notify.limitMonthAbove.body"),
+    );
   } else if (monthShare >= 90) {
     notifyOnce("limit-90", stamp, t("notify.limit90.title"), t("notify.limit90.body"));
   } else if (monthShare >= 75) {

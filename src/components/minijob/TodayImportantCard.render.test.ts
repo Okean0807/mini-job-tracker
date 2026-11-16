@@ -15,19 +15,26 @@ vi.mock("@tanstack/react-router", () => ({
 
 import { TodayImportantCard } from "./TodayImportantCard";
 import { t } from "@/lib/i18n";
+import { formatEuro } from "@/lib/minijob/calc";
 import { makeResolver } from "@/lib/minijob/resolve";
+import type { LegalWarningStatus } from "@/lib/minijob/legal/warnings";
 import { DEFAULT_SETTINGS, EMPTY_WEEK, type Job, type Shift } from "@/lib/minijob/types";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const TODAY = "2026-09-30"; // Mittwoch
 const settings = { ...DEFAULT_SETTINGS, defaultRate: 15 };
-const usage = (share: number) => ({ share, earnings: 0, earningsLimit: 603 });
+const usage = (share: number, earningsLimit = 603) => ({ share, earnings: 0, earningsLimit });
 
 let container: HTMLDivElement;
 let root: Root;
 
-function render(jobs: Job[], shifts: Shift[] = [], share = 0) {
+function render(
+  jobs: Job[],
+  shifts: Shift[] = [],
+  share = 0,
+  extra: { yearShare?: number; rollingStatus?: LegalWarningStatus; highVariation?: boolean } = {},
+) {
   act(() => {
     root.render(
       createElement(TodayImportantCard, {
@@ -37,7 +44,9 @@ function render(jobs: Job[], shifts: Shift[] = [], share = 0) {
         settings,
         resolve: makeResolver(jobs, settings),
         monthUsage: usage(share),
-        yearUsage: usage(0),
+        yearUsage: usage(extra.yearShare ?? 0, 7236),
+        ...(extra.rollingStatus ? { rollingStatus: extra.rollingStatus } : {}),
+        ...(extra.highVariation ? { highVariation: true } : {}),
         onNewEntry: () => {},
       }),
     );
@@ -120,5 +129,63 @@ describe("TodayImportantCard – Beschäftigungsart / Grenze", () => {
   it("only Hauptbeschäftigung → no limit warning even at a high share", () => {
     const main = [job({ employmentType: "hauptbeschaeftigung" })];
     expect(render(main, [], 95)).not.toContain(t("dash.todayLimit", { percent: 95 }));
+  });
+});
+
+describe("TodayImportantCard – AUD-09A: Grenzwarnung mit getrennten Begriffen", () => {
+  const mini = [job({ employmentType: "minijob" })];
+  const yearAbove = t("dash.limitYearAbove", { amount: formatEuro(7236) });
+
+  it("exactly 100 % of the monthly reference is informative (100 %), not an exceedance", () => {
+    const text = render(mini, [], 100);
+    expect(text).toContain(t("dash.todayLimit", { percent: 100 }));
+    expect(text).not.toContain(yearAbove);
+  });
+
+  it("a month above the reference shows the month-above hint, not an exceedance", () => {
+    const text = render(mini, [], 165.8, { yearShare: 13.8, rollingStatus: "OK" });
+    expect(text).toContain(
+      t("dash.limitMonthAbove", { amount: formatEuro(603), yearAmount: formatEuro(7236) }),
+    );
+    expect(text).not.toContain(yearAbove);
+    expect(text).not.toContain(t("dash.todayLimit", { percent: 166 }));
+  });
+
+  it("a calendar-year total above the reference is worded as a statistic, never as 'exceeded'", () => {
+    const text = render(mini, [], 10, { yearShare: 103.6, rollingStatus: "OK" });
+    expect(text).toContain(yearAbove);
+    expect(text).toContain("Kalenderjahresverdienst über dem Richtwert");
+    expect(text).not.toContain(t("rolling.statusAbove"));
+    expect(text).not.toContain(t("rolling.statusAbove"));
+  });
+
+  it("the rolling indicator above its range uses the card's own orientation wording, not a legal finding", () => {
+    const text = render(mini, [], 10, { yearShare: 40, rollingStatus: "MAXIMUM_EXCEEDED" });
+    expect(text).toContain(t("rolling.statusAbove"));
+    expect(text).toContain(t("rolling.aboveHint"));
+    expect(text).not.toContain(yearAbove);
+    expect(text).not.toMatch(/Verstoß|rechtlich überschritten/);
+  });
+
+  it("the rolling indicator above its range wins over a calendar-year statistic", () => {
+    const text = render(mini, [], 10, { yearShare: 120, rollingStatus: "REGULAR_LIMIT_EXCEEDED" });
+    expect(text).toContain(t("rolling.statusAbove"));
+    expect(text).not.toContain(yearAbove);
+  });
+
+  it("an extreme month inside a compliant total is shown as a hint, not waved through", () => {
+    const text = render(mini, [], 50, {
+      yearShare: 100,
+      rollingStatus: "NEAR_LIMIT",
+      highVariation: true,
+    });
+    expect(text).toContain(t("rolling.signal"));
+  });
+
+  it("no limit line when everything is below the 85 % threshold", () => {
+    const text = render(mini, [], 50, { yearShare: 20, rollingStatus: "OK" });
+    expect(text).not.toContain(yearAbove);
+    expect(text).not.toContain(t("rolling.statusAbove"));
+    expect(text).not.toContain(t("rolling.signal"));
   });
 });
