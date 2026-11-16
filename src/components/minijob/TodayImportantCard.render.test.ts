@@ -33,7 +33,7 @@ function render(
   jobs: Job[],
   shifts: Shift[] = [],
   share = 0,
-  extra: { yearShare?: number; forecastStatus?: LegalWarningStatus; highVariation?: boolean } = {},
+  extra: { yearShare?: number; rollingStatus?: LegalWarningStatus; highVariation?: boolean } = {},
 ) {
   act(() => {
     root.render(
@@ -45,7 +45,7 @@ function render(
         resolve: makeResolver(jobs, settings),
         monthUsage: usage(share),
         yearUsage: usage(extra.yearShare ?? 0, 7236),
-        ...(extra.forecastStatus ? { forecastStatus: extra.forecastStatus } : {}),
+        ...(extra.rollingStatus ? { rollingStatus: extra.rollingStatus } : {}),
         ...(extra.highVariation ? { highVariation: true } : {}),
         onNewEntry: () => {},
       }),
@@ -143,7 +143,7 @@ describe("TodayImportantCard – AUD-09A: Grenzwarnung mit getrennten Begriffen"
   });
 
   it("a month above the reference shows the month-above hint, not an exceedance", () => {
-    const text = render(mini, [], 165.8, { yearShare: 13.8, forecastStatus: "OK" });
+    const text = render(mini, [], 165.8, { yearShare: 13.8, rollingStatus: "OK" });
     expect(text).toContain(
       t("dash.limitMonthAbove", { amount: formatEuro(603), yearAmount: formatEuro(7236) }),
     );
@@ -152,38 +152,40 @@ describe("TodayImportantCard – AUD-09A: Grenzwarnung mit getrennten Begriffen"
   });
 
   it("a calendar-year total above the reference is worded as a statistic, never as 'exceeded'", () => {
-    const text = render(mini, [], 10, { yearShare: 103.6, forecastStatus: "OK" });
+    const text = render(mini, [], 10, { yearShare: 103.6, rollingStatus: "OK" });
     expect(text).toContain(yearAbove);
     expect(text).toContain("Kalenderjahresverdienst über dem Richtwert");
-    expect(text).not.toContain(t("legalForecast.statusMaximum"));
-    expect(text).not.toContain(t("legalForecast.statusRegularExceeded"));
+    expect(text).not.toContain(t("rolling.statusAbove"));
+    expect(text).not.toContain(t("rolling.statusAbove"));
   });
 
-  it("an exceeded legal forecast uses the forecast card's own wording", () => {
-    const text = render(mini, [], 10, { yearShare: 40, forecastStatus: "MAXIMUM_EXCEEDED" });
-    expect(text).toContain(t("legalForecast.statusMaximum"));
+  it("the rolling indicator above its range uses the card's own orientation wording, not a legal finding", () => {
+    const text = render(mini, [], 10, { yearShare: 40, rollingStatus: "MAXIMUM_EXCEEDED" });
+    expect(text).toContain(t("rolling.statusAbove"));
+    expect(text).toContain(t("rolling.aboveHint"));
     expect(text).not.toContain(yearAbove);
+    expect(text).not.toMatch(/Verstoß|rechtlich überschritten/);
   });
 
-  it("an exceeded legal forecast wins over a calendar-year statistic", () => {
-    const text = render(mini, [], 10, { yearShare: 120, forecastStatus: "REGULAR_LIMIT_EXCEEDED" });
-    expect(text).toContain(t("legalForecast.statusRegularExceeded"));
+  it("the rolling indicator above its range wins over a calendar-year statistic", () => {
+    const text = render(mini, [], 10, { yearShare: 120, rollingStatus: "REGULAR_LIMIT_EXCEEDED" });
+    expect(text).toContain(t("rolling.statusAbove"));
     expect(text).not.toContain(yearAbove);
   });
 
   it("an extreme month inside a compliant total is shown as a hint, not waved through", () => {
     const text = render(mini, [], 50, {
       yearShare: 100,
-      forecastStatus: "NEAR_LIMIT",
+      rollingStatus: "NEAR_LIMIT",
       highVariation: true,
     });
-    expect(text).toContain(t("legalForecast.highVariation"));
+    expect(text).toContain(t("rolling.signal"));
   });
 
   it("no limit line when everything is below the 85 % threshold", () => {
-    const text = render(mini, [], 50, { yearShare: 20, forecastStatus: "OK" });
+    const text = render(mini, [], 50, { yearShare: 20, rollingStatus: "OK" });
     expect(text).not.toContain(yearAbove);
-    expect(text).not.toContain(t("legalForecast.statusMaximum"));
-    expect(text).not.toContain(t("legalForecast.highVariation"));
+    expect(text).not.toContain(t("rolling.statusAbove"));
+    expect(text).not.toContain(t("rolling.signal"));
   });
 });

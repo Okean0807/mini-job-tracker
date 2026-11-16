@@ -1,26 +1,26 @@
 /**
- * AUD-09A – limit warning semantics.
+ * AUD-09A/09C – limit warning semantics.
  *
- * Three concepts are kept apart:
- * 1. Actual calendar-year / monthly earnings: statistical figures. Above the
- *    reference they are NOT a legal status (`yearAbove`, `monthAbove`).
- * 2. The regular remuneration over the applicable employment period (at most
- *    12 months): the basis of the legal assessment. The app's legal assessment is
- *    the rolling 12-month forecast (`forecastOver`).
- * 3. Informative hints: an extreme month (`highVariation`) and the 85 % threshold.
+ * Kept apart:
+ * 1. Statistical actuals: the calendar-year total and the month's earnings against a
+ *    REFERENCE (`yearAbove`, `monthAbove`) – numbers, not a legal status.
+ * 2. The rolling 12-month earnings indicator ("Verdienste der letzten 12 Monate",
+ *    `rollingAbove`): recorded earnings (plus shifts entered with a future date) of the 12
+ *    calendar months ending at the displayed month against the sum of those months' limits.
+ *    An INFORMATIONAL approximation – not the statutory forward-looking assessment of the
+ *    regular earnings over the employment period (§ 8 SGB IV), so neither "above" is a legal
+ *    violation nor "within" a proof of compliance.
+ * 3. Informative hints (`highVariation`, `near`).
  *
- * Basis: § 8 SGB IV and the Minijob-Zentrale explanation of fluctuating earnings
- * (annual figure decides; 1,800 EUR for three months plus 204 EUR for nine months
- * adds up to 7,236 EUR but is not a Minijob; unpredictable exceedance in at most
- * two months, up to twice the monthly limit). Employment-period proration is NOT
- * implemented here and is covered by a documented-limitation test.
+ * Employment-period proration is NOT implemented and is covered by a documented-limitation
+ * test.
  */
 import { describe, expect, it } from "vitest";
 
 import { tl } from "@/lib/i18n";
 
 import { assessLegalIncome, evaluateRollingWarning, type LegalWarningStatus } from "./legal";
-import { hasMonthAboveDoubleReference, isLegalExceedanceStatus } from "./legal/warnings";
+import { hasMonthAboveDoubleReference, isAboveRollingFrame } from "./legal/warnings";
 import { limitAlertLevel, type LimitAlertLevel } from "./limit-alert";
 import { monthUsage, yearUsage } from "./limits";
 import { makeResolver } from "./resolve";
@@ -53,15 +53,20 @@ const ym = (year: number, month: number, day = 3) =>
 /** One shift per listed month (1-based) with the given amount. */
 const months = (year: number, amounts: Array<[number, number]>) =>
   amounts.map(([m, amount]) => shift(ym(year, m), amount));
+const series = (year: number, amounts: number[]) =>
+  amounts.map((amount, i) => shift(ym(year, i + 1), amount));
 
 interface Outcome {
   monthEarnings: number;
   monthLimit: number;
   yearEarnings: number;
   yearShare: number;
-  forecast: LegalWarningStatus;
+  rolling: LegalWarningStatus;
+  rollingActual: number;
+  rollingPlanned: number;
+  rollingTotal: number;
   highVariation: boolean;
-  regularLimit: number;
+  frame: number;
   level: LimitAlertLevel;
 }
 
@@ -79,63 +84,66 @@ function surface(
   const data = { jobs: [job], shifts, settings } as AppData;
   const anchor = `${year}-${String(month + 1).padStart(2, "0")}-01`;
   const rolling = assessLegalIncome(data, anchor, referenceDate).rolling;
-  const forecast = evaluateRollingWarning(rolling).status;
+  const status = evaluateRollingWarning(rolling).status;
   const highVariation = hasMonthAboveDoubleReference(rolling);
   return {
     monthEarnings: mu.earnings,
     monthLimit: mu.earningsLimit,
     yearEarnings: yu.earnings,
     yearShare: yu.earningsShare,
-    forecast,
+    rolling: status,
+    rollingActual: rolling.months.reduce((sum, m) => sum + m.actual, 0),
+    rollingPlanned: rolling.months.reduce((sum, m) => sum + m.expectedAdditional, 0),
+    rollingTotal: rolling.projectedEarnings,
     highVariation,
-    regularLimit: rolling.regularLimit,
-    level: limitAlertLevel(true, mu.share, yu.share, forecast, highVariation),
+    frame: rolling.regularLimit,
+    level: limitAlertLevel(true, mu.share, yu.share, status, highVariation),
   };
 }
 
-describe("2026: monthly reference 603 EUR", () => {
+describe("2026: monthly reference 603 EUR (exact boundaries)", () => {
   const run = (amount: number) => surface([shift("2026-06-03", amount)], 2026, 5, "2026-06-30");
 
-  it("602.99 EUR – not exceeded", () => {
+  it("602.99 EUR – not above", () => {
     const o = run(602.99);
     expect(o.monthLimit).toBe(603);
     expect(o.monthEarnings).toBe(602.99);
     expect(o.level).toBe("near");
   });
 
-  it("603.00 EUR – not exceeded (an amount equal to the limit is within it)", () => {
+  it("603.00 EUR – not above (an amount equal to the limit is within it)", () => {
     const o = run(603.0);
     expect(o.monthEarnings).toBe(603);
     expect(o.level).toBe("near");
-    expect(isLegalExceedanceStatus(o.forecast)).toBe(false);
+    expect(isAboveRollingFrame(o.rolling)).toBe(false);
   });
 
-  it("603.01 EUR – statistical month-above hint, not a legal violation", () => {
+  it("603.01 EUR – statistical month-above hint, nothing more", () => {
     const o = run(603.01);
     expect(o.monthEarnings).toBe(603.01);
     expect(o.level).toBe("monthAbove");
-    expect(isLegalExceedanceStatus(o.forecast)).toBe(false);
+    expect(isAboveRollingFrame(o.rolling)).toBe(false);
     expect(o.highVariation).toBe(false);
   });
 });
 
-describe("2027: monthly reference 633 EUR", () => {
+describe("2027: monthly reference 633 EUR (exact boundaries)", () => {
   const run = (amount: number) => surface([shift("2027-02-03", amount)], 2027, 1, "2027-02-28");
 
-  it("632.99 and 633.00 EUR – not exceeded", () => {
+  it("632.99 and 633.00 EUR – not above", () => {
     expect(run(632.99).monthLimit).toBe(633);
     expect(run(632.99).level).toBe("near");
     expect(run(633).level).toBe("near");
-    expect(isLegalExceedanceStatus(run(633).forecast)).toBe(false);
+    expect(isAboveRollingFrame(run(633).rolling)).toBe(false);
   });
 
-  it("633.01 EUR – statistical month-above hint, not a legal violation", () => {
+  it("633.01 EUR – statistical month-above hint, nothing more", () => {
     expect(run(633.01).level).toBe("monthAbove");
-    expect(isLegalExceedanceStatus(run(633.01).forecast)).toBe(false);
+    expect(isAboveRollingFrame(run(633.01).rolling)).toBe(false);
   });
 });
 
-describe("the legal assessment (rolling 12 months) at the annual boundary", () => {
+describe("the rolling 12-month indicator at the reference-range boundary", () => {
   const yearOf = (year: number, last: number) => {
     const shifts = months(
       year,
@@ -145,71 +153,91 @@ describe("the legal assessment (rolling 12 months) at the annual boundary", () =
     return surface(shifts, year, 11, `${year}-12-31`);
   };
 
-  it("2026: 7,235.99 and 7,236.00 EUR are within, 7,236.01 EUR is above", () => {
-    expect(isLegalExceedanceStatus(yearOf(2026, 635.99).forecast)).toBe(false);
-    expect(isLegalExceedanceStatus(yearOf(2026, 636).forecast)).toBe(false);
-    const over = yearOf(2026, 636.01);
-    expect(isLegalExceedanceStatus(over.forecast)).toBe(true);
-    expect(over.level).toBe("forecastOver");
+  it("2026: 7,235.99 and 7,236.00 EUR are within the range, 7,236.01 EUR is above it", () => {
+    expect(isAboveRollingFrame(yearOf(2026, 635.99).rolling)).toBe(false);
+    expect(isAboveRollingFrame(yearOf(2026, 636).rolling)).toBe(false);
+    const above = yearOf(2026, 636.01);
+    expect(isAboveRollingFrame(above.rolling)).toBe(true);
+    expect(above.level).toBe("rollingAbove");
   });
 
-  it("2027: 7,596.00 EUR is within, 7,596.01 EUR is above", () => {
-    expect(isLegalExceedanceStatus(yearOf(2027, 996).forecast)).toBe(false);
-    expect(isLegalExceedanceStatus(yearOf(2027, 996.01).forecast)).toBe(true);
-    expect(yearOf(2027, 996.01).level).toBe("forecastOver");
-  });
-});
-
-describe("calendar-year actual total vs. the applicable regular-earnings assessment", () => {
-  // 12 x 700 EUR = 8,400 EUR in the calendar year, but a March view only sees Jan-Mar
-  const shifts = months(
-    2026,
-    Array.from({ length: 12 }, (_, i) => [i + 1, 700] as [number, number]),
-  );
-
-  it("a calendar-year total above 7,236 EUR is NOT a legal status when the assessment is compliant", () => {
-    const o = surface(shifts, 2026, 2, "2026-12-31"); // viewing March
-    expect(o.yearEarnings).toBe(8400);
-    expect(o.yearShare).toBeGreaterThan(100);
-    expect(isLegalExceedanceStatus(o.forecast)).toBe(false);
-    expect(o.level).toBe("yearAbove");
-    expect(o.level).not.toBe("forecastOver");
-  });
-
-  it("the same data viewed where the assessment covers the pace IS a legal warning", () => {
-    const o = surface(shifts, 2026, 11, "2026-12-31"); // viewing December
-    expect(isLegalExceedanceStatus(o.forecast)).toBe(true);
-    expect(o.level).toBe("forecastOver");
-  });
-
-  it("an excessive regular pace is flagged while the year is still running", () => {
-    const pace = months(
-      2026,
-      Array.from({ length: 9 }, (_, i) => [i + 1, 1000] as [number, number]),
-    );
-    const o = surface(pace, 2026, 8, "2026-09-30");
-    expect(isLegalExceedanceStatus(o.forecast)).toBe(true);
-    expect(o.level).toBe("forecastOver");
-  });
-
-  it("an excessive plan is flagged as a forecast, in the forecast card's own terms", () => {
-    const plan = months(
-      2026,
-      Array.from({ length: 10 }, (_, i) => [i + 1, 600] as [number, number]),
-    );
-    plan.push(shift("2026-11-03", 1000), shift("2026-12-02", 1000));
-    // The rolling window ends at the displayed month: look at December on 31 October.
-    const o = surface(plan, 2026, 11, "2026-10-31");
-    expect(isLegalExceedanceStatus(o.forecast)).toBe(true);
-    expect(o.level).toBe("forecastOver");
+  it("2027: 7,596.00 EUR is within the range, 7,596.01 EUR is above it", () => {
+    expect(isAboveRollingFrame(yearOf(2027, 996).rolling)).toBe(false);
+    expect(isAboveRollingFrame(yearOf(2027, 996.01).rolling)).toBe(true);
+    expect(yearOf(2027, 996.01).level).toBe("rollingAbove");
   });
 });
 
-describe("employment starting partway through a year", () => {
-  const job = { ...baseJob, startDate: "2026-07-01" };
+describe("rolling earnings above / below the reference range – and what that does not prove", () => {
+  it("above the range: the indicator says so, and nothing in the level is a legal violation", () => {
+    const o = surface(series(2026, Array(12).fill(700)), 2026, 11, "2026-12-31");
+    expect(o.rollingTotal).toBe(8400);
+    expect(o.frame).toBe(7236);
+    expect(o.level).toBe("rollingAbove");
+    // wording: an orientation statement with an explicit "no legal determination" hint
+    expect(tl("de", "rolling.statusAbove")).toBe(
+      "Erfasste Verdienste über dem Orientierungsrahmen",
+    );
+    expect(tl("de", "rolling.aboveHint")).toMatch(/keine rechtliche Feststellung/);
+  });
 
-  it("a regular pace far above the limit from the first months is a legal warning", () => {
-    // 6 x 1,300 EUR (July-December) = 7,800 EUR
+  it("below the range: the indicator says so, and the disclaimer says it proves no compliance", () => {
+    const o = surface(series(2026, Array(12).fill(500)), 2026, 11, "2026-12-31");
+    expect(o.rollingTotal).toBe(6000);
+    expect(isAboveRollingFrame(o.rolling)).toBe(false);
+    expect(tl("de", "rolling.statusWithin")).toBe(
+      "Erfasste Verdienste innerhalb des Orientierungsrahmens",
+    );
+    expect(tl("de", "rolling.disclaimer")).toMatch(
+      /nicht bestätigt, dass die Beschäftigung ein Minijob bleibt/,
+    );
+  });
+});
+
+describe("recorded earnings vs. shifts entered with a future date", () => {
+  // today = 2026-06-15: 500 EUR recorded on 10 June, 700 EUR entered for 25 June
+  const shifts = [shift("2026-06-10", 500), shift("2026-06-25", 700)];
+  const o = () => surface(shifts, 2026, 5, "2026-06-15");
+
+  it("keeps the two apart in the rolling figures and in the month's recorded earnings", () => {
+    expect(o().rollingActual).toBe(500);
+    expect(o().rollingPlanned).toBe(700);
+    expect(o().rollingTotal).toBe(1200);
+    expect(o().monthEarnings).toBe(500); // the month card counts recorded earnings only
+  });
+
+  it("explains that future-dated entries are planning, not a statutory forecast", () => {
+    expect(tl("de", "rolling.plannedNote")).toMatch(/keine gesetzliche Prognose/);
+    expect(tl("de", "rolling.planned")).toBe("Für später eingetragen");
+  });
+});
+
+describe("calendar-year statistics and the rolling 12 months stay distinct", () => {
+  // 12 x 700 EUR entered for 2026; today = 31 December. A March view sees Jan-Mar only.
+  const shifts = series(2026, Array(12).fill(700));
+
+  it("same data, two different figures on two different time bases", () => {
+    const march = surface(shifts, 2026, 2, "2026-12-31");
+    expect(march.yearEarnings).toBe(8400); // calendar-year statistic (whole year recorded)
+    expect(march.rollingTotal).toBe(2100); // rolling 12 months ending in March (Jan-Mar)
+    expect(march.rollingTotal).not.toBe(march.yearEarnings);
+    expect(isAboveRollingFrame(march.rolling)).toBe(false);
+    expect(march.level).toBe("yearAbove"); // the statistic, informational
+    const december = surface(shifts, 2026, 11, "2026-12-31");
+    expect(december.rollingTotal).toBe(8400);
+    expect(december.level).toBe("rollingAbove");
+  });
+
+  it("a year-to-date pace above the range shows in the rolling indicator while the year runs", () => {
+    const o = surface(series(2026, Array(9).fill(1000)), 2026, 8, "2026-09-30");
+    expect(isAboveRollingFrame(o.rolling)).toBe(true);
+    expect(o.level).toBe("rollingAbove");
+  });
+});
+
+describe("employment starting partway through a year / fixed for fewer than 12 months", () => {
+  it("a high recorded pace from the first months shows above the range", () => {
+    const job = { ...baseJob, startDate: "2026-07-01" };
     const o = surface(
       months(2026, [
         [7, 1300],
@@ -225,34 +253,11 @@ describe("employment starting partway through a year", () => {
       job,
     );
     expect(o.yearEarnings).toBe(7800);
-    expect(o.level).toBe("forecastOver");
+    expect(o.level).toBe("rollingAbove");
   });
 
-  it("a compliant pace is neither a legal warning nor a calendar-year 'exceedance'", () => {
-    const o = surface(
-      months(2026, [
-        [7, 500],
-        [8, 500],
-        [9, 500],
-        [10, 500],
-        [11, 500],
-        [12, 500],
-      ]),
-      2026,
-      11,
-      "2026-12-31",
-      job,
-    );
-    expect(isLegalExceedanceStatus(o.forecast)).toBe(false);
-    expect(o.level).not.toBe("forecastOver");
-    expect(o.level).not.toBe("yearAbove");
-  });
-});
-
-describe("employment known from the outset to last fewer than 12 months", () => {
-  const job = { ...baseJob, startDate: "2026-11-01", endDate: "2026-12-31" };
-
-  it("DOCUMENTED LIMITATION (proration is a separate task): the assessment still uses 12 full months, and the forecast card says so", () => {
+  it("DOCUMENTED LIMITATION (proration is a separate task): the range always uses 12 full months, and the card says so", () => {
+    const job = { ...baseJob, startDate: "2026-11-01", endDate: "2026-12-31" };
     const o = surface(
       [shift("2026-11-03", 1000), shift("2026-12-02", 1000)],
       2026,
@@ -260,23 +265,21 @@ describe("employment known from the outset to last fewer than 12 months", () => 
       "2026-12-31",
       job,
     );
-    // Sources: for an employment of less than 12 months the limit is applied proportionally
-    // (here 2 x 603 = 1,206 EUR). The engine does not do that yet, so it must not read as a
-    // confirmation: it never calls this a legal exceedance and never an OK-with-certainty either.
-    expect(o.regularLimit).toBe(7236);
-    expect(o.level).not.toBe("forecastOver");
+    expect(o.frame).toBe(7236);
+    expect(o.level).not.toBe("rollingAbove");
     for (const lang of ["de", "en", "ru", "tr", "pl"] as const) {
-      expect(tl(lang, "legalForecast.disclaimer")).toMatch(/12/);
+      expect(tl(lang, "rolling.windowNote")).toMatch(/12/);
     }
-    expect(tl("de", "legalForecast.disclaimer")).toMatch(/anteilig/);
+    expect(tl("de", "rolling.windowNote")).toMatch(/anteilig/);
+    expect(tl("de", "rolling.windowNote")).toMatch(/nicht berechnet/);
   });
 });
 
 describe("a single high month, and extreme fluctuation", () => {
-  it("one month at 1,000 EUR with an otherwise compliant assessment: no legal-violation state", () => {
+  it("one month at 1,000 EUR: a month hint, no rolling finding", () => {
     const o = surface([shift("2026-03-03", 1000)], 2026, 2, "2026-12-31");
     expect(o.level).toBe("monthAbove");
-    expect(o.forecast).toBe("OK");
+    expect(o.rolling).toBe("OK");
     expect(o.highVariation).toBe(false);
     expect(o.yearShare).toBeCloseTo((1000 / 7236) * 100, 6);
   });
@@ -287,60 +290,47 @@ describe("a single high month, and extreme fluctuation", () => {
     expect(o.monthLimit).toBe(603);
   });
 
-  it("the doubled monthly reference (1,206 EUR) is the line for the extreme-month hint", () => {
+  it("the doubled monthly reference (1,206 EUR) is only the line of an informational signal", () => {
     expect(surface([shift("2026-03-03", 1206)], 2026, 2, "2026-12-31").highVariation).toBe(false);
     const above = surface([shift("2026-03-03", 1206.01)], 2026, 2, "2026-12-31");
     expect(above.highVariation).toBe(true);
     expect(above.level).toBe("highVariation");
   });
 
-  it("extreme fluctuation inside the annual total is NOT silently compliant (Minijob-Zentrale example)", () => {
-    // 1,800 EUR x 3 (Jan-Mar) + 204 EUR x 9 (Apr-Dec) = 7,236 EUR: within the annual limit,
-    // yet the Minijob-Zentrale says the first three months are not a Minijob.
-    const amounts: Array<[number, number]> = [
-      [1, 1800],
-      [2, 1800],
-      [3, 1800],
-      [4, 204],
-      [5, 204],
-      [6, 204],
-      [7, 204],
-      [8, 204],
-      [9, 204],
-      [10, 204],
-      [11, 204],
-      [12, 204],
-    ];
-    const o = surface(months(2026, amounts), 2026, 11, "2026-12-31");
+  it("the signal is explicitly not the statutory exception and does not decide admissibility", () => {
+    const de = tl("de", "rolling.signal");
+    expect(de).toMatch(/Hinweis \(Orientierung\)/);
+    expect(de).toMatch(
+      /entscheidet nicht darüber, ob die gesetzliche Ausnahme für unvorhersehbares Überschreiten greift/,
+    );
+    expect(de).toMatch(/nichts über die Zulässigkeit schwankender Verdienste/);
+    expect(de).toMatch(
+      /Auch ohne dieses Signal sind starke Schwankungen nicht automatisch unbedenklich/,
+    );
+  });
+
+  it("extreme fluctuation inside a total within the range is NOT silently fine (Minijob-Zentrale example)", () => {
+    const o = surface(
+      series(2026, [1800, 1800, 1800, 204, 204, 204, 204, 204, 204, 204, 204, 204]),
+      2026,
+      11,
+      "2026-12-31",
+    );
     expect(o.yearEarnings).toBeCloseTo(7236, 6);
-    expect(isLegalExceedanceStatus(o.forecast)).toBe(false);
-    expect(o.highVariation).toBe(true);
-    expect(o.level).toBe("highVariation");
-    expect(o.level).not.toBeNull();
-  });
-
-  it("one very large month with the rest empty is also flagged, not waved through", () => {
-    // December view: the rolling window is exactly calendar 2026 (12 x 603 = 7,236 EUR)
-    const o = surface([shift("2026-05-04", 7000)], 2026, 11, "2026-12-31");
-    expect(o.yearShare).toBeLessThan(100);
+    expect(isAboveRollingFrame(o.rolling)).toBe(false);
     expect(o.highVariation).toBe(true);
     expect(o.level).toBe("highVariation");
   });
-});
 
-describe("terminology: the legal level is the only one worded as an exceedance", () => {
-  it("the calendar-year and month states are worded as statistics / references, not violations", () => {
-    for (const lang of ["de", "en", "ru", "tr", "pl"] as const) {
-      for (const key of ["dash.limitYearAbove", "limit.yearAboveNote"] as const) {
-        const text = tl(lang, key);
-        expect(text).not.toBe(key);
-        expect(text.length).toBeGreaterThan(30);
-      }
-    }
-    expect(tl("de", "dash.limitYearAbove")).toMatch(/Kalenderjahresverdienst über dem Richtwert/);
-    expect(tl("de", "dash.limitYearAbove")).toMatch(/statistisch/);
-    expect(tl("de", "dash.limitYearAbove")).toMatch(/keine rechtliche Einstufung/);
-    expect(tl("de", "limit.yearAboveNote")).toMatch(/Kalenderjahresverdienst über dem Richtwert/);
-    expect(tl("de", "dash.limitYearAbove")).not.toMatch(/überschritten/);
+  it("the signal's absence implies nothing: 6 x 1,150 EUR raises no signal and no acceptance statement", () => {
+    const o = surface(
+      series(2026, [1150, 1150, 1150, 1150, 1150, 1150, 0, 0, 0, 0, 0, 0]),
+      2026,
+      11,
+      "2026-12-31",
+    );
+    expect(o.highVariation).toBe(false);
+    expect(o.level).not.toBe("highVariation");
+    expect(tl("de", "rolling.signal")).toMatch(/Auch ohne dieses Signal/);
   });
 });

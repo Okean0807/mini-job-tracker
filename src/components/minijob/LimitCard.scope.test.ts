@@ -39,18 +39,12 @@ function usage(earnings: number, limit: number): LimitUsage {
 let container: HTMLDivElement;
 let root: Root;
 
-function text(
-  scope: "month" | "year",
-  earnings: number,
-  limit: number,
-  legalExceeded = false,
-): string {
+function text(scope: "month" | "year", earnings: number, limit: number): string {
   act(() => {
     root.render(
       createElement(LimitCard, {
         usage: usage(earnings, limit),
         scope,
-        legalExceeded,
         scopeLabel: "Test",
         rate: 13.9,
         auto: true,
@@ -60,7 +54,6 @@ function text(
   return container.textContent ?? "";
 }
 
-const overExplain = tl("de", "limit.overExplain");
 const monthAbove = tl("de", "limit.monthAboveNote");
 
 beforeEach(() => {
@@ -77,7 +70,6 @@ describe("LimitCard month scope (reference amount)", () => {
   it("602.99 and exactly 603.00 EUR: no warning box at all", () => {
     for (const amount of [602.99, 603]) {
       const out = text("month", amount, 603);
-      expect(out).not.toContain(overExplain);
       expect(out).not.toContain(monthAbove);
     }
   });
@@ -86,7 +78,6 @@ describe("LimitCard month scope (reference amount)", () => {
     for (const amount of [603.01, 1000]) {
       const out = text("month", amount, 603);
       expect(out).toContain(monthAbove);
-      expect(out).not.toContain(overExplain);
     }
   });
 
@@ -107,15 +98,14 @@ describe("LimitCard year scope (calendar-year actual earnings: a statistic, not 
     for (const amount of [7235.99, 7236]) {
       const out = text("year", amount, 7236);
       expect(out).not.toContain(yearAbove);
-      expect(out).not.toContain(overExplain);
     }
   });
 
-  it("7,236.01 EUR: informational calendar-year note, never the 'exceeded' explanation", () => {
+  it("7,236.01 EUR: informational calendar-year note with the disclaimer, never an 'exceeded' explanation", () => {
     const out = text("year", 7236.01, 7236);
     expect(out).toContain(yearAbove);
     expect(out).toContain("Kalenderjahresverdienst über dem Richtwert");
-    expect(out).not.toContain(overExplain);
+    expect(out).toContain(tl("de", "limit.disclaimer"));
     expect(out).not.toContain(monthAbove);
   });
 
@@ -146,22 +136,5 @@ describe("LimitCard colour: a reference figure is never styled as a violation", 
     expect(barClasses("month", 1000, 603)).toContain("[&>div]:bg-amber-500");
     expect(barClasses("year", 8400, 7236)).toContain("[&>div]:bg-amber-500");
     expect(barClasses("year", 8400, 7236)).not.toContain("bg-destructive");
-  });
-});
-
-describe("LimitCard: the alarm styling belongs to the legal assessment only", () => {
-  it("legalExceeded shows the exceedance explanation with its disclaimer and the alarm colour", () => {
-    const out = text("year", 8400, 7236, true);
-    expect(out).toContain(overExplain);
-    expect(out).toContain(tl("de", "limit.disclaimer"));
-    const bars = [...container.querySelectorAll<HTMLElement>('[role="progressbar"]')];
-    expect(bars.every((b) => b.className.includes("[&>div]:bg-destructive"))).toBe(true);
-  });
-
-  it("without it, the same figures show no explanation and no alarm colour", () => {
-    const out = text("year", 8400, 7236, false);
-    expect(out).not.toContain(overExplain);
-    const bars = [...container.querySelectorAll<HTMLElement>('[role="progressbar"]')];
-    expect(bars.some((b) => b.className.includes("bg-destructive"))).toBe(false);
   });
 });

@@ -2,7 +2,7 @@ import { payrollTotals, shiftPayroll } from "../payroll";
 import { isEligibleMinijobShift } from "./employment";
 import { monthStart, forecastRolling12Months, type Rolling12ForecastResult } from "./rolling";
 import type { AppData, Job, Settings, Shift } from "../types";
-import type { Resolver } from "../resolve";
+import { makeResolver, type Resolver } from "../resolve";
 
 export interface MonthlyIncomeBreakdown {
   date: string;
@@ -125,26 +125,25 @@ export function buildMonthlyIncomeFromShifts(
 }
 
 /**
- * Produces the complete rolling legal assessment for the selected anchor month.
+ * Produces the informational rolling earnings assessment for the selected anchor month:
+ * recorded earnings of the 12 calendar months ending at the anchor, plus shifts entered
+ * with a future date, against the sum of those months' monthly limits. It is NOT the
+ * statutory forward-looking assessment of regular earnings (see `legal/warnings.ts`).
  *
- * The legal engine remains independent from React/UI and receives AppData only
- * through this adapter. This makes the same calculation reusable by dashboard,
- * statistics and notifications.
+ * The engine remains independent from React/UI and receives AppData only through this
+ * adapter, so dashboard, statistics and notifications share one calculation.
+ *
+ * Earnings are resolved with the application's one resolver (`makeResolver`): the job's
+ * rate and supplements, the default rate, and the public-holiday status from the existing
+ * calendar logic for the user's federal state. A second, hand-built resolver here once
+ * hardcoded `holiday: false` and so left holiday supplements out of this calculation only.
  */
 export function assessLegalIncome(
   data: AppData,
   anchorMonth: string,
   referenceDate = todayIso(),
 ): LegalIncomeAssessment {
-  const resolve = ((shift: Shift) => {
-    const job = data.jobs.find((candidate) => candidate.id === shift.jobId);
-    return {
-      job,
-      defaultRate: data.settings.defaultRate,
-      supplements: job?.supplements ?? data.settings.supplements,
-      holiday: false,
-    };
-  }) as Resolver;
+  const resolve = makeResolver(data.jobs, data.settings);
 
   const months = buildMonthlyIncomeFromShifts(data.shifts, resolve, referenceDate);
   const rolling = forecastRolling12Months(

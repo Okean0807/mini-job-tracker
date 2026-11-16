@@ -1,10 +1,11 @@
 /**
- * AUD-09A – consistency of wording and severity across the limit surfaces.
+ * AUD-09A/09C – consistency of wording and severity across the limit surfaces.
  *
- * Real engine output is rendered through the real components (TodayImportantCard,
- * LimitCard, LegalForecastCard) and the dashboard route's banner mapping is checked
- * at source level. Only the legal assessment (rolling 12-month forecast) may be worded
- * as an exceedance; calendar-year and month figures are statistics against a reference.
+ * Real engine output is rendered through the real components (TodayImportantCard, LimitCard,
+ * RollingEarningsCard); the dashboard route's banner mapping is checked at source level.
+ * Nothing is worded or styled as a confirmed legal violation: calendar-year and month figures
+ * are statistics against a reference, and the rolling 12-month indicator is an orientation
+ * value ("Erfasste Verdienste über dem Orientierungsrahmen").
  */
 import { readFileSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
@@ -17,16 +18,13 @@ vi.mock("@tanstack/react-router", () => ({
     createElement("a", { href: to, className }, children as never),
 }));
 
-import { LegalForecastCard } from "./LegalForecastCard";
 import { LimitCard } from "./LimitCard";
+import { RollingEarningsCard } from "./RollingEarningsCard";
 import { TodayImportantCard } from "./TodayImportantCard";
 import { t } from "@/lib/i18n";
 import { formatEuro } from "@/lib/minijob/calc";
 import { assessLegalIncome, evaluateRollingWarning } from "@/lib/minijob/legal";
-import {
-  hasMonthAboveDoubleReference,
-  isLegalExceedanceStatus,
-} from "@/lib/minijob/legal/warnings";
+import { hasMonthAboveDoubleReference } from "@/lib/minijob/legal/warnings";
 import { monthUsage, yearUsage } from "@/lib/minijob/limits";
 import { makeResolver } from "@/lib/minijob/resolve";
 import {
@@ -49,11 +47,11 @@ const job: Job = {
   rate: 13.9,
 };
 let n = 0;
-const entry = (month: number, amount: number): Shift => ({
+const entry = (month: number, amount: number, day = 3): Shift => ({
   id: `c${n++}`,
   jobId: "a",
   kind: "arbeit",
-  date: `2026-${String(month).padStart(2, "0")}-03`,
+  date: `2026-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
   start: "08:00",
   end: "09:00",
   breakMinutes: 0,
@@ -81,9 +79,8 @@ const renderText = (node: ReturnType<typeof createElement>) => {
 };
 
 /** Everything the user sees for `shifts` when the dashboard displays `month` (0-based) of 2026. */
-function surfaces(shifts: Shift[], month: number) {
+function surfaces(shifts: Shift[], month: number, ref = "2026-12-31") {
   const resolve = makeResolver([job], settings);
-  const ref = "2026-12-31";
   const mu = monthUsage(shifts, resolve, settings, 2026, month, ref);
   const yu = yearUsage(shifts, resolve, settings, 2026, ref);
   const data = { jobs: [job], shifts, settings } as AppData;
@@ -104,7 +101,7 @@ function surfaces(shifts: Shift[], month: number) {
         resolve,
         monthUsage: mu,
         yearUsage: yu,
-        forecastStatus: status,
+        rollingStatus: status,
         highVariation,
         onNewEntry: () => {},
       }),
@@ -116,76 +113,110 @@ function surfaces(shifts: Shift[], month: number) {
         scopeLabel: "2026",
         rate: 13.9,
         auto: true,
-        legalExceeded: isLegalExceedanceStatus(status),
       }),
     ),
-    forecastCard: renderText(createElement(LegalForecastCard, { forecast: rolling })),
+    rollingCard: renderText(createElement(RollingEarningsCard, { rolling })),
+    rolling,
     status,
   };
 }
 
 const series = (amounts: number[]) => amounts.map((a, i) => entry(i + 1, a));
+const violationWords =
+  /Verstoß|rechtlich überschritten|Überschreitung festgestellt|überschreitet die (reguläre|Grenze)/i;
 
-describe("calendar-year total above the reference, compliant legal assessment (March view of 12 x 700 EUR)", () => {
+describe("calendar-year total above the reference, rolling indicator within its range (March view of 12 x 700 EUR)", () => {
   const s = () => surfaces(series(Array(12).fill(700)), 2);
 
-  it("only statistics are worded as such; no surface claims an exceedance", () => {
+  it("each figure is on its own time basis and worded as what it is", () => {
     const out = s();
     expect(out.status).toBe("OK");
     expect(out.today).toContain(t("dash.limitYearAbove", { amount: formatEuro(7236) }));
     expect(out.yearCard).toContain(t("limit.yearAboveNote"));
-    expect(out.forecastCard).toContain(t("legalForecast.statusOk"));
-    for (const text of [out.today, out.yearCard, out.forecastCard]) {
-      expect(text).not.toContain(t("legalForecast.statusMaximum"));
-      expect(text).not.toContain(t("legalForecast.statusRegularExceeded"));
-      expect(text).not.toContain(t("limit.overExplain"));
-    }
+    expect(out.yearCard).toContain("8.400"); // calendar-year statistic
+    expect(out.rollingCard).toContain(t("rolling.statusWithin"));
+    expect(out.rollingCard).toContain("2.100"); // rolling 12 months ending in March
+    expect(out.rollingCard).not.toContain("8.400");
+    expect(out.rollingCard).not.toContain(t("rolling.statusAbove"));
   });
 
-  it("the calendar-year phrase is the same on the banner text, the card and the note", () => {
-    const out = s();
-    for (const text of [out.today, out.yearCard]) {
-      expect(text).toContain("Kalenderjahresverdienst über dem Richtwert");
-    }
+  it("the rolling card says that being within the range proves nothing", () => {
+    expect(s().rollingCard).toContain(t("rolling.disclaimer"));
+    expect(s().rollingCard).toContain(t("rolling.windowNote"));
   });
 });
 
-describe("a genuine legal exceedance (December view of 12 x 700 EUR)", () => {
-  it("the legal surfaces share one wording; the statistic card stays a statistic", () => {
+describe("rolling indicator above the reference range (December view of 12 x 700 EUR)", () => {
+  it("the card and 'Heute wichtig' share one orientation wording; the statistic card stays a statistic", () => {
     const out = surfaces(series(Array(12).fill(700)), 11);
-    expect(out.status).toBe("MAXIMUM_EXCEEDED");
-    expect(out.today).toContain(t("legalForecast.statusMaximum"));
-    expect(out.forecastCard).toContain(t("legalForecast.statusMaximum"));
-    // the card carries the exceedance explanation only because the legal assessment says so
-    expect(out.yearCard).toContain(t("limit.overExplain"));
+    expect(out.status).toBe("MAXIMUM_EXCEEDED"); // historic engine name; it only means "above the range"
+    expect(out.rollingCard).toContain(t("rolling.statusAbove"));
+    expect(out.rollingCard).toContain(t("rolling.aboveHint"));
+    expect(out.today).toContain(t("rolling.statusAbove"));
+    expect(out.today).toContain(t("rolling.aboveHint"));
+    expect(out.yearCard).toContain(t("limit.yearAboveNote"));
+  });
+
+  it("no surface carries violation or legal-conclusion wording", () => {
+    const out = surfaces(series(Array(12).fill(700)), 11);
+    for (const text of [out.today, out.yearCard, out.rollingCard]) {
+      expect(text).not.toMatch(violationWords);
+      expect(text).not.toContain("Prognose");
+      expect(text).not.toContain("Maximalrahmen");
+    }
   });
 });
 
-describe("extreme fluctuation inside a total within the limit (Minijob-Zentrale example)", () => {
-  it("is shown as the same hint on the card and the forecast card, never as OK-with-certainty", () => {
+describe("recorded earnings and shifts entered for later are shown apart", () => {
+  it("the card shows recorded, entered-for-later and total separately, with the planning note", () => {
+    vi.setSystemTime(new Date(2026, 5, 15, 10, 0));
+    const out = surfaces([entry(6, 500, 10), entry(6, 700, 25)], 5, "2026-06-15");
+    expect(out.rollingCard).toContain(t("rolling.actual"));
+    expect(out.rollingCard).toContain(t("rolling.planned"));
+    expect(out.rollingCard).toContain(t("rolling.plannedNote"));
+    const card = container.querySelector('[data-testid="rolling-actual"]')?.textContent ?? "";
+    expect(card).toContain("500");
+    expect(container.querySelector('[data-testid="rolling-planned"]')?.textContent).toContain(
+      "700",
+    );
+    expect(container.querySelector('[data-testid="rolling-total"]')?.textContent).toContain(
+      "1.200",
+    );
+  });
+});
+
+describe("extreme fluctuation inside a total within the range (Minijob-Zentrale example)", () => {
+  it("the same informational signal on 'Heute wichtig' and on the card, labelled as no legal rule", () => {
     const out = surfaces(
       series([1800, 1800, 1800, 204, 204, 204, 204, 204, 204, 204, 204, 204]),
       11,
     );
     expect(out.status).not.toBe("MAXIMUM_EXCEEDED");
-    expect(out.today).toContain(t("legalForecast.highVariation"));
-    expect(out.forecastCard).toContain(t("legalForecast.highVariation"));
+    expect(out.today).toContain(t("rolling.signal"));
+    expect(out.rollingCard).toContain(t("rolling.signal"));
+    expect(t("rolling.signal")).toMatch(/Orientierung/);
   });
 });
 
 describe("the dashboard route maps the same levels to the same wording", () => {
   const src = readFileSync(resolvePath(process.cwd(), "src/routes/index.tsx"), "utf8");
 
-  it("uses the shared decision and the shared keys, and no retired exceedance wording for statistics", () => {
+  it("uses the shared decision and the shared keys; no alarm tone and no retired wording", () => {
     expect(src).toMatch(/limitAlertLevel\(/);
-    expect(src).toMatch(/limitAlert === "forecastOver"[\s\S]*forecastExceededTextKey/);
-    expect(src).toMatch(/limitAlert === "highVariation"[\s\S]*legalForecast\.highVariation/);
+    expect(src).toMatch(
+      /limitAlert === "rollingAbove"[\s\S]*rolling\.statusAbove[\s\S]*rolling\.aboveHint/,
+    );
+    expect(src).toMatch(/limitAlert === "highVariation"[\s\S]*rolling\.signal/);
     expect(src).toMatch(/limitAlert === "yearAbove"[\s\S]*dash\.limitYearAbove/);
     expect(src).toMatch(/limitAlert === "monthAbove"[\s\S]*dash\.limitMonthAbove/);
-    expect(src).not.toMatch(/dash\.limitYearOver/);
-    expect(src).not.toMatch(/dash\.limitMonthOver/);
-    // only the legal level uses the alarm tone
-    const over = [...src.matchAll(/tone="over"/g)].length;
-    expect(over).toBe(1);
+    expect(src).not.toMatch(
+      /dash\.limitYearOver|dash\.limitMonthOver|["']legalForecast\.[A-Za-z]+["']/,
+    );
+    expect(src).not.toMatch(/tone=/);
+    expect(src).not.toMatch(/bg-destructive|text-destructive|border-destructive/);
+  });
+
+  it("keeps the persisted widget id but shows the new card", () => {
+    expect(src).toMatch(/legalForecast: <RollingEarningsCard rolling=/);
   });
 });

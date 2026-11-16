@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { formatEuro, formatHours, isoDate, shiftHours } from "@/lib/minijob/calc";
 import { payPeriods } from "@/lib/minijob/payday";
 import { jobsPlannedOn } from "@/lib/minijob/schedule";
-import { forecastExceededTextKey, limitAlertLevel } from "@/lib/minijob/limit-alert";
+import { limitAlertLevel } from "@/lib/minijob/limit-alert";
 import type { LegalWarningStatus } from "@/lib/minijob/legal/warnings";
 import { jobsNeedingEmploymentType } from "@/lib/minijob/legal/employment";
 import { jobsApplyMinijobLimit } from "@/lib/minijob/work-mode";
@@ -21,7 +21,7 @@ export function TodayImportantCard({
   resolve,
   monthUsage,
   yearUsage,
-  forecastStatus,
+  rollingStatus,
   highVariation,
   onNewEntry,
 }: {
@@ -32,8 +32,8 @@ export function TodayImportantCard({
   resolve: Resolver;
   monthUsage: { share: number; earnings: number; earningsLimit: number };
   yearUsage: { share: number; earnings: number; earningsLimit: number };
-  /** Status of the rolling legal forecast, so this card cannot contradict it. */
-  forecastStatus?: LegalWarningStatus;
+  /** Status of the rolling earnings indicator, so this card cannot contradict its card. */
+  rollingStatus?: LegalWarningStatus;
   /** hasMonthAboveDoubleReference of the rolling forecast. */
   highVariation?: boolean;
   onNewEntry: () => void;
@@ -50,7 +50,7 @@ export function TodayImportantCard({
     jobsApplyMinijobLimit(jobs),
     monthUsage.share,
     yearUsage.share,
-    forecastStatus,
+    rollingStatus,
     highVariation,
   );
   const nearLimit = limitLevel !== null;
@@ -111,10 +111,10 @@ export function TodayImportantCard({
         ) : null}
         {limitLevel ? (
           <div className="rounded-xl border border-accent bg-accent/10 px-3 py-2.5 text-sm">
-            {limitLevel === "forecastOver" && forecastStatus
-              ? t(forecastExceededTextKey(forecastStatus))
+            {limitLevel === "rollingAbove"
+              ? `${t("rolling.statusAbove")}. ${t("rolling.aboveHint")}`
               : limitLevel === "highVariation"
-                ? t("legalForecast.highVariation")
+                ? t("rolling.signal")
                 : limitLevel === "yearAbove"
                   ? t("dash.limitYearAbove", { amount: formatEuro(yearUsage.earningsLimit) })
                   : limitLevel === "monthAbove"

@@ -182,14 +182,14 @@ describe("LimitCard progressbar accessible names", () => {
     expect(txt(month)).toContain("22,25 h / 44,67 h · 44,67 h bei 13,50 €/Std.");
     expect(txt(year)).toContain("7.500,00 € / 7.236,00 € · noch 0,00 €");
     expect(txt(year)).toContain("540,00 h / 536,00 h · noch 0,00 h");
-    // Über dem Richtwert: Warnfarbe (kein Verstoß-Rot) + statistischer Hinweis nur in der Jahreskarte
+    // Über dem Richtwert: Warnfarbe (nie Verstoß-Rot) + statistischer Hinweis mit Disclaimer nur in der Jahreskarte
     expect(bars(year).every((b) => b.className.includes("[&>div]:bg-amber-500"))).toBe(true);
     expect(bars(month).some((b) => b.className.includes("[&>div]:bg-amber-500"))).toBe(false);
     for (const card of [month, year]) {
       expect(bars(card).some((b) => b.className.includes("bg-destructive"))).toBe(false);
     }
     expect(year.textContent).toContain(tl("de", "limit.yearAboveNote"));
-    expect(year.textContent).not.toContain(tl("de", "limit.overExplain"));
+    expect(year.textContent).toContain(tl("de", "limit.disclaimer"));
     expect(month.textContent).not.toContain(tl("de", "limit.yearAboveNote"));
   });
 });

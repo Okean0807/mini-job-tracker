@@ -165,8 +165,8 @@ export interface LimitStatus {
   monthShare: number;
   monthHoursShare: number;
   yearShare: number;
-  /** Status of the rolling legal forecast for the current month (same as the forecast card). */
-  forecastStatus?: LegalWarningStatus;
+  /** Status of the rolling earnings indicator for the current month (same as its card). */
+  rollingStatus?: LegalWarningStatus;
 }
 
 export function limitStatus(): LimitStatus {
@@ -184,23 +184,23 @@ export function limitStatus(): LimitStatus {
     monthShare: month.earningsShare,
     monthHoursShare: month.hoursShare,
     yearShare: year.earningsShare,
-    forecastStatus: evaluateRollingWarning(forecast.rolling).status,
+    rollingStatus: evaluateRollingWarning(forecast.rolling).status,
   };
 }
 
 /**
  * Minijob-Hinweise – einmal pro Monat je Stufe. Die Stufe kommt aus derselben
  * Entscheidung wie Dashboard und Heute-Karte (`limitAlertLevel`):
- * - nur die rechtliche Prognose (gleitende 12 Monate, `evaluateRollingWarning`) meldet
- *   eine Überschreitung; der Kalenderjahres-Ist-Verdienst ist ein statistischer Wert und
- *   löst keine Überschreitungsmeldung aus,
+ * - der gleitende 12-Monats-Indikator (`evaluateRollingWarning`) meldet nur „erfasste
+ *   Verdienste über dem Orientierungsrahmen“ – ausdrücklich keine rechtliche Feststellung;
+ *   der Kalenderjahres-Ist-Verdienst ist ein statistischer Wert und löst keine Meldung aus,
  * - ein Monat über dem Monatsrichtwert ist ein Hinweis, keine Überschreitung,
  * - 75 / 90 Prozent des Monatsrichtwerts bleiben informative Schwellen.
  * Genau 100 % ist keine Überschreitung.
  */
 export function checkLimits() {
-  const { monthShare, monthHoursShare, yearShare, forecastStatus } = limitStatus();
-  const level = limitAlertLevel(true, monthShare, yearShare, forecastStatus);
+  const { monthShare, monthHoursShare, yearShare, rollingStatus } = limitStatus();
+  const level = limitAlertLevel(true, monthShare, yearShare, rollingStatus);
   const stamp = isoDate(new Date()).slice(0, 7);
   if (monthHoursShare >= 90) {
     notifyOnce(
@@ -210,12 +210,12 @@ export function checkLimits() {
       t("notify.limitHours.body", { percent: Math.round(monthHoursShare) }),
     );
   }
-  if (level === "forecastOver") {
+  if (level === "rollingAbove") {
     notifyOnce(
-      "limit-forecast",
+      "limit-rolling",
       stamp,
-      t("notify.limitForecast.title"),
-      t("notify.limitForecast.body"),
+      t("notify.limitRolling.title"),
+      t("notify.limitRolling.body"),
     );
   } else if (level === "monthAbove") {
     notifyOnce(

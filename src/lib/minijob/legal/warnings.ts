@@ -1,7 +1,15 @@
 import { exceedsAmount } from "./amounts";
 import type { ForecastMonth, Rolling12ForecastResult } from "./rolling";
 
-/** User-facing warning states. These are product states, not legal conclusions. */
+/**
+ * States of the informational rolling earnings indicator ("Verdienste der letzten 12 Monate").
+ * These are product states, NOT legal conclusions: the indicator adds up recorded earnings
+ * (plus shifts entered with a future date) of the 12 calendar months ending at the displayed
+ * month and compares them with the sum of those months' monthly limits. It is not the
+ * statutory, forward-looking assessment of the regular earnings over the employment period
+ * (§ 8 SGB IV), so "exceeded" here only means "above the reference range", and "OK" does not
+ * mean the employment is a compliant Minijob. The identifiers keep their historic names.
+ */
 export type LegalWarningStatus =
   | "OK"
   | "NEAR_LIMIT"
@@ -20,11 +28,12 @@ export interface LegalWarningAssessment {
 }
 
 /**
- * True for the states in which the (rolling) legal assessment says the regular
- * limit is exceeded. Every surface that shows a limit warning derives its
- * "exceeded" state from this, so it cannot contradict the legal forecast.
+ * True for the states in which the rolling earnings indicator is above its reference range.
+ * Every surface that shows this indicator (card, banner, "Heute wichtig", notification)
+ * derives "above the reference range" from this, so they cannot contradict each other.
+ * It is not a legal finding.
  */
-export function isLegalExceedanceStatus(status: LegalWarningStatus): boolean {
+export function isAboveRollingFrame(status: LegalWarningStatus): boolean {
   return (
     status === "REGULAR_LIMIT_EXCEEDED" ||
     status === "UNPREDICTABLE_EXCEEDANCE_POSSIBLE" ||
@@ -33,13 +42,14 @@ export function isLegalExceedanceStatus(status: LegalWarningStatus): boolean {
 }
 
 /**
- * True when at least one month of the rolling window is above twice the monthly
- * reference. A total inside the annual limit does not on its own show that the
- * employment remains a Minijob in that case (Minijob-Zentrale FAQ: 1,800 EUR for
- * three months plus 204 EUR for nine months adds up to 7,236 EUR, yet those first
- * three months are not a Minijob). This is a hint, not a determination: the
- * sources give no numeric threshold, so the doubled monthly reference – the limit
- * the unpredictable-exceedance rule itself uses per month – serves as the signal.
+ * Informational signal: at least one month of the rolling window is above twice the
+ * monthly reference. It is NOT the statutory exception for unpredictable exceedance (which
+ * has its own conditions: an unforeseeable reason, at most two months) and it is NOT a
+ * threshold from the law: the sources give no numeric line for fluctuating earnings (the
+ * Minijob-Zentrale example of 1,800 EUR for three months plus 204 EUR for nine months,
+ * 7,236 EUR in total, is the reason the signal exists). It must not be used to establish
+ * compliance or non-compliance, and its absence does not mean fluctuating earnings are
+ * acceptable.
  */
 export function hasMonthAboveDoubleReference(forecast: Rolling12ForecastResult): boolean {
   return forecast.months.some((month) => month.exceedsMaximumUnpredictableLimit);

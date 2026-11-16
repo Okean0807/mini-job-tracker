@@ -19,16 +19,11 @@ interface LimitCardProps {
    * `year` (default): calendar-year actual earnings against the annual reference – a
    * statistical figure, not a legal classification. `month`: the monthly reference
    * amount; a month above it is not automatically an exceedance. In both cases the
-   * regular remuneration over the employment period (at most 12 months) is decisive,
-   * and its assessment is the forecast card.
+   * regular remuneration over the employment period (at most 12 months) is decisive.
+   * This card never shows the rolling 12-month indicator: that is a different time basis
+   * and has its own card.
    */
   scope?: "month" | "year";
-  /**
-   * The legal assessment (rolling 12-month forecast) reports an exceedance. Only then does the
-   * card use the alarm styling and the exceedance explanation; a figure above the reference
-   * alone is a statistic.
-   */
-  legalExceeded?: boolean;
 }
 
 export function LimitCard({
@@ -38,7 +33,6 @@ export function LimitCard({
   auto,
   notApplicable,
   scope = "year",
-  legalExceeded = false,
 }: LimitCardProps) {
   const { t } = useT();
   const titleId = useId();
@@ -72,7 +66,6 @@ export function LimitCard({
         titleId={titleId}
         label={t("limit.earnings")}
         share={usage.earningsShare}
-        alarm={legalExceeded}
         main={`${formatEuro(usage.earnings)} / ${formatEuro(usage.earningsLimit)}`}
         hint={t("limit.leftAmount", { amount: formatEuro(usage.earningsLeft) })}
       />
@@ -80,7 +73,6 @@ export function LimitCard({
         titleId={titleId}
         label={t("limit.hours")}
         share={usage.hoursShare}
-        alarm={legalExceeded}
         main={`${formatHours(usage.hours)} / ${formatHours(usage.hoursLimit)}`}
         hint={
           auto
@@ -93,18 +85,13 @@ export function LimitCard({
       />
 
       {/* The limit is an upper bound: exactly 100 % is within it, only more is above it.
-          Figures above a REFERENCE are a statistic, not a legal classification; the alarm
-          box is reserved for the legal assessment (the forecast card's result). */}
-      {legalExceeded ? (
-        <div className="mt-3 space-y-1 rounded-xl border border-destructive/30 bg-destructive/5 p-2.5">
-          <p className="text-xs leading-relaxed text-destructive">{t("limit.overExplain")}</p>
-          <p className="text-xs leading-relaxed text-muted-foreground">{t("limit.disclaimer")}</p>
-        </div>
-      ) : sharePastLimit(usage.earningsShare) || sharePastLimit(usage.hoursShare) ? (
-        <div className="mt-3 rounded-xl border bg-muted/40 p-2.5">
+          A figure above a REFERENCE is a statistic, never a legal status. */}
+      {sharePastLimit(usage.earningsShare) || sharePastLimit(usage.hoursShare) ? (
+        <div className="mt-3 space-y-1 rounded-xl border bg-muted/40 p-2.5">
           <p className="text-xs leading-relaxed text-muted-foreground">
             {scope === "month" ? t("limit.monthAboveNote") : t("limit.yearAboveNote")}
           </p>
+          <p className="text-xs leading-relaxed text-muted-foreground">{t("limit.disclaimer")}</p>
         </div>
       ) : null}
     </div>
@@ -115,7 +102,6 @@ function Bar({
   titleId,
   label,
   share,
-  alarm,
   main,
   hint,
 }: {
@@ -123,8 +109,6 @@ function Bar({
   titleId: string;
   label: string;
   share: number;
-  /** Legal assessment exceeded: alarm colour. Otherwise a reference figure never reads as a violation. */
-  alarm: boolean;
   main: string;
   hint: string;
 }) {
@@ -141,7 +125,7 @@ function Bar({
         <span
           className={cn(
             "tabular-nums font-semibold",
-            alarm ? "text-destructive" : caution ? "text-amber-600" : "text-foreground",
+            caution ? "text-amber-600" : "text-foreground",
           )}
         >
           {Math.round(share)} %
@@ -150,10 +134,7 @@ function Bar({
       <Progress
         aria-labelledby={`${labelId} ${titleId}`}
         value={clamped}
-        className={cn(
-          "mt-1.5 h-2.5",
-          alarm ? "[&>div]:bg-destructive" : sharePastLimit(share) && "[&>div]:bg-amber-500",
-        )}
+        className={cn("mt-1.5 h-2.5", sharePastLimit(share) && "[&>div]:bg-amber-500")}
       />
       <p className="mt-1 text-xs text-muted-foreground tabular-nums">
         {main} · {hint}

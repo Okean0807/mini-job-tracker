@@ -259,13 +259,13 @@ describe("checkLimits – AUD-09A: Grenzen sind Obergrenzen, ein einzelner Monat
     expect(flags()["limit-100"]).toBeUndefined();
   });
 
-  it("a genuinely exceeded legal assessment (rolling 12 months) still notifies, as a forecast finding", () => {
+  it("the rolling 12-month indicator above its reference range notifies, as an orientation hint", () => {
     // January to June 1,300 EUR each = 7,800 EUR > 7,236 EUR
     const shifts = [1, 2, 3, 4, 5, 6].map((m) => entry(`2026-0${m}-10`, 1300));
     seed(JUNE_2026, shifts);
     checkLimits();
-    expect(limitFlags()).toEqual(["limit-forecast"]);
-    // the calendar-year figure alone is never reported as a confirmed exceedance
+    expect(limitFlags()).toEqual(["limit-rolling"]);
+    // the calendar-year figure alone is never reported, and the retired "exceeded" flag is gone
     expect(flags()["limit-100"]).toBeUndefined();
   });
 
@@ -273,16 +273,16 @@ describe("checkLimits – AUD-09A: Grenzen sind Obergrenzen, ein einzelner Monat
     seed(JUNE_2026, [entry("2026-06-10", 1400)]);
     checkLimits();
     expect(limitFlags()).toEqual(["limit-month-above"]);
-    expect(flags()["limit-forecast"]).toBeUndefined();
+    expect(flags()["limit-rolling"]).toBeUndefined();
     expect(flags()["limit-100"]).toBeUndefined();
   });
 
-  it("an exceeded legal forecast notifies as forecast (same finding as the forecast card)", () => {
+  it("an indicator above its range because of entered future shifts notifies the same hint as the card", () => {
     // 3,600 EUR actual, plus 7,000 EUR planned later this month -> 10,600 EUR projected
     const shifts = [1, 2, 3, 4, 5, 6].map((m) => entry(`2026-0${m}-10`, 600));
     shifts.push(entry("2026-06-25", 7000));
     seed(JUNE_2026, shifts);
     checkLimits();
-    expect(limitFlags()).toEqual(["limit-forecast"]);
+    expect(limitFlags()).toEqual(["limit-rolling"]);
   });
 });
