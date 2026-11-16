@@ -185,22 +185,30 @@ describe("B3 fehlende Objekt-ID (Altbestand)", () => {
     expect(saved.city).toBe("Dresden");
   });
 
-  // OFFEN (Entscheidung nötig): `store.learnObjectsFromShift` (Auto-Lernen beim Speichern, vor B3)
-  // legt für die Adresse ein NEUES Objekt an und verknüpft den Eintrag mit dessen neuer ID. Die
-  // fehlende objectId bleibt deshalb beim Speichern NICHT erhalten. Siehe B3-Bericht.
-  it.skip("Speichern ohne Änderung behält die fehlende objectId (blockiert: Auto-Lernen im Store)", () => {
+  it("Speichern ohne Änderung behält die fehlende objectId und legt kein Ersatzobjekt an", () => {
     open("legacy");
+    const catalogBefore = getData()
+      .objects.map((o) => o.id)
+      .sort();
     save();
     expect(getData().shifts.find((s) => s.id === "legacy")!.objectId).toBe("deleted-obj");
+    expect(
+      getData()
+        .objects.map((o) => o.id)
+        .sort(),
+    ).toEqual(catalogBefore);
+    expect(getData().objects.map((o) => o.id)).not.toContain("deleted-obj");
   });
 
-  it.skip("Picker öffnen/Escape verändert die fehlende objectId nicht (blockiert: Auto-Lernen im Store)", () => {
+  it("Picker öffnen, suchen und per Escape schließen verändert die fehlende objectId nicht", () => {
     open("legacy");
     openPicker();
     setValue(search(), "lager");
     key(search(), "Escape");
     save();
-    expect(getData().shifts.find((s) => s.id === "legacy")!.objectId).toBe("deleted-obj");
+    const saved = getData().shifts.find((s) => s.id === "legacy")!;
+    expect(saved.objectId).toBe("deleted-obj");
+    expect(saved.street).toBe("Alte Gasse");
   });
 
   it("bewusstes Ersetzen durch ein vorhandenes Objekt funktioniert", () => {
