@@ -38,6 +38,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/lib/i18n";
+import { DurationChips } from "./DurationChips";
 import { ObjectPicker } from "./ObjectPicker";
 import { PauseChips } from "./PauseChips";
 import { formatEuro, isoDate, shiftBreakdown } from "@/lib/minijob/calc";
@@ -52,6 +53,7 @@ import {
 import {
   applyContinuationTo,
   continuationStart,
+  endFromDuration,
   isTimeValue,
   pauseSuggestionFromHistory,
   repeatPayload,
@@ -730,6 +732,23 @@ export function ShiftDialog({
     if (holiday && kind === "feiertag") setKind("arbeit");
   }
 
+  /**
+   * B4: Ende aus Beginn + Dauer. Nur auf ausdrückliches Tippen und nie über ein selbst
+   * eingetragenes Ende (die Chips sind dann gesperrt). Über Mitternacht entsteht ein Ende vor
+   * dem Beginn – die bestehende Folgetag-Regel. Dauer und Verdienst rechnet weiter der Rechenkern.
+   */
+  function applyDuration(hours: number) {
+    const next = endFromDuration(start, hours * 60);
+    if (next === null) return;
+    if (endTouched && end.trim() !== "") return;
+    setFieldError((prev) => {
+      const rest = { ...prev };
+      delete rest.end;
+      return rest;
+    });
+    onEndChange(next);
+  }
+
   function onEndChange(value: string) {
     setEnd(value);
     if (holiday && kind === "feiertag") setKind("arbeit");
@@ -1261,6 +1280,14 @@ export function ShiftDialog({
                         />
                       </div>
                     </div>
+
+                    <DurationChips
+                      start={start}
+                      end={end}
+                      endLocked={endTouched && end.trim() !== ""}
+                      onSelect={applyDuration}
+                      t={t}
+                    />
 
                     <div className="flex items-center gap-2 border-t border-border/70 px-3 py-2">
                       <Label htmlFor="pause" className="flex-1 text-sm">

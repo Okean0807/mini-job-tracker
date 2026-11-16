@@ -8,6 +8,8 @@ import {
   applyContinuationTo,
   continuationStart,
   dayIndex,
+  endFromDuration,
+  grossMinutes,
   DEFAULT_ENTRY_END,
   DEFAULT_ENTRY_START,
   isoFromDayIndex,
@@ -509,5 +511,30 @@ describe("B2 pauseSuggestionFromHistory", () => {
       last: 15,
       frequent: 15,
     });
+  });
+});
+
+describe("B4 endFromDuration / grossMinutes", () => {
+  it.each([2, 4, 6, 8, 10])("%i h ab 09:00", (h) => {
+    expect(endFromDuration("09:00", h * 60)).toBe(minutesToTime(9 * 60 + h * 60));
+  });
+
+  it("über Mitternacht: Ende vor Beginn (bestehende Folgetag-Regel)", () => {
+    expect(endFromDuration("22:00", 240)).toBe("02:00");
+    expect(endFromDuration("23:30", 120)).toBe("01:30");
+    expect(grossMinutes("22:00", "02:00")).toBe(240);
+    expect(grossMinutes("20:00", endFromDuration("20:00", 600)!)).toBe(600);
+  });
+
+  it("ungültiger Beginn oder unsinnige Dauer → kein Ende", () => {
+    expect(endFromDuration("", 240)).toBeNull();
+    expect(endFromDuration("25:00", 240)).toBeNull();
+    expect(endFromDuration("09:00", 0)).toBeNull();
+    expect(endFromDuration("09:00", 24 * 60)).toBeNull();
+    expect(grossMinutes("09:00", "")).toBeNull();
+  });
+
+  it("gleiche Zeit ist Dauer 0, nicht 24 h", () => {
+    expect(grossMinutes("09:00", "09:00")).toBe(0);
   });
 });

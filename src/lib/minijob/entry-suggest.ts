@@ -448,3 +448,22 @@ export function pauseSuggestionFromHistory(args: {
   if (best) out.frequent = best.minutes;
   return out;
 }
+
+/* ------------------------------------------------------------------ B4: Schnelldauer */
+
+/**
+ * B4: Ende = Beginn + Dauer, auf die Uhr gerundet. Über Mitternacht liefert das ein Ende VOR dem
+ * Beginn – genau die bestehende Regel (`shiftEndMinutes`: Ende < Beginn = Folgetag). Ohne gültigen
+ * Beginn oder bei einer Dauer außerhalb von 1 Minute bis unter 24 h gibt es kein Ende.
+ */
+export function endFromDuration(start: string, minutes: number): string | null {
+  if (!isTimeValue(start)) return null;
+  if (!Number.isFinite(minutes) || minutes <= 0 || minutes >= DAY_MINUTES) return null;
+  return minutesToTime(toMinutes(start) + Math.round(minutes));
+}
+
+/** Brutto-Dauer (vor Pause) in Minuten nach der bestehenden Regel, sonst `null`. */
+export function grossMinutes(start: string, end: string): number | null {
+  if (!isTimeValue(start) || !isTimeValue(end)) return null;
+  return shiftEndMinutes({ start, end }) - toMinutes(start);
+}
