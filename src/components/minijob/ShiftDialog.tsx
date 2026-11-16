@@ -2429,8 +2429,12 @@ export function ShiftDialog({
             <AlertDialogDescription>{t("entry.draftDiscardDesc")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t("entry.confirmBack")}</AlertDialogCancel>
-            <AlertDialogAction data-testid="entry-draft-discard-confirm" onClick={discardDraft}>
+            <AlertDialogCancel className="h-11">{t("entry.confirmBack")}</AlertDialogCancel>
+            <AlertDialogAction
+              className="h-11"
+              data-testid="entry-draft-discard-confirm"
+              onClick={discardDraft}
+            >
               {t("entry.draftDiscardConfirm")}
             </AlertDialogAction>
           </AlertDialogFooter>

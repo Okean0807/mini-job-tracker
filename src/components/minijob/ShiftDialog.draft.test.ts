@@ -279,6 +279,20 @@ describe("B6 ausdrückliches Verwerfen", () => {
     expect(draft()).not.toBeNull();
   });
 
+  it("beide Schaltflächen der Verwerfen-Bestätigung sind mindestens 44 px hoch (h-11)", () => {
+    open(null);
+    setValue(start(), "08:00");
+    click(q('[data-testid="entry-draft-discard"]'));
+    const buttons = [
+      ...document.querySelectorAll('[data-testid="entry-draft-discard-dialog"] button'),
+    ];
+    expect(buttons).toHaveLength(2);
+    for (const button of buttons) {
+      expect(button.className).toMatch(/(^|\s)h-11(\s|$)/);
+      expect(button.className).not.toMatch(/(^|\s)h-9(\s|$)/);
+    }
+  });
+
   it("bestätigtes Verwerfen löscht nur den Entwurf dieses Jobs und leert das Formular", () => {
     saveEntryDraft("j2", draftFields({ note: "anderer Job" }));
     open(null);
