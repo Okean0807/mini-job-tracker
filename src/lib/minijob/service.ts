@@ -18,6 +18,7 @@ import {
   sumHours,
   weekday,
 } from "./calc";
+import { validateEntry, type EntryIssue } from "./entry-validate";
 import { goalsProgress, type GoalProgress } from "./goals";
 import { holidaysFor, isHoliday } from "./holidays";
 import { buildInsights, type Insights } from "./insights";
@@ -57,7 +58,68 @@ export function context(data: AppData = getData()): AppContext {
 
 export type ShiftInput = Omit<Shift, "id" | "kind"> & { id?: string; kind?: ShiftKind };
 
-/** Neue Schicht anlegen oder bestehende überschreiben. Gibt die gespeicherte Schicht zurück. */
+/**
+ * Schreibgrenze für Schichten (K2): die EINE Stelle, an der jede neue oder geänderte Arbeitsschicht
+ * auf unmögliche Werte geprüft wird – Dialog, Timer, Import und Plan-Erzeugung gehen alle hierdurch.
+ * Geprüft wird mit derselben Regel wie im Editor (`validateEntry`), nur die harten Fehler:
+ * Beginn/Ende fehlen oder sind ungültig, Dauer 0, Pause >= Arbeitszeit. Überschneidung, Dublette und
+ * lange Nachtschicht sind bestätigbare Warnungen und bleiben Sache der Oberfläche (Rückfrage).
+ *
+ * Altbestand: Eine schon gespeicherte Schicht (gleiche Id) darf unverändert weiter gespeichert werden,
+ * solange Beginn, Ende und Pause gleich bleiben (Paket-A-Regel, ebenfalls in `validateEntry`).
+ * Abwesenheiten werden – wie im Editor – nicht geprüft. Der Store selbst bleibt bewusst offen: er
+ * lädt auch Cloud-, Backup- und Altdaten, die nie abgelehnt werden dürfen.
+ */
+export class ShiftValidationError extends Error {
+  readonly issues: EntryIssue[];
+  constructor(issues: EntryIssue[]) {
+    super(`invalid shift: ${issues.map((i) => i.code).join(", ")}`);
+    this.name = "ShiftValidationError";
+    this.issues = issues;
+  }
+}
+
+/** Harte Fehler einer Schicht, die gespeichert werden soll (leer = darf geschrieben werden). */
+export function shiftWriteErrors(shift: Shift, data: AppData = getData()): EntryIssue[] {
+  const original = data.shifts.find((s) => s.id === shift.id);
+  return validateEntry(
+    {
+      ...(original ? { id: shift.id } : {}),
+      kind: shift.kind,
+      ...(shift.jobId !== undefined ? { jobId: shift.jobId } : {}),
+      date: shift.date,
+      start: shift.start,
+      end: shift.end,
+      breakMinutes: shift.breakMinutes ?? 0,
+    },
+    { shifts: [], ...(original ? { original } : {}) },
+  ).errors;
+}
+
+function assertWritable(shift: Shift): void {
+  const errors = shiftWriteErrors(shift);
+  if (errors.length > 0) throw new ShiftValidationError(errors);
+}
+
+/** Mehrere Schichten speichern: gültige werden gespeichert, ungültige abgelehnt und zurückgegeben. */
+function saveWritable(list: Shift[]): {
+  saved: Shift[];
+  rejected: { shift: Shift; issues: EntryIssue[] }[];
+} {
+  const data = getData();
+  const saved: Shift[] = [];
+  const rejected: { shift: Shift; issues: EntryIssue[] }[] = [];
+  for (const shift of list) {
+    const issues = shiftWriteErrors(shift, data);
+    if (issues.length > 0) rejected.push({ shift, issues });
+    else saved.push(shift);
+  }
+  if (saved.length) storeSaveShifts(saved);
+  return { saved, rejected };
+}
+
+/** Neue Schicht anlegen oder bestehende überschreiben. Gibt die gespeicherte Schicht zurück.
+ *  Wirft `ShiftValidationError` (und speichert nichts) bei einer unmöglichen Arbeitsschicht. */
 export function upsertShift(input: ShiftInput): Shift {
   const shift: Shift = {
     ...input,
@@ -66,6 +128,7 @@ export function upsertShift(input: ShiftInput): Shift {
     breakMinutes: input.breakMinutes ?? 0,
     createdAt: input.createdAt ?? isoDate(new Date()),
   };
+  assertWritable(shift);
   storeSaveShift(shift);
   // store kann objectId per Auto-Learn setzen — gespeicherten Stand zurückgeben
   return getData().shifts.find((s) => s.id === shift.id) ?? shift;
@@ -96,6 +159,7 @@ export function updateShift(id: string, patch: Partial<Shift>): Shift | undefine
   const current = getShift(id);
   if (!current) return undefined;
   const next: Shift = { ...current, ...patch, id };
+  assertWritable(next);
   storeSaveShift(next);
   return next;
 }
@@ -104,8 +168,11 @@ export function removeShift(id: string): void {
   storeDeleteShift(id);
 }
 
-export function saveManyShifts(list: Shift[]): void {
-  storeSaveShifts(list);
+export function saveManyShifts(list: Shift[]): {
+  saved: Shift[];
+  rejected: { shift: Shift; issues: EntryIssue[] }[];
+} {
+  return saveWritable(list);
 }
 
 export function getShift(id: string, data: AppData = getData()): Shift | undefined {
@@ -340,9 +407,8 @@ export function previewFixedMonth(
 
 /** Wochenplan anwenden und speichern. Gibt die neu erzeugten Schichten zurück. */
 export function applyFixedMonth(job: Job, year: number, month: number): Shift[] {
-  const created = previewFixedMonth(job, year, month);
-  if (created.length) storeSaveShifts(created);
-  return created;
+  const { saved } = saveWritable(previewFixedMonth(job, year, month));
+  return saved;
 }
 
 /** Urlaub / Krank für einen Zeitraum eintragen (überspringt Tage mit bestehendem Job-Eintrag). */
@@ -356,7 +422,7 @@ export function addAbsence(job: Job, kind: ShiftKind, from: string, to: string):
     data.settings.bundesland,
     data.shifts,
   );
-  if (created.length) storeSaveShifts(created);
+  if (created.length) saveWritable(created);
   return created;
 }
 
@@ -384,7 +450,7 @@ export function saveAbsenceEdit(
   });
   for (const id of plan.deleteIds) storeDeleteShift(id);
   const upserts = [...plan.updated, ...plan.created];
-  if (upserts.length) storeSaveShifts(upserts);
+  if (upserts.length) saveWritable(upserts);
   return {
     created: plan.created.length,
     updated: plan.updated.length,
