@@ -38,6 +38,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useT } from "@/lib/i18n";
+import { PauseChips } from "./PauseChips";
 import { formatEuro, isoDate, shiftBreakdown } from "@/lib/minijob/calc";
 import {
   extrasSummaryParts,
@@ -51,6 +52,7 @@ import {
   applyContinuationTo,
   continuationStart,
   isTimeValue,
+  pauseSuggestionFromHistory,
   repeatPayload,
   reseedTimeFields,
   taskSuggestionsFromHistory,
@@ -554,6 +556,17 @@ export function ShiftDialog({
         ...(resolvedShiftId ? { excludeId: resolvedShiftId } : {}),
       }),
     [jobId, tasks, resolvedShiftId],
+  );
+
+  // B2: Pausen-Vorschlag aus der Historie dieses Jobs – nur Anzeige, gesetzt wird nur per Tipp.
+  const pauseSuggestion = useMemo(
+    () =>
+      pauseSuggestionFromHistory({
+        shifts: getData().shifts,
+        ...(jobId !== undefined ? { jobId } : {}),
+        ...(resolvedShiftId ? { excludeId: resolvedShiftId } : {}),
+      }),
+    [jobId, resolvedShiftId],
   );
 
   // A4: Werte des letzten Eintrags – nur für neue Einträge und nur auf ausdrückliches Tippen.
@@ -1272,6 +1285,13 @@ export function ShiftDialog({
                         {t("entry.minutesShort")}
                       </span>
                     </div>
+
+                    <PauseChips
+                      value={breakMinutes}
+                      onSelect={(minutes) => setBreakMinutes(String(minutes))}
+                      suggestion={pauseSuggestion}
+                      t={t}
+                    />
 
                     <div className="flex items-baseline justify-between gap-2 border-t border-border/70 bg-primary/5 px-3 py-2.5">
                       <span className="text-sm text-muted-foreground">{t("entry.workTime")}</span>

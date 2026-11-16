@@ -14,6 +14,7 @@ import {
   lastJobEntry,
   lastJobValues,
   minutesToTime,
+  pauseSuggestionFromHistory,
   repeatPayload,
   reseedTimeFields,
   shiftEndMinutes,
@@ -478,5 +479,35 @@ describe("F4 Zeitfelder nach Job-, Datums- oder Artwechsel", () => {
     expect(
       reseedTimeFields({ continuation: sameDay, startTouched: false, endTouched: true }),
     ).toEqual({ start: "10:30" });
+  });
+});
+
+describe("B2 pauseSuggestionFromHistory", () => {
+  const w = (id: string, date: string, breakMinutes: number, jobId = "j1"): Shift => ({
+    ...work({ id, start: "08:00", end: "16:00", breakMinutes, date }),
+    jobId,
+  });
+
+  it("leere Historie → kein Vorschlag", () => {
+    expect(pauseSuggestionFromHistory({ shifts: [], jobId: "j1" })).toEqual({});
+  });
+
+  it("zuletzt = jüngster Eintrag, häufig = Modus; 0 ist ein gültiger Wert", () => {
+    const shifts = [w("1", "2026-09-01", 30), w("2", "2026-09-02", 30), w("3", "2026-09-03", 0)];
+    expect(pauseSuggestionFromHistory({ shifts, jobId: "j1" })).toEqual({ last: 0, frequent: 30 });
+  });
+
+  it("Gleichstand → die jüngere Pause; andere Jobs, Abwesenheiten und excludeId zählen nicht", () => {
+    const shifts = [
+      w("1", "2026-09-01", 15),
+      w("2", "2026-09-02", 45),
+      w("3", "2026-09-03", 60, "j2"),
+      { ...w("4", "2026-09-04", 99), kind: "urlaub" as const },
+    ];
+    expect(pauseSuggestionFromHistory({ shifts, jobId: "j1" })).toEqual({ last: 45, frequent: 45 });
+    expect(pauseSuggestionFromHistory({ shifts, jobId: "j1", excludeId: "2" })).toEqual({
+      last: 15,
+      frequent: 15,
+    });
   });
 });

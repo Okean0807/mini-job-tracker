@@ -395,3 +395,56 @@ export function taskSuggestionsFromHistory(args: {
 
   return { last, frequent };
 }
+
+/* ------------------------------------------------------------------ B2: Pause je Job */
+
+export interface PauseSuggestion {
+  /** Pause des letzten Arbeitseintrags dieses Jobs (Minuten, auch 0). */
+  last?: number;
+  /** Am häufigsten gespeicherte Pause dieses Jobs (bei Gleichstand die jüngste). */
+  frequent?: number;
+}
+
+/**
+ * B2: Pausen-Vorschlag aus der Historie DIESES Jobs. Reine Lesefunktion: nichts wird gesetzt
+ * oder gespeichert, `Shift.breakMinutes` bleibt die einzige Quelle. Eine gespeicherte Pause
+ * von 0 ist ein gültiger Wert und wird als solcher vorgeschlagen.
+ */
+export function pauseSuggestionFromHistory(args: {
+  shifts: readonly Shift[];
+  jobId?: string;
+  excludeId?: string;
+}): PauseSuggestion {
+  const last = lastJobEntry(args.shifts, {
+    ...(args.jobId !== undefined ? { jobId: args.jobId } : {}),
+    ...(args.excludeId ? { excludeId: args.excludeId } : {}),
+  });
+  const out: PauseSuggestion = {};
+  if (!last) return out;
+  out.last = Math.max(0, Math.round(last.breakMinutes || 0));
+
+  const counts = new Map<number, { count: number; recent: number }>();
+  for (const shift of args.shifts) {
+    if (!isUsableWork(shift, args.jobId, args.excludeId)) continue;
+    const index = dayIndex(shift.date);
+    if (!Number.isFinite(index)) continue;
+    const minutes = Math.max(0, Math.round(shift.breakMinutes || 0));
+    const entry = counts.get(minutes) ?? { count: 0, recent: Number.NEGATIVE_INFINITY };
+    entry.count += 1;
+    entry.recent = Math.max(entry.recent, index);
+    counts.set(minutes, entry);
+  }
+  let best: { minutes: number; count: number; recent: number } | null = null;
+  for (const [minutes, info] of counts) {
+    if (
+      !best ||
+      info.count > best.count ||
+      (info.count === best.count &&
+        (info.recent > best.recent || (info.recent === best.recent && minutes < best.minutes)))
+    ) {
+      best = { minutes, ...info };
+    }
+  }
+  if (best) out.frequent = best.minutes;
+  return out;
+}
