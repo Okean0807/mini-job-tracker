@@ -68,7 +68,8 @@ describe("navigation and legal page", () => {
 
   it("/ki-hinweise keeps its content and shows the unavailable note unless enabled", () => {
     expect(kiSrc).toMatch(/availability !== "enabled"/);
-    expect(kiSrc).toMatch(/KI vorübergehend nicht verfügbar/);
+    expect(kiSrc).toMatch(/KI-Assistent nicht verfügbar/);
+    // Architecture description remains in the file, rendered only for the enabled state.
     expect(kiSrc).toMatch(/Aktuelle technische Provider/);
   });
 });

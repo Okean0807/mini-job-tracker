@@ -27,16 +27,27 @@ verantwortlich. Das Konto kannst du jederzeit in den Einstellungen löschen („
 
 Du bleibst Inhaber deiner Daten und Dokumente. Lade nur Inhalte hoch, zu denen du berechtigt bist, und keine
 Daten Dritter ohne deren Berechtigung. Unzulässig sind rechtswidrige Inhalte sowie Versuche, die App zu
-stören oder zu umgehen (z. B. automatisierte Massenanfragen an den KI-Assistenten).
+stören oder zu umgehen.
+[[ENTSCHEIDUNG: Ein Verbot automatisierter Massenanfragen an den KI-Assistenten gehört erst nach einer
+möglichen Wiedereinführung des Assistenten in diese Bedingungen. Solange die KI nicht verfügbar ist,
+entfällt dieser Teil.]]
 
 ## 5. Berechnungen und KI-Assistent
+
+> Stand nach PR #161: Der KI-Assistent ist derzeit nicht verfügbar. Für die erste Fassung soll dieser
+> Abschnitt den Assistenten nur als „derzeit nicht verfügbar“ erwähnen; die beiden KI-Punkte unten gelten
+> ausschließlich nach einer möglichen Wiedereinführung (zusammen mit angepasster Datenschutzerklärung und
+> KI-Hinweisen) und sind bis dahin zu streichen.
 
 - Berechnungen, Prognosen und Hinweise zu Grenzwerten sind Orientierungshilfen und beruhen auf deinen
   Eingaben. Sie berechnen keine Steuern oder Abgaben und ersetzen keine individuelle Rechts-, Steuer- oder
   Sozialversicherungsberatung.
-- Der KI-Assistent ist ein KI-System. Antworten können fehlerhaft oder unvollständig sein. Prüfe wichtige
-  Angaben bei der Minijob-Zentrale, der Deutschen Rentenversicherung oder einer Beratungsstelle.
-- Zur Datenverarbeitung beim KI-Assistenten siehe Datenschutzerklärung und KI-Hinweise.
+- Der KI-Assistent ist derzeit nicht verfügbar.
+- [[Nur nach Wiedereinführung der KI:]] Der KI-Assistent ist ein KI-System. Antworten können fehlerhaft oder
+  unvollständig sein. Prüfe wichtige Angaben bei der Minijob-Zentrale, der Deutschen Rentenversicherung oder
+  einer Beratungsstelle.
+- [[Nur nach Wiedereinführung der KI:]] Zur Datenverarbeitung beim KI-Assistenten siehe Datenschutzerklärung
+  und KI-Hinweise.
 
 ## 6. Verfügbarkeit und Änderungen
 

@@ -6,6 +6,11 @@
 > Vercel-Funktionsregion iad1 (USA-Ost). Rechtsgrundlagen, Verträge, Einstellungen bei den Anbietern und
 > Fristen sind **nicht** belegt und deshalb als Feld offen.
 
+> **Stand nach PR #161 (KI abgeschaltet):** Der KI-Assistent ist in der aktuellen Version nicht verfügbar
+> (`AI_FEATURES_ENABLED` nicht `"true"`). Es werden keine Anfragen an Gemini oder Tavily gesendet. Die mit
+> **[nur bei Wiedereinführung der KI]** markierten Teile beschreiben den früheren bzw. möglichen späteren
+> Betrieb und dürfen **nicht** als aktuelle Verarbeitung veröffentlicht werden.
+>
 # Datenschutzerklärung
 
 ## 1. Verantwortlicher
@@ -19,20 +24,20 @@ Datenschutzbeauftragter: [[ENTSCHEIDUNG: Benennung nur, wenn gesetzlich erforder
 
 | Zweck | Daten | Empfänger | Rechtsgrundlage | Speicherdauer |
 |---|---|---|---|---|
-| Bereitstellung der App, Sicherheit | IP-Adresse, Zeitpunkt, angeforderte Seite (Server-Logdaten), technische Fehlerangaben (z. B. HTTP-Status eines KI-Dienstes, Modellname) | Vercel | [[ENTSCHEIDUNG: z. B. Art. 6 Abs. 1 lit. f DSGVO – berechtigtes Interesse; prüfen]] | [[AUSFÜLLEN: Log-Aufbewahrung bei Vercel laut Vertrag/Plan]] |
+| Bereitstellung der App, Sicherheit | IP-Adresse, Zeitpunkt, angeforderte Seite (Server-Logdaten), technische Fehlerangaben | Vercel | [[ENTSCHEIDUNG: z. B. Art. 6 Abs. 1 lit. f DSGVO – berechtigtes Interesse; prüfen]] | [[AUSFÜLLEN: Log-Aufbewahrung bei Vercel laut Vertrag/Plan]] |
 | Anmeldung und Konto | E-Mail-Adresse und Profilangaben aus dem Google-Konto, Kennungen, Sitzungs-Token | Google (Anmeldung per OAuth), Supabase | [[ENTSCHEIDUNG: z. B. Art. 6 Abs. 1 lit. b DSGVO; prüfen]] | bis zur Kontolöschung [[prüfen]] |
 | Speicherung deiner App-Daten (lokal, optional Cloud-Sicherung) | Jobs, Arbeitszeiten, Pausen, Stundenlöhne, Verdienst, Zahlungen, Abwesenheiten (auch Krankheit), Einstellungen, ggf. GPS-Koordinaten und Adresse eines Eintrags | Supabase (Datenbank, Region Frankfurt) | [[ENTSCHEIDUNG: Art. 6 Abs. 1 lit. b DSGVO; für Krankheitsangaben Art. 9 DSGVO prüfen]] | bis zur Löschung durch dich bzw. Kontolöschung [[prüfen]] |
 | Dokumente | hochgeladene Dateien (PDF/Bilder), Dateiname, Typ, Größe, Ordner | Supabase Storage | [[ENTSCHEIDUNG: Art. 6 Abs. 1 lit. b DSGVO]] | bis zur Löschung/Kontolöschung [[prüfen]] |
-| KI-Assistent (freiwillig) | deine Frage, Auszug aus App-Daten (Stundenlohn, Grenzwerte, Stunden/Verdienst, Jobbezeichnungen), Antworttext; ggf. abgeleitete Suchanfrage | Vercel (Server), Google (Gemini API), Tavily (Websuche) | [[ENTSCHEIDUNG: Einwilligung Art. 6 Abs. 1 lit. a DSGVO und/oder Vertrag lit. b; Hinweisdialog vor der ersten Nutzung ist vorhanden]] | [[AUSFÜLLEN: Aufbewahrung bei Google/Tavily laut Konto-/Vertragsbedingungen]]; lokaler KI-Verlauf bis zum Löschen/Kontolöschung |
+| **[nur bei Wiedereinführung der KI – derzeit keine Verarbeitung]** KI-Assistent (freiwillig) | deine Frage, Auszug aus App-Daten (Stundenlohn, Grenzwerte, Stunden/Verdienst, Jobbezeichnungen), Antworttext; ggf. abgeleitete Suchanfrage | Vercel (Server), Google (Gemini API), Tavily (Websuche) | [[ENTSCHEIDUNG: Einwilligung Art. 6 Abs. 1 lit. a DSGVO und/oder Vertrag lit. b; Hinweisdialog vor der ersten Nutzung ist vorhanden]] | [[AUSFÜLLEN: Aufbewahrung bei Google/Tavily laut Konto-/Vertragsbedingungen]]; lokaler KI-Verlauf bis zum Löschen/Kontolöschung |
 | Adresse aus Standort (nur nach Bestätigung) | GPS-Koordinaten, IP-Adresse | OpenStreetMap Foundation (Nominatim) | Einwilligung Art. 6 Abs. 1 lit. a DSGVO (Abfrage nur nach Bestätigung im Dialog) [[prüfen]] | [[AUSFÜLLEN: laut Nominatim-Richtlinie]] |
-| Rate-Limit für die KI | Kennung des Kontos, Zeitstempel der letzten KI-Anfragen | Supabase | [[ENTSCHEIDUNG: z. B. Art. 6 Abs. 1 lit. f DSGVO]] | wenige Minuten bis eine Stunde im Betrieb; Zeile bis Kontolöschung [[prüfen]] |
+| **[nur bei Wiedereinführung der KI – derzeit werden keine neuen Einträge geschrieben]** Rate-Limit für die KI | Kennung des Kontos, Zeitstempel der letzten KI-Anfragen | Supabase | [[ENTSCHEIDUNG: z. B. Art. 6 Abs. 1 lit. f DSGVO]] | wenige Minuten bis eine Stunde im Betrieb; Zeile bis Kontolöschung [[prüfen]] |
 
 ## 3. Cookies, lokale Speicherung, Tracking
 
 - Die App verwendet **keine** Analyse- oder Werbe-Tracker.
 - Schriftarten werden von der App selbst ausgeliefert; es erfolgt kein Abruf bei Google Fonts.
-- Im Browser (localStorage) werden App-Daten, die Anmeldesitzung, der KI-Verlauf und die
-  Bestätigung des KI-Hinweises gespeichert. Sie dienen dem von dir ausdrücklich gewünschten Betrieb der
+- Im Browser (localStorage) werden App-Daten, die Anmeldesitzung, ggf. ein früher gespeicherter KI-Verlauf und
+  die Bestätigung des KI-Hinweises gespeichert (derzeit ohne Verwendung). Sie dienen dem von dir ausdrücklich gewünschten Betrieb der
   App. [[ENTSCHEIDUNG: Einstufung nach § 25 TDDDG („unbedingt erforderlich“) juristisch bestätigen]]
 
 ## 4. Empfänger und Auftragsverarbeiter
@@ -41,14 +46,14 @@ Datenschutzbeauftragter: [[ENTSCHEIDUNG: Benennung nur, wenn gesetzlich erforder
 |---|---|---|---|
 | Supabase | Auftragsverarbeiter (Anmeldung, Datenbank, Speicher) | [[AUSFÜLLEN: ja/nein, Datum, Fundstelle]] | Projektregion Frankfurt (eu-central-1) |
 | Vercel | Auftragsverarbeiter (Hosting, Server-Funktion) | [[AUSFÜLLEN]] | Funktionsregion USA-Ost (iad1) |
-| Google (Gemini API; Anmeldung) | [[ENTSCHEIDUNG: Auftragsverarbeiter/eigener Verantwortlicher je nach Dienst]] | [[AUSFÜLLEN: Kontotyp, Abrechnung, Bedingungen]] | [[AUSFÜLLEN]] |
-| Tavily | [[ENTSCHEIDUNG]] | [[AUSFÜLLEN]] | [[AUSFÜLLEN]] |
+| Google (Anmeldung; Gemini API nur bei Wiedereinführung der KI) | [[ENTSCHEIDUNG: Auftragsverarbeiter/eigener Verantwortlicher je nach Dienst]] | [[AUSFÜLLEN: Kontotyp, Abrechnung, Bedingungen]] | [[AUSFÜLLEN]] |
+| Tavily (nur bei Wiedereinführung der KI; derzeit kein Empfänger) | [[ENTSCHEIDUNG]] | [[AUSFÜLLEN]] | [[AUSFÜLLEN]] |
 | OpenStreetMap Foundation (Nominatim) | eigener Verantwortlicher | – | [[AUSFÜLLEN]] |
 
 ## 5. Übermittlung in Drittländer
 
-Teile der Verarbeitung finden außerhalb der EU/des EWR statt (insbesondere Vercel-Server in den USA; Google
-und Tavily [[AUSFÜLLEN: Standorte bestätigen]]).
+Teile der Verarbeitung finden außerhalb der EU/des EWR statt (insbesondere Vercel-Server in den USA; Google [[AUSFÜLLEN: Standorte bestätigen]];
+Tavily nur bei Wiedereinführung der KI).
 Übermittlungsmechanismus je Anbieter: [[AUSFÜLLEN: Angemessenheitsbeschluss / Data Privacy Framework-
 Zertifizierung des Anbieters (Eintrag prüfen) / Standardvertragsklauseln]].
 

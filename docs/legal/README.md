@@ -17,7 +17,7 @@ keine Rechtsberatung und keine fertigen Rechtstexte.
    `/datenschutz`, `/ki-hinweise` (`src/routes/`) bleiben als ausgewiesene Zwischenstände bestehen,
    bis der Betreiber die Angaben ergänzt und eine juristische Prüfung stattgefunden hat.
 2. Kein Platzhalter darf in eine veröffentlichte Fassung gelangen. Der Test
-   `src/lib/legal-drafts.test.ts` stellt sicher, dass die Entwürfe als Entwurf gekennzeichnet sind
+   `src/lib/legal-readiness.test.ts` (Abschnitt „draft legal texts stay drafts“) und `src/lib/ai-disclosure-consistency.test.ts` (keine aktiven KI-Beschreibungen, solange die KI aus ist) stellen sicher, dass die Entwürfe als Entwurf gekennzeichnet sind
    und nicht von der App importiert werden.
 3. Alle Tatsachenangaben in den Entwürfen stammen aus Code, Konfigurationsmetadaten (Supabase
    Projektregion, Vercel Funktionsregion) und den Anbieter-Dokumentationen zum Stand der Erstellung.

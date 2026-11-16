@@ -79,7 +79,7 @@ export const entry: Bundle = {
     "premium.unlock": "Premium aktivieren",
     "premium.settingsTitle": "Premium",
     "premium.settingsDesc":
-      "Mehrere Arbeitgeber, KI-Analyse, Cloud-Sync, Excel-Export und erweiterte Berichte.",
+      "Mehrere Arbeitgeber, Cloud-Sync, Excel-Export und erweiterte Berichte.",
     "premium.active": "Premium aktiv",
     "premium.activated": "Premium aktiviert",
   },
@@ -158,8 +158,7 @@ export const entry: Bundle = {
     "premium.excel": "Excel export is part of Premium.",
     "premium.unlock": "Activate Premium",
     "premium.settingsTitle": "Premium",
-    "premium.settingsDesc":
-      "Multiple employers, AI analysis, cloud sync, Excel export and advanced reports.",
+    "premium.settingsDesc": "Multiple employers, cloud sync, Excel export and advanced reports.",
     "premium.active": "Premium active",
     "premium.activated": "Premium activated",
   },
@@ -239,7 +238,7 @@ export const entry: Bundle = {
     "premium.unlock": "Активировать Premium",
     "premium.settingsTitle": "Premium",
     "premium.settingsDesc":
-      "Несколько работодателей, ИИ-анализ, облачная синхронизация, экспорт Excel и расширенные отчёты.",
+      "Несколько работодателей, облачная синхронизация, экспорт Excel и расширенные отчёты.",
     "premium.active": "Premium активен",
     "premium.activated": "Premium активирован",
   },
@@ -318,7 +317,7 @@ export const entry: Bundle = {
     "premium.unlock": "Premium'u etkinleştir",
     "premium.settingsTitle": "Premium",
     "premium.settingsDesc":
-      "Birden fazla işveren, yapay zekâ analizi, bulut senkronizasyonu, Excel dışa aktarma ve gelişmiş raporlar.",
+      "Birden fazla işveren, bulut senkronizasyonu, Excel dışa aktarma ve gelişmiş raporlar.",
     "premium.active": "Premium etkin",
     "premium.activated": "Premium etkinleştirildi",
   },
@@ -398,7 +397,7 @@ export const entry: Bundle = {
     "premium.unlock": "Aktywuj Premium",
     "premium.settingsTitle": "Premium",
     "premium.settingsDesc":
-      "Wielu pracodawców, analiza AI, synchronizacja w chmurze, eksport Excel i rozszerzone raporty.",
+      "Wielu pracodawców, synchronizacja w chmurze, eksport Excel i rozszerzone raporty.",
     "premium.active": "Premium aktywne",
     "premium.activated": "Premium aktywowane",
   },

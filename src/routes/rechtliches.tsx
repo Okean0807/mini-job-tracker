@@ -13,7 +13,7 @@ function LegalOverviewPage() {
     <LegalPageShell>
       <h1 className="text-3xl font-extrabold tracking-tight">Rechtliches</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Rechtliche Informationen zu MiniJob Tracker und zum KI-Assistenten.
+        Rechtliche Informationen zu MiniJob Tracker.
       </p>
       <section className="mt-6 rounded-xl border bg-card p-5">
         <LegalLinks variant="list" />

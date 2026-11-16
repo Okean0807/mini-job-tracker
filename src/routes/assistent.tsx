@@ -47,12 +47,12 @@ export const Route = createFileRoute("/assistent")({
       {
         name: "description",
         content:
-          "Frage den KI-Assistenten nach Arbeitsstunden, Verdienst, dem besten Monat, Prognosen und Mustern in deinen Arbeitszeiten.",
+          "Der KI-Assistent ist in dieser Version von MiniJob Tracker nicht verfügbar.",
       },
       { property: "og:title", content: "KI-Assistent – MiniJob Tracker" },
       {
         property: "og:description",
-        content: "Stunden, Verdienst, Prognosen und Arbeitsmuster per Frage analysieren.",
+        content: "Der KI-Assistent ist in dieser Version nicht verfügbar.",
       },
     ],
   }),

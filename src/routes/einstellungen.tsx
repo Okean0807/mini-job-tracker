@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAiAvailability } from "@/hooks/use-ai-availability";
 import { useAuthSession } from "@/hooks/use-auth-session";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LegalLinks } from "@/components/minijob/LegalLinks";
@@ -793,6 +794,9 @@ function UiModePreviewOverlay({
 }) {
   const { t } = useT();
   const vis = previewVisibility(mode);
+  // The AI entry only exists in the navigation while the server confirms the AI feature.
+  const aiAvailability = useAiAvailability();
+  const navPreview = NAV_PREVIEW.filter((f) => f !== "nav.ai" || aiAvailability === "enabled");
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center"
@@ -818,7 +822,7 @@ function UiModePreviewOverlay({
               {t("ui.previewNav")}
             </p>
             <ul className="mt-1 space-y-1 text-sm">
-              {NAV_PREVIEW.map((f) => (
+              {navPreview.map((f) => (
                 <li key={f} className="flex justify-between gap-2">
                   <span>{t(`ui.feature.${f}`)}</span>
                   <span className={vis[f] ? "text-primary" : "text-muted-foreground"}>
