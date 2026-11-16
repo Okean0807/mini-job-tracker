@@ -230,7 +230,10 @@ describe("initCloudSync", () => {
     expect(local.jobs).toHaveLength(1);
   });
 
-  it("Onboarding unvollständig + Wizard-Job + Cloud → restore (kein Falsch-Konflikt)", async () => {
+  // PHASE 2 CONTRACT CHANGE (owner decision 7, data-safety): a wizard-created job counts as user
+  // data. It is no longer silently overwritten by a cloud restore; the user decides (conflict).
+  // Before Phase 2 this test expected an automatic restore ("kein Falsch-Konflikt").
+  it("Onboarding unvollständig + Wizard-Job + Cloud → Konflikt (Wizard-Job ist Nutzerdaten, kein stilles Restore)", async () => {
     local = {
       ...makeData(0, true, false),
       jobs: [{ id: "j1", name: "Wizard", color: "#0d9488", mode: "flex" }],
@@ -250,12 +253,16 @@ describe("initCloudSync", () => {
     initCloudSync();
     await settle();
 
-    expect(getSyncState().status).not.toBe("conflict");
-    expect(replaced).toHaveLength(1);
+    expect(getSyncState().status).toBe("conflict");
+    expect(replaced).toHaveLength(0);
     expect(cloud.upserts).toBe(0);
+    // Der lokale Wizard-Job bleibt erhalten.
+    expect(local.jobs).toHaveLength(1);
   });
 
-  it("Race finish-before-sync: wizardPendingFirstSync + Job + Cloud → restore", async () => {
+  // PHASE 2 CONTRACT CHANGE (owner decision 7): see above. wizardPendingFirstSync no longer
+  // forces an automatic restore over existing jobs.
+  it("Race finish-before-sync: wizardPendingFirstSync + Job + Cloud → Konflikt (kein stilles Restore)", async () => {
     local = {
       ...makeData(0, true, true),
       jobs: [{ id: "j1", name: "Wizard", color: "#0d9488", mode: "flex" }],
@@ -276,11 +283,13 @@ describe("initCloudSync", () => {
     initCloudSync();
     await settle();
 
-    expect(getSyncState().status).not.toBe("conflict");
-    expect(replaced).toHaveLength(1);
-    // Flag cleared after successful restore
+    expect(getSyncState().status).toBe("conflict");
+    expect(replaced).toHaveLength(0);
+    expect(cloud.upserts).toBe(0);
+    expect(local.jobs).toHaveLength(1);
+    // Der Flag bleibt, bis die Nutzerin entschieden hat (kein Restore/Push fand statt).
     const meta = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1:u:user-1")!);
-    expect(meta.wizardPendingFirstSync).toBe(false);
+    expect(meta.wizardPendingFirstSync).toBe(true);
   });
 
   it("Leftover jobs nach Onboarding ohne Flag + Cloud → conflict (jobs-only survival)", async () => {
@@ -1338,7 +1347,10 @@ describe("orders sync (v1.1)", () => {
     expect(workFingerprint(payload)).toBe(fpBefore);
   });
 
-  it("order-only change bump localChangedAt but not workFingerprint/localWorkChangedAt", async () => {
+  // PHASE 2 CONTRACT CHANGE: all eight collections now count as user data. An orders-only change
+  // therefore also bumps localWorkChangedAt (it used to bump only localChangedAt). The legacy
+  // shifts+jobs `workFingerprint` still ignores orders; the new `userDataFingerprint` does not.
+  it("order-only change bumps localChangedAt AND localWorkChangedAt (all collections are user data); legacy workFingerprint unchanged", async () => {
     const { initCloudSync, workFingerprint } = await loadModule();
     initCloudSync();
     await settle();
@@ -1368,7 +1380,8 @@ describe("orders sync (v1.1)", () => {
 
     const metaAfter = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1:u:user-1")!);
     expect(metaAfter.localChangedAt).toBeGreaterThan(metaBefore.localChangedAt ?? 0);
-    expect(metaAfter.localWorkChangedAt ?? null).toBe(workAtBefore);
+    expect(metaAfter.localWorkChangedAt ?? null).not.toBeNull();
+    expect(metaAfter.localWorkChangedAt ?? 0).toBeGreaterThan(workAtBefore ?? 0);
     expect(workFingerprint(local)).toBe(fpBefore);
     expect(workFingerprint(local)).not.toContain("o-new");
   });

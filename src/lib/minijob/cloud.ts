@@ -24,6 +24,22 @@
  * | Settings-only without jobs/shifts before first sync | → restore |
  *
  * Labels from `classifySyncSituation`: NO_CHANGE | PUSH | RESTORE | CONFLICT | FIRST_SYNC_RESTORE
+ *
+ * ## PHASE 2 (data-safety) – gilt, sobald `decideSync` mit `hasLocalUserData` aufgerufen wird
+ *
+ * - **Cloud-Änderung = Token-Gleichheit.** Der exakte `updated_at`-String des Servers
+ *   (`remoteToken`) wird nur auf Gleichheit verglichen; `lastSyncedAt` ist kein Konkurrenz-Token.
+ *   Altbestand ohne Token: konservativ über `remoteSeenAt` (Millisekunden-Gleichheit).
+ * - **Alle acht Sammlungen** (shifts, jobs, customers, projects, payments, goals, orders, objects)
+ *   zählen als Nutzerdaten (`userDataFingerprint`, `isUserDataEmpty`). Nur Einstellungen sind
+ *   ausgenommen. Ein vom Assistenten angelegter Job ist Nutzerdaten.
+ * - **Erstabgleich:** automatisch wiederhergestellt wird nur ein nachweislich leeres Gerät (zweimal
+ *   geprüft: bei der Inspektion und unmittelbar vor dem Anwenden). Mit Daten → `conflict`.
+ * - **`dirty`** stammt aus den Änderungsmarken, unabhängig von Auto-Backup und von `pending`; er
+ *   wird nur gelöscht, wenn der JETZIGE lokale Fingerprint dem hochgeladenen entspricht.
+ * - **Auto-Backup AUS:** `autoSync` ist reine Inspektion (kein Upload, keine Überschreibung
+ *   vorhandener Nutzerdaten). Ausnahmen: die Leer-Gerät-Erstwiederherstellung und ausdrücklich
+ *   ausgelöste Aktionen (`explicit`). Noch KEIN bedingtes Schreiben (CAS): `push` bleibt ein Upsert.
  */
 import { useSyncExternalStore } from "react";
 
@@ -31,6 +47,9 @@ import { t } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
 
 import { markBackup } from "./notify";
+import { fullFingerprint, isUserDataEmpty, userDataFingerprint } from "./backup-compare";
+import { computeDirty, type BackupHealthInput } from "./backup-status";
+import type { OriginClass } from "./origin-check";
 
 import { mergeDeviceAuthFromLocal, stripDeviceAuthForCloud } from "./device-auth";
 import { isValidPayload } from "./payload";
@@ -79,7 +98,6 @@ function exitLocalDemoMode(): void {
   }
 }
 
-
 /* ---------- Sync-Metadaten (pro Gerät, lokal) ---------- */
 
 /**
@@ -120,6 +138,16 @@ export type SyncMeta = {
    * Cleared after a successful first sync. Local-only — not part of cloud payload.
    */
   wizardPendingFirstSync?: boolean;
+  /**
+   * Exakter, vom Server gelieferter `updated_at`-String des zuletzt bekannten Cloud-Standes
+   * (Phase 2). Wird NUR auf Gleichheit verglichen – nie als Zeitordnung und nicht über
+   * `lastSyncedAt`. Fehlt bei Altbestand (dann gilt `remoteSeenAt`, siehe `remoteChangedSince`).
+   */
+  remoteToken?: string | null;
+  /** Fingerprint der acht Nutzerdaten-Sammlungen beim letzten Beobachten (nur lokal). */
+  localDataFingerprint?: string | null;
+  /** Zeitpunkt der letzten verifizierten Übereinstimmung (nur Erfolgspfade setzen ihn). */
+  lastVerifiedAt?: number | null;
 };
 
 const EMPTY_META: SyncMeta = {
@@ -130,6 +158,9 @@ const EMPTY_META: SyncMeta = {
   lastSyncedAt: null,
   remoteSeenAt: null,
   wizardPendingFirstSync: false,
+  remoteToken: null,
+  localDataFingerprint: null,
+  lastVerifiedAt: null,
 };
 
 /**
@@ -179,13 +210,15 @@ export function metaForUser(
       ? (current.localWorkChangedAt ?? Date.now())
       : (current.localWorkChangedAt ?? null),
     localWorkFingerprint: current.localWorkFingerprint ?? null,
+    localDataFingerprint: current.localDataFingerprint ?? null,
     lastSyncedAt: null,
     remoteSeenAt: null,
+    remoteToken: null,
+    lastVerifiedAt: null,
     // Keep wizard flag across account bind so finish→sign-in race still restores.
     wizardPendingFirstSync: Boolean(current.wizardPendingFirstSync),
   };
 }
-
 
 let meta: SyncMeta = EMPTY_META;
 
@@ -202,6 +235,7 @@ function loadMeta(): SyncMeta {
 
 function saveMeta(patch: Partial<SyncMeta>) {
   meta = { ...meta, ...patch };
+  refreshDirty();
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(metaKey, JSON.stringify(meta));
@@ -226,12 +260,7 @@ export function clearWizardPendingFirstSync(): void {
 export type SyncDecision = "push" | "restore" | "conflict" | "none";
 
 /** Human-readable situation labels for tests/docs (see SYNC_SEMANTICS above). */
-export type SyncSituation =
-  | "NO_CHANGE"
-  | "PUSH"
-  | "RESTORE"
-  | "CONFLICT"
-  | "FIRST_SYNC_RESTORE";
+export type SyncSituation = "NO_CHANGE" | "PUSH" | "RESTORE" | "CONFLICT" | "FIRST_SYNC_RESTORE";
 
 export type SyncDecisionInput = {
   /**
@@ -256,6 +285,19 @@ export type SyncDecisionInput = {
   localWorkChangedAt?: number | null;
   lastSyncedAt: number | null;
   remoteUpdatedAt: number | null;
+  /**
+   * Phase 2: hat sich die Cloud seit dem letzten bekannten Stand geändert? Wird aus dem exakten
+   * Server-Token (`remoteChangedSince`) abgeleitet. Fehlt das Feld (reine Alt-Aufrufer/Tests), gilt
+   * die alte Zeitstempel-Heuristik `remoteUpdatedAt > lastSyncedAt`.
+   */
+  remoteChanged?: boolean;
+  /**
+   * Phase 2: lokale Nutzerdaten in IRGENDEINER der acht Sammlungen (`!isUserDataEmpty`). Wenn
+   * gesetzt, ersetzt es `hasLocalWorkData`/`hasLocalJobs`: Wizard-Jobs, Zahlungen, Ziele, Objekte,
+   * Kunden, Projekte und Aufträge zählen als Daten, ein Erstabgleich mit Daten wird nie still
+   * wiederhergestellt.
+   */
+  hasLocalUserData?: boolean;
 };
 
 /**
@@ -272,6 +314,7 @@ export type SyncDecisionInput = {
  * - Cloud neuer, lokal nur Settings (kein Work-Bump) → restore.
  */
 export function decideSync(input: SyncDecisionInput): SyncDecision {
+  if (input.hasLocalUserData !== undefined) return decideSyncV2(input);
   const { hasLocalWorkData, hasRemote, localChangedAt, lastSyncedAt, remoteUpdatedAt } = input;
   const hasLocalJobs = Boolean(input.hasLocalJobs);
 
@@ -305,6 +348,37 @@ export function decideSync(input: SyncDecisionInput): SyncDecision {
 
   // Work conflict only when BOTH cloud and local *work* changed after baseline.
   // Settings-only (localIsNew, !localWorkIsNew) + remoteIsNew → restore.
+  if (remoteIsNew && localWorkIsNew) return "conflict";
+  if (remoteIsNew) return "restore";
+  if (localIsNew) return "push";
+  return "none";
+}
+
+/**
+ * Phase-2-Entscheidung (alle acht Sammlungen, Server-Token). Gilt, sobald `hasLocalUserData`
+ * gesetzt ist. "Arbeit" bedeutet hier: Änderung in irgendeiner Nutzerdaten-Sammlung; nur
+ * Einstellungen sind ausgenommen.
+ */
+function decideSyncV2(input: SyncDecisionInput): SyncDecision {
+  const { hasRemote, localChangedAt, lastSyncedAt, remoteUpdatedAt } = input;
+  const hasLocalUserData = input.hasLocalUserData === true;
+  const syncedAt = lastSyncedAt ?? 0;
+  // Die Cloud-Änderung kommt vom Token-Vergleich; nur ohne Token-Info die alte Heuristik.
+  const remoteIsNew = input.remoteChanged ?? (remoteUpdatedAt ?? 0) > syncedAt;
+  // Lokale Marken vergleichen nur lokale Uhrzeiten untereinander (keine Cloud-Aktualität).
+  const localIsNew = (localChangedAt ?? 0) > syncedAt;
+  const localWorkIsNew = (input.localWorkChangedAt ?? 0) > syncedAt;
+
+  if (!hasRemote) return hasLocalUserData || localIsNew ? "push" : "none";
+
+  // Nie abgeglichen: nur ein nachweislich leeres Gerät darf automatisch wiederherstellen.
+  // Sobald irgendeine Sammlung (auch ein Wizard-Job) Daten enthält, entscheidet die Nutzerin.
+  if (lastSyncedAt == null) return hasLocalUserData ? "conflict" : "restore";
+
+  // Leeres Gerät nach bekanntem Stand: Cloud laden – außer das Leeren war eine bewusste Änderung.
+  if (!hasLocalUserData && !localIsNew) return "restore";
+  if (!hasLocalUserData) return remoteIsNew ? "conflict" : "push";
+
   if (remoteIsNew && localWorkIsNew) return "conflict";
   if (remoteIsNew) return "restore";
   if (localIsNew) return "push";
@@ -374,6 +448,15 @@ export type SyncState = {
   message: string | null;
   lastSyncedAt: number | null;
   signedIn: boolean;
+  /**
+   * Ungesicherte lokale Änderungen laut Änderungsmarken – UNABHÄNGIG von Auto-Backup und von
+   * `pending` (`pending === false` beweist nie, dass etwas gesichert ist).
+   */
+  dirty: boolean;
+  /** Letzte verifizierte Übereinstimmung mit der Cloud; Fehlschläge setzen sie nie. */
+  lastVerifiedAt: number | null;
+  /** Die Cloud ist weiter, wurde aber (Auto-Backup aus / nicht leer) nicht automatisch geladen. */
+  remoteAhead: boolean;
 };
 
 let state: SyncState = {
@@ -382,6 +465,9 @@ let state: SyncState = {
   message: null,
   lastSyncedAt: null,
   signedIn: false,
+  dirty: false,
+  lastVerifiedAt: null,
+  remoteAhead: false,
 };
 
 const listeners = new Set<() => void>();
@@ -389,6 +475,26 @@ const listeners = new Set<() => void>();
 function setState(patch: Partial<SyncState>) {
   state = { ...state, ...patch };
   listeners.forEach((l) => l());
+}
+
+/** `dirty` aus den Änderungsmarken neu berechnen (nie aus `pending`). */
+function refreshDirty(): void {
+  let hasData = false;
+  try {
+    hasData = !isUserDataEmpty(getData());
+  } catch {
+    hasData = false;
+  }
+  const dirty = computeDirty({
+    localChangedAt: meta.localChangedAt,
+    localWorkChangedAt: meta.localWorkChangedAt ?? null,
+    lastSyncedAt: meta.lastSyncedAt,
+    hasData,
+  });
+  const verified = meta.lastVerifiedAt ?? null;
+  if (dirty !== state.dirty || verified !== state.lastVerifiedAt) {
+    setState({ dirty, lastVerifiedAt: verified });
+  }
 }
 
 export function getSyncState(): SyncState {
@@ -454,6 +560,29 @@ export class StaleSyncError extends Error {
     super(t("error.accountMismatch"));
     this.name = "StaleSyncError";
   }
+}
+
+/**
+ * Eingabe für `deriveBackupHealth` aus dem Sync-Zustand. Die Herkunft (`origin`) wird VON AUSSEN
+ * übergeben und ist unabhängig vom Sicherungszustand (sie verdeckt keine Daten-/Fehlerzustände).
+ */
+export function getBackupHealthInput(
+  origin: OriginClass,
+  now: number = Date.now(),
+): BackupHealthInput {
+  const data = getData();
+  return {
+    signedIn: userId !== null,
+    scopeKind: getActiveScope().kind,
+    origin,
+    hasData: !isUserDataEmpty(data),
+    autoBackup: data.settings.autoBackup !== false,
+    online: !isOffline(),
+    syncStatus: state.status,
+    dirty: state.dirty,
+    lastVerifiedAt: state.lastVerifiedAt,
+    now,
+  };
 }
 
 /** Angemeldete Konto-Id laut Sync-Schicht (null = abgemeldet). */
@@ -578,20 +707,58 @@ async function push(
       nextWork = workNow;
     }
   }
+  // "Sauber" nur, wenn der JETZIGE lokale Stand dem hochgeladenen entspricht: Änderungen, die
+  // nach dem Bau des Payloads entstanden sind (auch ohne Marken-Wechsel), bleiben ungesichert.
+  const current = getData();
+  if (fullFingerprint(current) !== fullFingerprint(data)) {
+    const now = Date.now();
+    nextLocal = nextLocal ?? meta.localChangedAt ?? now;
+    if (userDataFingerprint(current) !== userDataFingerprint(data)) {
+      nextWork = nextWork ?? meta.localWorkChangedAt ?? now;
+    }
+  }
   saveMeta({
     lastSyncedAt: ts,
     remoteSeenAt: ts,
+    // Der Server liefert beim Upsert kein Token zurück: bis zur nächsten Inspektion (die das exakte
+    // Token speichert) gilt die Millisekunden-Gleichheit über `remoteSeenAt` (siehe
+    // `remoteChangedSince`). Ein altes Token darf nicht stehen bleiben.
+    remoteToken: null,
+    lastVerifiedAt: ts,
     localChangedAt: nextLocal,
     localWorkChangedAt: nextWork,
     localWorkFingerprint: workFingerprint(data),
+    localDataFingerprint: userDataFingerprint(current),
     wizardPendingFirstSync: false,
   });
+  if (state.remoteAhead) setState({ remoteAhead: false });
   // Auch automatische Backups als frisch markieren, sonst meldet die
   // Backup-Erinnerung fälschlich einen veralteten Stand.
   markBackup();
 }
 
-async function fetchRemote(): Promise<{ payload: AppData; updatedAt: number } | null> {
+type RemoteSnapshot = { payload: AppData; updatedAt: number; token: string };
+
+/**
+ * Hat sich die Cloud seit dem zuletzt bekannten Stand geändert? NUR Gleichheit des exakten
+ * Server-Tokens (`updated_at` als String), keine Zeitordnung und kein `lastSyncedAt`.
+ *
+ * Altbestand ohne Token: konservativ über das numerische `remoteSeenAt` (Millisekunden-Gleichheit
+ * mit dem Server-Wert). Ohne jedes bekannte Token gilt die Cloud als geändert.
+ */
+export function remoteChangedSince(
+  remote: { token: string; updatedAt: number } | null,
+  known: { remoteToken?: string | null; remoteSeenAt?: number | null },
+): boolean {
+  if (!remote) return false;
+  if (typeof known.remoteToken === "string" && known.remoteToken !== "") {
+    return remote.token !== known.remoteToken;
+  }
+  if (typeof known.remoteSeenAt === "number") return remote.updatedAt !== known.remoteSeenAt;
+  return true;
+}
+
+async function fetchRemote(): Promise<RemoteSnapshot | null> {
   if (!userId) throw new Error(t("error.notSignedIn"));
   const { data, error } = await supabase
     .from("backups")
@@ -604,13 +771,13 @@ async function fetchRemote(): Promise<{ payload: AppData; updatedAt: number } | 
   return {
     payload: data.payload as unknown as AppData,
     updatedAt: data.updated_at ? new Date(data.updated_at).getTime() : 0,
+    token: data.updated_at ? String(data.updated_at) : "",
   };
 }
 
-
 let applyingRemote = false;
 
-function applyRemote(remote: { payload: AppData; updatedAt: number }) {
+function applyRemote(remote: { payload: AppData; updatedAt: number; token?: string }) {
   // Der laufende Timer wird bewusst nie in die Cloud geschrieben (`payloadOf`).
   // Beim Wiederherstellen darf er deshalb auch nicht gelöscht werden – sonst
   // verliert der Nutzer die bereits laufende, noch nicht gespeicherte Zeit.
@@ -637,16 +804,20 @@ function applyRemote(remote: { payload: AppData; updatedAt: number }) {
   if (remoteComplete) {
     clearOnboardingDraft();
   }
+  // Das echte Server-Token des wiederhergestellten Standes merken (nicht `lastSyncedAt`).
   saveMeta({
     lastSyncedAt: Date.now(),
     remoteSeenAt: remote.updatedAt,
+    remoteToken: remote.token ?? null,
+    lastVerifiedAt: Date.now(),
     localChangedAt: null,
     localWorkChangedAt: null,
     localWorkFingerprint: workFingerprint(safePayload),
+    localDataFingerprint: userDataFingerprint(safePayload),
     wizardPendingFirstSync: false,
   });
+  if (state.remoteAhead) setState({ remoteAhead: false });
 }
-
 
 /* ---------- Öffentliche Aktionen ---------- */
 
@@ -795,7 +966,31 @@ export function forceFailStuckSync(): void {
   failed(new DOMException("Sync timed out", "TimeoutError"));
 }
 
-async function autoSync(): Promise<void> {
+/**
+ * Automatischer Wiederherstellen-Pfad für ein NACHWEISLICH leeres Gerät (einzige automatische
+ * Ausnahme, auch bei Auto-Backup AUS). Zweite Prüfung unmittelbar vor dem Anwenden: alle acht
+ * Sammlungen noch leer, dasselbe Konto und derselbe Namensraum, derselbe Sync-Lauf.
+ */
+function restoreIfVerifiedEmpty(
+  remote: RemoteSnapshot,
+  snap: OwnerSnapshot,
+  epoch: number,
+): boolean {
+  if (epoch !== syncEpoch) return false;
+  if (!stillOwner(snap)) return false;
+  if (!isUserDataEmpty(getData())) return false;
+  applyRemote(remote);
+  return true;
+}
+
+/**
+ * Abgleich mit der Cloud. Auto-Backup AUS (`settings.autoBackup === false`) bedeutet: absolut kein
+ * automatischer Upload und keine automatische Überschreibung vorhandener Nutzerdaten – der Lauf
+ * ist dann reine Inspektion (lesen, klassifizieren, Status setzen). Ausnahmen: die nachweislich
+ * leere Erst-Wiederherstellung (`restoreIfVerifiedEmpty`) und ausdrücklich ausgelöste Aktionen
+ * (`options.explicit`, z. B. bestätigter Import).
+ */
+async function autoSync(options: { explicit?: boolean } = {}): Promise<void> {
   if (!userId) return;
   // Owner guard: never sync data of another namespace (guest/demo/other account).
   if (!ownsLoadedData()) return;
@@ -812,101 +1007,149 @@ async function autoSync(): Promise<void> {
   const epoch = ++syncEpoch;
   // Änderungsmarke zu Beginn: Änderungen *während* des Abgleichs dürfen nicht
   // als "gesichert" gelten, sonst landen sie nie in der Cloud.
-  const changedAtStart = meta.localChangedAt;
-  const workChangedAtStart = meta.localWorkChangedAt ?? null;
+  let changedAtStart = meta.localChangedAt;
+  let workChangedAtStart = meta.localWorkChangedAt ?? null;
   const snap = snapshotOwner();
   setState({ status: "syncing", message: null });
   armSyncWatchdog(epoch);
   try {
     // Single wall-clock race for fetch+decide+push (not per-call clocks that can stack).
-    await withSyncTimeout((async () => {
-      const local = getData();
-      const remote = await fetchRemote();
-      // After forceFail / watchdog / timeout abandon, late fetch must not mutate.
-      if (epoch !== syncEpoch) return;
-      // Mid-flight-Guard: Namensraum/Konto während des Fetch gewechselt → weder
-      // Re-Baseline, Konfliktstatus, Restore noch Push (alles würde fremde Meta treffen).
-      if (!stillOwner(snap)) return;
-      const hasLocalWorkData = local.shifts.length > 0;
-      const hasLocalJobs = local.jobs.length > 0;
-      const localFp = workFingerprint(local);
-      const remoteFp = remote ? workFingerprint(remote.payload) : null;
-      const workEqual = remote !== null && localFp === remoteFp;
+    await withSyncTimeout(
+      (async () => {
+        const remote = await fetchRemote();
+        // After forceFail / watchdog / timeout abandon, late fetch must not mutate.
+        if (epoch !== syncEpoch) return;
+        // Mid-flight-Guard: Namensraum/Konto während des Fetch gewechselt → weder
+        // Re-Baseline, Konfliktstatus, Restore noch Push (alles würde fremde Meta treffen).
+        if (!stillOwner(snap)) return;
+        // Inspektionszeitpunkt: der AKTUELLE lokale Stand (nicht der vor dem Fetch).
+        const local = getData();
+        const uploadAllowed = options.explicit === true || local.settings.autoBackup !== false;
+        const hasLocalUserData = !isUserDataEmpty(local);
+        const dataEqual =
+          remote !== null && userDataFingerprint(local) === userDataFingerprint(remote.payload);
+        const settingsEqual =
+          remote !== null && fullFingerprint(local) === fullFingerprint(remote.payload);
+        const remoteChanged = remoteChangedSince(remote, meta);
 
-      // Quiet re-baseline when work is semantically identical (normalize-safe FP).
-      // Covers lost baseline (lastSyncedAt=null) and stale marks that would
-      // otherwise false-conflict (remoteIsNew && localWorkIsNew with equal work).
-      // No replaceAll / upsert — settings drift can wait for a later push.
-      const quietRebaseline = () => {
-        if (!remote) return;
-        saveMeta({
-          lastSyncedAt: remote.updatedAt,
-          remoteSeenAt: remote.updatedAt,
-          localChangedAt: null,
-          localWorkChangedAt: null,
-          localWorkFingerprint: localFp,
-          wizardPendingFirstSync: false,
-        });
-        setState({
-          status: "synced",
-          pending: false,
-          message: null,
-          lastSyncedAt: meta.lastSyncedAt,
-        });
-      };
+        // Quiet re-baseline when the user data is semantically identical (all eight collections,
+        // normalize-safe). No replaceAll / upsert; a settings-only difference stays marked as a
+        // local change so it is neither lost nor shown as "clean".
+        const quietRebaseline = () => {
+          if (!remote) return;
+          const now = Date.now();
+          saveMeta({
+            lastSyncedAt: remote.updatedAt,
+            remoteSeenAt: remote.updatedAt,
+            remoteToken: remote.token,
+            lastVerifiedAt: now,
+            localChangedAt: settingsEqual ? null : now,
+            localWorkChangedAt: null,
+            localWorkFingerprint: workFingerprint(local),
+            localDataFingerprint: userDataFingerprint(local),
+            wizardPendingFirstSync: false,
+          });
+          setState({
+            status: "synced",
+            pending: !settingsEqual,
+            remoteAhead: false,
+            message: null,
+            lastSyncedAt: meta.lastSyncedAt,
+          });
+        };
 
-      if (workEqual && meta.lastSyncedAt == null && (hasLocalWorkData || hasLocalJobs)) {
-        quietRebaseline();
-        return;
-      }
-
-      const ignoreLocalJobsOnFirstSync =
-        !local.settings.onboarded || Boolean(meta.wizardPendingFirstSync);
-      const decisionInput = {
-        hasLocalWorkData,
-        hasLocalJobs,
-        ignoreLocalJobsOnFirstSync,
-        hasRemote: remote !== null,
-        localChangedAt: meta.localChangedAt,
-        localWorkChangedAt: meta.localWorkChangedAt ?? null,
-        lastSyncedAt: meta.lastSyncedAt,
-        remoteUpdatedAt: remote?.updatedAt ?? null,
-      };
-      const decision = decideSync(decisionInput);
-      if (decision === "conflict" && import.meta.env.DEV) {
-        console.debug("[cloud] sync conflict", explainSyncDecision(decisionInput));
-      }
-
-      if (decision === "conflict") {
-        if (workEqual) {
+        if (dataEqual && meta.lastSyncedAt == null && hasLocalUserData) {
           quietRebaseline();
           return;
         }
-        setState({ status: "conflict", pending: true, message: null });
-        return;
-      }
-      if (decision === "restore" && remote) applyRemote(remote);
-      if (epoch !== syncEpoch) return;
-      if (decision === "push") {
-        await push(
-          local,
-          { local: changedAtStart, work: workChangedAtStart },
-          () => epoch === syncEpoch,
-        );
-      }
-      if (epoch !== syncEpoch) return;
-      const changedDuringSync =
-        decision !== "restore" &&
-        ((meta.localChangedAt !== null && meta.localChangedAt !== changedAtStart) ||
-          ((meta.localWorkChangedAt ?? null) !== null &&
-            (meta.localWorkChangedAt ?? null) !== workChangedAtStart));
-      setState({
-        status: "synced",
-        pending: changedDuringSync,
-        message: null,
-        lastSyncedAt: meta.lastSyncedAt,
-      });
-    })());
+
+        // Lokale Nutzerdaten weichen ab, obwohl die Cloud seit dem bekannten Stand unverändert ist
+        // und keine Änderungsmarke existiert (Altbestand, Import): jetzt als Änderung markieren.
+        if (
+          remote !== null &&
+          !remoteChanged &&
+          !dataEqual &&
+          meta.lastSyncedAt != null &&
+          meta.localWorkChangedAt == null
+        ) {
+          const now = Date.now();
+          saveMeta({ localChangedAt: meta.localChangedAt ?? now, localWorkChangedAt: now });
+          changedAtStart = meta.localChangedAt;
+          workChangedAtStart = meta.localWorkChangedAt ?? null;
+        }
+
+        const decisionInput = {
+          hasLocalWorkData: hasLocalUserData,
+          hasLocalUserData,
+          hasRemote: remote !== null,
+          remoteChanged,
+          localChangedAt: meta.localChangedAt,
+          localWorkChangedAt: meta.localWorkChangedAt ?? null,
+          lastSyncedAt: meta.lastSyncedAt,
+          remoteUpdatedAt: remote?.updatedAt ?? null,
+        };
+        const decision = decideSync(decisionInput);
+        if (decision === "conflict" && import.meta.env.DEV) {
+          console.debug("[cloud] sync conflict", explainSyncDecision(decisionInput));
+        }
+
+        if (decision === "conflict") {
+          if (dataEqual) {
+            quietRebaseline();
+            return;
+          }
+          setState({ status: "conflict", pending: true, message: null });
+          return;
+        }
+
+        if (decision === "restore" && remote) {
+          if (!hasLocalUserData) {
+            // Erste Prüfung (oben) + zweite unmittelbar vor dem Anwenden.
+            if (!restoreIfVerifiedEmpty(remote, snap, epoch)) {
+              setState({ status: "idle", message: null });
+              return;
+            }
+          } else if (uploadAllowed) {
+            // Cloud geändert, lokale Nutzerdaten seit dem Abgleich unverändert.
+            applyRemote(remote);
+          } else {
+            // Auto-Backup AUS: vorhandene Nutzerdaten werden nie automatisch überschrieben.
+            setState({ status: "idle", message: null, remoteAhead: true });
+            return;
+          }
+        }
+        if (epoch !== syncEpoch) return;
+
+        if (decision === "push") {
+          if (!uploadAllowed) {
+            // Auto-Backup AUS: kein Upload – die Änderungen bleiben sichtbar ungesichert (dirty).
+            setState({ status: "idle", pending: true, message: null });
+            return;
+          }
+          await push(
+            local,
+            { local: changedAtStart, work: workChangedAtStart },
+            () => epoch === syncEpoch,
+          );
+        }
+        if (epoch !== syncEpoch) return;
+        if (decision === "none" && remote && !remoteChanged) {
+          // Verifiziert: Cloud-Token unverändert und keine lokale Änderung seit dem Abgleich.
+          saveMeta({ remoteToken: remote.token, lastVerifiedAt: Date.now() });
+        }
+        const changedDuringSync =
+          decision !== "restore" &&
+          ((meta.localChangedAt !== null && meta.localChangedAt !== changedAtStart) ||
+            ((meta.localWorkChangedAt ?? null) !== null &&
+              (meta.localWorkChangedAt ?? null) !== workChangedAtStart));
+        setState({
+          status: "synced",
+          pending: changedDuringSync,
+          message: null,
+          lastSyncedAt: meta.lastSyncedAt,
+        });
+      })(),
+    );
   } catch (error) {
     abandonSyncEpoch(epoch, error);
   } finally {
@@ -928,7 +1171,6 @@ async function autoSync(): Promise<void> {
   }
 }
 
-
 /** Debouncedes automatisches Cloud-Backup mit Offline-Queue. */
 function scheduleBackup(data: AppData) {
   // Remote restore must not look like a local edit (would re-enter autoSync).
@@ -936,15 +1178,20 @@ function scheduleBackup(data: AppData) {
   const now = Date.now();
   const fp = workFingerprint(data);
   const prevFp = meta.localWorkFingerprint ?? null;
+  const dataFp = userDataFingerprint(data);
+  const prevDataFp = meta.localDataFingerprint ?? null;
   const patch: Partial<SyncMeta> = {
     localChangedAt: now,
     localWorkFingerprint: fp,
+    localDataFingerprint: dataFp,
   };
-  // Only bump work mark when shifts/jobs fingerprint actually changes.
-  // Null prevFp is seeded without bump (initCloudSync / post-sync seed).
-  if (prevFp !== null && prevFp !== fp) {
-    patch.localWorkChangedAt = now;
-  }
+  // Nutzerdaten-Marke: Änderung in IRGENDEINER der acht Sammlungen (Einstellungen allein nicht).
+  // Ein fehlender Vorwert wird ohne Marke gesetzt (Altbestand/Erststart); für Altbestand ohne den
+  // neuen Fingerprint gilt weiter der alte Schichten-/Jobs-Vergleich als Rückfall.
+  const dataChanged =
+    prevDataFp !== null ? prevDataFp !== dataFp : prevFp !== null && prevFp !== fp;
+  if (dataChanged) patch.localWorkChangedAt = now;
+  // Die Marken werden IMMER gesetzt (auch bei Auto-Backup AUS) → `dirty` bleibt sichtbar.
   saveMeta(patch);
   if (!userId || !data.settings.autoBackup) return;
   if (state.status === "conflict") {
@@ -963,10 +1210,9 @@ function scheduleBackup(data: AppData) {
       return;
     }
     // Kein blindes Überschreiben: der Abgleich prüft zuerst den Cloud-Stand
-    // (updated_at) und meldet einen Konflikt, statt fremde Änderungen zu verlieren.
+    // (Token), und meldet einen Konflikt, statt fremde Änderungen zu verlieren.
     void autoSync();
   }, 2500);
-
 }
 
 /** Wartende Änderung erneut senden (nach Offline-Phase oder Fehler). */
@@ -1007,6 +1253,10 @@ function loadMetaForActiveScope(): void {
     meta = { ...meta, localWorkFingerprint: workFingerprint(getData()) };
     saveMeta({});
   }
+  if (meta.localDataFingerprint == null) {
+    meta = { ...meta, localDataFingerprint: userDataFingerprint(getData()) };
+    saveMeta({});
+  }
 }
 
 /**
@@ -1020,7 +1270,14 @@ function switchLocalScope(scope: StorageScope): void {
   scopeEpoch += 1;
   cancelPendingSync();
   loadMetaForActiveScope();
-  setState({ status: "idle", pending: false, message: null, lastSyncedAt: meta.lastSyncedAt });
+  setState({
+    status: "idle",
+    pending: false,
+    message: null,
+    lastSyncedAt: meta.lastSyncedAt,
+    remoteAhead: false,
+  });
+  refreshDirty();
 }
 
 /**
@@ -1118,7 +1375,8 @@ export function markExplicitImportForSync(): void {
     wizardPendingFirstSync: false,
   });
   setState({ status: "idle", pending: true, message: null, lastSyncedAt: null });
-  void autoSync();
+  // Ausdrücklich ausgelöst (bestätigter Import): darf auch bei Auto-Backup AUS abgleichen.
+  void autoSync({ explicit: true });
 }
 
 /** Liegen lokale, noch nicht gesicherte Änderungen im aktiven Konto-Scope vor? */
@@ -1252,3 +1510,11 @@ export function initCloudSync() {
     console.error("[cloud] Supabase auth unavailable; cloud sync disabled", error);
   }
 }
+
+/** Nur für Tests: interne Bausteine, die sonst nicht erreichbar sind. */
+export const __testing = {
+  snapshotOwner,
+  restoreIfVerifiedEmpty,
+  getSyncEpoch: () => syncEpoch,
+  getMeta: () => meta,
+};

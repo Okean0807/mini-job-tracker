@@ -7,6 +7,7 @@ import {
   diffBackups,
   fullFingerprint,
   isUserDataEmpty,
+  userDataFingerprint,
   validateIntegrity,
   type BackupLike,
   type CollectionName,
@@ -141,6 +142,28 @@ describe("fullFingerprint", () => {
       fullFingerprint({ shifts: "kaputt", jobs: [null, 5, "x"] } as unknown as BackupLike),
     ).not.toThrow();
     expect(fullFingerprint({})).toBe(fullFingerprint({ shifts: [], jobs: [] }));
+  });
+});
+
+describe("userDataFingerprint (nur die acht Sammlungen)", () => {
+  it.each(COLLECTION_NAMES)("ändert sich bei einer Änderung in %s", (name) => {
+    const base = fixture();
+    const changed = clone(base);
+    changed[name].push({ id: `${name}-neu` });
+    expect(userDataFingerprint(changed)).not.toBe(userDataFingerprint(base));
+  });
+
+  it("ignoriert Einstellungen, Geräte-Anmeldedaten und Timer", () => {
+    const base = fixture();
+    const other = clone(base);
+    Object.assign(other.settings, { premium: true, defaultRate: 99, pin: "1234" });
+    expect(userDataFingerprint(other)).toBe(userDataFingerprint(base));
+    expect(fullFingerprint(other)).not.toBe(fullFingerprint(base));
+  });
+
+  it("ist deterministisch und hat ein eigenes Präfix", () => {
+    expect(userDataFingerprint(fixture())).toBe(userDataFingerprint(clone(fixture())));
+    expect(userDataFingerprint(fixture())).toMatch(/^ud1-\d+-[0-9a-f]{28}$/);
   });
 });
 

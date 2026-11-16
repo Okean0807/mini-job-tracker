@@ -111,9 +111,49 @@ describe("deriveBackupHealth – alle Zustände", () => {
     expect(deriveBackupHealth(input({ signedIn: true, scopeKind: "demo" })).reasons).toEqual([
       "test-mode",
     ]);
-    expect(deriveBackupHealth(input({ origin: "non-canonical" })).reasons).toEqual([
-      "non-canonical-origin",
-    ]);
+  });
+});
+
+/**
+ * Phase 2 correction of the Phase 1 contract: a foreign origin is an INDEPENDENT warning and
+ * never replaces (hides) the actual backup state.
+ */
+describe("Herkunfts-Warnung ist unabhängig vom Sicherungszustand", () => {
+  const foreign = { origin: "non-canonical" as const };
+
+  it("meldet die Warnung getrennt und lässt den Zustand unberührt", () => {
+    expect(deriveBackupHealth(input(foreign))).toMatchObject({
+      state: "clean",
+      originWarning: true,
+    });
+    expect(deriveBackupHealth(input({ origin: "canonical" })).originWarning).toBe(false);
+    expect(deriveBackupHealth(input({ origin: "development" })).originWarning).toBe(false);
+  });
+
+  it("verdeckt weder ungesicherte Daten noch Fehler, Konflikte oder fehlende Sicherungen", () => {
+    expect(state({ ...foreign, dirty: true })).toBe("dirty");
+    expect(state({ ...foreign, dirty: true, autoBackup: false })).toBe("dirty-autobackup-off");
+    expect(state({ ...foreign, dirty: true, lastVerifiedAt: NOW - 8 * DAY })).toBe("stale");
+    expect(state({ ...foreign, dirty: true, online: false })).toBe("offline-pending");
+    expect(state({ ...foreign, syncStatus: "error" })).toBe("failed");
+    expect(state({ ...foreign, syncStatus: "conflict" })).toBe("conflict");
+    expect(state({ ...foreign, lastVerifiedAt: null })).toBe("no-verified-backup");
+    for (const over of [
+      { dirty: true },
+      { syncStatus: "error" as const },
+      { lastVerifiedAt: null },
+    ]) {
+      expect(deriveBackupHealth(input({ ...foreign, ...over })).originWarning).toBe(true);
+    }
+  });
+
+  it("local-only (abgemeldet/Testmodus) trägt die Herkunftswarnung ebenfalls getrennt", () => {
+    expect(
+      deriveBackupHealth(input({ ...foreign, signedIn: false, scopeKind: "guest" })),
+    ).toMatchObject({
+      state: "local-only",
+      originWarning: true,
+    });
   });
 });
 

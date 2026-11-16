@@ -296,11 +296,7 @@ function cyrb53(text: string, seed: number): number {
   return 4294967296 * (2097151 & h2) + (h1 >>> 0);
 }
 
-/**
- * Deterministische Prüfsumme über alle acht Sammlungen und die Nicht-Geräte-Einstellungen.
- * Unabhängig von Schlüssel- und Listenreihenfolge der Sammlungen; ohne Zeit und Zufall.
- */
-export function fullFingerprint(data: BackupLike | null | undefined): string {
+function collectionsCanon(data: BackupLike | null | undefined): Record<string, string[]> {
   const collections: Record<string, string[]> = {};
   for (const name of COLLECTION_NAMES) {
     collections[name] = recordsOf(data, name)
@@ -309,10 +305,35 @@ export function fullFingerprint(data: BackupLike | null | undefined): string {
       .sort((x, y) => compareText(x.id, y.id) || compareText(x.canon, y.canon))
       .map((entry) => entry.canon);
   }
-  const canon = canonicalize({ v: 1, collections, settings: settingsView(data?.settings) });
+  return collections;
+}
+
+function hashCanon(canon: string, prefix: string): string {
   const a = cyrb53(canon, 0x9e3779b9).toString(16).padStart(14, "0");
   const b = cyrb53(canon, 0x7f4a7c15).toString(16).padStart(14, "0");
-  return `fp1-${canon.length}-${a}${b}`;
+  return `${prefix}-${canon.length}-${a}${b}`;
+}
+
+/**
+ * Deterministische Prüfsumme über alle acht Sammlungen und die Nicht-Geräte-Einstellungen.
+ * Unabhängig von Schlüssel- und Listenreihenfolge der Sammlungen; ohne Zeit und Zufall.
+ */
+export function fullFingerprint(data: BackupLike | null | undefined): string {
+  const canon = canonicalize({
+    v: 1,
+    collections: collectionsCanon(data),
+    settings: settingsView(data?.settings),
+  });
+  return hashCanon(canon, "fp1");
+}
+
+/**
+ * Wie `fullFingerprint`, aber NUR über die acht Nutzerdaten-Sammlungen (ohne Einstellungen).
+ * Grundlage der Änderungsmarke "Nutzerdaten geändert": Einstellungen allein zählen nicht als
+ * Datenänderung (Phase-2-Vertrag), alle acht Sammlungen schon.
+ */
+export function userDataFingerprint(data: BackupLike | null | undefined): string {
+  return hashCanon(canonicalize({ v: 1, collections: collectionsCanon(data) }), "ud1");
 }
 
 /* ----------------------------------------------------------------- Integrität */

@@ -52,6 +52,11 @@ export interface BackupHealth {
   reasons: string[];
   /** Tage seit der letzten verifizierten Sicherung (nur wenn bekannt). */
   daysSinceVerified: number | null;
+  /**
+   * Fremde Adresse (nicht kanonisch, nicht Entwicklung). UNABHÄNGIG vom Zustand: sie verdeckt nie
+   * ungesicherte Daten, Fehler, Konflikte oder fehlende verifizierte Sicherungen.
+   */
+  originWarning: boolean;
 }
 
 /**
@@ -75,11 +80,12 @@ function daysBetween(from: number | null, now: number): number | null {
 
 export function deriveBackupHealth(input: BackupHealthInput): BackupHealth {
   const daysSinceVerified = daysBetween(input.lastVerifiedAt, input.now);
+  const originWarning = input.origin === "non-canonical";
   const done = (
     state: BackupHealthState,
     severity: BackupSeverity,
     ...reasons: string[]
-  ): BackupHealth => ({ state, severity, reasons, daysSinceVerified });
+  ): BackupHealth => ({ state, severity, reasons, daysSinceVerified, originWarning });
 
   // Ein Konflikt oder Fehler im Abgleich ist immer sichtbar – wichtiger als jeder andere Hinweis.
   if (input.syncStatus === "conflict") return done("conflict", "error", "conflict-unresolved");
@@ -93,9 +99,6 @@ export function deriveBackupHealth(input: BackupHealthInput): BackupHealth {
     return done("local-only", "warning", reason);
   }
   if (!input.hasData) return done("clean", "ok", "no-data");
-  if (input.origin === "non-canonical") {
-    return done("local-only", "warning", "non-canonical-origin");
-  }
 
   const isOffline = !input.online || input.syncStatus === "offline";
   if (isOffline && input.dirty) return done("offline-pending", "info", "offline", "dirty");
