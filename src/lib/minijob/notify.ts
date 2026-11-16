@@ -11,6 +11,17 @@ import { makeResolver } from "./resolve";
 import { getData } from "./store";
 import { isWithinTimeWindow, previousCalendarDate } from "./notify-time";
 
+/**
+ * Ein flaches Verzeichnis (Schlüssel → Stempel) in einem einzigen localStorage-Eintrag. Jeder
+ * Schreibzugriff liest, ergänzt und schreibt zurück: Schlüssel, die dieser Code nicht kennt
+ * (und andere Benachrichtigungsarten), bleiben erhalten.
+ *
+ * Ausgemusterter Schlüssel: "limit-100" („Minijob-Limit überschritten“, bis AUD-09A). Er wird
+ * nicht mehr gelesen oder geschrieben und bewusst weder migriert noch gelöscht: Er kann keine
+ * Meldung unterdrücken oder verdoppeln (alle aktuellen Schlüssel heißen anders), und der neue
+ * Monatshinweis ("limit-month-above"), höchstens einmal im Monat der Aktualisierung, korrigiert
+ * die frühere Alarmmeldung ausdrücklich.
+ */
 const FLAG_KEY = "minijob-notify-flags";
 
 type Flags = Record<string, string>;
@@ -197,6 +208,18 @@ export function limitStatus(): LimitStatus {
  * - ein Monat über dem Monatsrichtwert ist ein Hinweis, keine Überschreitung,
  * - 75 / 90 Prozent des Monatsrichtwerts bleiben informative Schwellen.
  * Genau 100 % ist keine Überschreitung.
+ *
+ * Bewusst KEINE eigene Benachrichtigung gibt es für das Signal „ein Monat über dem Doppelten des
+ * Monatsrichtwerts“ (`highVariation`): Es hängt an einem beliebigen Monat der gleitenden 12 Monate
+ * und bliebe bis zu einem Jahr bestehen – eine Meldung würde sich Monat für Monat wiederholen.
+ * Es ist ein Dashboard-/Karten-Hinweis; deshalb wird `highVariation` hier absichtlich nicht an
+ * `limitAlertLevel` übergeben. Liegt der aktuelle Monat selbst darüber, kommt der übliche
+ * Monatshinweis ("limit-month-above") – genau eine Meldung, nie zwei.
+ *
+ * Wer nicht berücksichtigt wird (nur Hauptbeschäftigung, Selbstständigkeit, kurzfristig,
+ * ungeklärter Altbestand), bekommt keine dieser Meldungen: `limitStatus` liefert dann nur Nullen
+ * (dieselbe Regel `jobsApplyMinijobLimit` wie das Dashboard); zusätzlich gelten die
+ * Benachrichtigungs-Einstellungen in `runNotificationChecks`.
  */
 export function checkLimits() {
   const { monthShare, monthHoursShare, yearShare, rollingStatus } = limitStatus();
