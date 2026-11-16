@@ -46,6 +46,12 @@ export const entry: Bundle = {
     "entry.saveFailed": "Eintrag konnte nicht gespeichert werden",
     "entry.saveNotPersisted":
       "Eintrag nur im Arbeitsspeicher gespeichert – das Gerät hat das Speichern abgelehnt. Erneut Speichern versucht es noch einmal.",
+    "entry.draftSaved": "Entwurf gespeichert – bleibt nach dem Schließen erhalten",
+    "entry.draftDiscard": "Entwurf verwerfen",
+    "entry.draftDiscardTitle": "Entwurf verwerfen?",
+    "entry.draftDiscardDesc":
+      "Die bisherigen Eingaben dieses neuen Eintrags werden gelöscht. Gespeicherte Einträge bleiben unverändert.",
+    "entry.draftDiscardConfirm": "Verwerfen",
     "entry.taskLast": "Zuletzt",
     "entry.taskFrequent": "Häufig",
     "entry.taskOwn": "Eigene",
@@ -121,6 +127,12 @@ export const entry: Bundle = {
     "entry.saveFailed": "Entry could not be saved",
     "entry.saveNotPersisted":
       "Entry kept in memory only – the device refused to store it. Saving again will retry.",
+    "entry.draftSaved": "Draft saved – kept when you close this screen",
+    "entry.draftDiscard": "Discard draft",
+    "entry.draftDiscardTitle": "Discard draft?",
+    "entry.draftDiscardDesc":
+      "The inputs of this new entry will be deleted. Saved entries stay unchanged.",
+    "entry.draftDiscardConfirm": "Discard",
     "entry.taskLast": "Recent",
     "entry.taskFrequent": "Frequent",
     "entry.taskOwn": "Own",
@@ -195,6 +207,12 @@ export const entry: Bundle = {
     "entry.saveFailed": "Не удалось сохранить запись",
     "entry.saveNotPersisted":
       "Запись только в памяти – устройство отказалось сохранить её. Повторное сохранение попробует снова.",
+    "entry.draftSaved": "Черновик сохранён – останется после закрытия",
+    "entry.draftDiscard": "Удалить черновик",
+    "entry.draftDiscardTitle": "Удалить черновик?",
+    "entry.draftDiscardDesc":
+      "Введённые данные этой новой записи будут удалены. Сохранённые записи не изменятся.",
+    "entry.draftDiscardConfirm": "Удалить",
     "entry.taskLast": "Последние",
     "entry.taskFrequent": "Частые",
     "entry.taskOwn": "Свои",
@@ -269,6 +287,11 @@ export const entry: Bundle = {
     "entry.saveFailed": "Kayıt kaydedilemedi",
     "entry.saveNotPersisted":
       "Kayıt yalnızca bellekte – cihaz kaydetmeyi reddetti. Tekrar kaydetmek yeniden dener.",
+    "entry.draftSaved": "Taslak kaydedildi – kapatsanız da korunur",
+    "entry.draftDiscard": "Taslağı sil",
+    "entry.draftDiscardTitle": "Taslak silinsin mi?",
+    "entry.draftDiscardDesc": "Bu yeni kaydın girdileri silinecek. Kayıtlı kayıtlar değişmez.",
+    "entry.draftDiscardConfirm": "Sil",
     "entry.taskLast": "Son",
     "entry.taskFrequent": "Sık",
     "entry.taskOwn": "Kendi",
@@ -343,6 +366,12 @@ export const entry: Bundle = {
     "entry.saveFailed": "Nie udało się zapisać wpisu",
     "entry.saveNotPersisted":
       "Wpis tylko w pamięci – urządzenie odmówiło zapisu. Ponowny zapis spróbuje jeszcze raz.",
+    "entry.draftSaved": "Szkic zapisany – pozostanie po zamknięciu",
+    "entry.draftDiscard": "Odrzuć szkic",
+    "entry.draftDiscardTitle": "Odrzucić szkic?",
+    "entry.draftDiscardDesc":
+      "Dane tego nowego wpisu zostaną usunięte. Zapisane wpisy pozostaną bez zmian.",
+    "entry.draftDiscardConfirm": "Odrzuć",
     "entry.taskLast": "Ostatnie",
     "entry.taskFrequent": "Częste",
     "entry.taskOwn": "Własne",
