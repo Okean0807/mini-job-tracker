@@ -259,12 +259,22 @@ describe("checkLimits – AUD-09A: Grenzen sind Obergrenzen, ein einzelner Monat
     expect(flags()["limit-100"]).toBeUndefined();
   });
 
-  it("a genuinely exceeded annual limit still notifies 'exceeded'", () => {
+  it("a genuinely exceeded legal assessment (rolling 12 months) still notifies, as a forecast finding", () => {
     // January to June 1,300 EUR each = 7,800 EUR > 7,236 EUR
     const shifts = [1, 2, 3, 4, 5, 6].map((m) => entry(`2026-0${m}-10`, 1300));
     seed(JUNE_2026, shifts);
     checkLimits();
-    expect(limitFlags()).toEqual(["limit-100"]);
+    expect(limitFlags()).toEqual(["limit-forecast"]);
+    // the calendar-year figure alone is never reported as a confirmed exceedance
+    expect(flags()["limit-100"]).toBeUndefined();
+  });
+
+  it("an extreme month inside a compliant total is not announced as an exceedance", () => {
+    seed(JUNE_2026, [entry("2026-06-10", 1400)]);
+    checkLimits();
+    expect(limitFlags()).toEqual(["limit-month-above"]);
+    expect(flags()["limit-forecast"]).toBeUndefined();
+    expect(flags()["limit-100"]).toBeUndefined();
   });
 
   it("an exceeded legal forecast notifies as forecast (same finding as the forecast card)", () => {

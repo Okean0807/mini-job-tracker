@@ -32,6 +32,19 @@ export function isLegalExceedanceStatus(status: LegalWarningStatus): boolean {
   );
 }
 
+/**
+ * True when at least one month of the rolling window is above twice the monthly
+ * reference. A total inside the annual limit does not on its own show that the
+ * employment remains a Minijob in that case (Minijob-Zentrale FAQ: 1,800 EUR for
+ * three months plus 204 EUR for nine months adds up to 7,236 EUR, yet those first
+ * three months are not a Minijob). This is a hint, not a determination: the
+ * sources give no numeric threshold, so the doubled monthly reference – the limit
+ * the unpredictable-exceedance rule itself uses per month – serves as the signal.
+ */
+export function hasMonthAboveDoubleReference(forecast: Rolling12ForecastResult): boolean {
+  return forecast.months.some((month) => month.exceedsMaximumUnpredictableLimit);
+}
+
 /** Business/UX rule (not legal): "near limit" from 85 % of the limit on. */
 export const NEAR_LIMIT_RATIO = 0.85;
 

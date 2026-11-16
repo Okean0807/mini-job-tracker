@@ -33,7 +33,7 @@ function render(
   jobs: Job[],
   shifts: Shift[] = [],
   share = 0,
-  extra: { yearShare?: number; forecastStatus?: LegalWarningStatus } = {},
+  extra: { yearShare?: number; forecastStatus?: LegalWarningStatus; highVariation?: boolean } = {},
 ) {
   act(() => {
     root.render(
@@ -46,6 +46,7 @@ function render(
         monthUsage: usage(share),
         yearUsage: usage(extra.yearShare ?? 0, 7236),
         ...(extra.forecastStatus ? { forecastStatus: extra.forecastStatus } : {}),
+        ...(extra.highVariation ? { highVariation: true } : {}),
         onNewEntry: () => {},
       }),
     );
@@ -131,14 +132,14 @@ describe("TodayImportantCard – Beschäftigungsart / Grenze", () => {
   });
 });
 
-describe("TodayImportantCard – AUD-09A: Grenzwarnung ohne falsche Überschreitung", () => {
+describe("TodayImportantCard – AUD-09A: Grenzwarnung mit getrennten Begriffen", () => {
   const mini = [job({ employmentType: "minijob" })];
-  const yearOver = t("dash.limitYearOver", { amount: formatEuro(7236) });
+  const yearAbove = t("dash.limitYearAbove", { amount: formatEuro(7236) });
 
-  it("exactly 100 % of the monthly reference is informative (100 %), not 'exceeded'", () => {
+  it("exactly 100 % of the monthly reference is informative (100 %), not an exceedance", () => {
     const text = render(mini, [], 100);
     expect(text).toContain(t("dash.todayLimit", { percent: 100 }));
-    expect(text).not.toContain(yearOver);
+    expect(text).not.toContain(yearAbove);
   });
 
   it("a month above the reference shows the month-above hint, not an exceedance", () => {
@@ -146,23 +147,43 @@ describe("TodayImportantCard – AUD-09A: Grenzwarnung ohne falsche Überschreit
     expect(text).toContain(
       t("dash.limitMonthAbove", { amount: formatEuro(603), yearAmount: formatEuro(7236) }),
     );
-    expect(text).not.toContain(yearOver);
+    expect(text).not.toContain(yearAbove);
     expect(text).not.toContain(t("dash.todayLimit", { percent: 166 }));
   });
 
-  it("a genuinely exceeded annual limit is shown as exceeded", () => {
-    const text = render(mini, [], 10, { yearShare: 103.6 });
-    expect(text).toContain(yearOver);
+  it("a calendar-year total above the reference is worded as a statistic, never as 'exceeded'", () => {
+    const text = render(mini, [], 10, { yearShare: 103.6, forecastStatus: "OK" });
+    expect(text).toContain(yearAbove);
+    expect(text).toContain("Kalenderjahresverdienst über dem Richtwert");
+    expect(text).not.toContain(t("legalForecast.statusMaximum"));
+    expect(text).not.toContain(t("legalForecast.statusRegularExceeded"));
   });
 
   it("an exceeded legal forecast uses the forecast card's own wording", () => {
     const text = render(mini, [], 10, { yearShare: 40, forecastStatus: "MAXIMUM_EXCEEDED" });
     expect(text).toContain(t("legalForecast.statusMaximum"));
+    expect(text).not.toContain(yearAbove);
+  });
+
+  it("an exceeded legal forecast wins over a calendar-year statistic", () => {
+    const text = render(mini, [], 10, { yearShare: 120, forecastStatus: "REGULAR_LIMIT_EXCEEDED" });
+    expect(text).toContain(t("legalForecast.statusRegularExceeded"));
+    expect(text).not.toContain(yearAbove);
+  });
+
+  it("an extreme month inside a compliant total is shown as a hint, not waved through", () => {
+    const text = render(mini, [], 50, {
+      yearShare: 100,
+      forecastStatus: "NEAR_LIMIT",
+      highVariation: true,
+    });
+    expect(text).toContain(t("legalForecast.highVariation"));
   });
 
   it("no limit line when everything is below the 85 % threshold", () => {
     const text = render(mini, [], 50, { yearShare: 20, forecastStatus: "OK" });
-    expect(text).not.toContain(yearOver);
+    expect(text).not.toContain(yearAbove);
     expect(text).not.toContain(t("legalForecast.statusMaximum"));
+    expect(text).not.toContain(t("legalForecast.highVariation"));
   });
 });

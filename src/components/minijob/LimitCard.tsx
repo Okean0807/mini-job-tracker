@@ -16,11 +16,19 @@ interface LimitCardProps {
   /** Self-employed: employee Minijob limit not applicable. */
   notApplicable?: boolean;
   /**
-   * `year` (default): the limit is the annual limit – exceeding it is a genuine
-   * exceedance. `month`: the limit is only the monthly reference amount; a month
-   * above it is not automatically an exceedance (the annual earnings decide).
+   * `year` (default): calendar-year actual earnings against the annual reference – a
+   * statistical figure, not a legal classification. `month`: the monthly reference
+   * amount; a month above it is not automatically an exceedance. In both cases the
+   * regular remuneration over the employment period (at most 12 months) is decisive,
+   * and its assessment is the forecast card.
    */
   scope?: "month" | "year";
+  /**
+   * The legal assessment (rolling 12-month forecast) reports an exceedance. Only then does the
+   * card use the alarm styling and the exceedance explanation; a figure above the reference
+   * alone is a statistic.
+   */
+  legalExceeded?: boolean;
 }
 
 export function LimitCard({
@@ -30,6 +38,7 @@ export function LimitCard({
   auto,
   notApplicable,
   scope = "year",
+  legalExceeded = false,
 }: LimitCardProps) {
   const { t } = useT();
   const titleId = useId();
@@ -63,6 +72,7 @@ export function LimitCard({
         titleId={titleId}
         label={t("limit.earnings")}
         share={usage.earningsShare}
+        alarm={legalExceeded}
         main={`${formatEuro(usage.earnings)} / ${formatEuro(usage.earningsLimit)}`}
         hint={t("limit.leftAmount", { amount: formatEuro(usage.earningsLeft) })}
       />
@@ -70,6 +80,7 @@ export function LimitCard({
         titleId={titleId}
         label={t("limit.hours")}
         share={usage.hoursShare}
+        alarm={legalExceeded}
         main={`${formatHours(usage.hours)} / ${formatHours(usage.hoursLimit)}`}
         hint={
           auto
@@ -81,20 +92,20 @@ export function LimitCard({
         }
       />
 
-      {/* The limit is an upper bound: exactly 100 % is within it, only more exceeds it. */}
-      {sharePastLimit(usage.earningsShare) || sharePastLimit(usage.hoursShare) ? (
-        scope === "month" ? (
-          <div className="mt-3 rounded-xl border bg-muted/40 p-2.5">
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              {t("limit.monthAboveNote")}
-            </p>
-          </div>
-        ) : (
-          <div className="mt-3 space-y-1 rounded-xl border border-destructive/30 bg-destructive/5 p-2.5">
-            <p className="text-xs leading-relaxed text-destructive">{t("limit.overExplain")}</p>
-            <p className="text-xs leading-relaxed text-muted-foreground">{t("limit.disclaimer")}</p>
-          </div>
-        )
+      {/* The limit is an upper bound: exactly 100 % is within it, only more is above it.
+          Figures above a REFERENCE are a statistic, not a legal classification; the alarm
+          box is reserved for the legal assessment (the forecast card's result). */}
+      {legalExceeded ? (
+        <div className="mt-3 space-y-1 rounded-xl border border-destructive/30 bg-destructive/5 p-2.5">
+          <p className="text-xs leading-relaxed text-destructive">{t("limit.overExplain")}</p>
+          <p className="text-xs leading-relaxed text-muted-foreground">{t("limit.disclaimer")}</p>
+        </div>
+      ) : sharePastLimit(usage.earningsShare) || sharePastLimit(usage.hoursShare) ? (
+        <div className="mt-3 rounded-xl border bg-muted/40 p-2.5">
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {scope === "month" ? t("limit.monthAboveNote") : t("limit.yearAboveNote")}
+          </p>
+        </div>
       ) : null}
     </div>
   );
@@ -104,6 +115,7 @@ function Bar({
   titleId,
   label,
   share,
+  alarm,
   main,
   hint,
 }: {
@@ -111,11 +123,15 @@ function Bar({
   titleId: string;
   label: string;
   share: number;
+  /** Legal assessment exceeded: alarm colour. Otherwise a reference figure never reads as a violation. */
+  alarm: boolean;
   main: string;
   hint: string;
 }) {
   const labelId = useId();
   const clamped = Math.min(100, Math.round(share));
+  // Exactly 100 % is within the limit; above it (or from 90 %) is only a caution colour.
+  const caution = sharePastLimit(share) || share >= 90;
   return (
     <div className="mt-3">
       <div className="flex items-baseline justify-between text-sm">
@@ -125,7 +141,7 @@ function Bar({
         <span
           className={cn(
             "tabular-nums font-semibold",
-            share >= 100 ? "text-destructive" : share >= 90 ? "text-amber-600" : "text-foreground",
+            alarm ? "text-destructive" : caution ? "text-amber-600" : "text-foreground",
           )}
         >
           {Math.round(share)} %
@@ -134,7 +150,10 @@ function Bar({
       <Progress
         aria-labelledby={`${labelId} ${titleId}`}
         value={clamped}
-        className={cn("mt-1.5 h-2.5", share >= 100 && "[&>div]:bg-destructive")}
+        className={cn(
+          "mt-1.5 h-2.5",
+          alarm ? "[&>div]:bg-destructive" : sharePastLimit(share) && "[&>div]:bg-amber-500",
+        )}
       />
       <p className="mt-1 text-xs text-muted-foreground tabular-nums">
         {main} · {hint}

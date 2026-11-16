@@ -175,7 +175,7 @@ export const settingsDict: Bundle = {
     "notify.limit75.title": "Minijob-Limit",
     "notify.limit75.body": "Sie haben 75% Ihres Minijob-Limits erreicht.",
     "notify.limitMonthAbove.title": "Minijob-Monatsrichtwert",
-    "notify.limitMonthAbove.body": "Dein Verdienst liegt diesen Monat über dem Monatsrichtwert. Das ist nicht automatisch eine Überschreitung – maßgeblich ist das Jahresentgelt.",
+    "notify.limitMonthAbove.body": "Dein Verdienst liegt diesen Monat über dem Monatsrichtwert. Das ist nicht automatisch eine Überschreitung – maßgeblich ist das regelmäßige Entgelt im Beschäftigungszeitraum (höchstens 12 Monate).",
     "notify.limitForecast.title": "Minijob-Prognose",
     "notify.limitForecast.body": "Die Prognose überschreitet die Minijob-Grenze. Prüfe deine Planung.",
 
@@ -354,7 +354,7 @@ export const settingsDict: Bundle = {
     "notify.limit75.title": "Minijob limit",
     "notify.limit75.body": "You have reached 75% of your minijob limit.",
     "notify.limitMonthAbove.title": "Minijob monthly reference",
-    "notify.limitMonthAbove.body": "Your earnings this month are above the monthly reference. That is not automatically an exceedance – the annual earnings are what matter.",
+    "notify.limitMonthAbove.body": "Your earnings this month are above the monthly reference. That is not automatically an exceedance – what matters is the regular remuneration over the employment period (at most 12 months).",
     "notify.limitForecast.title": "Minijob forecast",
     "notify.limitForecast.body": "The forecast exceeds the minijob limit. Review your planning.",
 
@@ -533,7 +533,7 @@ export const settingsDict: Bundle = {
     "notify.limit75.title": "Лимит минизанятости",
     "notify.limit75.body": "Вы достигли 75% вашего лимита минизанятости.",
     "notify.limitMonthAbove.title": "Месячный ориентир минизанятости",
-    "notify.limitMonthAbove.body": "Ваш заработок в этом месяце выше месячного ориентира. Это не обязательно превышение — решающее значение имеет годовой заработок.",
+    "notify.limitMonthAbove.body": "Ваш заработок в этом месяце выше месячного ориентира. Это не обязательно превышение — решающее значение имеет регулярный заработок за период занятости (не более 12 месяцев).",
     "notify.limitForecast.title": "Прогноз минизанятости",
     "notify.limitForecast.body": "Прогноз превышает лимит минизанятости. Проверьте планирование.",
 
@@ -712,7 +712,7 @@ export const settingsDict: Bundle = {
     "notify.limit75.title": "Minijob sınırı",
     "notify.limit75.body": "Minijob sınırınızın %75'ine ulaştınız.",
     "notify.limitMonthAbove.title": "Minijob aylık referans",
-    "notify.limitMonthAbove.body": "Bu ayki kazancın aylık referans değerin üzerinde. Bu kendiliğinden bir aşım değildir – belirleyici olan yıllık kazançtır.",
+    "notify.limitMonthAbove.body": "Bu ayki kazancın aylık referans değerin üzerinde. Bu kendiliğinden bir aşım değildir – belirleyici olan, istihdam süresi boyunca (en fazla 12 ay) düzenli kazançtır.",
     "notify.limitForecast.title": "Minijob tahmini",
     "notify.limitForecast.body": "Tahmin minijob sınırını aşıyor. Planlamanı kontrol et.",
 
@@ -891,7 +891,7 @@ export const settingsDict: Bundle = {
     "notify.limit75.title": "Limit minijob",
     "notify.limit75.body": "Osiągnąłeś/aś 75% swojego limitu minijob.",
     "notify.limitMonthAbove.title": "Miesięczna wartość referencyjna minijoba",
-    "notify.limitMonthAbove.body": "Twój zarobek w tym miesiącu jest powyżej miesięcznej wartości referencyjnej. To nie jest automatycznie przekroczenie – decyduje zarobek roczny.",
+    "notify.limitMonthAbove.body": "Twój zarobek w tym miesiącu jest powyżej miesięcznej wartości referencyjnej. To nie jest automatycznie przekroczenie – liczy się regularne wynagrodzenie w okresie zatrudnienia (maksymalnie 12 miesięcy).",
     "notify.limitForecast.title": "Prognoza minijoba",
     "notify.limitForecast.body": "Prognoza przekracza limit minijoba. Sprawdź planowanie.",
 

@@ -22,6 +22,7 @@ export function TodayImportantCard({
   monthUsage,
   yearUsage,
   forecastStatus,
+  highVariation,
   onNewEntry,
 }: {
   shifts: Shift[];
@@ -33,6 +34,8 @@ export function TodayImportantCard({
   yearUsage: { share: number; earnings: number; earningsLimit: number };
   /** Status of the rolling legal forecast, so this card cannot contradict it. */
   forecastStatus?: LegalWarningStatus;
+  /** hasMonthAboveDoubleReference of the rolling forecast. */
+  highVariation?: boolean;
   onNewEntry: () => void;
 }) {
   const { t } = useT();
@@ -48,6 +51,7 @@ export function TodayImportantCard({
     monthUsage.share,
     yearUsage.share,
     forecastStatus,
+    highVariation,
   );
   const nearLimit = limitLevel !== null;
   const needsEmploymentType = jobsNeedingEmploymentType(jobs);
@@ -107,18 +111,20 @@ export function TodayImportantCard({
         ) : null}
         {limitLevel ? (
           <div className="rounded-xl border border-accent bg-accent/10 px-3 py-2.5 text-sm">
-            {limitLevel === "over"
-              ? t("dash.limitYearOver", { amount: formatEuro(yearUsage.earningsLimit) })
-              : limitLevel === "forecastOver" && forecastStatus
-                ? t(forecastExceededTextKey(forecastStatus))
-                : limitLevel === "monthAbove"
-                  ? t("dash.limitMonthAbove", {
-                      amount: formatEuro(monthUsage.earningsLimit),
-                      yearAmount: formatEuro(yearUsage.earningsLimit),
-                    })
-                  : t("dash.todayLimit", {
-                      percent: Math.round(Math.max(monthUsage.share, yearUsage.share)),
-                    })}
+            {limitLevel === "forecastOver" && forecastStatus
+              ? t(forecastExceededTextKey(forecastStatus))
+              : limitLevel === "highVariation"
+                ? t("legalForecast.highVariation")
+                : limitLevel === "yearAbove"
+                  ? t("dash.limitYearAbove", { amount: formatEuro(yearUsage.earningsLimit) })
+                  : limitLevel === "monthAbove"
+                    ? t("dash.limitMonthAbove", {
+                        amount: formatEuro(monthUsage.earningsLimit),
+                        yearAmount: formatEuro(yearUsage.earningsLimit),
+                      })
+                    : t("dash.todayLimit", {
+                        percent: Math.round(Math.max(monthUsage.share, yearUsage.share)),
+                      })}
           </div>
         ) : null}
         {wageViolations.length > 0 ? (

@@ -39,6 +39,10 @@ import { monthTimeAccount } from "@/lib/minijob/fest-time-account";
 import { jobsApplyMinijobLimit, primaryWorkMode } from "@/lib/minijob/work-mode";
 import { forecastExceededTextKey, limitAlertLevel } from "@/lib/minijob/limit-alert";
 import { evaluateRollingWarning } from "@/lib/minijob/legal";
+import {
+  hasMonthAboveDoubleReference,
+  isLegalExceedanceStatus,
+} from "@/lib/minijob/legal/warnings";
 import { payPeriods } from "@/lib/minijob/payday";
 import { makeResolver } from "@/lib/minijob/resolve";
 import { useAppData } from "@/lib/minijob/store";
@@ -123,7 +127,14 @@ function DashboardPage() {
   // One decision for banner, "Heute wichtig" card and notifications; the forecast
   // status comes from the same rolling assessment the forecast card shows.
   const forecastStatus = evaluateRollingWarning(legalForecast.rolling).status;
-  const limitAlert = limitAlertLevel(appliesMinijobLimit, limitShare, yearShare, forecastStatus);
+  const highVariation = hasMonthAboveDoubleReference(legalForecast.rolling);
+  const limitAlert = limitAlertLevel(
+    appliesMinijobLimit,
+    limitShare,
+    yearShare,
+    forecastStatus,
+    highVariation,
+  );
   const workMode = primaryWorkMode(jobs, settings.activeJobId);
   const isFest = workMode === "fest";
   const isSelf = workMode === "selbststaendig";
@@ -218,6 +229,7 @@ function DashboardPage() {
       <LimitCard
         usage={yearLimit}
         scope="year"
+        legalExceeded={isLegalExceedanceStatus(forecastStatus)}
         scopeLabel={`${t("limit.year")} · ${year}`}
         rate={settings.defaultRate}
         auto={settings.hoursLimitAuto || settings.hoursLimitMonthly <= 0}
@@ -293,19 +305,19 @@ function DashboardPage() {
         </Button>
       </header>
 
-      {limitAlert === "over" ? (
-        <LimitBanner
-          tone="over"
-          text={t("dash.limitYearOver", { amount: formatEuro(yearLimit.earningsLimit) })}
-          detail={t("dash.limitOverExplain")}
-          disclaimer={t("dash.limitDisclaimer")}
-        />
-      ) : limitAlert === "forecastOver" ? (
+      {limitAlert === "forecastOver" ? (
         <LimitBanner
           tone="over"
           text={t(forecastExceededTextKey(forecastStatus))}
           detail={t("dash.limitOverExplain")}
           disclaimer={t("dash.limitDisclaimer")}
+        />
+      ) : limitAlert === "highVariation" ? (
+        <LimitBanner tone="near" text={t("legalForecast.highVariation")} />
+      ) : limitAlert === "yearAbove" ? (
+        <LimitBanner
+          tone="near"
+          text={t("dash.limitYearAbove", { amount: formatEuro(yearLimit.earningsLimit) })}
         />
       ) : limitAlert === "monthAbove" ? (
         <LimitBanner
@@ -353,6 +365,7 @@ function DashboardPage() {
           monthUsage={monthLimit}
           yearUsage={yearLimit}
           forecastStatus={forecastStatus}
+          highVariation={highVariation}
           onNewEntry={() => openNew(isoDate(new Date()))}
         />
       </div>

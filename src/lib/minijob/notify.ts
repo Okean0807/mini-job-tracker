@@ -191,8 +191,9 @@ export function limitStatus(): LimitStatus {
 /**
  * Minijob-Hinweise – einmal pro Monat je Stufe. Die Stufe kommt aus derselben
  * Entscheidung wie Dashboard und Heute-Karte (`limitAlertLevel`):
- * - "Minijob-Limit überschritten" nur bei tatsächlich überschrittener Jahresgrenze,
- * - Prognose-Hinweis, wenn die gleitende 12-Monats-Prognose eine Überschreitung zeigt,
+ * - nur die rechtliche Prognose (gleitende 12 Monate, `evaluateRollingWarning`) meldet
+ *   eine Überschreitung; der Kalenderjahres-Ist-Verdienst ist ein statistischer Wert und
+ *   löst keine Überschreitungsmeldung aus,
  * - ein Monat über dem Monatsrichtwert ist ein Hinweis, keine Überschreitung,
  * - 75 / 90 Prozent des Monatsrichtwerts bleiben informative Schwellen.
  * Genau 100 % ist keine Überschreitung.
@@ -209,9 +210,7 @@ export function checkLimits() {
       t("notify.limitHours.body", { percent: Math.round(monthHoursShare) }),
     );
   }
-  if (level === "over") {
-    notifyOnce("limit-100", stamp, t("notify.limit100.title"), t("notify.limit100.body"));
-  } else if (level === "forecastOver") {
+  if (level === "forecastOver") {
     notifyOnce(
       "limit-forecast",
       stamp,

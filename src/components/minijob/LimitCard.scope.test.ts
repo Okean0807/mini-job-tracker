@@ -1,7 +1,8 @@
 /**
- * LimitCard – AUD-09A: the monthly card only compares against the monthly
- * REFERENCE amount; exceeding it is a hint, not an exceedance. Only the annual
- * card keeps the "exceeded" wording, and exactly 100 % is within the limit.
+ * LimitCard – AUD-09A: both cards compare ACTUAL figures against a REFERENCE (the
+ * monthly reference amount, resp. the calendar-year total against the annual
+ * reference). Above it is a statistical hint, never an "exceeded" legal status;
+ * the legal assessment is the forecast card. Exactly 100 % is within the limit.
  */
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -38,12 +39,18 @@ function usage(earnings: number, limit: number): LimitUsage {
 let container: HTMLDivElement;
 let root: Root;
 
-function text(scope: "month" | "year", earnings: number, limit: number): string {
+function text(
+  scope: "month" | "year",
+  earnings: number,
+  limit: number,
+  legalExceeded = false,
+): string {
   act(() => {
     root.render(
       createElement(LimitCard, {
         usage: usage(earnings, limit),
         scope,
+        legalExceeded,
         scopeLabel: "Test",
         rate: 13.9,
         auto: true,
@@ -93,25 +100,68 @@ describe("LimitCard month scope (reference amount)", () => {
   });
 });
 
-describe("LimitCard year scope (annual limit)", () => {
-  it("7,235.99 and exactly 7,236.00 EUR: no exceeded explanation", () => {
+describe("LimitCard year scope (calendar-year actual earnings: a statistic, not a legal status)", () => {
+  const yearAbove = tl("de", "limit.yearAboveNote");
+
+  it("7,235.99 and exactly 7,236.00 EUR: no note at all", () => {
     for (const amount of [7235.99, 7236]) {
-      expect(text("year", amount, 7236)).not.toContain(overExplain);
+      const out = text("year", amount, 7236);
+      expect(out).not.toContain(yearAbove);
+      expect(out).not.toContain(overExplain);
     }
   });
 
-  it("7,236.01 EUR: the exceeded explanation is shown", () => {
+  it("7,236.01 EUR: informational calendar-year note, never the 'exceeded' explanation", () => {
     const out = text("year", 7236.01, 7236);
-    expect(out).toContain(overExplain);
+    expect(out).toContain(yearAbove);
+    expect(out).toContain("Kalenderjahresverdienst über dem Richtwert");
+    expect(out).not.toContain(overExplain);
     expect(out).not.toContain(monthAbove);
   });
 
-  it("2027: 7,596.00 EUR within, 7,596.01 EUR exceeded", () => {
-    expect(text("year", 7596, 7596)).not.toContain(overExplain);
-    expect(text("year", 7596.01, 7596)).toContain(overExplain);
+  it("2027: 7,596.00 EUR within, 7,596.01 EUR informational note", () => {
+    expect(text("year", 7596, 7596)).not.toContain(yearAbove);
+    expect(text("year", 7596.01, 7596)).toContain(yearAbove);
   });
 
-  it("float noise at exactly the limit is not an exceedance", () => {
-    expect(text("year", 7236.000000000001, 7236)).not.toContain(overExplain);
+  it("float noise at exactly the limit is not above it", () => {
+    expect(text("year", 7236.000000000001, 7236)).not.toContain(yearAbove);
+  });
+
+  it("the actual amount stays visible", () => {
+    expect(text("year", 8400, 7236)).toContain("8.400");
+  });
+});
+
+describe("LimitCard colour: a reference figure is never styled as a violation", () => {
+  function barClasses(scope: "month" | "year", earnings: number, limit: number): string {
+    text(scope, earnings, limit);
+    return [...container.querySelectorAll<HTMLElement>('[role="progressbar"]')]
+      .map((b) => b.className)
+      .join(" ");
+  }
+  it("exactly 100 % keeps the neutral bar; above it is amber, never destructive", () => {
+    expect(barClasses("month", 603, 603)).not.toContain("bg-amber-500");
+    expect(barClasses("month", 603, 603)).not.toContain("bg-destructive");
+    expect(barClasses("month", 1000, 603)).toContain("[&>div]:bg-amber-500");
+    expect(barClasses("year", 8400, 7236)).toContain("[&>div]:bg-amber-500");
+    expect(barClasses("year", 8400, 7236)).not.toContain("bg-destructive");
+  });
+});
+
+describe("LimitCard: the alarm styling belongs to the legal assessment only", () => {
+  it("legalExceeded shows the exceedance explanation with its disclaimer and the alarm colour", () => {
+    const out = text("year", 8400, 7236, true);
+    expect(out).toContain(overExplain);
+    expect(out).toContain(tl("de", "limit.disclaimer"));
+    const bars = [...container.querySelectorAll<HTMLElement>('[role="progressbar"]')];
+    expect(bars.every((b) => b.className.includes("[&>div]:bg-destructive"))).toBe(true);
+  });
+
+  it("without it, the same figures show no explanation and no alarm colour", () => {
+    const out = text("year", 8400, 7236, false);
+    expect(out).not.toContain(overExplain);
+    const bars = [...container.querySelectorAll<HTMLElement>('[role="progressbar"]')];
+    expect(bars.some((b) => b.className.includes("bg-destructive"))).toBe(false);
   });
 });

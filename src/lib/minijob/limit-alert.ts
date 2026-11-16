@@ -12,38 +12,47 @@ import {
 export const NEAR_LIMIT_PERCENT = NEAR_LIMIT_RATIO * 100;
 
 /**
- * - `over`         Jahresgrenze (Ist) tatsächlich überschritten – die einzige
- *                  Stufe, die als Überschreitung formuliert wird.
- * - `forecastOver` Die gleitende 12-Monats-Prognose der Legal Engine meldet eine
- *                  Überschreitung (gleicher Befund wie die Prognose-Karte).
- * - `monthAbove`   Der Monatsverdienst liegt über dem Monatsrichtwert, die
- *                  Jahresbetrachtung ist aber (noch) eingehalten – Hinweis, keine
- *                  Überschreitung: Monatliche Schwankungen sind unschädlich, solange
- *                  das regelmäßige Jahresentgelt die Jahresgrenze nicht überschreitet.
- * - `near`         Informativer Hinweis ab 85 % (Business/UX-Regel).
+ * Drei getrennte Begriffe – nur der erste ist eine rechtliche Bewertung:
+ *
+ * 1. Rechtliche Prognose/Beurteilung (`forecastOver`): das Ergebnis der gleitenden
+ *    12-Monats-Prognose der Legal Engine (`evaluateRollingWarning`). Das ist die
+ *    einzige Stufe, die als Überschreitung formuliert wird.
+ * 2. Statistische Ist-Werte (`yearAbove`, `monthAbove`): Der Verdienst des
+ *    Kalenderjahres bzw. des Monats liegt über dem Richtwert. Das ist eine Zahl,
+ *    keine Einstufung – maßgeblich ist das regelmäßige Entgelt im
+ *    Beschäftigungszeitraum (höchstens 12 Monate); ein einzelner hoher Monat und
+ *    ein Kalenderjahr über dem Richtwert sind für sich keine Überschreitung.
+ * 3. Informative Hinweise (`highVariation`, `near`): ein Monat über dem Doppelten
+ *    des Monatsrichtwerts – eine Summe innerhalb der Grenze belegt dann allein nicht,
+ *    dass die Beschäftigung ein Minijob bleibt – und die 85-%-Schwelle (Business/UX).
  */
-export type LimitAlertLevel = "over" | "forecastOver" | "monthAbove" | "near" | null;
+export type LimitAlertLevel =
+  "forecastOver" | "highVariation" | "yearAbove" | "monthAbove" | "near" | null;
 
 /**
  * `applies` = jobsApplyMinijobLimit(jobs). Ohne (bestätigten) Minijob gibt es
  * keinen Grenzhinweis – auch nicht für ungeklärte Altbestände.
  * Shares in Prozent (0–100+). Die Grenzen sind Obergrenzen: genau 100 % liegt
- * innerhalb, erst mehr als 100 % überschreitet.
+ * innerhalb, erst mehr als 100 % liegt darüber.
  *
  * `forecastStatus` ist der Status der gleitenden 12-Monats-Prognose
- * (`evaluateRollingWarning`). Alle Oberflächen (Dashboard, Heute-Karte,
- * Benachrichtigungen) leiten ihre Stufe aus derselben Funktion ab und können
- * der Prognose-Karte so nicht widersprechen.
+ * (`evaluateRollingWarning`), `highVariation` das Ergebnis von
+ * `hasMonthAboveDoubleReference`. Alle Oberflächen (Dashboard, Heute-Karte,
+ * Benachrichtigungen) leiten ihre Stufe aus dieser Funktion ab und können der
+ * Prognose-Karte so nicht widersprechen. `yearShare` ist der Kalenderjahres-Ist-
+ * Verdienst: bewusst nur ein statistischer Hinweis, nie eine Rechtsaussage.
  */
 export function limitAlertLevel(
   applies: boolean,
   monthShare: number,
   yearShare: number,
   forecastStatus?: LegalWarningStatus,
+  highVariation = false,
 ): LimitAlertLevel {
   if (!applies) return null;
-  if (sharePastLimit(yearShare)) return "over";
   if (forecastStatus && isLegalExceedanceStatus(forecastStatus)) return "forecastOver";
+  if (highVariation) return "highVariation";
+  if (sharePastLimit(yearShare)) return "yearAbove";
   if (sharePastLimit(monthShare)) return "monthAbove";
   if (monthShare >= NEAR_LIMIT_PERCENT || yearShare >= NEAR_LIMIT_PERCENT) return "near";
   return null;

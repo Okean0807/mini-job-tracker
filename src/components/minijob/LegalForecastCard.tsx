@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2 } from "lucide-react";
 
 import { formatEuro } from "@/lib/minijob/calc";
 import { evaluateRollingWarning } from "@/lib/minijob/legal";
+import { hasMonthAboveDoubleReference } from "@/lib/minijob/legal/warnings";
 import type { Rolling12ForecastResult } from "@/lib/minijob/legal/rolling";
 import { useT } from "@/lib/i18n";
 
@@ -22,6 +23,9 @@ export function LegalForecastCard({ forecast }: LegalForecastCardProps) {
   const assessment = evaluateRollingWarning(forecast);
   const critical = assessment.status === "MAXIMUM_EXCEEDED";
   const warning = assessment.status === "REGULAR_LIMIT_EXCEEDED" || assessment.status === "UNPREDICTABLE_EXCEEDANCE_POSSIBLE";
+  // A total inside the limit does not by itself show the job remains a Minijob when single
+  // months are far above the monthly reference: shown as a hint next to the status.
+  const highVariation = hasMonthAboveDoubleReference(forecast);
 
   const statusText = (() => {
     switch (assessment.status) {
@@ -71,6 +75,11 @@ export function LegalForecastCard({ forecast }: LegalForecastCardProps) {
           {t("legalForecast.statusLabel")}
         </p>
         <p className="mt-1 text-sm font-medium">{statusText}</p>
+        {highVariation ? (
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            {t("legalForecast.highVariation")}
+          </p>
+        ) : null}
         <p className="mt-1 text-xs text-muted-foreground">
           {t("legalForecast.remainingSpecialMonths", { count: assessment.remainingSpecialMonths })}
         </p>
