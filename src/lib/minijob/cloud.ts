@@ -38,8 +38,9 @@
  * - **`dirty`** stammt aus den Änderungsmarken, unabhängig von Auto-Backup und von `pending`; er
  *   wird nur gelöscht, wenn der JETZIGE lokale Fingerprint dem hochgeladenen entspricht.
  * - **Auto-Backup AUS:** `autoSync` ist reine Inspektion (kein Upload, keine Überschreibung
- *   vorhandener Nutzerdaten). Ausnahmen: die Leer-Gerät-Erstwiederherstellung und ausdrücklich
- *   ausgelöste Aktionen (`explicit`). Noch KEIN bedingtes Schreiben (CAS): `push` bleibt ein Upsert.
+ *   vorhandener Nutzerdaten). Einzige Ausnahme: die Leer-Gerät-Erstwiederherstellung. Auch ein
+ *   bestätigter Import lädt nicht hoch – das tut nur die ausdrückliche Aktion `backupNow`.
+ *   Noch KEIN bedingtes Schreiben (CAS): `push` bleibt ein Upsert.
  */
 import { useSyncExternalStore } from "react";
 
@@ -987,10 +988,11 @@ function restoreIfVerifiedEmpty(
  * Abgleich mit der Cloud. Auto-Backup AUS (`settings.autoBackup === false`) bedeutet: absolut kein
  * automatischer Upload und keine automatische Überschreibung vorhandener Nutzerdaten – der Lauf
  * ist dann reine Inspektion (lesen, klassifizieren, Status setzen). Ausnahmen: die nachweislich
- * leere Erst-Wiederherstellung (`restoreIfVerifiedEmpty`) und ausdrücklich ausgelöste Aktionen
- * (`options.explicit`, z. B. bestätigter Import).
+ * leere Erst-Wiederherstellung (`restoreIfVerifiedEmpty`). Auch ein bestätigter lokaler Import
+ * löst bei Auto-Backup AUS keinen Upload aus; dafür gibt es nur die ausdrückliche, getrennte
+ * Aktion `backupNow`.
  */
-async function autoSync(options: { explicit?: boolean } = {}): Promise<void> {
+async function autoSync(): Promise<void> {
   if (!userId) return;
   // Owner guard: never sync data of another namespace (guest/demo/other account).
   if (!ownsLoadedData()) return;
@@ -1024,7 +1026,7 @@ async function autoSync(options: { explicit?: boolean } = {}): Promise<void> {
         if (!stillOwner(snap)) return;
         // Inspektionszeitpunkt: der AKTUELLE lokale Stand (nicht der vor dem Fetch).
         const local = getData();
-        const uploadAllowed = options.explicit === true || local.settings.autoBackup !== false;
+        const uploadAllowed = local.settings.autoBackup !== false;
         const hasLocalUserData = !isUserDataEmpty(local);
         const dataEqual =
           remote !== null && userDataFingerprint(local) === userDataFingerprint(remote.payload);
@@ -1375,8 +1377,10 @@ export function markExplicitImportForSync(): void {
     wizardPendingFirstSync: false,
   });
   setState({ status: "idle", pending: true, message: null, lastSyncedAt: null });
-  // Ausdrücklich ausgelöst (bestätigter Import): darf auch bei Auto-Backup AUS abgleichen.
-  void autoSync({ explicit: true });
+  // Kein Sonderrecht für den Import: Auto-Backup AN → normaler Abgleich (wie jede Änderung);
+  // Auto-Backup AUS → nur Inspektion, KEIN Upload. Hochladen importierter Daten verlangt dann
+  // die getrennte, ausdrückliche Aktion "Cloud-Backup erstellen" (`backupNow`).
+  void autoSync();
 }
 
 /** Liegen lokale, noch nicht gesicherte Änderungen im aktiven Konto-Scope vor? */

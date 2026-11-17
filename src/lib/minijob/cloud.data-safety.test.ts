@@ -8,6 +8,8 @@
  *
  * Es gibt noch KEINE bedingten Cloud-Schreibzugriffe (CAS): `push` bleibt ein Upsert.
  */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { COLLECTION_NAMES, fullFingerprint } from "./backup-compare";
@@ -867,5 +869,111 @@ describe("Konto-/Scope-Wechsel bricht den Vorgang ab", () => {
     expect(replaced.every((d) => d !== undefined)).toBe(true);
     // Alle Wiederherstellungen gehören zum NEUEN Konto (ein eigener, frischer Lauf), nie zum alten.
     expect(cloud.writes).toEqual([]);
+  });
+});
+
+/* ===================================================== Phase 2.1: Import ohne Auto-Upload */
+
+describe("bestätigter lokaler Import (markExplicitImportForSync): kein Upload bei Auto-Backup AUS", () => {
+  /** Importierte Daten liegen lokal vor (replaceAll des Imports ist hier schon geschehen). */
+  async function started(autoBackup: boolean, remote: Remote = null) {
+    local = data({ shifts: shifts(4) }, autoBackup);
+    cloud.remote = remote;
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    cloud.writes = [];
+    return mod;
+  }
+
+  it("Auto-Backup AUS, kein Cloud-Stand: dirty, null Schreibzugriffe, Marken bleiben gesetzt", async () => {
+    const mod = await started(false);
+    mod.markExplicitImportForSync();
+    await settle();
+    expect(cloud.writes).toEqual([]);
+    expect(mod.getSyncState().dirty).toBe(true);
+    const meta = readMeta();
+    expect(meta.localChangedAt).not.toBeNull();
+    expect(meta.localWorkChangedAt).not.toBeNull();
+    expect(meta.lastSyncedAt).toBeNull();
+  });
+
+  it("Auto-Backup AUS, Cloud-Stand vorhanden: null Schreibzugriffe, keine Überschreibung, dirty bleibt", async () => {
+    const mod = await started(false, { payload: data({ shifts: shifts(9) }), updated_at: T1 });
+    mod.markExplicitImportForSync();
+    await settle();
+    expect(cloud.writes).toEqual([]);
+    expect(replaced).toHaveLength(0);
+    expect(mod.getSyncState().dirty).toBe(true);
+    expect(mod.getSyncState().status).toBe("conflict");
+    expect(cloud.remote?.updated_at).toBe(T1);
+  });
+
+  it("der Import löscht dirty nie still (auch nach weiteren Zeitgeber-/Online-Ereignissen)", async () => {
+    const mod = await started(false);
+    mod.markExplicitImportForSync();
+    await settle();
+    await vi.advanceTimersByTimeAsync(60_000);
+    window.dispatchEvent(new Event("online"));
+    await settle();
+    expect(cloud.writes).toEqual([]);
+    expect(mod.getSyncState().dirty).toBe(true);
+  });
+
+  it("getrennte manuelle Aktion bleibt möglich: backupNow lädt die importierten Daten hoch und löscht dirty", async () => {
+    const mod = await started(false);
+    mod.markExplicitImportForSync();
+    await settle();
+    expect(cloud.writes).toEqual([]);
+    await mod.backupNow();
+    expect(cloud.writes).toEqual(["upsert"]);
+    expect((cloud.remote?.payload as AppData).shifts).toHaveLength(4);
+    expect(mod.getSyncState().dirty).toBe(false);
+  });
+
+  it("Auto-Backup AN: normales Verhalten bleibt (ohne Cloud-Stand genau ein Upload)", async () => {
+    const mod = await started(true);
+    cloud.remote = null; // der Start hat bereits gesichert; hier: noch kein Cloud-Stand
+    mod.markExplicitImportForSync();
+    await settle();
+    expect(cloud.writes).toEqual(["upsert"]);
+    expect(mod.getSyncState().dirty).toBe(false);
+  });
+
+  it("Auto-Backup AN mit abweichendem Cloud-Stand: Konflikt statt stiller Überschreibung (unverändert)", async () => {
+    const mod = await started(true, { payload: data({ shifts: shifts(9) }), updated_at: T1 });
+    mod.markExplicitImportForSync();
+    await settle();
+    expect(cloud.writes).toEqual([]);
+    expect(mod.getSyncState().status).toBe("conflict");
+  });
+
+  it("Kontoschutz: ohne passendes Konto verweigert der Aufruf und schreibt nichts", async () => {
+    const mod = await started(false);
+    authCallback?.("SIGNED_OUT", null);
+    await settle();
+    expect(() => mod.markExplicitImportForSync()).toThrow();
+    await settle();
+    expect(cloud.writes).toEqual([]);
+  });
+
+  it("Scope-Epoche: Kontowechsel während des Abgleichs nach dem Import → kein Upload, keine Wiederherstellung", async () => {
+    const mod = await started(false);
+    const g = gate();
+    cloud.fetchGate = g.promise;
+    mod.markExplicitImportForSync();
+    await settle();
+    session = { user: { id: "user-2" } };
+    authCallback?.("SIGNED_IN", session);
+    g.open();
+    cloud.fetchGate = null;
+    await settle();
+    expect(cloud.writes).toEqual([]);
+  });
+
+  it("Quelltext: kein autoSync({ explicit }) und keine explicit-Option mehr", () => {
+    const src = readFileSync(resolve(process.cwd(), "src/lib/minijob/cloud.ts"), "utf8");
+    expect(src).not.toMatch(/autoSync\(\s*\{/);
+    expect(src).not.toMatch(/options\.explicit/);
   });
 });
