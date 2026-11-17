@@ -14,12 +14,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { COLLECTION_NAMES, fullFingerprint } from "./backup-compare";
 import type { AppData } from "./types";
+import { installGuardedDoubles, type GuardedDoubles } from "@/test-utils/guarded-doubles";
 
 type Remote = { payload: unknown; updated_at: string } | null;
 
 const cloud = {
   remote: null as Remote,
-  /** JEDER Schreibzugriff (upsert/insert/update/delete) – leer = kein POST/PATCH. */
+  /** JEDER Schreibversuch (insert/update; "upsert" wäre ein Verstoß) – leer = kein POST/PATCH. */
   writes: [] as string[],
   selects: 0,
   upsertError: null as { message: string } | null,
@@ -30,34 +31,29 @@ const cloud = {
 let authCallback: ((event: string, session: unknown) => void) | null = null;
 let session: { user: { id: string } } | null = null;
 
-vi.mock("@/integrations/supabase/client", () => {
-  const forbidden = (name: string) => () => {
-    cloud.writes.push(name);
-    throw new Error(`unexpected ${name}`);
-  };
+vi.mock("@/integrations/supabase/client", async () => {
+  const { makeBackupsTable } = await import("@/test-utils/backups-double");
   return {
     supabase: {
-      from: () => ({
-        upsert: async (row: { payload: unknown; updated_at: string }) => {
-          cloud.writes.push("upsert");
-          if (cloud.upsertGate) await cloud.upsertGate;
-          if (cloud.upsertError) return { error: cloud.upsertError };
-          cloud.remote = { payload: row.payload, updated_at: row.updated_at };
-          return { error: null };
-        },
-        insert: forbidden("insert"),
-        update: forbidden("update"),
-        delete: forbidden("delete"),
-        select: () => ({
-          eq: () => ({
-            maybeSingle: async () => {
-              cloud.selects += 1;
-              if (cloud.fetchGate) await cloud.fetchGate;
-              return { data: cloud.remote, error: null };
-            },
-          }),
+      from: () =>
+        makeBackupsTable({
+          read: () => cloud.remote,
+          write: (_u, row) => {
+            cloud.remote = row;
+          },
+          onUpsert: () => cloud.writes.push("upsert"),
+          onWrite: async (kind) => {
+            // Jeder Schreib-VERSUCH zählt (auch wenn er scheitert oder null Zeilen trifft).
+            cloud.writes.push(kind);
+            if (cloud.upsertGate) await cloud.upsertGate;
+            return cloud.upsertError ? { error: cloud.upsertError } : null;
+          },
+          onSelect: async () => {
+            cloud.selects += 1;
+            if (cloud.fetchGate) await cloud.fetchGate;
+            return null;
+          },
         }),
-      }),
       auth: {
         getSession: async () => ({ data: { session } }),
         onAuthStateChange: (cb: (event: string, s: unknown) => void) => {
@@ -119,8 +115,11 @@ function setMeta(meta: Record<string, unknown>) {
 }
 const readMeta = () => JSON.parse(window.localStorage.getItem(META_KEY) ?? "{}");
 
+let doubles: GuardedDoubles;
+
 async function loadModule() {
   vi.resetModules();
+  doubles = await installGuardedDoubles();
   return await import("./cloud");
 }
 
@@ -190,7 +189,7 @@ describe("remoteToken: exakte Gleichheit statt Zeitstempel-Heuristik", () => {
     changeHook?.(local);
     await vi.advanceTimersByTimeAsync(2600);
 
-    expect(cloud.writes).toEqual(["upsert"]);
+    expect(cloud.writes).toEqual(["update"]);
     expect(replaced).toHaveLength(0);
   });
 
@@ -267,7 +266,7 @@ describe("Altbestand: numerisches remoteSeenAt ohne Token (konservativ)", () => 
     const mod = await loadModule();
     mod.initCloudSync();
     await settle();
-    expect(cloud.writes).toEqual(["upsert"]);
+    expect(cloud.writes).toEqual(["update"]);
   });
 
   it("remoteSeenAt weicht ab → Cloud gilt als geändert → Konflikt bei lokaler Arbeit, nie Upload", async () => {
@@ -417,7 +416,7 @@ describe("alle acht Sammlungen nehmen an Konflikt- und Restore-Entscheidungen te
     let mod = await loadModule();
     mod.initCloudSync();
     await settle();
-    expect(cloud.writes).toEqual(["upsert"]);
+    expect(cloud.writes).toEqual(["update"]);
     expect((cloud.remote?.payload as AppData).payments).toHaveLength(1);
     expect(mod.getSyncState().dirty).toBe(false);
 
@@ -466,7 +465,7 @@ describe("dirty ist unabhängig von Auto-Backup", () => {
     expect(mod.getSyncState().dirty).toBe(true);
     await vi.advanceTimersByTimeAsync(2600);
 
-    expect(cloud.writes).toEqual(["upsert"]);
+    expect(cloud.writes).toEqual(["update"]);
     expect(mod.getSyncState().dirty).toBe(false);
     expect(readMeta().localChangedAt).toBeNull();
     expect(mod.getSyncState().lastVerifiedAt).toBeGreaterThan(0);
@@ -600,7 +599,7 @@ describe("Auto-Backup AUS: kein automatischer Pfad schreibt (kein upsert/POST/PA
     const mod = await loadModule();
     mod.initCloudSync();
     await settle();
-    expect(cloud.writes).toEqual(["upsert"]);
+    expect(cloud.writes).toEqual(["update"]);
   });
 
   it("Start (getSession): nur lesen", async () => {
@@ -738,7 +737,7 @@ describe("Auto-Backup AUS: kein automatischer Pfad schreibt (kein upsert/POST/PA
     mod.initCloudSync();
     await settle();
     await mod.backupNow();
-    expect(cloud.writes).toEqual(["upsert"]);
+    expect(cloud.writes).toEqual(["update"]);
     expect(mod.getSyncState().dirty).toBe(false);
   });
 });
@@ -926,7 +925,7 @@ describe("bestätigter lokaler Import (markExplicitImportForSync): kein Upload b
     await settle();
     expect(cloud.writes).toEqual([]);
     await mod.backupNow();
-    expect(cloud.writes).toEqual(["upsert"]);
+    expect(cloud.writes).toEqual(["insert"]); // keine Cloud-Zeile: Insert, nie upsert
     expect((cloud.remote?.payload as AppData).shifts).toHaveLength(4);
     expect(mod.getSyncState().dirty).toBe(false);
   });
@@ -936,7 +935,7 @@ describe("bestätigter lokaler Import (markExplicitImportForSync): kein Upload b
     cloud.remote = null; // der Start hat bereits gesichert; hier: noch kein Cloud-Stand
     mod.markExplicitImportForSync();
     await settle();
-    expect(cloud.writes).toEqual(["upsert"]);
+    expect(cloud.writes).toEqual(["insert"]);
     expect(mod.getSyncState().dirty).toBe(false);
   });
 

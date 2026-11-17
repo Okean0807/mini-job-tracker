@@ -17,13 +17,8 @@ import {
   duplicateShiftIndexes,
   type CsvParseResult,
 } from "@/lib/minijob/csv";
-import {
-  newId,
-  nextJobColor,
-  saveJob,
-  saveShifts,
-  getData,
-} from "@/lib/minijob/store";
+import { newId, nextJobColor, saveJob, saveShifts, getData } from "@/lib/minijob/store";
+import { reportGuarded } from "@/lib/minijob/guarded-report";
 import { importJsonBackupFile } from "@/lib/minijob/json-backup-import";
 import type { Job, Settings } from "@/lib/minijob/types";
 import { useT } from "@/lib/i18n";
@@ -62,13 +57,17 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
     if (lower.endsWith(".json")) {
       try {
         const outcome = await importJsonBackupFile(file);
-        // Namensraum während des Lesens gewechselt: nichts schreiben, still beenden.
-        if (outcome === "stale") return;
-        if (outcome === "invalid") {
+        // Namensraum gewechselt: nichts geschrieben, still beenden.
+        if (outcome.status === "aborted" && outcome.reason === "scope-changed") return;
+        if (outcome.status === "aborted" && outcome.reason === "invalid-payload") {
           toast.error(t("imp.jsonInvalid"));
           return;
         }
-        toast.success(t("imp.jsonSuccess"));
+        if (outcome.status !== "done") {
+          reportGuarded(outcome, t, t("imp.jsonSuccess"));
+          return;
+        }
+        reportGuarded(outcome, t, t("imp.jsonSuccess"));
         onOpenChange(false);
         reset();
       } catch {
@@ -192,7 +191,9 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
                 {result.invalid.slice(0, 20).map((row) => (
                   <li key={row.line} className="flex gap-2">
                     <AlertTriangle className="mt-0.5 size-3 shrink-0" />
-                    <span>{t("imp.lineError", { line: row.line, errors: row.errors.join(", ") })}</span>
+                    <span>
+                      {t("imp.lineError", { line: row.line, errors: row.errors.join(", ") })}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -213,7 +214,11 @@ export function ImportDialog({ open, onOpenChange, jobs, settings }: Props) {
               <Button variant="outline" className="flex-1" onClick={reset}>
                 {t("imp.otherFile")}
               </Button>
-              <Button className="flex-1" disabled={result.valid.length === 0} onClick={confirmImport}>
+              <Button
+                className="flex-1"
+                disabled={result.valid.length === 0}
+                onClick={confirmImport}
+              >
                 <Check className="size-4" /> {t("imp.confirm", { count: result.valid.length })}
               </Button>
             </div>

@@ -19,6 +19,7 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { PinLock } from "@/components/minijob/PinLock";
 import { isLegalPath } from "@/lib/minijob/legal-links";
 import { OnboardingWizard } from "@/components/minijob/OnboardingWizard";
+import { GuardedOperationDialog } from "@/components/minijob/GuardedOperationDialog";
 import { LocalDataImportPrompt } from "@/components/minijob/LocalDataImport";
 import { ScopeBoundary, useActiveScopeKey } from "@/components/minijob/ScopeBoundary";
 import { shouldShowOnboardingWizard } from "@/lib/minijob/wizard-flow";
@@ -340,6 +341,7 @@ function RootComponent() {
       {ready && !locked ? <LocalDataImportPrompt /> : null}
       <SyncAlerts />
       <StorageAlert />
+      <GuardedOperationDialog />
       <Toaster position="top-center" />
     </QueryClientProvider>
   );

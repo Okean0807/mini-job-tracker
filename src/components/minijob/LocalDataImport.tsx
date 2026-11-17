@@ -33,6 +33,8 @@ function resultToast(t: (k: string) => string, result: ImportResult) {
   else if (result === "refused-unsynced") toast.error(t("local.import.refusedUnsynced"));
   else if (result === "refused-not-empty") toast.error(t("local.import.refusedNotEmpty"));
   else if (result === "not-eligible") toast.error(t("local.import.notEligible"));
+  else if (result === "cancelled") toast.message(t("guarded.cancelled"));
+  else if (result === "aborted") toast.error(t("guarded.abort.generic"));
 }
 
 function countsOf(c: ImportCandidate) {
@@ -93,8 +95,10 @@ export function LocalDataImportPrompt() {
         <div className="grid gap-2">
           <Button
             onClick={() => {
-              resultToast(t, importLocalData(source));
-              done();
+              void importLocalData(source).then((result) => {
+                resultToast(t, result);
+                if (result !== "cancelled" && result !== "aborted") done();
+              });
             }}
           >
             {t(
@@ -179,8 +183,10 @@ export function LocalDataImportSection() {
               <Button
                 size="sm"
                 onClick={() => {
-                  resultToast(t, importLocalData("legacy"));
-                  setVersion((v) => v + 1);
+                  void importLocalData("legacy").then((result) => {
+                    resultToast(t, result);
+                    setVersion((v) => v + 1);
+                  });
                 }}
               >
                 {t(inAccount ? "local.import.legacy.import" : "local.import.legacy.importLocal")}
@@ -215,8 +221,10 @@ export function LocalDataImportSection() {
           <Button
             size="sm"
             onClick={() => {
-              resultToast(t, importLocalData("demo"));
-              setVersion((v) => v + 1);
+              void importLocalData("demo").then((result) => {
+                resultToast(t, result);
+                setVersion((v) => v + 1);
+              });
             }}
           >
             {t("local.import.demo.import")}

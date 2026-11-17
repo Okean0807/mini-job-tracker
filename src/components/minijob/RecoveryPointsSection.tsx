@@ -8,8 +8,11 @@ import {
   deleteAllActiveSnapshots,
   getActiveSnapshotFile,
   listActiveSnapshots,
+  onSnapshotsChanged,
 } from "@/lib/minijob/backup-safety-active";
 import { SnapshotError, type SnapshotSummary } from "@/lib/minijob/backup-safety";
+import { reportGuarded } from "@/lib/minijob/guarded-report";
+import { restoreSnapshot } from "@/lib/minijob/guarded-local";
 import { onScopeChange } from "@/lib/minijob/store";
 
 /**
@@ -38,8 +41,13 @@ export function RecoveryPointsSection() {
       setItems(null);
       void refresh();
     });
+    // Auch Snapshots, die ein geschützter Vorgang anlegt, erscheinen sofort.
+    const offChanged = onSnapshotsChanged(() => void refresh());
     void refresh();
-    return off;
+    return () => {
+      off();
+      offChanged();
+    };
   }, [refresh]);
 
   async function download(id: string) {
@@ -60,6 +68,16 @@ export function RecoveryPointsSection() {
           : t("backup.snap.actionError"),
       );
     }
+  }
+
+  async function restore(id: string) {
+    // Geschützter Ablauf: Snapshot erneut prüfen, Vergleich zeigen, aktuellen Stand sichern, bestätigen.
+    try {
+      reportGuarded(await restoreSnapshot(id), t, t("backup.snap.restored"));
+    } catch {
+      toast.error(t("backup.snap.actionError"));
+    }
+    await refresh();
   }
 
   async function remove(id: string) {
@@ -130,9 +148,16 @@ export function RecoveryPointsSection() {
                     })}
                   </p>
                 ) : null}
-                <div className="mt-2 grid grid-cols-2 gap-2">
+                <div className="mt-2 flex flex-wrap gap-2">
                   <Button variant="outline" size="sm" onClick={() => void download(s.id)}>
                     {t("backup.snap.download")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => void restore(s.id)}
+                    data-testid="recovery-restore"
+                  >
+                    {t("backup.snap.restore")}
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => void remove(s.id)}>
                     {t("backup.snap.delete")}

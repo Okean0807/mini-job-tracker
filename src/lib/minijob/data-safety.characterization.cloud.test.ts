@@ -1,26 +1,12 @@
 /**
- * TEMPORARY CHARACTERIZATION TESTS (Data-safety Phase 1).
- *
- * Diese Tests halten das HEUTIGE, nachweislich unsichere Verhalten von `cloud.ts` fest – sie
- * erklären es nicht für richtig. Jeder Test nennt das erwartete sichere Verhalten
- * ("EXPECTED SECURE BEHAVIOUR"). Sobald die Phasen 2–4 die Lücken schließen, werden diese Tests
- * bewusst ausfallen und müssen durch die Sicherheits-Tests der jeweiligen Phase ersetzt (nicht
- * einfach angepasst) werden. Kein bestehender Test wurde dafür verändert.
- *
- * Verifiziert (Phase 0): blindes Überschreiben durch `backupNow`, Restore-Entscheidung nur auf
- * Schichten/Jobs, Auto-Backup AUS verhindert nicht jeden automatischen Upload, "leeres Gerät"
- * schaut nur auf Schichten.
- *
- * STATUS NACH PHASE 2: Behoben und durch Tests in `cloud.data-safety.test.ts` ersetzt sind
- * (a) die Restore-Entscheidung ohne Nicht-Schicht-Sammlungen, (b) Auto-Backup AUS mit
- * automatischem Upload, (c) die Schichten-only-Leer-Prüfung. Die entsprechenden
- * Charakterisierungs-Tests wurden entfernt. NOCH OFFEN (bleibt hier dokumentiert, bis Phase 4
- * den geführten Ablauf mit bedingtem Schreiben liefert): das blinde Überschreiben durch
- * `backupNow`.
+ * Phase 4 – `backupNow` im Konfliktfall: lesen, vergleichen, bestätigen, Cloud-Kopie sichern,
+ * bedingt schreiben. Ersetzt die Phase-1-Charakterisierung des blinden Überschreibens
+ * (alle früheren Lücken sind seit Phase 2–4 geschlossen und durch eigene Tests abgedeckt).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AppData } from "./types";
+import { installGuardedDoubles, type GuardedDoubles } from "@/test-utils/guarded-doubles";
 
 type Remote = { payload: unknown; updated_at: string } | null;
 
@@ -32,29 +18,33 @@ const cloud = {
 
 let session: { user: { id: string } } | null = null;
 
-vi.mock("@/integrations/supabase/client", () => ({
-  supabase: {
-    from: () => ({
-      upsert: async (row: { payload: unknown; updated_at: string }) => {
-        cloud.calls.push("upsert");
-        cloud.remote = { payload: row.payload, updated_at: row.updated_at };
-        return { error: null };
-      },
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => {
+vi.mock("@/integrations/supabase/client", async () => {
+  const { makeBackupsTable } = await import("@/test-utils/backups-double");
+  return {
+    supabase: {
+      from: () =>
+        makeBackupsTable({
+          read: () => cloud.remote,
+          write: (_u, row) => {
+            cloud.remote = row;
+          },
+          onUpsert: () => cloud.calls.push("upsert"),
+          onWrite: async (kind) => {
+            cloud.calls.push(kind);
+            return null;
+          },
+          onSelect: async () => {
             cloud.calls.push("select");
-            return { data: cloud.remote, error: null };
+            return null;
           },
         }),
-      }),
-    }),
-    auth: {
-      getSession: async () => ({ data: { session } }),
-      onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
+      auth: {
+        getSession: async () => ({ data: { session } }),
+        onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
+      },
     },
-  },
-}));
+  };
+});
 
 let local: AppData;
 const replaced: AppData[] = [];
@@ -94,8 +84,11 @@ function data(over: Record<string, unknown> = {}, autoBackup = true): AppData {
 
 const shifts = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `s${i}` }));
 
+let doubles: GuardedDoubles;
+
 async function loadModule() {
   vi.resetModules();
+  doubles = await installGuardedDoubles();
   return await import("./cloud");
 }
 
@@ -117,8 +110,8 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("TEMPORARY CHARACTERIZATION: blindes Überschreiben (backupNow)", () => {
-  it("backupNow schreibt ohne vorheriges Lesen und ersetzt eine neuere Cloud-Kopie", async () => {
+describe("Phase 4: backupNow im Konfliktfall (vorher: blindes Überschreiben)", () => {
+  async function conflict() {
     local = data({ shifts: shifts(2) });
     cloud.remote = { payload: data({ shifts: shifts(9) }), updated_at: new Date().toISOString() };
     window.localStorage.setItem(
@@ -133,16 +126,43 @@ describe("TEMPORARY CHARACTERIZATION: blindes Überschreiben (backupNow)", () =>
     const mod = await loadModule();
     mod.initCloudSync();
     await settle();
-    expect(mod.getSyncState().status).toBe("conflict"); // der automatische Abgleich schützt noch
+    expect(mod.getSyncState().status).toBe("conflict"); // der automatische Abgleich schützt
     cloud.calls.length = 0;
+    return mod;
+  }
 
-    await mod.backupNow(); // der manuelle Knopf "Sichern" im Konfliktfall
+  it("liest zuerst, zeigt die nur in der Cloud vorhandenen Datensätze, sichert die Cloud-Kopie, schreibt dann bedingt", async () => {
+    const mod = await conflict();
 
-    // CURRENT: kein Lesezugriff, nur der Schreibzugriff – keine Vergleichs- oder Versionsprüfung.
-    expect(cloud.calls).toEqual(["upsert"]);
-    // CURRENT: die 9 Schichten der Cloud sind durch die 2 lokalen ersetzt.
+    const result = await mod.backupNow(); // der manuelle Knopf im Konfliktfall
+
+    expect(result.status).toBe("done");
+    // Lesen (Inspektion) VOR dem Schreiben, erneute Prüfung des Tokens, bedingter Schreibzugriff.
+    expect(cloud.calls[0]).toBe("select");
+    expect(cloud.calls.filter((c) => c === "update")).toHaveLength(1);
+    expect(cloud.calls).not.toContain("upsert");
+    expect(cloud.calls.lastIndexOf("select")).toBeLessThan(cloud.calls.indexOf("update"));
+    // Dem Nutzer wurden die 7 nur-Cloud-Schichten (9 in der Cloud, 2 gemeinsame) als VERLUST gezeigt.
+    const preview = doubles.previews[0]!;
+    expect(preview.replaces).toBe("cloud");
+    expect(preview.collections.find((c) => c.name === "shifts")!.lost).toBe(7);
+    // Vorher wurde die Cloud-Kopie verifiziert gesichert.
+    const snap = [...doubles.storage.records.values()];
+    expect(snap).toHaveLength(1);
+    expect(snap[0]!.kind).toBe("cloud_pre_overwrite");
+    expect(snap[0]!.counts.shifts).toBe(9);
     expect((cloud.remote?.payload as AppData).shifts).toHaveLength(2);
-    // EXPECTED SECURE BEHAVIOUR: prepare (lesen + vergleichen) → Bestätigung mit Anzeige der
-    // 9 nur-Cloud-Datensätze → Snapshot der Cloud-Kopie → bedingter Schreibzugriff (CAS).
+  });
+
+  it("ohne Bestätigung wird weder gesichert noch geschrieben", async () => {
+    const mod = await conflict();
+    doubles.setAnswer(false);
+
+    const result = await mod.backupNow();
+
+    expect(result.status).toBe("cancelled");
+    expect(cloud.calls).not.toContain("update");
+    expect((cloud.remote?.payload as AppData).shifts).toHaveLength(9);
+    expect(doubles.storage.records.size).toBe(0);
   });
 });

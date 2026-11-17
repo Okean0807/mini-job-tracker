@@ -1,21 +1,16 @@
-import { isValidPayload } from "./payload";
-import { getScopeGeneration, isScopeCurrent, replaceAll } from "./store";
-
-export type JsonBackupImportResult = "imported" | "invalid" | "stale";
+import { importBackupText } from "./guarded-local";
+import type { GuardedResult } from "./guarded-operation";
+import { createActivePorts } from "./guarded-ports";
 
 /**
- * JSON-Sicherung aus einer Datei in den aktiven Namensraum übernehmen.
- * Das Lesen der Datei ist async: wechselt währenddessen Konto/Namensraum,
- * wird nichts geschrieben ("stale") – sonst landete die Sicherung im fremden
- * Konto. Ungültiges JSON wirft (Aufrufer zeigt den bisherigen Fehler-Toast).
+ * JSON-Sicherung aus dem ImportDialog: Datei lesen, dann der geschützte Ablauf
+ * (Vergleich, Snapshot, Bestätigung, Gerätesperre bleibt lokal). Konto und Scope-Epoche werden
+ * VOR dem asynchronen Lesen festgehalten: wechselt währenddessen das Konto, schreibt der Ablauf
+ * nichts (`aborted/scope-changed`). Ungültiges JSON ergibt `aborted/invalid-payload`.
  */
 export async function importJsonBackupFile(file: {
   text(): Promise<string>;
-}): Promise<JsonBackupImportResult> {
-  const generation = getScopeGeneration();
-  const data: unknown = JSON.parse(await file.text());
-  if (!isScopeCurrent(generation)) return "stale";
-  if (!isValidPayload(data)) return "invalid";
-  replaceAll(data);
-  return "imported";
+}): Promise<GuardedResult> {
+  const ports = createActivePorts();
+  return importBackupText(await file.text(), ports);
 }

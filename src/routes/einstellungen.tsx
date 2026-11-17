@@ -46,6 +46,7 @@ import {
 } from "@/lib/minijob/biometric";
 import { setupBiometricInScope } from "@/lib/minijob/biometric-setup";
 import { restoreLocalBackupFile } from "@/lib/minijob/local-backup-restore";
+import { reportGuarded } from "@/lib/minijob/guarded-report";
 import { syncActionErrorMessage } from "@/lib/minijob/sync-action-error";
 import { isValidPin, validatePinConfirm } from "@/lib/minijob/pin";
 import {
@@ -947,10 +948,10 @@ function LocalBackup({ shiftCount }: { shiftCount: number }) {
   function upload(file: File) {
     // Datei wird async gelesen: nur in den Namensraum schreiben, der beim Start aktiv war.
     void restoreLocalBackupFile(file).then((result) => {
-      if (result === "stale") return;
-      if (result === "invalid") toast.error(t("set.localBackup.invalid"));
-      else if (result === "read-error") toast.error(t("error.fileRead"));
-      else toast.success(t("set.localBackup.restored"));
+      if (result.status === "read-error") toast.error(t("error.fileRead"));
+      else if (result.status === "aborted" && result.reason === "invalid-payload")
+        toast.error(t("set.localBackup.invalid"));
+      else reportGuarded(result, t, t("set.localBackup.restored"));
     });
   }
 
@@ -1023,8 +1024,7 @@ function SyncStatusRow({ busy, setBusy }: { busy: boolean; setBusy: (value: bool
   async function resolve(keep: "local" | "cloud") {
     setBusy(true);
     try {
-      await resolveConflict(keep);
-      toast.success(t("set.account.cloud.sync.synced"));
+      reportGuarded(await resolveConflict(keep), t, t("set.account.cloud.sync.synced"));
     } catch (error) {
       // Kontowechsel während des Abgleichs (StaleSyncError): still, kein Fehler-Toast.
       const message = syncActionErrorMessage(error, t("error.sync"));
@@ -1100,14 +1100,16 @@ function CloudSync({
     setBusy(true);
     try {
       if (action === "backup") {
-        await backupNow();
-        markBackup();
-        toast.success(t("set.account.cloud.backupSuccess"));
+        const result = await backupNow();
+        if (result.status === "done") markBackup();
+        reportGuarded(result, t, t("set.account.cloud.backupSuccess"));
       } else {
-        const ok = await restoreNow();
-        toast[ok ? "success" : "error"](
-          ok ? t("set.account.cloud.restoreSuccess") : t("set.account.cloud.restoreEmpty"),
-        );
+        const result = await restoreNow();
+        if (result.status === "aborted" && result.reason === "remote-missing") {
+          toast.error(t("set.account.cloud.restoreEmpty"));
+        } else {
+          reportGuarded(result, t, t("set.account.cloud.restoreSuccess"));
+        }
       }
     } catch (error) {
       // Kontowechsel während des Abgleichs (StaleSyncError): still, kein Fehler-Toast.

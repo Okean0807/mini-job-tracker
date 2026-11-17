@@ -21,6 +21,18 @@ import { getActiveScope, getScopeGeneration, isScopeCurrent } from "./store";
 import type { StorageScope } from "./storage-scope";
 import type { AppData } from "./types";
 
+const changeListeners = new Set<() => void>();
+
+/** Die Liste der Wiederherstellungspunkte hat sich geändert (angelegt/gelöscht): Anzeigen neu laden. */
+export function onSnapshotsChanged(listener: () => void): () => void {
+  changeListeners.add(listener);
+  return () => changeListeners.delete(listener);
+}
+
+export function notifySnapshotsChanged(): void {
+  for (const l of changeListeners) l();
+}
+
 function activeDeps(): { scope: StorageScope; deps: SnapshotDeps } {
   const scope = getActiveScope();
   const generation = getScopeGeneration();
@@ -40,7 +52,11 @@ export async function createActiveSnapshot(
 ): Promise<CreatedSnapshot> {
   await ensureBackupSafetyReady();
   const { scope, deps } = activeDeps();
-  return createSnapshot({ kind, scope, data }, deps);
+  try {
+    return await createSnapshot({ kind, scope, data }, deps);
+  } finally {
+    notifySnapshotsChanged();
+  }
 }
 
 export async function listActiveSnapshots(): Promise<SnapshotSummary[]> {
@@ -56,12 +72,20 @@ export async function getActiveSnapshotFile(id: string): Promise<SnapshotFile> {
 
 export async function deleteActiveSnapshot(id: string): Promise<void> {
   const { scope, deps } = activeDeps();
-  return deleteSnapshot(id, scope, deps);
+  try {
+    return await deleteSnapshot(id, scope, deps);
+  } finally {
+    notifySnapshotsChanged();
+  }
 }
 
 export async function deleteAllActiveSnapshots(): Promise<number> {
   const { scope, deps } = activeDeps();
-  return deleteAllSnapshots(scope, deps);
+  try {
+    return await deleteAllSnapshots(scope, deps);
+  } finally {
+    notifySnapshotsChanged();
+  }
 }
 
 /** Nach erfolgreicher Konto-Löschung: genau die Snapshots dieses Kontos entfernen. */

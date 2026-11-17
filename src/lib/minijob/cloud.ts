@@ -40,7 +40,18 @@
  * - **Auto-Backup AUS:** `autoSync` ist reine Inspektion (kein Upload, keine Überschreibung
  *   vorhandener Nutzerdaten). Einzige Ausnahme: die Leer-Gerät-Erstwiederherstellung. Auch ein
  *   bestätigter Import lädt nicht hoch – das tut nur die ausdrückliche Aktion `backupNow`.
- *   Noch KEIN bedingtes Schreiben (CAS): `push` bleibt ein Upsert.
+ * - **Phase 4 – Schreiben:** jeder Cloud-Schreibzugriff ist bedingt (`cloud-cas.ts`: Update auf
+ *   `user_id` + exakt beobachteten `updated_at`, genau eine Zeile = Erfolg; ohne Zeile `insert`;
+ *   nie `upsert`). Nicht geschützt bleiben ältere App-Versionen und Service-Role-Zugriffe, die
+ *   blind schreiben können – das braucht eine serverseitige Erzwingung (eigene Freigabe).
+ *   Ein Schreibversuch mit unbekanntem Ergebnis (`pendingWrite`) wird bei der nächsten Inspektion
+ *   geklärt (übernehmen / nicht angekommen / Konflikt) und nie blind wiederholt.
+ * - **Phase 4 – Zerstörerische Aktionen** (`backupNow`, `restoreNow`, `resolveConflict`) laufen
+ *   durch `runGuardedOperation` (Vergleich, Bestätigung, Snapshot der verlierenden Seite,
+ *   erneute Prüfung von Konto/Scope/lokalem Stand/Remote-Token, erst dann Commit). Der
+ *   automatische Abgleich übernimmt weiterhin einen neueren Cloud-Stand nur dann lokal, wenn
+ *   lokal seit dem letzten Abgleich nichts geändert wurde (Auto-Backup AN) bzw. auf einem
+ *   nachweislich leeren Gerät.
  */
 import { useSyncExternalStore } from "react";
 
@@ -48,12 +59,32 @@ import { t } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
 
 import { markBackup } from "./notify";
-import { fullFingerprint, isUserDataEmpty, userDataFingerprint } from "./backup-compare";
+import {
+  asBackupLike,
+  fullFingerprint,
+  isUserDataEmpty,
+  userDataFingerprint,
+} from "./backup-compare";
 import { computeDirty, type BackupHealthInput } from "./backup-status";
 import type { OriginClass } from "./origin-check";
 
 import { mergeDeviceAuthFromLocal, stripDeviceAuthForCloud } from "./device-auth";
 import { isValidPayload } from "./payload";
+import { createActivePorts } from "./guarded-ports";
+import {
+  GuardedAbort,
+  runGuardedOperation,
+  type GuardedOperation,
+  type GuardedResult,
+  type Prepared,
+} from "./guarded-operation";
+import {
+  casWrite,
+  nextToken,
+  resolvePendingWrite,
+  type BackupsTable,
+  type PendingWrite,
+} from "./cloud-cas";
 import {
   activateScope,
   getActiveScope,
@@ -149,6 +180,11 @@ export type SyncMeta = {
   localDataFingerprint?: string | null;
   /** Zeitpunkt der letzten verifizierten Übereinstimmung (nur Erfolgspfade setzen ihn). */
   lastVerifiedAt?: number | null;
+  /**
+   * Phase 4: Schreibversuch mit unbekanntem Ergebnis (Timeout/Netzwerk). Wird VOR dem Senden
+   * gesetzt und erst nach geklärtem Ergebnis entfernt (siehe `reconcilePendingWrite`).
+   */
+  pendingWrite?: PendingWrite | null;
 };
 
 const EMPTY_META: SyncMeta = {
@@ -162,6 +198,7 @@ const EMPTY_META: SyncMeta = {
   remoteToken: null,
   localDataFingerprint: null,
   lastVerifiedAt: null,
+  pendingWrite: null,
 };
 
 /**
@@ -216,6 +253,7 @@ export function metaForUser(
     remoteSeenAt: null,
     remoteToken: null,
     lastVerifiedAt: null,
+    pendingWrite: null,
     // Keep wizard flag across account bind so finish→sign-in race still restores.
     wizardPendingFirstSync: Boolean(current.wizardPendingFirstSync),
   };
@@ -563,6 +601,38 @@ export class StaleSyncError extends Error {
   }
 }
 
+/** Null Zeilen / Zeile erschien parallel: die Cloud hat sich seit der Vorbereitung verändert. */
+export class CasStaleError extends Error {
+  constructor() {
+    super(t("error.cas.stale"));
+    this.name = "CasStaleError";
+  }
+}
+
+/** Das Konto existiert serverseitig nicht mehr (23503). */
+export class CloudAccountGoneError extends Error {
+  constructor() {
+    super(t("error.cas.accountGone"));
+    this.name = "CloudAccountGoneError";
+  }
+}
+
+/** Auth/RLS verweigert (42501): sichere Meldung, keine Details. */
+export class CloudAuthError extends Error {
+  constructor() {
+    super(t("error.cas.auth"));
+    this.name = "CloudAuthError";
+  }
+}
+
+/** Ergebnis des Schreibzugriffs unbekannt: beim nächsten Abgleich wird geprüft, nie blind wiederholt. */
+export class AmbiguousWriteError extends Error {
+  constructor() {
+    super(t("error.cas.ambiguous"));
+    this.name = "AmbiguousWriteError";
+  }
+}
+
 /**
  * Eingabe für `deriveBackupHealth` aus dem Sync-Zustand. Die Herkunft (`origin`) wird VON AUSSEN
  * übergeben und ist unabhängig vom Sicherungszustand (sie verdeckt keine Daten-/Fehlerzustände).
@@ -672,31 +742,54 @@ export function workFingerprint(data: Pick<AppData, "shifts" | "jobs">): string 
 }
 
 /**
- * Push local payload. Clears change marks after success.
+ * Push local payload per Compare-and-Swap (kein `upsert`). Clears change marks after success.
+ * `observedToken` ist der zuvor gesehene `updated_at` der Cloud (`null` = es gab keine Zeile).
  * When `preserveIfNewerThan` is set (autoSync), marks that were bumped *during*
  * the sync (≠ watermark) are kept so pending retry still runs.
  */
 async function push(
   data: AppData,
-  preserveIfNewerThan?: { local: number | null; work: number | null },
-  isCurrent?: () => boolean,
+  preserveIfNewerThan: { local: number | null; work: number | null } | undefined,
+  isCurrent: (() => boolean) | undefined,
+  observedToken: string | null,
 ): Promise<void> {
   if (!userId) throw new Error(t("error.notSignedIn"));
   // Owner guard: only ever upload data that was loaded from THIS account's namespace.
   if (!ownsLoadedData()) throw new Error(t("error.accountMismatch"));
   // Vor dem await festhalten: wohin die Metadaten gehören.
   const snap = snapshotOwner();
-  const updatedAt = new Date();
-  const { error } = await supabase.from("backups").upsert({
-    user_id: userId,
-    payload: payloadOf(data) as never,
-    updated_at: updatedAt.toISOString(),
+  const uid = userId;
+  const payload = payloadOf(data);
+  const token = nextToken(observedToken);
+  // Vor dem Senden festhalten: bei unklarem Ergebnis (Timeout) entscheidet die nächste Inspektion.
+  saveMeta({
+    pendingWrite: {
+      observedToken,
+      attemptedToken: token,
+      fingerprint: fullFingerprint(asBackupLike(payload)),
+      at: Date.now(),
+    },
+  });
+  const outcome = await casWrite({
+    table: supabase.from("backups") as unknown as BackupsTable,
+    userId: uid,
+    observedToken,
+    payload,
+    token,
   });
   // Post-await-Guard: Konto/Scope gewechselt oder der Sync-Lauf wurde bereits
-  // abgebrochen (z. B. Timeout) → keine Meta, kein markBackup, kein "synced".
+  // abgebrochen (z. B. Timeout) → keine Meta, kein markBackup, kein "synced". Ein gesetzter
+  // `pendingWrite` bleibt und wird in diesem Namensraum bei der nächsten Inspektion geklärt.
   if (!stillOwner(snap) || (isCurrent && !isCurrent())) throw new StaleSyncError();
-  if (error) throw error;
-  const ts = updatedAt.getTime();
+  if (outcome.kind !== "written") {
+    if (outcome.kind === "ambiguous") throw new AmbiguousWriteError();
+    saveMeta({ pendingWrite: null }); // eindeutig NICHT geschrieben
+    if (outcome.kind === "stale") throw new CasStaleError();
+    if (outcome.kind === "account-gone") throw new CloudAccountGoneError();
+    if (outcome.kind === "forbidden") throw new CloudAuthError();
+    throw new Error(t("error.sync"));
+  }
+  const ts = outcome.updatedAtMs;
   let nextLocal: number | null = null;
   let nextWork: number | null = null;
   if (preserveIfNewerThan) {
@@ -721,10 +814,9 @@ async function push(
   saveMeta({
     lastSyncedAt: ts,
     remoteSeenAt: ts,
-    // Der Server liefert beim Upsert kein Token zurück: bis zur nächsten Inspektion (die das exakte
-    // Token speichert) gilt die Millisekunden-Gleichheit über `remoteSeenAt` (siehe
-    // `remoteChangedSince`). Ein altes Token darf nicht stehen bleiben.
-    remoteToken: null,
+    // Exakter, vom Server zurückgegebener Token des soeben geschriebenen Standes.
+    remoteToken: outcome.token,
+    pendingWrite: null,
     lastVerifiedAt: ts,
     localChangedAt: nextLocal,
     localWorkChangedAt: nextWork,
@@ -736,6 +828,54 @@ async function push(
   // Auch automatische Backups als frisch markieren, sonst meldet die
   // Backup-Erinnerung fälschlich einen veralteten Stand.
   markBackup();
+}
+
+/**
+ * Unklares Ergebnis eines früheren Schreibversuchs klären (nächste Inspektion):
+ * gleicher Token + gleicher Inhalt → übernehmen; beobachteter Token unverändert → nicht
+ * angekommen (neu vorbereiten, kein blindes Wiederholen); sonst → Konflikt.
+ */
+function reconcilePendingWrite(remote: RemoteSnapshot | null): void {
+  const pending = meta.pendingWrite;
+  if (!pending) return;
+  const resolution = resolvePendingWrite(
+    pending,
+    remote
+      ? { token: remote.token, fingerprint: fullFingerprint(asBackupLike(remote.payload)) }
+      : null,
+  );
+  const now = Date.now();
+  if (resolution === "adopt" && remote) {
+    const current = getData();
+    const same = fullFingerprint(current) === pending.fingerprint;
+    saveMeta({
+      pendingWrite: null,
+      lastSyncedAt: remote.updatedAt,
+      remoteSeenAt: remote.updatedAt,
+      remoteToken: remote.token,
+      lastVerifiedAt: now,
+      localChangedAt: same ? null : (meta.localChangedAt ?? now),
+      localWorkChangedAt:
+        userDataFingerprint(current) === userDataFingerprint(remote.payload)
+          ? null
+          : (meta.localWorkChangedAt ?? now),
+      localWorkFingerprint: workFingerprint(current),
+      localDataFingerprint: userDataFingerprint(current),
+      wizardPendingFirstSync: false,
+    });
+    markBackup();
+    return;
+  }
+  if (resolution === "not-landed") {
+    saveMeta({ pendingWrite: null });
+    return;
+  }
+  // Konflikt: lokale Änderungsmarken sicherstellen, damit die Entscheidung nie "kein Konflikt" ergibt.
+  saveMeta({
+    pendingWrite: null,
+    localChangedAt: meta.localChangedAt ?? now,
+    localWorkChangedAt: meta.localWorkChangedAt ?? now,
+  });
 }
 
 type RemoteSnapshot = { payload: AppData; updatedAt: number; token: string };
@@ -822,24 +962,28 @@ function applyRemote(remote: { payload: AppData; updatedAt: number; token?: stri
 
 /* ---------- Öffentliche Aktionen ---------- */
 
-export async function backupNow(): Promise<void> {
-  if (!userId) throw new Error(t("error.notSignedIn"));
-  if (!ownsLoadedData()) throw new Error(t("error.accountMismatch"));
-  // Mutex: do not overlap forever with autoSync / another manual sync.
-  if (syncing) throw new Error(t("error.sync"));
+/**
+ * Ein einzelner Cloud-Zugriff unter dem Sync-Mutex (nie parallel zu autoSync/anderen Aktionen).
+ * Gehalten wird er NUR während des Zugriffs, nicht während der Bestätigung durch den Nutzer.
+ */
+async function cloudIo<T>(
+  work: (epoch: number) => Promise<T>,
+  finish: (value: T) => void,
+): Promise<T> {
+  if (syncing) throw new GuardedAbort("lock-busy");
   syncing = true;
   const epoch = ++syncEpoch;
   setState({ status: "syncing", message: null });
   armSyncWatchdog(epoch);
-  const snap = snapshotOwner();
   try {
-    await withSyncTimeout(push(getData(), undefined, () => epoch === syncEpoch));
+    const value = await withSyncTimeout(work(epoch));
     // Lauf wurde abgebrochen (Kontowechsel/Timeout): nie als Erfolg melden.
     if (epoch !== syncEpoch) throw new StaleSyncError();
-    if (!stillOwner(snap)) throw new StaleSyncError();
-    setState({ status: "synced", pending: false, message: null, lastSyncedAt: meta.lastSyncedAt });
+    finish(value);
+    return value;
   } catch (error) {
     if (error instanceof StaleSyncError) abandonStaleEpoch(epoch);
+    else if (error instanceof CasStaleError) abandonWithConflict(epoch);
     else abandonSyncEpoch(epoch, error);
     throw error;
   } finally {
@@ -850,45 +994,190 @@ export async function backupNow(): Promise<void> {
   }
 }
 
-export async function restoreNow(): Promise<boolean> {
+/** Lesender Zugriff (Vorbereitung/Revalidierung): Status danach wie vorher, nichts wird "synced". */
+function inspectCloud(snap: OwnerSnapshot): Promise<RemoteSnapshot | null> {
+  const previous = { status: state.status, message: state.message };
+  return cloudIo(
+    async () => {
+      const remote = await fetchRemote();
+      if (!stillOwner(snap)) throw new StaleSyncError();
+      return remote;
+    },
+    () =>
+      setState({
+        status: previous.status === "syncing" ? "idle" : previous.status,
+        message: previous.message,
+      }),
+  );
+}
+
+/** Beide Seiten inhaltlich gleich: Basis auf den Cloud-Stand setzen (kein Schreiben, kein Ersetzen). */
+function rebaselineToRemote(remote: RemoteSnapshot): void {
+  const local = getData();
+  const now = Date.now();
+  const settingsEqual = fullFingerprint(local) === fullFingerprint(asBackupLike(remote.payload));
+  saveMeta({
+    lastSyncedAt: remote.updatedAt,
+    remoteSeenAt: remote.updatedAt,
+    remoteToken: remote.token,
+    lastVerifiedAt: now,
+    localChangedAt: settingsEqual ? null : now,
+    localWorkChangedAt: null,
+    localWorkFingerprint: workFingerprint(local),
+    localDataFingerprint: userDataFingerprint(local),
+    wizardPendingFirstSync: false,
+  });
+  setState({
+    status: "synced",
+    pending: !settingsEqual,
+    remoteAhead: false,
+    message: null,
+    lastSyncedAt: meta.lastSyncedAt,
+  });
+}
+
+function sameToken(remote: RemoteSnapshot | null, token: string | null | undefined): boolean {
+  return (remote?.token ?? null) === (token ?? null);
+}
+
+/** Cloud-Sicherung erstellen/überschreiben (auch "Lokal behalten"): Vergleich → Snapshot → CAS. */
+function backupOperation(
+  kind: "cloud-backup" | "conflict-keep-local",
+  snap: OwnerSnapshot,
+): GuardedOperation {
+  let observed: RemoteSnapshot | null = null;
+  return {
+    kind,
+    async prepare({ local }) {
+      observed = await inspectCloud(snap);
+      reconcileAfterInspection(observed);
+      return {
+        incoming: payloadOf(local),
+        losing: observed?.payload ?? null,
+        snapshotKind: "cloud_pre_overwrite",
+        replaces: "cloud",
+        remoteToken: observed?.token ?? null,
+      };
+    },
+    async revalidateRemote(prepared) {
+      return sameToken(await inspectCloud(snap), prepared.remoteToken);
+    },
+    async commit(prepared, { local }) {
+      await cloudIo(
+        (epoch) => push(local, undefined, () => epoch === syncEpoch, prepared.remoteToken ?? null),
+        () =>
+          setState({
+            status: "synced",
+            pending: false,
+            message: null,
+            lastSyncedAt: meta.lastSyncedAt,
+          }),
+      );
+    },
+    onIdentical() {
+      if (observed) rebaselineToRemote(observed);
+    },
+  };
+}
+
+/** Cloud-Stand lokal übernehmen (auch "Cloud behalten"): Vergleich → Snapshot lokal → Übernahme. */
+function restoreOperation(
+  kind: "cloud-restore" | "conflict-keep-cloud",
+  snap: OwnerSnapshot,
+): GuardedOperation {
+  let observed: RemoteSnapshot | null = null;
+  return {
+    kind,
+    async prepare({ local }) {
+      observed = await inspectCloud(snap);
+      reconcileAfterInspection(observed);
+      if (!observed) throw new GuardedAbort("remote-missing");
+      return {
+        incoming: observed.payload,
+        losing: local,
+        snapshotKind: "local_pre_restore",
+        replaces: "local",
+        remoteToken: observed.token,
+      };
+    },
+    async revalidateRemote(prepared) {
+      return sameToken(await inspectCloud(snap), prepared.remoteToken);
+    },
+    commit() {
+      if (!observed || !stillOwner(snap)) throw new GuardedAbort("scope-changed");
+      applyRemote(observed); // behält PIN/Biometrie und den laufenden Timer
+      setState({
+        status: "synced",
+        pending: false,
+        message: null,
+        lastSyncedAt: meta.lastSyncedAt,
+      });
+    },
+    onIdentical() {
+      if (observed) rebaselineToRemote(observed);
+    },
+  };
+}
+
+/** Nach jeder Inspektion: unklares früheres Schreibergebnis klären. */
+function reconcileAfterInspection(remote: RemoteSnapshot | null): void {
+  reconcilePendingWrite(remote);
+}
+
+/** Konto/Scope-Wechsel mitten im Cloud-Zugriff ist ein stiller Abbruch ("scope-changed"). */
+function mapStaleToAbort(op: GuardedOperation): GuardedOperation {
+  const guard = async <T>(work: () => Promise<T> | T): Promise<T> => {
+    try {
+      return await work();
+    } catch (error) {
+      if (error instanceof StaleSyncError) throw new GuardedAbort("scope-changed");
+      throw error;
+    }
+  };
+  return {
+    ...op,
+    prepare: (ctx) => guard(() => op.prepare(ctx)),
+    commit: (prepared, ctx) => guard(() => op.commit(prepared, ctx)),
+    ...(op.revalidateRemote
+      ? { revalidateRemote: (prepared: Prepared) => guard(() => op.revalidateRemote!(prepared)) }
+      : {}),
+  };
+}
+
+async function runCloudOperation(
+  build: (snap: OwnerSnapshot) => GuardedOperation,
+): Promise<GuardedResult> {
   if (!userId) throw new Error(t("error.notSignedIn"));
   if (!ownsLoadedData()) throw new Error(t("error.accountMismatch"));
-  if (syncing) throw new Error(t("error.sync"));
-  syncing = true;
-  const epoch = ++syncEpoch;
   const snap = snapshotOwner();
-  setState({ status: "syncing", message: null });
-  armSyncWatchdog(epoch);
-  try {
-    const remote = await withSyncTimeout(fetchRemote());
-    // Abgebrochen (z. B. Kontowechsel per Auth-Event): still beenden statt
-    // „keine Cloud-Sicherung gefunden“ (false ist echtes „nicht gefunden“).
-    if (epoch !== syncEpoch) throw new StaleSyncError();
-    // Post-await-Guard: kein applyRemote/saveMeta in einen anderen Namensraum.
-    if (!stillOwner(snap)) throw new StaleSyncError();
-    if (!remote) {
-      setState({ status: "idle", message: null });
-      return false;
-    }
-    applyRemote(remote);
-    setState({ status: "synced", pending: false, message: null, lastSyncedAt: meta.lastSyncedAt });
-    return true;
-  } catch (error) {
-    if (error instanceof StaleSyncError) abandonStaleEpoch(epoch);
-    else abandonSyncEpoch(epoch, error);
-    throw error;
-  } finally {
-    if (epoch === syncEpoch) {
-      clearSyncWatchdog();
-      syncing = false;
-    }
+  const result = await runGuardedOperation(
+    mapStaleToAbort(build(snap)),
+    createActivePorts(() => stillOwner(snap)),
+  );
+  // Ein durch Konto-/Scope-Wechsel überholter Lauf hinterlässt keinen fremden "synced"-Status.
+  if (result.status === "aborted" && result.reason === "scope-changed" && !syncing) {
+    setState({ status: "idle", message: null });
   }
+  return result;
 }
 
-/** Nutzerentscheidung bei einem Konflikt. */
-export async function resolveConflict(keep: "local" | "cloud"): Promise<void> {
-  if (keep === "local") await backupNow();
-  else await restoreNow();
+/** "Cloud-Backup erstellen": inspizieren, vergleichen, bestätigen, Cloud-Kopie sichern, per CAS schreiben. */
+export function backupNow(): Promise<GuardedResult> {
+  return runCloudOperation((snap) => backupOperation("cloud-backup", snap));
+}
+
+/** Cloud-Sicherung lokal übernehmen: inspizieren, vergleichen, bestätigen, lokalen Stand sichern. */
+export function restoreNow(): Promise<GuardedResult> {
+  return runCloudOperation((snap) => restoreOperation("cloud-restore", snap));
+}
+
+/** Nutzerentscheidung bei einem Konflikt – dieselben geschützten Abläufe, kein blindes Überschreiben. */
+export function resolveConflict(keep: "local" | "cloud"): Promise<GuardedResult> {
+  return runCloudOperation((snap) =>
+    keep === "local"
+      ? backupOperation("conflict-keep-local", snap)
+      : restoreOperation("conflict-keep-cloud", snap),
+  );
 }
 
 function failed(error: unknown) {
@@ -941,6 +1230,15 @@ function abandonStaleEpoch(epoch: number): void {
   syncing = false;
   syncEpoch += 1;
   setState({ status: "idle", message: null });
+}
+
+/** CAS meldete einen parallelen Cloud-Stand: Konfliktstatus (Nutzer vergleicht und entscheidet). */
+function abandonWithConflict(epoch: number): void {
+  if (epoch !== syncEpoch) return;
+  clearSyncWatchdog();
+  syncing = false;
+  syncEpoch += 1;
+  setState({ status: "conflict", pending: true, message: null });
 }
 
 /**
@@ -1024,6 +1322,8 @@ async function autoSync(): Promise<void> {
         // Mid-flight-Guard: Namensraum/Konto während des Fetch gewechselt → weder
         // Re-Baseline, Konfliktstatus, Restore noch Push (alles würde fremde Meta treffen).
         if (!stillOwner(snap)) return;
+        // Unklares früheres Schreibergebnis (Timeout) zuerst klären – nie blind wiederholen.
+        reconcilePendingWrite(remote);
         // Inspektionszeitpunkt: der AKTUELLE lokale Stand (nicht der vor dem Fetch).
         const local = getData();
         const uploadAllowed = local.settings.autoBackup !== false;
@@ -1132,6 +1432,7 @@ async function autoSync(): Promise<void> {
             local,
             { local: changedAtStart, work: workChangedAtStart },
             () => epoch === syncEpoch,
+            remote?.token ?? null,
           );
         }
         if (epoch !== syncEpoch) return;
@@ -1153,7 +1454,9 @@ async function autoSync(): Promise<void> {
       })(),
     );
   } catch (error) {
-    abandonSyncEpoch(epoch, error);
+    // Die Cloud hat sich seit der Inspektion verändert: Konflikt (neu vergleichen), kein Fehler.
+    if (error instanceof CasStaleError) abandonWithConflict(epoch);
+    else abandonSyncEpoch(epoch, error);
   } finally {
     if (epoch === syncEpoch) {
       clearSyncWatchdog();
@@ -1381,6 +1684,16 @@ export function markExplicitImportForSync(): void {
   // Auto-Backup AUS → nur Inspektion, KEIN Upload. Hochladen importierter Daten verlangt dann
   // die getrennte, ausdrückliche Aktion "Cloud-Backup erstellen" (`backupNow`).
   void autoSync();
+}
+
+/**
+ * Nach einer bestätigten lokalen Ersetzung (JSON-Import, Snapshot-Wiederherstellung): im
+ * angemeldeten Konto als geändert markieren – ohne Upload bei Auto-Backup AUS. Ohne Konto
+ * (Gast/Testmodus) gibt es keine Cloud-Basis, die zu markieren wäre.
+ */
+export function markLocalReplacementForSync(): void {
+  if (!ownsLoadedData()) return;
+  markExplicitImportForSync();
 }
 
 /** Liegen lokale, noch nicht gesicherte Änderungen im aktiven Konto-Scope vor? */

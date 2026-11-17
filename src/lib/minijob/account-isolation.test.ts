@@ -8,7 +8,9 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { guardedFeedback } from "./guarded-result";
 import type { AppData, Shift } from "./types";
+import { installGuardedDoubles, type GuardedDoubles } from "@/test-utils/guarded-doubles";
 
 /* ---------- Supabase-Mock (Backups pro user_id, Auth-Events) ---------- */
 
@@ -29,42 +31,49 @@ let selectGate: Promise<void> | null = null;
 let upsertGate: Promise<void> | null = null;
 let upsertError: { message: string } | null = null;
 let upsertAttempts = 0;
+/** Schreibzugriffe, die gerade am `upsertGate` hängen (deterministisches Warten in Tests). */
+let gatedWrites = 0;
 
-vi.mock("@/integrations/supabase/client", () => ({
-  supabase: {
-    from: () => ({
-      upsert: async (row: { user_id: string; payload: AppData; updated_at: string }) => {
-        upsertAttempts += 1;
-        if (upsertGate) await upsertGate;
-        if (upsertError) return { error: upsertError };
-        upserts.push({ user_id: row.user_id, payload: row.payload });
-        backups.set(row.user_id, { payload: row.payload, updated_at: row.updated_at });
-        return { error: null };
-      },
-      select: () => ({
-        eq: (_col: string, uid: string) => ({
-          maybeSingle: async () => {
+vi.mock("@/integrations/supabase/client", async () => {
+  const { makeBackupsTable } = await import("@/test-utils/backups-double");
+  return {
+    supabase: {
+      from: () =>
+        makeBackupsTable({
+          read: (uid) => backups.get(uid ?? "") ?? null,
+          write: (uid, row) => {
+            upserts.push({ user_id: uid, payload: row.payload as AppData });
+            backups.set(uid, row);
+          },
+          onWrite: async () => {
+            upsertAttempts += 1;
+            if (upsertGate) {
+              gatedWrites += 1;
+              await upsertGate;
+            }
+            return upsertError ? { error: upsertError } : null;
+          },
+          onSelect: async () => {
             if (selectGate) await selectGate;
-            return { data: backups.get(uid) ?? null, error: null };
+            return null;
           },
         }),
-      }),
-    }),
-    auth: {
-      getSession: async () => ({ data: { session }, error: null }),
-      onAuthStateChange: (cb: (event: string, s: unknown) => void) => {
-        authCallback = cb;
-        return { data: { subscription: { unsubscribe() {} } } };
-      },
-      signOut: async () => {
-        if (signOutMode === "sessionError") return { error: { message: "session load failed" } };
-        session = null;
-        authCallback?.("SIGNED_OUT", null);
-        return { error: signOutMode === "network" ? { message: "Failed to fetch" } : null };
+      auth: {
+        getSession: async () => ({ data: { session }, error: null }),
+        onAuthStateChange: (cb: (event: string, s: unknown) => void) => {
+          authCallback = cb;
+          return { data: { subscription: { unsubscribe() {} } } };
+        },
+        signOut: async () => {
+          if (signOutMode === "sessionError") return { error: { message: "session load failed" } };
+          session = null;
+          authCallback?.("SIGNED_OUT", null);
+          return { error: signOutMode === "network" ? { message: "Failed to fetch" } : null };
+        },
       },
     },
-  },
-}));
+  };
+});
 
 vi.mock("./notify", () => ({ markBackup: vi.fn() }));
 
@@ -101,13 +110,27 @@ function payloadWith(shiftIds: string[]): AppData {
   } as unknown as AppData;
 }
 
+/**
+ * Wartet mit dem ECHTEN Ereignis-Takt (nicht Microtasks/Fake-Timer), bis `cond` gilt: der
+ * geschützte Ablauf verifiziert Snapshots per `crypto.subtle` (echt asynchron).
+ */
+async function untilReal(cond: () => boolean, timeoutMs = 20_000) {
+  // Echte Zeit (nicht Fake-Timer): SHA-256 läuft im Threadpool und braucht unter Last länger.
+  const { setTimeout: realSleep } = await import("node:timers/promises");
+  const deadline = performance.now() + timeoutMs;
+  while (!cond() && performance.now() < deadline) await realSleep(2);
+}
+
 async function settle() {
   for (let i = 0; i < 12; i += 1) await Promise.resolve();
 }
 
 /** Simuliert einen (Neu-)Start der App: frische Module, gleicher localStorage. */
+let doubles: GuardedDoubles;
+
 async function boot() {
   vi.resetModules();
+  doubles = await installGuardedDoubles();
   const store = await import("./store");
   const cloud = await import("./cloud");
   const docs = await import("./generated-docs");
@@ -149,6 +172,7 @@ beforeEach(() => {
   upsertGate = null;
   upsertError = null;
   upsertAttempts = 0;
+  gatedWrites = 0;
   Object.defineProperty(window.navigator, "onLine", { value: true, configurable: true });
   vi.useFakeTimers();
 });
@@ -394,7 +418,7 @@ describe("Testmodus → Google", () => {
     await setupDemoWithData();
     session = { user: { id: C } };
     const { store, imp } = await boot();
-    expect(imp.importLocalData("demo")).toBe("imported");
+    expect(await imp.importLocalData("demo")).toBe("imported");
     await settle();
     expect(store.getData().shifts.map((s) => s.id)).toEqual(["demo-shift"]);
     expect(store.getData().settings.localDemoMode).toBe(false);
@@ -410,7 +434,7 @@ describe("Testmodus → Google", () => {
     expect(store.getData().shifts.map((s) => s.id)).toEqual(["cloud-1"]);
     const before = upserts.length;
 
-    expect(imp.importLocalData("demo")).toBe("imported");
+    expect(await imp.importLocalData("demo")).toBe("imported");
     await settle();
     expect(cloud.getSyncState().status).toBe("conflict");
     expect(upserts.length).toBe(before);
@@ -426,7 +450,7 @@ describe("Testmodus → Google", () => {
       docs.readGeneratedDocumentsAt(docs.generatedDocsStorageKey(scope.DEMO_SCOPE)),
     ).toHaveLength(1);
 
-    expect(imp.importLocalData("demo")).toBe("imported");
+    expect(await imp.importLocalData("demo")).toBe("imported");
     expect(docs.listGeneratedDocuments().map((d) => d.name)).toEqual(["Demo-Bericht.pdf"]);
     // Quelle bleibt erhalten (nichts still gelöscht).
     expect(
@@ -502,7 +526,7 @@ describe("Legacy-Daten (globaler Schlüssel ohne Besitzer)", () => {
 
     // Expliziter Import → Konflikt (Backup existiert), kein stilles Überschreiben.
     const before = upserts.length;
-    expect(imp.importLocalData("legacy")).toBe("imported");
+    expect(await imp.importLocalData("legacy")).toBe("imported");
     await settle();
     expect(cloud.getSyncState().status).toBe("conflict");
     expect(upserts.length).toBe(before);
@@ -526,7 +550,7 @@ describe("Legacy-Daten (globaler Schlüssel ohne Besitzer)", () => {
     const { store, imp, cloud } = await boot();
     expect(store.getData().shifts).toHaveLength(0);
     expect(imp.findLegacyCandidate()).toBeNull();
-    expect(imp.importLocalData("legacy")).toBe("nothing");
+    expect(await imp.importLocalData("legacy")).toBe("nothing");
     await cloud.performSignOut();
     expect(imp.findLegacyCandidate()).toBeNull();
   });
@@ -537,7 +561,7 @@ describe("Legacy-Daten (globaler Schlüssel ohne Besitzer)", () => {
     const { store, imp } = await boot();
     expect(store.getData().shifts).toHaveLength(0);
     expect(upserts).toHaveLength(0);
-    expect(imp.importLocalData("legacy")).toBe("imported");
+    expect(await imp.importLocalData("legacy")).toBe("imported");
     await settle();
     expect(upsertsContaining("legacy-1").map((u) => u.user_id)).toEqual([A]);
   });
@@ -548,8 +572,39 @@ describe("Legacy-Daten (globaler Schlüssel ohne Besitzer)", () => {
     const { store, imp } = await boot();
     vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
     store.saveShift(shift("own-unsynced"));
-    expect(imp.importLocalData("legacy")).toBe("refused-unsynced");
+    expect(await imp.importLocalData("legacy")).toBe("refused-unsynced");
     expect(store.getData().shifts.map((s) => s.id)).toEqual(["own-unsynced"]);
+  });
+
+  it("T8f (Phase 4): Legacy-Import in ein Konto MIT gesicherten Daten läuft durch den geschützten Ablauf", async () => {
+    seedLegacy({ owner: A });
+    window.localStorage.setItem(
+      `minijob-tracker-v1:u:${A}`,
+      JSON.stringify(payloadWith(["a-own"])),
+    );
+    session = { user: { id: A } };
+    const { store, imp } = await boot();
+    await vi.advanceTimersByTimeAsync(1000);
+    await settle();
+    expect(store.getData().shifts.map((x) => x.id)).toEqual(["a-own"]);
+
+    // Ohne Bestätigung: nichts verändert, nichts gesichert.
+    doubles.setAnswer(false);
+    expect(await imp.importLocalData("legacy")).toBe("cancelled");
+    expect(store.getData().shifts.map((x) => x.id)).toEqual(["a-own"]);
+    expect(doubles.storage.records.size).toBe(0);
+
+    // Mit Bestätigung: Vergleich gezeigt, lokaler Stand gesichert, dann ersetzt.
+    doubles.setAnswer(true);
+    expect(await imp.importLocalData("legacy")).toBe("imported");
+    expect(doubles.previews.at(-1)).toMatchObject({ kind: "local-import", replaces: "local" });
+    const snaps = [...doubles.storage.records.values()];
+    expect(snaps).toHaveLength(1);
+    expect(snaps[0]).toMatchObject({ kind: "local_pre_import", state: "verified" });
+    expect(JSON.parse(snaps[0]!.payload).shifts.map((x: { id: string }) => x.id)).toEqual([
+      "a-own",
+    ]);
+    expect(store.getData().shifts.map((x) => x.id)).toEqual(expect.arrayContaining(["legacy-1"]));
   });
 
   it("T8e: ungebundene Testmodus-Legacy-Daten → nur explizit in den Testmodus übernehmbar", async () => {
@@ -558,7 +613,7 @@ describe("Legacy-Daten (globaler Schlüssel ohne Besitzer)", () => {
     expect(store.getActiveScope().kind).toBe("guest");
     expect(store.getData().shifts).toHaveLength(0);
     expect(imp.pendingPromptSources()).toContain("legacy");
-    expect(imp.importLocalData("legacy")).toBe("imported");
+    expect(await imp.importLocalData("legacy")).toBe("imported");
     expect(store.getActiveScope().kind).toBe("demo");
     expect(store.getData().settings.localDemoMode).toBe(true);
     expect(store.getData().shifts).toHaveLength(2);
@@ -765,7 +820,7 @@ describe("Race: Kontowechsel während await", () => {
     const gate = deferred();
     selectGate = gate.promise;
     const restore = cloud.restoreNow().then(
-      (ok) => ok,
+      (r) => r,
       (e: unknown) => e,
     );
 
@@ -778,9 +833,9 @@ describe("Race: Kontowechsel während await", () => {
     await settle();
     // Stale statt false: UI bleibt still (kein „Keine Cloud-Sicherung gefunden.“).
     const outcome = await restore;
-    expect(outcome).toBeInstanceOf(cloud.StaleSyncError);
+    expect(outcome).toMatchObject({ status: "aborted", reason: "scope-changed" });
     const { syncActionErrorMessage } = await import("./sync-action-error");
-    expect(syncActionErrorMessage(outcome, "fallback")).toBeNull();
+    expect(guardedFeedback(outcome as never).kind).toBe("silent");
     await vi.advanceTimersByTimeAsync(100);
     await settle();
 
@@ -798,7 +853,7 @@ describe("Race: Kontowechsel während await", () => {
     const gate = deferred();
     selectGate = gate.promise;
     const restore = cloud.restoreNow().then(
-      () => "resolved",
+      (r) => (r.status === "aborted" ? "rejected" : "resolved"),
       () => "rejected",
     );
 
@@ -822,7 +877,7 @@ describe("Legacy: Übernahme verbraucht den Bestand global", () => {
     const legacyRaw = window.localStorage.getItem("minijob-tracker-v1");
     session = { user: { id: A } };
     const { imp, cloud, store } = await boot();
-    expect(imp.importLocalData("legacy")).toBe("imported");
+    expect(await imp.importLocalData("legacy")).toBe("imported");
     expect(imp.canDiscardLegacy()).toBe(true);
     await settle();
 
@@ -832,7 +887,7 @@ describe("Legacy: Übernahme verbraucht den Bestand global", () => {
     expect(store.getActiveScopeOwner()).toBe(B);
     expect(imp.findLegacyCandidate()).toBeNull();
     expect(imp.pendingPromptSources()).not.toContain("legacy");
-    expect(imp.importLocalData("legacy")).toBe("nothing");
+    expect(await imp.importLocalData("legacy")).toBe("nothing");
     expect(imp.canDiscardLegacy()).toBe(false);
     expect(store.getData().shifts).toHaveLength(0);
     // Quelle bleibt als Sicherung erhalten.
@@ -857,21 +912,24 @@ describe("Manuelles Sichern/Wiederherstellen bei Kontowechsel (StaleSyncError st
     window.localStorage.setItem(`minijob-tracker-v1:u:${A}`, JSON.stringify(payloadWith(["a-1"])));
     session = { user: { id: A } };
     const { store, cloud, scope } = await boot();
+    store.saveShift(shift("a-extra")); // lokal ≠ Cloud, sonst gäbe es nichts zu schreiben
     const { syncActionErrorMessage } = await import("./sync-action-error");
     const gate = deferred();
     upsertGate = gate.promise;
+    const attempts = gatedWrites;
     const run = cloud.backupNow().then(
-      () => null,
+      (r) => r,
       (e: unknown) => e,
     );
+    await untilReal(() => gatedWrites > attempts); // der Schreibzugriff ist unterwegs
     store.activateScope(scope.GUEST_SCOPE); // Scope-Wechsel ohne Auth-Event (z. B. anderer Tab)
     gate.release();
     upsertGate = null;
     const error = await run;
     await settle();
 
-    expect(error).toBeInstanceOf(cloud.StaleSyncError);
-    expect(syncActionErrorMessage(error, "fallback")).toBeNull();
+    expect(error).toMatchObject({ status: "aborted", reason: "scope-changed" });
+    expect(guardedFeedback(error as never).kind).toBe("silent");
     expect(cloud.getSyncState().status).toBe("idle");
     expect(cloud.getSyncState().message).toBeNull();
     const guestMeta = JSON.parse(window.localStorage.getItem("minijob-sync-meta-v1:guest") ?? "{}");
@@ -886,7 +944,7 @@ describe("Manuelles Sichern/Wiederherstellen bei Kontowechsel (StaleSyncError st
     const gate = deferred();
     selectGate = gate.promise;
     const run = cloud.restoreNow().then(
-      () => null,
+      (r) => r,
       (e: unknown) => e,
     );
     store.activateScope(scope.GUEST_SCOPE);
@@ -895,8 +953,8 @@ describe("Manuelles Sichern/Wiederherstellen bei Kontowechsel (StaleSyncError st
     const error = await run;
     await settle();
 
-    expect(error).toBeInstanceOf(cloud.StaleSyncError);
-    expect(syncActionErrorMessage(error, "fallback")).toBeNull();
+    expect(error).toMatchObject({ status: "aborted", reason: "scope-changed" });
+    expect(guardedFeedback(error as never).kind).toBe("silent");
     expect(cloud.getSyncState().status).toBe("idle");
     expect(cloud.getSyncState().message).toBeNull();
     expect(store.getData().shifts.some((s) => s.id === "a-cloud")).toBe(false);
@@ -905,14 +963,13 @@ describe("Manuelles Sichern/Wiederherstellen bei Kontowechsel (StaleSyncError st
   it("andere Fehler unverändert: Upsert-Fehler → error-Status + Fehlertext", async () => {
     window.localStorage.setItem(`minijob-tracker-v1:u:${A}`, JSON.stringify(payloadWith(["a-1"])));
     session = { user: { id: A } };
-    const { cloud } = await boot();
+    const { cloud, store } = await boot();
+    store.saveShift(shift("a-extra"));
     const { syncActionErrorMessage } = await import("./sync-action-error");
-    upsertError = { message: "db down" };
-    const error = await cloud.backupNow().then(
-      () => null,
-      (e: unknown) => e,
-    );
-    expect(error).not.toBeInstanceOf(cloud.StaleSyncError);
+    upsertError = { message: "db down" }; // ohne Datenbankcode: Ergebnis unklar (ambiguous)
+    const result = await cloud.backupNow();
+    expect(result).toMatchObject({ status: "aborted", reason: "commit-failed" });
+    expect(guardedFeedback(result).kind).toBe("error");
     expect(cloud.getSyncState().status).toBe("error");
     expect(syncActionErrorMessage(new Error("db down"), "fallback")).toBe("db down");
     expect(syncActionErrorMessage("??", "fallback")).toBe("fallback");
@@ -924,8 +981,12 @@ describe("restoreNow: stale vs. echt „nicht gefunden“", () => {
     session = { user: { id: A } };
     const { cloud } = await boot();
     expect(backups.has(A)).toBe(false);
-    await expect(cloud.restoreNow()).resolves.toBe(false);
-    expect(cloud.getSyncState().status).toBe("idle");
+    await expect(cloud.restoreNow()).resolves.toMatchObject({
+      status: "aborted",
+      reason: "remote-missing",
+    });
+    // Die Inspektion ändert den Status nicht (kein "synced", kein Fehler).
+    expect(cloud.getSyncState().status).not.toBe("error");
   });
 
   it("A→B per Auth-Event während Restore ohne Backup → StaleSyncError statt false (kein „nicht gefunden“-Toast)", async () => {
@@ -934,7 +995,7 @@ describe("restoreNow: stale vs. echt „nicht gefunden“", () => {
     const gate = deferred();
     selectGate = gate.promise;
     const restore = cloud.restoreNow().then(
-      (ok) => ok,
+      (r) => r,
       (e: unknown) => e,
     );
     authCallback?.("SIGNED_OUT", null);
@@ -942,7 +1003,7 @@ describe("restoreNow: stale vs. echt „nicht gefunden“", () => {
     gate.release();
     selectGate = null;
     const outcome = await restore;
-    expect(outcome).toBeInstanceOf(cloud.StaleSyncError);
+    expect(outcome).toMatchObject({ status: "aborted", reason: "scope-changed" });
     expect(store.getActiveScopeOwner()).toBe(B);
     expect(cloud.getSyncState().status).not.toBe("error");
   });
@@ -950,20 +1011,22 @@ describe("restoreNow: stale vs. echt „nicht gefunden“", () => {
   it("backupNow abgebrochen (forceFailStuckSync) während Upsert → kein Erfolg (StaleSyncError statt resolve)", async () => {
     window.localStorage.setItem(`minijob-tracker-v1:u:${A}`, JSON.stringify(payloadWith(["a-1"])));
     session = { user: { id: A } };
-    const { cloud } = await boot();
+    const { cloud, store } = await boot();
+    store.saveShift(shift("a-extra"));
     await vi.advanceTimersByTimeAsync(100);
     await settle();
     const gate = deferred();
     upsertGate = gate.promise;
+    const attempts = gatedWrites;
     const run = cloud.backupNow().then(
-      () => "resolved",
+      (r) => r,
       (e: unknown) => e,
     );
-    await settle();
+    await untilReal(() => gatedWrites > attempts);
     cloud.forceFailStuckSync();
     gate.release();
     upsertGate = null;
-    expect(await run).toBeInstanceOf(cloud.StaleSyncError);
+    expect(await run).toMatchObject({ status: "aborted", reason: "scope-changed" });
   });
 });
 
@@ -993,17 +1056,19 @@ describe("Race: backupNow A→B (Upsert erst nach Kontowechsel freigegeben)", ()
 
     session = { user: { id: A } };
     const { cloud, store } = await boot(); // Init-Sync von A läuft ungebremst durch
+    store.saveShift(shift("a-extra")); // lokal ≠ Cloud, sonst gäbe es nichts zu schreiben
     await vi.advanceTimersByTimeAsync(100);
     await settle();
     upserts.length = 0;
 
     const gate = deferred();
     upsertGate = gate.promise;
+    const attempts = gatedWrites;
     const run = cloud.backupNow().then(
-      () => null,
+      (r) => r,
       (e: unknown) => e,
     );
-    await settle();
+    await untilReal(() => gatedWrites > attempts);
 
     // Während des Upserts: Kontowechsel A → B (B offline, damit B selbst nicht synct).
     setOnline(false);
@@ -1021,7 +1086,7 @@ describe("Race: backupNow A→B (Upsert erst nach Kontowechsel freigegeben)", ()
     await vi.advanceTimersByTimeAsync(100);
     await settle();
 
-    expect(error).toBeInstanceOf(cloud.StaleSyncError);
+    expect(error).toMatchObject({ status: "aborted", reason: "scope-changed" });
     expect(upserts.map((u) => u.user_id)).toEqual([A]); // A's Upload ging an A
     expect(backups.get(B)).toBe(bBackup); // B's Cloud-Backup unberührt
     expect(window.localStorage.getItem(metaKeyOf(B))).toBe(bMetaBefore);
@@ -1128,7 +1193,7 @@ describe("Rapid account switching: A → B → A", () => {
     backups.set(B, { payload: payloadWith(["b-cloud"]), updated_at: new Date().toISOString() });
 
     const firstRestore = cloud.restoreNow().then(
-      () => "resolved",
+      (r) => r,
       (error: unknown) => error,
     );
     await settle();
@@ -1162,7 +1227,7 @@ describe("Rapid account switching: A → B → A", () => {
     await vi.advanceTimersByTimeAsync(100);
     await settle();
 
-    expect(await firstRestore).toBeInstanceOf(cloud.StaleSyncError);
+    expect(await firstRestore).toMatchObject({ status: "aborted", reason: "scope-changed" });
     expect(store.getActiveScopeOwner()).toBe(A);
     const ids = store.getData().shifts.map((s) => s.id);
     expect(ids).toContain("a-cloud");
@@ -1190,9 +1255,11 @@ describe("Rapid account switching: A → B → A", () => {
     await settle();
 
     expect(upserts.filter((u) => u.user_id === B)).toHaveLength(0);
-    expect(upserts.filter((u) => u.user_id === A).every((u) =>
-      (u.payload?.shifts ?? []).some((s) => s.id === "a-local"),
-    )).toBe(true);
+    expect(
+      upserts
+        .filter((u) => u.user_id === A)
+        .every((u) => (u.payload?.shifts ?? []).some((s) => s.id === "a-local")),
+    ).toBe(true);
     expect(store.getActiveScopeOwner()).toBe(A);
     expect(cloud.getSyncState().status).not.toBe("error");
   });
@@ -1216,7 +1283,7 @@ describe("Async-Schreibpfade außerhalb des Sync (Epoch-Snapshot)", () => {
     const bBefore = window.localStorage.getItem(`minijob-tracker-v1:u:${B}`);
     gate.release();
 
-    expect(await run).toBe("stale");
+    expect(await run).toMatchObject({ status: "aborted", reason: "scope-changed" });
     expect(store.getActiveScopeOwner()).toBe(B);
     expect(store.getData().shifts.some((s) => s.id === "from-file")).toBe(false);
     expect(window.localStorage.getItem(`minijob-tracker-v1:u:${B}`)).toBe(bBefore);
@@ -1228,7 +1295,7 @@ describe("Async-Schreibpfade außerhalb des Sync (Epoch-Snapshot)", () => {
     const ok = await importJsonBackupFile({
       text: async () => JSON.stringify(payloadWith(["from-file"])),
     });
-    expect(ok).toBe("imported");
+    expect(ok.status).toBe("done");
     expect(store.getData().shifts.map((s) => s.id)).toContain("from-file");
   });
 
@@ -1262,7 +1329,7 @@ describe("Einstellungen: Scope-Generation-Guards (lokale Sicherung, Biometrie)",
     const guestBefore = window.localStorage.getItem("minijob-tracker-v1:guest");
     vi.useRealTimers();
 
-    expect(await run).toBe("stale");
+    expect(await run).toMatchObject({ status: "aborted", reason: "scope-changed" });
     expect(store.getActiveScope().kind).toBe("guest");
     expect(store.getData().shifts.some((s) => s.id === "from-local-backup")).toBe(false);
     expect(window.localStorage.getItem("minijob-tracker-v1:guest")).toBe(guestBefore);
@@ -1279,10 +1346,17 @@ describe("Einstellungen: Scope-Generation-Guards (lokale Sicherung, Biometrie)",
     const ok = await restoreLocalBackupFile(
       new Blob([JSON.stringify(payloadWith(["from-local-backup"]))]),
     );
-    expect(ok).toBe("restored");
+    expect(ok.status).toBe("done");
     expect(store.getData().shifts.map((s) => s.id)).toContain("from-local-backup");
-    expect(await restoreLocalBackupFile(new Blob([JSON.stringify({ foo: 1 })]))).toBe("invalid");
-    expect(await restoreLocalBackupFile(new Blob(["{kaputt"]))).toBe("read-error");
+    expect(await restoreLocalBackupFile(new Blob([JSON.stringify({ foo: 1 })]))).toMatchObject({
+      status: "aborted",
+      reason: "invalid-payload",
+    });
+    // Kaputtes JSON gilt wie ungültige Daten (kein Vergleich, nichts verändert).
+    expect(await restoreLocalBackupFile(new Blob(["{kaputt"]))).toMatchObject({
+      status: "aborted",
+      reason: "invalid-payload",
+    });
   });
 
   it("Biometrie: Scope-Wechsel während WebAuthn → keine Credential-Id/kein Abschalten im neuen Scope", async () => {

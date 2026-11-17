@@ -10,6 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AppData } from "./types";
+import { installGuardedDoubles, type GuardedDoubles } from "@/test-utils/guarded-doubles";
 
 /* ---------- Mocks ---------- */
 
@@ -22,41 +23,49 @@ const cloud = {
   upserts: 0,
   /** Blockiert den Cloud-Lesezugriff, um Parallelität zu testen. */
   gate: null as Promise<void> | null,
+  /** Blockiert NUR Schreibzugriffe (insert/update). */
+  writeGate: null as Promise<void> | null,
+  /** Schreibzugriffe, die gerade am `writeGate` hängen. */
+  gatedWrites: 0,
 };
 
 let authCallback: ((event: string, session: unknown) => void) | null = null;
 let session: { user: { id: string } } | null = null;
 
-vi.mock("@/integrations/supabase/client", () => ({
-  supabase: {
-    from: () => ({
-      upsert: async (row: { payload: unknown; updated_at: string }) => {
-        cloud.upserts += 1;
-        if (cloud.gate) await cloud.gate;
-        if (cloud.upsertError) return { error: cloud.upsertError };
-        cloud.remote = { payload: row.payload, updated_at: row.updated_at };
-        return { error: null };
-      },
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => (
-            cloud.gate ? await cloud.gate : undefined,
-            cloud.selectError
-              ? { data: null, error: cloud.selectError }
-              : { data: cloud.remote, error: null }
-          ),
+vi.mock("@/integrations/supabase/client", async () => {
+  const { makeBackupsTable } = await import("@/test-utils/backups-double");
+  return {
+    supabase: {
+      from: () =>
+        makeBackupsTable({
+          read: () => cloud.remote,
+          write: (_u, row) => {
+            cloud.remote = row;
+          },
+          onWrite: async () => {
+            cloud.upserts += 1;
+            if (cloud.gate) await cloud.gate;
+            if (cloud.writeGate) {
+              cloud.gatedWrites += 1;
+              await cloud.writeGate;
+            }
+            return cloud.upsertError ? { error: cloud.upsertError } : null;
+          },
+          onSelect: async () => {
+            if (cloud.gate) await cloud.gate;
+            return cloud.selectError ? { error: cloud.selectError } : null;
+          },
         }),
-      }),
-    }),
-    auth: {
-      getSession: async () => ({ data: { session } }),
-      onAuthStateChange: (cb: (event: string, s: unknown) => void) => {
-        authCallback = cb;
-        return { data: { subscription: { unsubscribe() {} } } };
+      auth: {
+        getSession: async () => ({ data: { session } }),
+        onAuthStateChange: (cb: (event: string, s: unknown) => void) => {
+          authCallback = cb;
+          return { data: { subscription: { unsubscribe() {} } } };
+        },
       },
     },
-  },
-}));
+  };
+});
 
 let local: AppData;
 let changeHook: ((data: AppData) => void) | null = null;
@@ -104,8 +113,11 @@ function setOnline(online: boolean) {
   });
 }
 
+let doubles: GuardedDoubles;
+
 async function loadModule() {
   vi.resetModules();
+  doubles = await installGuardedDoubles();
   return await import("./cloud");
 }
 
@@ -117,6 +129,8 @@ async function settle() {
 beforeEach(() => {
   cloud.remote = null;
   cloud.upsertError = null;
+  cloud.writeGate = null;
+  cloud.gatedWrites = 0;
   cloud.selectError = null;
   cloud.upserts = 0;
   cloud.gate = null;
@@ -881,15 +895,23 @@ describe("Sync-Timeout (SYNC-LIVE-P1)", () => {
     const lastSyncedBefore = mod.getSyncState().lastSyncedAt;
 
     let release!: () => void;
-    cloud.gate = new Promise<void>((resolve) => {
+    cloud.writeGate = new Promise<void>((resolve) => {
       release = resolve;
     });
 
     local = makeData(2);
     // Fake timers: the sync timeout only fires when time is advanced.
-    const pendingBackup = expect(mod.backupNow()).rejects.toBeInstanceOf(Error);
+    const pendingBackup = mod.backupNow();
+    // Der geschützte Ablauf (Inspektion, Bestätigung, Snapshot, Prüfung) erreicht erst nach
+    // einigen Microtasks den gesperrten Schreibzugriff; erst dann läuft die Zeit los.
+    // (SHA-256 des Snapshots läuft über den echten Ereignis-Takt, nicht über Microtasks.)
+    const { setTimeout: realSleep } = await import("node:timers/promises");
+    const deadline = performance.now() + 20_000; // echte Zeit: SHA-256 läuft im Threadpool
+    while (cloud.gatedWrites === 0 && performance.now() < deadline) await realSleep(2);
+    expect(cloud.gatedWrites).toBe(1); // der Schreibzugriff hängt jetzt am Gate
     await vi.advanceTimersByTimeAsync(mod.SYNC_TIMEOUT_MS + 50);
-    await pendingBackup;
+    // Phase 4: der geschützte Ablauf meldet den Abbruch als Ergebnis (kein "synced").
+    expect((await pendingBackup).status).toBe("aborted");
     expect(["error", "offline"]).toContain(mod.getSyncState().status);
     expect(mod.getSyncState().lastSyncedAt).toBe(lastSyncedBefore);
 
@@ -1269,8 +1291,8 @@ describe("device-local auth secrets", () => {
     const mod = await loadModule();
     mod.initCloudSync();
     await settle();
-    const ok = await mod.restoreNow();
-    expect(ok).toBe(true);
+    const restored = await mod.restoreNow();
+    expect(restored.status).toBe("done");
     expect(replaced.length).toBeGreaterThan(0);
     const applied = replaced[replaced.length - 1]!;
     expect((applied.settings as { pin?: string }).pin).toBe("4242");

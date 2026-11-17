@@ -25,6 +25,9 @@ import {
   markExplicitImportForSync,
 } from "./cloud";
 import { mergeDeviceAuthFromLocal } from "./device-auth";
+import { localReplaceOperation } from "./guarded-local";
+import { runGuardedOperation } from "./guarded-operation";
+import { createActivePorts } from "./guarded-ports";
 import {
   generatedDocsStorageKey,
   importGeneratedDocuments,
@@ -68,7 +71,15 @@ export type ImportCandidate = {
 };
 
 export type ImportResult =
-  "imported" | "nothing" | "not-eligible" | "refused-unsynced" | "refused-not-empty";
+  | "imported"
+  | "nothing"
+  | "not-eligible"
+  | "refused-unsynced"
+  | "refused-not-empty"
+  /** Phase 4: Nutzer hat den angezeigten Vergleich nicht bestätigt – nichts verändert. */
+  | "cancelled"
+  /** Phase 4: eine Pflichtprüfung (Snapshot, Konto, Stand) ist fehlgeschlagen – nichts verändert. */
+  | "aborted";
 
 function readLegacyMeta(): { owner: string | null; synced: boolean } {
   if (typeof window === "undefined") return { owner: null, synced: false };
@@ -191,7 +202,7 @@ export function declineImport(source: ImportSource): void {
 }
 
 /** Expliziter Import nach Bestätigung durch den Nutzer. */
-export function importLocalData(source: ImportSource): ImportResult {
+export async function importLocalData(source: ImportSource): Promise<ImportResult> {
   const candidate = findCandidate(source);
   if (!candidate) return "nothing";
   let scope = getActiveScope();
@@ -201,20 +212,45 @@ export function importLocalData(source: ImportSource): ImportResult {
     if (getActiveScopeOwner() !== getCloudUserId()) return "not-eligible";
     const target = getData();
     if (hasMeaningfulData(target) && hasUnsyncedLocalChanges()) return "refused-unsynced";
+    const accountScope = scope;
+    const finish = () => {
+      importGeneratedDocuments(candidate.docs);
+      writeImportDecision(accountScope, source, "imported");
+      if (source === "legacy") markLegacyConsumed(accountScope);
+      if (source === "demo") clearDemoImportOffer(accountScope.userId);
+    };
+    if (candidate.data && hasMeaningfulData(target)) {
+      // Vorhandene (gesicherte) Kontodaten werden ersetzt: geschützter Ablauf (Vergleich,
+      // Snapshot, Bestätigung). `after` läuft synchron direkt nach dem Ersetzen.
+      const data = candidate.data;
+      const result = await runGuardedOperation(
+        localReplaceOperation({
+          kind: "local-import",
+          snapshotKind: "local_pre_import",
+          load: async () => ({
+            raw: { ...data, settings: { ...data.settings, localDemoMode: false } },
+          }),
+          after: finish,
+        }),
+        createActivePorts(),
+      );
+      if (result.status === "done") return "imported";
+      return result.status === "cancelled" ? "cancelled" : "aborted";
+    }
     if (candidate.data) {
+      // Leeres Ziel: es geht nichts verloren.
       const merged = mergeDeviceAuthFromLocal(candidate.data, target);
       replaceAll({
         ...merged,
         settings: { ...merged.settings, localDemoMode: false },
         timer: target.timer ?? candidate.data.timer ?? null,
       });
+      // Nur mit Arbeitsdaten die Sync-Baseline zurücksetzen (Konflikt statt Überschreiben).
+      finish();
+      markExplicitImportForSync();
+      return "imported";
     }
-    importGeneratedDocuments(candidate.docs);
-    writeImportDecision(scope, source, "imported");
-    if (source === "legacy") markLegacyConsumed(scope);
-    if (source === "demo") clearDemoImportOffer(scope.userId);
-    // Nur mit Arbeitsdaten die Sync-Baseline zurücksetzen (Konflikt statt Überschreiben).
-    if (candidate.data) markExplicitImportForSync();
+    finish();
     return "imported";
   }
 

@@ -1,34 +1,20 @@
-import { isValidPayload } from "./payload";
-import { getScopeGeneration, isScopeCurrent, replaceAll } from "./store";
+import { importBackupText } from "./guarded-local";
+import type { GuardedResult } from "./guarded-operation";
+import { createActivePorts } from "./guarded-ports";
 
-export type LocalBackupRestoreResult = "restored" | "invalid" | "read-error" | "stale";
+export type LocalBackupRestoreResult = GuardedResult | { status: "read-error" };
 
 /**
- * Lokale JSON-Sicherung (Einstellungen → Lokale Sicherung) einlesen und
- * übernehmen. Die Datei wird async gelesen: wechselt währenddessen Konto oder
- * Namensraum, wird nichts geschrieben ("stale").
+ * Lokale JSON-Sicherung (Einstellungen → Lokale Sicherung): Datei lesen, dann derselbe
+ * geschützte Ablauf wie im ImportDialog. Konto und Scope-Epoche werden VOR dem Lesen
+ * festgehalten; wechselt währenddessen Konto oder Namensraum, schreibt der Ablauf nichts.
  */
 export function restoreLocalBackupFile(file: Blob): Promise<LocalBackupRestoreResult> {
-  const generation = getScopeGeneration();
+  const ports = createActivePorts();
   return new Promise((resolve) => {
     const reader = new FileReader();
-    reader.onload = () => {
-      if (!isScopeCurrent(generation)) {
-        resolve("stale");
-        return;
-      }
-      try {
-        const data: unknown = JSON.parse(String(reader.result));
-        if (!isValidPayload(data)) {
-          resolve("invalid");
-          return;
-        }
-        replaceAll(data);
-        resolve("restored");
-      } catch {
-        resolve("read-error");
-      }
-    };
+    reader.onload = () => void importBackupText(String(reader.result), ports).then(resolve);
+    reader.onerror = () => resolve({ status: "read-error" });
     reader.readAsText(file);
   });
 }
