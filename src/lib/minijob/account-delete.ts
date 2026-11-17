@@ -1,6 +1,12 @@
 import { supabase } from "@/integrations/supabase/client";
 import { clearAiChatHistory } from "./ai-chat-history";
-import { clearUserScopeLocalData, GUEST_SCOPE, persistScopePointer } from "./storage-scope";
+import { getDefaultSnapshotStorage, purgeScopeSnapshots } from "./backup-safety";
+import {
+  clearUserScopeLocalData,
+  GUEST_SCOPE,
+  persistScopePointer,
+  userScope,
+} from "./storage-scope";
 
 export type AccountDeleteResult = { ok: true } | { ok: false; error: unknown };
 
@@ -17,6 +23,13 @@ export async function deleteMyAccount(): Promise<AccountDeleteResult> {
   // The AI chat history is keyed differently (no ":u:" suffix) and holds questions + answers.
   clearAiChatHistory(userId);
   persistScopePointer(GUEST_SCOPE);
+  // Recovery snapshots (IndexedDB) of exactly this account. A retry marker is written first, so an
+  // interrupted purge is finished at the next start. Local-only; server deletion is unchanged.
+  try {
+    await purgeScopeSnapshots(userScope(userId), { backend: getDefaultSnapshotStorage() });
+  } catch {
+    // Marker stays; runPendingScopePurges retries on next initialization.
+  }
 
   try {
     await supabase.auth.signOut({ scope: "local" });

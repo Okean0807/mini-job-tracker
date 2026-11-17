@@ -16,6 +16,7 @@ import { signInWithOAuthProvider } from "@/lib/minijob/oauth-sign-in";
 import { deleteMyAccount } from "@/lib/minijob/account-delete";
 import { markOAuthPending } from "@/lib/minijob/storage-scope";
 import { LocalDataImportSection } from "@/components/minijob/LocalDataImport";
+import { RecoveryPointsSection } from "@/components/minijob/RecoveryPointsSection";
 import { formatDateDE, formatEuro, formatHours, isoDate } from "@/lib/minijob/calc";
 import { monthlyHoursLimit, monthlyLimitOf, yearlyLimitOf } from "@/lib/minijob/limits";
 import {
@@ -483,6 +484,8 @@ function SettingsPage() {
           <DataMigration shiftCount={shifts.length} />
 
           <LocalBackup shiftCount={shifts.length} />
+
+          <RecoveryPointsSection />
 
           <Section title={t("set.setup.title")}>
             <p className="text-xs text-muted-foreground">{t("set.setup.desc")}</p>

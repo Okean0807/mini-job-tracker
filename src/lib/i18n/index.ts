@@ -9,6 +9,7 @@ import { dashboard } from "./dict/dashboard";
 import { docsDict } from "./dict/docs";
 import { entry } from "./dict/entry";
 import { goalsDict } from "./dict/goals";
+import { backupDict } from "./dict/backup";
 import { hoursDict } from "./dict/hours";
 import { ordersDict } from "./dict/orders";
 import { objectsDict } from "./dict/objects";
@@ -44,6 +45,7 @@ const BUNDLE: Bundle = mergeBundles([
   entry,
   localDataDict,
   hoursDict,
+  backupDict,
 ]);
 
 export type Vars = Record<string, string | number>;
