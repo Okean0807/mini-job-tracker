@@ -17,7 +17,7 @@ import {
 } from "./guarded-operation";
 import { createActivePorts } from "./guarded-ports";
 import { isValidPayload } from "./payload";
-import { replaceAll } from "./store";
+import { isPersistFailed, replaceAll } from "./store";
 import type { SnapshotKind } from "./backup-safety";
 import type { AppData } from "./types";
 
@@ -51,9 +51,16 @@ export function localReplaceOperation(args: {
       };
     },
     commit(prepared, { local }) {
-      replaceAll({ ...prepared.incoming, timer: local.timer ?? null });
-      // Einzige Stelle, die die Änderungsmarke setzt: dirty ja, Upload nur nach eigener Aktion.
+      // REIHENFOLGE ist Absicht (Absturzsicherheit): erst die Änderungsmarke (+ zurückgesetzte
+      // Basis), dann der Datenwechsel. Ein Abbruch dazwischen hinterlässt "markiert, Daten
+      // unverändert" (harmlos: höchstens ein Konflikt) – nie "Daten ersetzt, aber unmarkiert", wo
+      // ein späterer automatischer Abgleich den Import still durch den Cloud-Stand überschreiben
+      // könnte. Dirty ja, Upload nur nach eigener Aktion.
       markLocalReplacementForSync();
+      replaceAll({ ...prepared.incoming, timer: local.timer ?? null });
+      // `replaceAll` speichert mit EINEM setItem (ein Schlüssel = alles oder nichts). Schlägt das
+      // Speichern fehl (Quota), steht der neue Stand nur im Arbeitsspeicher: nicht als Erfolg melden.
+      if (isPersistFailed()) throw new GuardedAbort("commit-failed");
       args.after?.();
     },
   };

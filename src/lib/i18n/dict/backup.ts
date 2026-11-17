@@ -2,6 +2,8 @@ import type { Bundle, Lang } from "../core";
 
 /** Wiederherstellungspunkte (Snapshots) auf diesem Gerät – nur Anzeigen, Herunterladen, Löschen. */
 const de = {
+  "guarded.dialog.pinAdopted":
+    "Achtung: Dieses alte Backup enthält noch eine PIN. Da dieses Gerät keine hat, wird sie hier gesetzt. Möchtest du das nicht, brich ab.",
   "guarded.cancelled": "Abgebrochen – es wurde nichts verändert.",
   "guarded.unchanged": "Beide Stände sind bereits gleich – nichts ersetzt.",
   "guarded.abort.generic":
@@ -93,6 +95,8 @@ const de = {
 };
 
 const en: typeof de = {
+  "guarded.dialog.pinAdopted":
+    "Note: this old backup still contains a PIN. Because this device has none, it would be set here. Cancel if you do not want that.",
   "guarded.cancelled": "Cancelled – nothing was changed.",
   "guarded.unchanged": "Both versions are already identical – nothing replaced.",
   "guarded.abort.generic": "The operation was stopped for safety. Nothing was changed.",

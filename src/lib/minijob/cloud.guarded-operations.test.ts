@@ -371,6 +371,21 @@ describe("manuelles Cloud-Backup (backupNow)", () => {
     expect(cloud.writes).toEqual(["update"]);
   });
 
+  it("Aufwand: genau 2 Lesezugriffe (Vergleich + erneute Prüfung), 1 bedingter Schreibzugriff, 1 Snapshot, keine Wiederholung", async () => {
+    dirtyBaseline(false);
+    cloud.remote = { payload: data({ shifts: [...shifts(2), ...shifts(2, "c")] }), updated_at: T0 };
+    const mod = await started(false);
+    await mod.backupNow();
+    await vi.advanceTimersByTimeAsync(60_000);
+    await settle();
+    expect(cloud.selects).toBe(2);
+    expect(cloud.writes).toEqual(["update"]);
+    expect(doubles.storage.records.size).toBe(1);
+    // Snapshot: je 1 Schreiben, 1 Rücklesen, 1 Markieren, 1 Aufräumprüfung (kein Mehrfachanlegen).
+    expect(doubles.storage.calls.filter((c) => c === "put")).toHaveLength(1);
+    expect(doubles.storage.calls.filter((c) => c === "markVerified")).toHaveLength(1);
+  });
+
   it("Sperre: parallele zweite Aktion wird abgewiesen (lock-busy)", async () => {
     dirtyBaseline(false);
     const mod = await started(false);
@@ -477,6 +492,56 @@ describe("unklares Schreibergebnis (Timeout) wird bei der nächsten Inspektion g
     await settle();
     expect(mod.getSyncState().status).toBe("conflict");
     expect(mod.getSyncState().dirty).toBe(true);
+  });
+
+  it("Neustart mit Auto-Backup AN nach unklarem Schreiben: erst lesen, nie mit dem alten Token schreiben; bei fremder Änderung gar nicht", async () => {
+    await timeoutWrite();
+    // Nach dem Neustart ist Auto-Backup AN (die Einstellung stammt aus den lokalen Daten).
+    local = { ...local, settings: { ...local.settings, autoBackup: true } } as AppData;
+    cloud.remote = { payload: data({ shifts: shifts(9, "x") }), updated_at: T1 };
+    cloud.writes = [];
+    cloud.selects = 0;
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await settle();
+    expect(cloud.selects).toBeGreaterThan(0);
+    expect(cloud.writes).toEqual([]); // fremder Stand: Konflikt, kein Schreiben
+    expect(cloud.remote?.updated_at).toBe(T1);
+    expect(mod.getSyncState().status).toBe("conflict");
+  });
+
+  it("Neustart nach unklarem Schreiben, Cloud unverändert: ein frischer, bedingter Versuch mit dem AKTUELLEN Token (kein Wiederholen des alten)", async () => {
+    await timeoutWrite();
+    local = { ...local, settings: { ...local.settings, autoBackup: true } } as AppData;
+    cloud.writes = [];
+    const seen: string[] = [];
+    cloud.beforeWrite = () => seen.push(cloud.remote?.updated_at ?? "none");
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await settle();
+    expect(cloud.writes).toEqual(["update"]); // genau ein Versuch
+    expect(seen).toEqual([T0]); // Cloud stand beim Schreiben auf dem beobachteten Token
+    expect(readMeta().pendingWrite).toBeNull();
+  });
+
+  it("Zustand 'markiert, Daten noch alt, Cloud neuer' (Absturz zwischen Marke und Datenwechsel) → Konflikt, nie stilles Überschreiben", async () => {
+    local = data({ shifts: shifts(2) }, true);
+    cloud.remote = { payload: data({ shifts: shifts(5, "c") }), updated_at: T1 };
+    setMeta({
+      localChangedAt: ms(T0) + 5000,
+      localWorkChangedAt: ms(T0) + 5000,
+      lastSyncedAt: null,
+      remoteSeenAt: null,
+      remoteToken: null,
+    });
+    const mod = await started(true);
+    expect(mod.getSyncState().status).toBe("conflict");
+    expect(replaced).toHaveLength(0);
+    expect(cloud.writes).toEqual([]);
   });
 });
 
@@ -735,6 +800,86 @@ describe("Konto-/Scope-Wechsel während einer Operation", () => {
     const result = await mod.restoreNow();
     expect(result).toMatchObject({ status: "aborted", reason: "scope-changed" });
     expect(replaced.filter((d) => d.shifts.some((s) => s.id === "c0"))).toHaveLength(0);
+  });
+});
+
+/* ====================================================== Gerätesperre (PIN-Richtlinie) */
+
+describe("Gerätesperre bei Cloud-Wiederherstellung und Upload (Phase 5, PIN-Richtlinie)", () => {
+  const remoteWith = (settings: Record<string, unknown>): Remote => ({
+    payload: {
+      ...data({ shifts: shifts(2, "c") }),
+      settings: { autoBackup: false, onboarded: true, ...settings },
+    },
+    updated_at: T1,
+  });
+  const localWith = (settings: Record<string, unknown>) => {
+    local = {
+      ...data({ shifts: shifts(3) }, false),
+      settings: { autoBackup: false, onboarded: true, ...settings },
+    } as AppData;
+    setMeta({
+      localChangedAt: 1,
+      localWorkChangedAt: 1,
+      lastSyncedAt: ms(T0),
+      remoteSeenAt: ms(T0),
+      remoteToken: T0,
+    });
+  };
+
+  it("lokale PIN vorhanden: die Cloud-PIN wird NIE übernommen, der Dialog sagt 'unverändert'", async () => {
+    localWith({ pin: "4242", pinEnabled: true });
+    cloud.remote = remoteWith({ pin: "9999", pinEnabled: true });
+    const mod = await started(false);
+    await mod.restoreNow();
+    expect(doubles.previews[0]!.deviceAuth).toBe("kept");
+    expect((replaced[0]!.settings as { pin?: string }).pin).toBe("4242");
+  });
+
+  it("Cloud ohne PIN: keine PIN entsteht, deviceAuth = kept", async () => {
+    localWith({});
+    cloud.remote = remoteWith({});
+    const mod = await started(false);
+    await mod.restoreNow();
+    expect(doubles.previews[0]!.deviceAuth).toBe("kept");
+    expect((replaced[0]!.settings as { pin?: string }).pin).toBeUndefined();
+  });
+
+  it("DOKUMENTIERTES Altverhalten: ein alter Klartext-PIN im Cloud-Stand wird auf einem Gerät OHNE PIN gesetzt – aber nur nach sichtbarer Warnung", async () => {
+    localWith({});
+    cloud.remote = remoteWith({ pin: "9999", pinEnabled: true });
+    const mod = await started(false);
+    await mod.restoreNow();
+    // Der Nutzer wurde vor der Bestätigung gewarnt (Dialog zeigt die Warnung statt "unverändert").
+    expect(doubles.previews[0]!.deviceAuth).toBe("adopted");
+    expect((replaced[0]!.settings as { pin?: string }).pin).toBe("9999");
+    // Der Snapshot des lokalen Standes enthält keine Gerätesperre.
+    expect([...doubles.storage.records.values()][0]!.payload).not.toContain("9999");
+  });
+
+  it("Upload: PIN und Biometrie-ID verlassen das Gerät nie (Cloud-Payload ohne Gerätesperre)", async () => {
+    dirtyBaseline(false);
+    local = {
+      ...local,
+      settings: {
+        ...local.settings,
+        pin: "4242",
+        pinEnabled: true,
+        biometric: true,
+        biometricCredentialId: "cred-1",
+      },
+    } as AppData;
+    const mod = await started(false);
+    await mod.backupNow();
+    const sent = JSON.stringify((cloud.remote as Remote)!.payload);
+    expect(sent).not.toContain("4242");
+    expect(sent).not.toContain("cred-1");
+    const settings = ((cloud.remote as Remote)!.payload as AppData).settings as {
+      pinEnabled?: boolean;
+      biometric?: boolean;
+    };
+    expect(settings.pinEnabled).toBe(false);
+    expect(settings.biometric).toBe(false);
   });
 });
 

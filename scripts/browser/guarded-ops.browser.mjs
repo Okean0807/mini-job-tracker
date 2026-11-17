@@ -144,6 +144,26 @@ const afterRestore = await snapshots();
 check("restore: current state was snapshotted first (local_pre_restore added)", afterRestore.some((s) => s.kind === "local_pre_restore" && s.shifts === 1) && afterRestore.some((s) => s.kind === "local_pre_import"), JSON.stringify(afterRestore.map((s) => s.kind)));
 check("no horizontal overflow at the end", await overflowOk());
 
+// 4) Two real tabs of the same browser: a write by tab 2 reaches tab 1 through the real `storage` event
+//    (Phase 5: tabs used to diverge silently, which let an automatic pull overwrite the other tab's edits).
+const page2 = await context.newPage();
+await page2.goto(`${BASE}/einstellungen`, { waitUntil: "domcontentloaded" });
+await page2.locator('input[type="file"][accept="application/json"]').first().waitFor({ state: "attached", timeout: 60000 });
+await page2.evaluate(() => {
+  const k = "minijob-tracker-v1:guest";
+  const d = JSON.parse(localStorage.getItem(k));
+  d.shifts.push({ id: "tab2-shift", kind: "arbeit", date: "2026-02-02", start: "10:00", end: "11:00", breakMinutes: 0, jobId: "j1" });
+  localStorage.setItem(k, JSON.stringify(d));
+});
+await page.waitForTimeout(800);
+const [download] = await Promise.all([
+  page.waitForEvent("download", { timeout: 15000 }),
+  page.getByRole("button", { name: "Exportieren" }).first().click(),
+]);
+const exported = JSON.parse(await (await import("node:fs/promises")).readFile(await download.path(), "utf8"));
+check("two tabs: tab 1 adopted tab 2's write via the real storage event", exported.shifts.some((x) => x.id === "tab2-shift"), exported.shifts.map((x) => x.id).join(","));
+await page2.close();
+
 check("no request left the local origin (0 external)", external.length === 0, external.slice(0, 3).join(","));
 check("no uncaught page errors", pageErrors.length === 0, pageErrors.slice(0, 2).join(" | "));
 

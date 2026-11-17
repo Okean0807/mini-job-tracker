@@ -19,6 +19,7 @@ import {
   getData,
   getScopeGeneration,
   isScopeCurrent,
+  refreshStateFromStorage,
 } from "./store";
 import { scopeSuffix } from "./storage-scope";
 
@@ -35,7 +36,12 @@ export function createActivePorts(extraGuard?: () => boolean): GuardedPorts {
   return {
     scopeKey: scopeSuffix(scope),
     captureScope: (): ScopeGuard => ({ isCurrent: current }),
-    readLocal: () => getData(),
+    // Immer der zuletzt gespeicherte Stand: Änderungen eines anderen Tabs gehen nie unbemerkt
+    // am Vergleich und am Snapshot vorbei.
+    readLocal: () => {
+      refreshStateFromStorage();
+      return getData();
+    },
     confirm: requestConfirmation,
     async createSnapshot(kind, data) {
       await ensureBackupSafetyReady();

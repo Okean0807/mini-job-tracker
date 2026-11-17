@@ -118,7 +118,13 @@ export function GuardedOperationDialog() {
               <p className="text-[11px] text-muted-foreground">{t("guarded.dialog.snapshot")}</p>
             ) : null}
             {preview.replaces === "local" ? (
-              <p className="text-[11px] text-muted-foreground">{t("guarded.dialog.device")}</p>
+              preview.deviceAuth === "adopted" ? (
+                <p className="text-[11px] text-destructive" data-testid="guarded-pin-adopted">
+                  {t("guarded.dialog.pinAdopted")}
+                </p>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">{t("guarded.dialog.device")}</p>
+              )
             ) : null}
             <AlertDialogFooter className="gap-2">
               <AlertDialogCancel onClick={() => pending?.resolve(false)}>

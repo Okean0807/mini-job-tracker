@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import { LANGUAGES, detectLanguage } from "@/lib/i18n/core";
 
+import { fullFingerprint, type BackupLike } from "./backup-compare";
 import { normalizeDashboard } from "./dashboard";
 import { isPlainRecord } from "./payload";
 import { isValidPin, withConsistentPinSettings } from "./pin";
@@ -291,6 +292,30 @@ export function readScopeData(scope: StorageScope): AppData | null {
   return readStoredData(dataStorageKey(scope));
 }
 
+/**
+ * Mehrere Tabs desselben Browsers teilen sich den localStorage, aber jeder Tab hat seinen eigenen
+ * Arbeitsspeicher. Hat ein anderer Tab den Stand dieses Scopes geändert, übernimmt dieser Tab ihn
+ * (ohne zu speichern und ohne Änderungs-Hook). Verglichen wird inhaltlich (`fullFingerprint`),
+ * nicht über Zeichenketten – Normalisierungsunterschiede lösen keine falsche Übernahme aus.
+ * Liefert `true`, wenn der Arbeitsspeicher aktualisiert wurde.
+ *
+ * Bei fehlgeschlagenem Speichern (Quota) ist der Arbeitsspeicher die Wahrheit: nichts übernehmen.
+ */
+export function refreshStateFromStorage(): boolean {
+  if (typeof window === "undefined" || persistFailed) return false;
+  const stored = readStoredData(dataStorageKey());
+  if (!stored) return false;
+  if (
+    fullFingerprint(stored as unknown as BackupLike) ===
+    fullFingerprint(state as unknown as BackupLike)
+  ) {
+    return false;
+  }
+  state = stored;
+  emit(false);
+  return true;
+}
+
 /** Enthält der Stand echte Nutzerdaten (nicht nur Standard-Einstellungen)? */
 export function hasMeaningfulData(data: AppData | null | undefined): boolean {
   if (!data) return false;
@@ -338,6 +363,10 @@ function loadScopeState(
 export function loadFromStorage() {
   if (loaded || typeof window === "undefined") return;
   loaded = true;
+  // Ein anderer Tab hat den Stand dieses Scopes geschrieben → übernehmen (kein stilles Auseinanderlaufen).
+  window.addEventListener("storage", (event) => {
+    if (event.key === dataStorageKey()) refreshStateFromStorage();
+  });
   // Start im zuletzt aktiven Scope; Auth bestätigt/korrigiert ihn danach (cloud.ts).
   const scope = readScopePointer();
   setActiveScopeInternal(scope);

@@ -93,6 +93,7 @@ import {
   normalize,
   onDataChange,
   readStoredData,
+  refreshStateFromStorage,
   replaceAll,
   seedDeviceLock,
   updateSettings,
@@ -916,7 +917,47 @@ async function fetchRemote(): Promise<RemoteSnapshot | null> {
   };
 }
 
+/**
+ * Mehrere Tabs: ein anderer Tab desselben Browsers kann Daten UND Sync-Metadaten dieses Scopes
+ * geschrieben haben (`localStorage` ist gemeinsam, der Arbeitsspeicher nicht). Dieser Tab übernimmt
+ * dann deren Stand. Liefert `true`, wenn etwas übernommen wurde – ein laufender Abgleich verwirft
+ * dann seine (veraltete) Entscheidung und beginnt neu, statt auf Basis alter Marken zu überschreiben.
+ */
+function adoptOtherTabChanges(): boolean {
+  const dataChanged = refreshStateFromStorage();
+  let changed = dataChanged;
+  let metaChanged = false;
+  if (typeof window === "undefined") return changed;
+  try {
+    const raw = window.localStorage.getItem(metaKey);
+    if (raw) {
+      const stored = { ...EMPTY_META, ...(JSON.parse(raw) as Partial<SyncMeta>) };
+      const mine = JSON.parse(JSON.stringify(meta)) as SyncMeta;
+      if (stableStringify(stored) !== stableStringify(mine)) {
+        meta = stored;
+        refreshDirty();
+        changed = true;
+        metaChanged = true;
+      }
+    }
+  } catch {
+    /* unlesbare Metadaten: wie bisher mit dem Arbeitsspeicher weiterarbeiten */
+  }
+  // Fremde Datenänderung OHNE passende Änderungsmarken (Schreiber, der nicht mitgezählt hat):
+  // konservativ als ungesicherte lokale Änderung behandeln – nie als "unverändert".
+  if (dataChanged && !metaChanged) {
+    const now = Date.now();
+    saveMeta({
+      localChangedAt: meta.localChangedAt ?? now,
+      localWorkChangedAt: meta.localWorkChangedAt ?? now,
+    });
+  }
+  return changed;
+}
+
 let applyingRemote = false;
+/** Gesetzt, wenn ein Abgleich wegen Änderungen eines anderen Tabs verworfen wurde (einmalige Wiederholung). */
+let rerunAfterOtherTab = false;
 
 function applyRemote(remote: { payload: AppData; updatedAt: number; token?: string }) {
   // Der laufende Timer wird bewusst nie in die Cloud geschrieben (`payloadOf`).
@@ -1036,6 +1077,12 @@ function rebaselineToRemote(remote: RemoteSnapshot): void {
   });
 }
 
+/** Würde `mergeDeviceAuthFromLocal` eine (alte) PIN aus dem Cloud-Stand auf dieses Gerät übernehmen? */
+function wouldAdoptRemotePin(local: AppData, remote: AppData): boolean {
+  const merged = mergeDeviceAuthFromLocal(remote, local).settings;
+  return merged.pin !== undefined && merged.pin !== local.settings.pin;
+}
+
 function sameToken(remote: RemoteSnapshot | null, token: string | null | undefined): boolean {
   return (remote?.token ?? null) === (token ?? null);
 }
@@ -1098,6 +1145,7 @@ function restoreOperation(
         snapshotKind: "local_pre_restore",
         replaces: "local",
         remoteToken: observed.token,
+        deviceAuth: wouldAdoptRemotePin(local, observed.payload) ? "adopted" : "kept",
       };
     },
     async revalidateRemote(prepared) {
@@ -1322,6 +1370,12 @@ async function autoSync(): Promise<void> {
         // Mid-flight-Guard: Namensraum/Konto während des Fetch gewechselt → weder
         // Re-Baseline, Konfliktstatus, Restore noch Push (alles würde fremde Meta treffen).
         if (!stillOwner(snap)) return;
+        // Anderer Tab hat Daten/Marken geändert: diese Entscheidung wäre veraltet → neu beginnen.
+        if (adoptOtherTabChanges()) {
+          setState({ status: "idle", pending: true, message: null });
+          rerunAfterOtherTab = true;
+          return;
+        }
         // Unklares früheres Schreibergebnis (Timeout) zuerst klären – nie blind wiederholen.
         reconcilePendingWrite(remote);
         // Inspektionszeitpunkt: der AKTUELLE lokale Stand (nicht der vor dem Fetch).
@@ -1411,6 +1465,13 @@ async function autoSync(): Promise<void> {
               setState({ status: "idle", message: null });
               return;
             }
+          } else if (uploadAllowed && remote.updatedAt < (meta.remoteSeenAt ?? 0)) {
+            // Rückschritt: der Cloud-Token ist ÄLTER als der zuletzt gesehene. Mit CAS-Clients wächst
+            // der Token nur (nächster Token > beobachteter). Ein Rückschritt deutet auf eine
+            // zurückgesetzte Datenbank oder einen Schreiber mit falscher Uhr hin: der lokale Stand
+            // kann dann die einzige Kopie der neueren Daten sein → nie automatisch ersetzen.
+            setState({ status: "idle", message: null, remoteAhead: true });
+            return;
           } else if (uploadAllowed) {
             // Cloud geändert, lokale Nutzerdaten seit dem Abgleich unverändert.
             applyRemote(remote);
@@ -1462,6 +1523,13 @@ async function autoSync(): Promise<void> {
       clearSyncWatchdog();
       syncing = false;
     }
+  }
+  // Ein anderer Tab hat währenddessen etwas geändert: einmal mit dem übernommenen Stand neu prüfen.
+  if (rerunAfterOtherTab) {
+    rerunAfterOtherTab = false;
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => void autoSync(), 0);
+    return;
   }
   // Local edits during sync left pending=true without a timer — push after debounce.
   if (state.pending && state.status === "synced" && userId && !applyingRemote) {
@@ -1752,6 +1820,11 @@ export function initCloudSync() {
   setState({ lastSyncedAt: meta.lastSyncedAt });
 
   onDataChange((data) => scheduleBackup(data));
+
+  // Ein anderer Tab hat die Sync-Metadaten dieses Scopes geschrieben (Marken, Token): übernehmen.
+  window.addEventListener("storage", (event) => {
+    if (event.key === metaKey) adoptOtherTabChanges();
+  });
 
   window.addEventListener("online", () => {
     if (state.status === "offline" || state.pending) retryPending();

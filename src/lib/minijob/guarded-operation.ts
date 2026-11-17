@@ -79,6 +79,12 @@ export interface GuardedPreview {
   integrity: Pick<IntegrityIssue, "code" | "collection">[];
   identical: boolean;
   snapshot: { kind: SnapshotKind; required: boolean };
+  /**
+   * Gerätesperre (PIN/Biometrie): `kept` = die lokale bleibt unverändert; `adopted` = ein ALTER
+   * Cloud-Stand enthält noch eine Klartext-PIN und dieses Gerät hat keine: sie würde hier gesetzt
+   * (Alt-Migration). Wird dem Nutzer vor der Bestätigung angezeigt.
+   */
+  deviceAuth: "kept" | "adopted";
 }
 
 function summarize(data: BackupLike | null): ManifestSummary {
@@ -92,6 +98,7 @@ export function buildPreview(
   losing: AppData | null,
   incoming: AppData,
   snapshotKind: SnapshotKind,
+  deviceAuth: "kept" | "adopted" = "kept",
 ): GuardedPreview {
   const diff = diffBackups(losing as BackupLike | null, incoming as unknown as BackupLike);
   const identical = losing !== null && diff.identical;
@@ -117,6 +124,7 @@ export function buildPreview(
     })),
     identical,
     snapshot: { kind: snapshotKind, required: losing !== null && !identical },
+    deviceAuth,
   };
 }
 
@@ -207,6 +215,8 @@ export interface Prepared {
   remoteToken?: string | null;
   /** Für Dateiimporte: SHA-256 der Datei (festgehalten mit dem Vergleich). */
   sourceHash?: string;
+  /** Wird eine Gerätesperre aus dem eingehenden Stand übernommen? (Standard: nein) */
+  deviceAuth?: "kept" | "adopted";
 }
 
 export interface GuardedOperation {
@@ -275,6 +285,7 @@ export async function runGuardedOperation(
       prepared.losing,
       prepared.incoming,
       prepared.snapshotKind,
+      prepared.deviceAuth ?? "kept",
     );
     // 8: ausdrückliche Bestätigung des angezeigten Vergleichs.
     let confirmed = false;
