@@ -27,3 +27,10 @@ Supabase Branching / `db push`.
   Rollback: function body from `supabase/migrations/20260930192406_p1_ai_rate_limit.sql`,
   shipped as a new migration. **Rollback re-opens F-1** (caller-controlled `p_now_ms`
   bypass) — emergency use only.
+
+- `20261120000000_backups_server_revision.sql` — Stage 1 server revision for `public.backups`
+  (sequence + trigger; every INSERT/UPDATE by any role gets a new revision; non-breaking, no Stage 2
+  enforcement). Tested only on an isolated local PostgreSQL (`scripts/db-tests/rev_run.sh`); NOT applied
+  anywhere. Rollback is a staged procedure: `rollback/20261120000000_backups_server_revision.rollback.sql`
+  and `docs/data-safety/stage1-server-revision.md`. To apply: move into `supabase/migrations/` with a newer
+  version after explicit owner approval.

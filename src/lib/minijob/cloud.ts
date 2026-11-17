@@ -80,11 +80,14 @@ import {
 } from "./guarded-operation";
 import {
   casWrite,
+  isMissingRevColumnError,
   nextToken,
+  parseRev,
   resolvePendingWrite,
   type BackupsTable,
   type PendingWrite,
 } from "./cloud-cas";
+import { recordSyncEvent } from "./sync-diagnostics";
 import {
   activateScope,
   getActiveScope,
@@ -177,6 +180,11 @@ export type SyncMeta = {
    * `lastSyncedAt`. Fehlt bei Altbestand (dann gilt `remoteSeenAt`, siehe `remoteChangedSince`).
    */
   remoteToken?: string | null;
+  /**
+   * Stage 1: serverseitige Revision des zuletzt bekannten Cloud-Standes (Sequenz + Trigger; jede
+   * Änderung durch jeden Schreiber erhöht sie). `null`/fehlt, solange das Schema keine hat.
+   */
+  remoteRev?: string | null;
   /** Fingerprint der acht Nutzerdaten-Sammlungen beim letzten Beobachten (nur lokal). */
   localDataFingerprint?: string | null;
   /** Zeitpunkt der letzten verifizierten Übereinstimmung (nur Erfolgspfade setzen ihn). */
@@ -197,6 +205,7 @@ const EMPTY_META: SyncMeta = {
   remoteSeenAt: null,
   wizardPendingFirstSync: false,
   remoteToken: null,
+  remoteRev: null,
   localDataFingerprint: null,
   lastVerifiedAt: null,
   pendingWrite: null,
@@ -253,6 +262,7 @@ export function metaForUser(
     lastSyncedAt: null,
     remoteSeenAt: null,
     remoteToken: null,
+    remoteRev: null,
     lastVerifiedAt: null,
     pendingWrite: null,
     // Keep wizard flag across account bind so finish→sign-in race still restores.
@@ -743,6 +753,24 @@ export function workFingerprint(data: Pick<AppData, "shifts" | "jobs">): string 
 }
 
 /**
+ * Kennt das Cloud-Schema die serverseitige Revision `rev` (Stage 1)? Gilt je Seitenaufruf:
+ *  - `unknown`: noch nicht festgestellt – die erste Anfrage fragt `rev` mit an;
+ *  - `yes`: die Cloud hat `rev` geliefert;
+ *  - `no`: ein BESTÄTIGTER Fehler "Spalte rev fehlt" (42703/PGRST204, Meldung nennt `rev`) – ab dann
+ *    wird `rev` in dieser Sitzung nicht mehr angefragt (kein wiederholtes Probieren); es gilt der
+ *    exakte `updated_at`-CAS. Ein neuer Seitenaufruf prüft einmal erneut (z. B. nach der Migration).
+ */
+let revSupport: "unknown" | "yes" | "no" = "unknown";
+
+function markRevUnsupported(): void {
+  if (revSupport === "no") return;
+  revSupport = "no";
+  recordSyncEvent(getActiveScope(), "rev-fallback");
+  // Eine veraltete Revision darf nach einer späteren erneuten Migration nichts Falsches vergleichen.
+  saveMeta({ remoteRev: null });
+}
+
+/**
  * Push local payload per Compare-and-Swap (kein `upsert`). Clears change marks after success.
  * `observedToken` ist der zuvor gesehene `updated_at` der Cloud (`null` = es gab keine Zeile).
  * When `preserveIfNewerThan` is set (autoSync), marks that were bumped *during*
@@ -753,6 +781,7 @@ async function push(
   preserveIfNewerThan: { local: number | null; work: number | null } | undefined,
   isCurrent: (() => boolean) | undefined,
   observedToken: string | null,
+  observedRev: string | null,
 ): Promise<void> {
   if (!userId) throw new Error(t("error.notSignedIn"));
   // Owner guard: only ever upload data that was loaded from THIS account's namespace.
@@ -766,30 +795,49 @@ async function push(
   saveMeta({
     pendingWrite: {
       observedToken,
+      observedRev,
       attemptedToken: token,
       fingerprint: fullFingerprint(asBackupLike(payload)),
       at: Date.now(),
     },
   });
-  const outcome = await casWrite({
-    table: supabase.from("backups") as unknown as BackupsTable,
+  const table = supabase.from("backups") as unknown as BackupsTable;
+  let outcome = await casWrite({
+    table,
     userId: uid,
     observedToken,
+    observedRev,
     payload,
     token,
+    useRev: revSupport !== "no",
   });
+  if (outcome.kind === "rev-unsupported") {
+    // BESTÄTIGT: das Schema hat keine Spalte `rev` – die Anfrage hat nichts geschrieben. Für den Rest
+    // der Sitzung wird `rev` nicht mehr angefragt; genau EINE Wiederholung mit dem exakten
+    // `updated_at`-Filter (gleicher beobachteter Token → weiterhin bedingt, nie blind).
+    markRevUnsupported();
+    outcome = await casWrite({ table, userId: uid, observedToken, payload, token, useRev: false });
+  }
   // Post-await-Guard: Konto/Scope gewechselt oder der Sync-Lauf wurde bereits
   // abgebrochen (z. B. Timeout) → keine Meta, kein markBackup, kein "synced". Ein gesetzter
   // `pendingWrite` bleibt und wird in diesem Namensraum bei der nächsten Inspektion geklärt.
   if (!stillOwner(snap) || (isCurrent && !isCurrent())) throw new StaleSyncError();
   if (outcome.kind !== "written") {
-    if (outcome.kind === "ambiguous") throw new AmbiguousWriteError();
+    if (outcome.kind === "ambiguous") {
+      recordSyncEvent(getActiveScope(), "ambiguous-write");
+      throw new AmbiguousWriteError();
+    }
     saveMeta({ pendingWrite: null }); // eindeutig NICHT geschrieben
-    if (outcome.kind === "stale") throw new CasStaleError();
+    if (outcome.kind === "stale") {
+      recordSyncEvent(getActiveScope(), "cas-stale");
+      throw new CasStaleError();
+    }
     if (outcome.kind === "account-gone") throw new CloudAccountGoneError();
     if (outcome.kind === "forbidden") throw new CloudAuthError();
     throw new Error(t("error.sync"));
   }
+  if (outcome.rev !== null) revSupport = "yes";
+  if (outcome.rev !== null) revSupport = "yes";
   const ts = outcome.updatedAtMs;
   let nextLocal: number | null = null;
   let nextWork: number | null = null;
@@ -817,6 +865,7 @@ async function push(
     remoteSeenAt: ts,
     // Exakter, vom Server zurückgegebener Token des soeben geschriebenen Standes.
     remoteToken: outcome.token,
+    remoteRev: outcome.rev,
     pendingWrite: null,
     lastVerifiedAt: ts,
     localChangedAt: nextLocal,
@@ -842,7 +891,11 @@ function reconcilePendingWrite(remote: RemoteSnapshot | null): void {
   const resolution = resolvePendingWrite(
     pending,
     remote
-      ? { token: remote.token, fingerprint: fullFingerprint(asBackupLike(remote.payload)) }
+      ? {
+          token: remote.token,
+          fingerprint: fullFingerprint(asBackupLike(remote.payload)),
+          rev: remote.rev ?? null,
+        }
       : null,
   );
   const now = Date.now();
@@ -854,6 +907,7 @@ function reconcilePendingWrite(remote: RemoteSnapshot | null): void {
       lastSyncedAt: remote.updatedAt,
       remoteSeenAt: remote.updatedAt,
       remoteToken: remote.token,
+      remoteRev: remote.rev ?? null,
       lastVerifiedAt: now,
       localChangedAt: same ? null : (meta.localChangedAt ?? now),
       localWorkChangedAt:
@@ -879,7 +933,13 @@ function reconcilePendingWrite(remote: RemoteSnapshot | null): void {
   });
 }
 
-type RemoteSnapshot = { payload: AppData; updatedAt: number; token: string };
+type RemoteSnapshot = {
+  payload: AppData;
+  updatedAt: number;
+  token: string;
+  /** Serverrevision (exakt, als Zeichenkette); `null`, wenn das Schema keine hat. */
+  rev?: string | null;
+};
 
 /**
  * Hat sich die Cloud seit dem zuletzt bekannten Stand geändert? NUR Gleichheit des exakten
@@ -889,10 +949,17 @@ type RemoteSnapshot = { payload: AppData; updatedAt: number; token: string };
  * mit dem Server-Wert). Ohne jedes bekannte Token gilt die Cloud als geändert.
  */
 export function remoteChangedSince(
-  remote: { token: string; updatedAt: number } | null,
-  known: { remoteToken?: string | null; remoteSeenAt?: number | null },
+  remote: { token: string; updatedAt: number; rev?: string | null } | null,
+  known: {
+    remoteToken?: string | null;
+    remoteSeenAt?: number | null;
+    remoteRev?: string | null;
+  },
 ): boolean {
   if (!remote) return false;
+  // Stage 1: eine geänderte Revision ist IMMER eine Änderung – auch wenn der Token gleich blieb
+  // (Schreiber, der `updated_at` nicht fortschreibt).
+  if (remote.rev != null && known.remoteRev != null && remote.rev !== known.remoteRev) return true;
   if (typeof known.remoteToken === "string" && known.remoteToken !== "") {
     return remote.token !== known.remoteToken;
   }
@@ -902,19 +969,49 @@ export function remoteChangedSince(
 
 async function fetchRemote(): Promise<RemoteSnapshot | null> {
   if (!userId) throw new Error(t("error.notSignedIn"));
-  const { data, error } = await supabase
-    .from("backups")
-    .select("payload, updated_at")
-    .eq("user_id", userId)
-    .maybeSingle();
+  const table = supabase.from("backups") as unknown as BackupsTable;
+  const read = (columns: string) => table.select(columns).eq("user_id", userId!).maybeSingle();
+  let result = await read(revSupport === "no" ? "payload, updated_at" : "payload, updated_at, rev");
+  if (
+    revSupport !== "no" &&
+    isMissingRevColumnError(result.error as { code?: string; message?: string } | null)
+  ) {
+    // Bestätigt: kein `rev` im Schema. Lesen schreibt nichts → genau eine Wiederholung ohne `rev`.
+    markRevUnsupported();
+    result = await read("payload, updated_at");
+  }
+  const { data: raw, error } = result;
   if (error) throw error;
+  const data = raw as { payload?: unknown; updated_at?: string | null; rev?: unknown } | null;
   if (!data?.payload) return null;
   if (!isValidPayload(data.payload)) throw new Error(t("error.syncPayload"));
+  const rev = parseRev(data.rev);
+  if (rev !== null) revSupport = "yes";
   return {
     payload: data.payload as unknown as AppData,
     updatedAt: data.updated_at ? new Date(data.updated_at).getTime() : 0,
     token: data.updated_at ? String(data.updated_at) : "",
+    rev,
   };
+}
+
+/** Zuletzt gezählte Cloud-Revision (je Seitenaufruf): jede Revision wird höchstens EINMAL gezählt. */
+let lastCountedRemoteRev: string | null = null;
+
+/**
+ * Beobachtbarkeit (nur Zähler, siehe `sync-diagnostics.ts`): ist die Cloud-Revision seit dem letzten
+ * Stand dieses Geräts gestiegen, ohne dass dieses Gerät geschrieben hat?
+ *  - Token ebenfalls gestiegen → üblicher Schreiber (aktueller oder älterer Client);
+ *  - Token gleich oder älter → ein Schreiber, der den Token nicht fortschreibt (aktuelle Clients
+ *    tun das immer): älterer Client mit falscher Uhr, direkter API-Aufruf, Betrieb.
+ */
+function observeRemoteAdvance(remote: RemoteSnapshot | null): void {
+  if (!remote || remote.rev == null || meta.remoteRev == null) return;
+  if (remote.rev === meta.remoteRev || remote.rev === lastCountedRemoteRev) return;
+  lastCountedRemoteRev = remote.rev;
+  const scope = getActiveScope();
+  if (remote.updatedAt > (meta.remoteSeenAt ?? 0)) recordSyncEvent(scope, "remote-advanced");
+  else recordSyncEvent(scope, "remote-advanced-token-flat");
 }
 
 /**
@@ -959,14 +1056,22 @@ let applyingRemote = false;
 /** Gesetzt, wenn ein Abgleich wegen Änderungen eines anderen Tabs verworfen wurde (einmalige Wiederholung). */
 let rerunAfterOtherTab = false;
 
-function applyRemote(remote: { payload: AppData; updatedAt: number; token?: string }) {
+function applyRemote(
+  remote: { payload: AppData; updatedAt: number; token?: string; rev?: string | null },
+  options: { adoptLegacyPin: boolean } = { adoptLegacyPin: false },
+) {
   // Der laufende Timer wird bewusst nie in die Cloud geschrieben (`payloadOf`).
   // Beim Wiederherstellen darf er deshalb auch nicht gelöscht werden – sonst
   // verliert der Nutzer die bereits laufende, noch nicht gespeicherte Zeit.
-  // PIN / WebAuthn bleiben gerätelokal (`mergeDeviceAuthFromLocal`).
+  // PIN / WebAuthn bleiben gerätelokal. Option C (Stage 1): eine ALTE Klartext-PIN im Cloud-Stand
+  // darf NUR bei einer ausdrücklich bestätigten, manuellen Wiederherstellung übernommen werden
+  // (`adoptLegacyPin`); die beiden automatischen Wege entfernen sie vorher.
   const local = getData();
   const runningTimer = local.timer ?? null;
-  const merged = mergeDeviceAuthFromLocal(remote.payload, local);
+  const merged = mergeDeviceAuthFromLocal(
+    options.adoptLegacyPin ? remote.payload : stripDeviceAuthForCloud(remote.payload),
+    local,
+  );
   // Empty/partial / Skip-era cloud backups must not complete onboarding.
   // Only isWizardComplete (onboarded + jobs|wizardCompletedAt) may close the wizard.
   // Incomplete remotes force onboarded:false but KEEP jobs/shifts (no silent deletes).
@@ -991,6 +1096,7 @@ function applyRemote(remote: { payload: AppData; updatedAt: number; token?: stri
     lastSyncedAt: Date.now(),
     remoteSeenAt: remote.updatedAt,
     remoteToken: remote.token ?? null,
+    remoteRev: remote.rev ?? null,
     lastVerifiedAt: Date.now(),
     localChangedAt: null,
     localWorkChangedAt: null,
@@ -1061,6 +1167,7 @@ function rebaselineToRemote(remote: RemoteSnapshot): void {
     lastSyncedAt: remote.updatedAt,
     remoteSeenAt: remote.updatedAt,
     remoteToken: remote.token,
+    remoteRev: remote.rev ?? null,
     lastVerifiedAt: now,
     localChangedAt: settingsEqual ? null : now,
     localWorkChangedAt: null,
@@ -1083,8 +1190,14 @@ function wouldAdoptRemotePin(local: AppData, remote: AppData): boolean {
   return merged.pin !== undefined && merged.pin !== local.settings.pin;
 }
 
-function sameToken(remote: RemoteSnapshot | null, token: string | null | undefined): boolean {
-  return (remote?.token ?? null) === (token ?? null);
+/** Token UND (falls bekannt) Revision unverändert? Eine geänderte Revision ist immer eine Änderung. */
+function sameRemote(
+  remote: RemoteSnapshot | null,
+  prepared: { remoteToken?: string | null; remoteRev?: string | null },
+): boolean {
+  if ((remote?.token ?? null) !== (prepared.remoteToken ?? null)) return false;
+  if (remote?.rev != null && prepared.remoteRev != null) return remote.rev === prepared.remoteRev;
+  return true;
 }
 
 /** Cloud-Sicherung erstellen/überschreiben (auch "Lokal behalten"): Vergleich → Snapshot → CAS. */
@@ -1104,14 +1217,22 @@ function backupOperation(
         snapshotKind: "cloud_pre_overwrite",
         replaces: "cloud",
         remoteToken: observed?.token ?? null,
+        remoteRev: observed?.rev ?? null,
       };
     },
     async revalidateRemote(prepared) {
-      return sameToken(await inspectCloud(snap), prepared.remoteToken);
+      return sameRemote(await inspectCloud(snap), prepared);
     },
     async commit(prepared, { local }) {
       await cloudIo(
-        (epoch) => push(local, undefined, () => epoch === syncEpoch, prepared.remoteToken ?? null),
+        (epoch) =>
+          push(
+            local,
+            undefined,
+            () => epoch === syncEpoch,
+            prepared.remoteToken ?? null,
+            prepared.remoteRev ?? null,
+          ),
         () =>
           setState({
             status: "synced",
@@ -1145,15 +1266,17 @@ function restoreOperation(
         snapshotKind: "local_pre_restore",
         replaces: "local",
         remoteToken: observed.token,
+        remoteRev: observed.rev ?? null,
         deviceAuth: wouldAdoptRemotePin(local, observed.payload) ? "adopted" : "kept",
       };
     },
     async revalidateRemote(prepared) {
-      return sameToken(await inspectCloud(snap), prepared.remoteToken);
+      return sameRemote(await inspectCloud(snap), prepared);
     },
     commit() {
       if (!observed || !stillOwner(snap)) throw new GuardedAbort("scope-changed");
-      applyRemote(observed); // behält PIN/Biometrie und den laufenden Timer
+      // Bestätigte, manuelle Wiederherstellung (Vorschau zeigt die Warnung): Alt-PIN darf übernommen werden.
+      applyRemote(observed, { adoptLegacyPin: true }); // behält lokale PIN/Biometrie und den Timer
       setState({
         status: "synced",
         pending: false,
@@ -1378,6 +1501,7 @@ async function autoSync(): Promise<void> {
         }
         // Unklares früheres Schreibergebnis (Timeout) zuerst klären – nie blind wiederholen.
         reconcilePendingWrite(remote);
+        observeRemoteAdvance(remote);
         // Inspektionszeitpunkt: der AKTUELLE lokale Stand (nicht der vor dem Fetch).
         const local = getData();
         const uploadAllowed = local.settings.autoBackup !== false;
@@ -1398,6 +1522,7 @@ async function autoSync(): Promise<void> {
             lastSyncedAt: remote.updatedAt,
             remoteSeenAt: remote.updatedAt,
             remoteToken: remote.token,
+            remoteRev: remote.rev ?? null,
             lastVerifiedAt: now,
             localChangedAt: settingsEqual ? null : now,
             localWorkChangedAt: null,
@@ -1470,6 +1595,7 @@ async function autoSync(): Promise<void> {
             // der Token nur (nächster Token > beobachteter). Ein Rückschritt deutet auf eine
             // zurückgesetzte Datenbank oder einen Schreiber mit falscher Uhr hin: der lokale Stand
             // kann dann die einzige Kopie der neueren Daten sein → nie automatisch ersetzen.
+            recordSyncEvent(getActiveScope(), "token-regression");
             setState({ status: "idle", message: null, remoteAhead: true });
             return;
           } else if (uploadAllowed) {
@@ -1494,12 +1620,17 @@ async function autoSync(): Promise<void> {
             { local: changedAtStart, work: workChangedAtStart },
             () => epoch === syncEpoch,
             remote?.token ?? null,
+            remote?.rev ?? null,
           );
         }
         if (epoch !== syncEpoch) return;
         if (decision === "none" && remote && !remoteChanged) {
           // Verifiziert: Cloud-Token unverändert und keine lokale Änderung seit dem Abgleich.
-          saveMeta({ remoteToken: remote.token, lastVerifiedAt: Date.now() });
+          saveMeta({
+            remoteToken: remote.token,
+            remoteRev: remote.rev ?? meta.remoteRev ?? null,
+            lastVerifiedAt: Date.now(),
+          });
         }
         const changedDuringSync =
           decision !== "restore" &&

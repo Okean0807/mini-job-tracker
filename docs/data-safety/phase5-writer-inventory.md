@@ -52,3 +52,9 @@ never reopen the app). It also never constrains `service_role` (#6).
 2. Stage 2 (optional, later): enforce the expected revision server-side once legacy traffic is gone.
 3. Until then the honest statement is: *Phase 4 protects against concurrent writes by current clients;
    it does not protect against older builds, direct API callers or service-role writers.*
+
+## Update (Phase 5.2)
+
+Stage 1 (revision column + trigger, `docs/data-safety/stage1-server-revision.md`) is prepared but not
+applied. Once applied it makes writers #4–#6 **detectable** by current clients; it still does not
+prevent them (Stage 2 is not approved). The client already understands both schemas.

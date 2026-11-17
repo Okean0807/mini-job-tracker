@@ -174,3 +174,93 @@ describe("Fehlerantworten (PostgREST-Format) → Ergebnisklassen", () => {
     expect(outcome.kind).toBe("ambiguous");
   });
 });
+
+describe("Stage 1: Revision über den echten postgrest-js", () => {
+  it("PATCH filtert auf user_id + rev=eq.<exakt>, selektiert updated_at,rev; kein updated_at-Filter", async () => {
+    const { table, calls } = client(() => ({
+      status: 200,
+      body: [{ updated_at: "2026-11-17T10:00:00+00:00", rev: 1794901882456070 }],
+    }));
+    const outcome = await casWrite({
+      table,
+      userId: "11111111-1111-1111-1111-111111111111",
+      observedToken: OBSERVED,
+      observedRev: "1794901882456066",
+      payload: { a: 1 },
+      token: "2026-11-17T10:00:00.000Z",
+      useRev: true,
+    });
+    expect(outcome).toMatchObject({ kind: "written", mode: "update", rev: "1794901882456070" });
+    const c = calls[0]!;
+    expect(c.method).toBe("PATCH");
+    expect(c.url.searchParams.get("rev")).toBe("eq.1794901882456066");
+    expect(c.url.searchParams.has("updated_at")).toBe(false);
+    expect(c.url.searchParams.get("select")).toBe("updated_at,rev");
+    expect(c.prefer).toContain("return=representation");
+    // Der Client sendet KEINE Revision im Body (der Server vergibt sie) und keinen Sonder-Header.
+    expect(c.body).toEqual({ payload: { a: 1 }, updated_at: "2026-11-17T10:00:00.000Z" });
+  });
+
+  it("fehlende Spalte: PostgREST-Fehlerformat (42703) → rev-unsupported; ein anderer Fehler → nicht", async () => {
+    const missing = client(() => ({
+      status: 400,
+      body: {
+        code: "42703",
+        message: "column backups.rev does not exist",
+        details: null,
+        hint: null,
+      },
+    }));
+    expect(
+      await casWrite({
+        table: missing.table,
+        userId: "u",
+        observedToken: OBSERVED,
+        observedRev: "9",
+        payload: {},
+        token: "t",
+        useRev: true,
+      }),
+    ).toEqual({ kind: "rev-unsupported" });
+    const other = client(() => ({
+      status: 400,
+      body: {
+        code: "42703",
+        message: "column backups.nope does not exist",
+        details: null,
+        hint: null,
+      },
+    }));
+    expect(
+      (
+        await casWrite({
+          table: other.table,
+          userId: "u",
+          observedToken: OBSERVED,
+          observedRev: "9",
+          payload: {},
+          token: "t",
+          useRev: true,
+        })
+      ).kind,
+    ).toBe("error");
+  });
+
+  it("Insert: POST ohne on_conflict, selektiert updated_at,rev", async () => {
+    const { table, calls } = client(() => ({
+      status: 201,
+      body: [{ updated_at: "2026-11-17T10:00:00+00:00", rev: 7 }],
+    }));
+    await casWrite({
+      table,
+      userId: "u1",
+      observedToken: null,
+      payload: {},
+      token: "2026-11-17T10:00:00.000Z",
+      useRev: true,
+    });
+    expect(calls[0]!.method).toBe("POST");
+    expect(calls[0]!.url.searchParams.has("on_conflict")).toBe(false);
+    expect(calls[0]!.url.searchParams.get("select")).toBe("updated_at,rev");
+  });
+});

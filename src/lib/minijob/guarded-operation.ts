@@ -213,6 +213,8 @@ export interface Prepared {
   replaces: "local" | "cloud";
   /** Für Cloud-Operationen: der inspizierte Token (`null` = keine Zeile). */
   remoteToken?: string | null;
+  /** Cloud-Operationen: inspizierte Serverrevision (Stage 1), falls das Schema sie hat. */
+  remoteRev?: string | null;
   /** Für Dateiimporte: SHA-256 der Datei (festgehalten mit dem Vergleich). */
   sourceHash?: string;
   /** Wird eine Gerätesperre aus dem eingehenden Stand übernommen? (Standard: nein) */

@@ -66,3 +66,16 @@ where payload -> 'settings' ? 'pin' and nullif(payload -> 'settings' ->> 'pin', 
   instead of the previous, then inaccurate, "PIN … stay unchanged" line.
 * Tests pin the behaviour in all three cases (local PIN kept / no PIN anywhere / legacy PIN adopted
   with warning) so any later change is deliberate.
+
+## Update (Phase 5.2): Option C approved and implemented
+
+* `applyRemote` now takes `adoptLegacyPin` (default **false**). The two automatic paths (first restore
+  on a verified-empty device; automatic pull when local data is unchanged) strip device authentication
+  from the cloud payload first, so a legacy cloud PIN is never adopted silently.
+* Only the explicit, confirmed manual restore (`restoreNow`, and "Cloud behalten" in the conflict
+  dialog) passes `adoptLegacyPin: true`; its confirmation dialog warns ("this old backup still contains
+  a PIN … would be set here").
+* An existing device PIN is always preserved; local JSON imports and snapshot restores never adopt one
+  (unchanged from Phase 4). Regression tests: `cloud.guarded-operations.test.ts` ("Option C …",
+  mutation-checked) and `data-safety.characterization.import.test.ts`.
+* No production count query was run and no cloud PIN data was changed or deleted.

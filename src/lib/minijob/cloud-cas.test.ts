@@ -235,3 +235,235 @@ describe("kein upsert im Cloud-Schreibpfad (Quelltext)", () => {
     }
   });
 });
+
+/* ===================================================== Stage 1: serverseitige Revision */
+
+import { isMissingRevColumnError, parseRev } from "./cloud-cas";
+
+function recordingTable(response: () => CasResponse) {
+  const log: { op: string; eq: [string, string][]; columns?: string }[] = [];
+  const t = {
+    select: () => {
+      throw new Error("not used");
+    },
+    insert: () => ({
+      select: async (columns: string) => {
+        log.push({ op: "insert", eq: [], columns });
+        return response();
+      },
+    }),
+    update: () => {
+      const entry: { op: string; eq: [string, string][]; columns?: string } = {
+        op: "update",
+        eq: [],
+      };
+      log.push(entry);
+      const chain = {
+        eq: (c: string, v: string) => {
+          entry.eq.push([c, v]);
+          return chain;
+        },
+        select: async (columns: string) => {
+          entry.columns = columns;
+          return response();
+        },
+      };
+      return chain;
+    },
+  } as unknown as BackupsTable;
+  return { table: t, log };
+}
+const REV_OK = (rev: unknown): CasResponse => ({
+  data: [{ updated_at: "2026-11-17T10:00:00+00:00", rev }],
+  error: null,
+});
+
+describe("Revisions-CAS", () => {
+  const base = { userId: "u1", payload: {}, token: "2026-11-17T10:00:00.000Z" };
+
+  it("Update filtert auf user_id + beobachtete rev (nicht auf updated_at) und liefert die neue rev", async () => {
+    const { table, log } = recordingTable(() => REV_OK(1794901882456070));
+    const out = await casWrite({
+      ...base,
+      table,
+      observedToken: OBSERVED,
+      observedRev: "1794901882456066",
+      useRev: true,
+    });
+    expect(out).toMatchObject({ kind: "written", mode: "update", rev: "1794901882456070" });
+    expect(log[0]!.eq).toEqual([
+      ["user_id", "u1"],
+      ["rev", "1794901882456066"],
+    ]);
+    expect(log[0]!.columns).toBe("updated_at, rev");
+  });
+
+  it("ohne bekannte Revision wird auch bei useRev auf den exakten updated_at gefiltert (nie ohne Bedingung)", async () => {
+    const { table, log } = recordingTable(() => REV_OK(5));
+    await casWrite({ ...base, table, observedToken: OBSERVED, observedRev: null, useRev: true });
+    expect(log[0]!.eq).toEqual([
+      ["user_id", "u1"],
+      ["updated_at", OBSERVED],
+    ]);
+  });
+
+  it("Standard (useRev=false): unverändertes Verhalten, nur updated_at", async () => {
+    const { table, log } = recordingTable(() => ok("2026-11-17T10:00:00+00:00"));
+    const out = await casWrite({ ...base, table, observedToken: OBSERVED });
+    expect(out).toMatchObject({ kind: "written", rev: null });
+    expect(log[0]!.columns).toBe("updated_at");
+  });
+
+  it("Null Zeilen → stale; mehr als eine → ambiguous – auch mit rev", async () => {
+    const zero = recordingTable(() => ({ data: [], error: null }));
+    expect(
+      await casWrite({
+        ...base,
+        table: zero.table,
+        observedToken: OBSERVED,
+        observedRev: "9",
+        useRev: true,
+      }),
+    ).toEqual({
+      kind: "stale",
+      reason: "zero-rows",
+    });
+    const two = recordingTable(() => ({
+      data: [
+        { updated_at: "a", rev: 1 },
+        { updated_at: "b", rev: 2 },
+      ],
+      error: null,
+    }));
+    expect(
+      (
+        await casWrite({
+          ...base,
+          table: two.table,
+          observedToken: OBSERVED,
+          observedRev: "9",
+          useRev: true,
+        })
+      ).kind,
+    ).toBe("ambiguous");
+  });
+
+  it("Insert fragt rev an", async () => {
+    const { table, log } = recordingTable(() => REV_OK(7));
+    const out = await casWrite({ ...base, table, observedToken: null, useRev: true });
+    expect(out).toMatchObject({ kind: "written", mode: "insert", rev: "7" });
+    expect(log[0]!.columns).toBe("updated_at, rev");
+  });
+
+  it.each([
+    [{ code: "42703", message: "column backups.rev does not exist" }],
+    [{ code: "42703", message: 'column "rev" does not exist' }],
+    [
+      {
+        code: "PGRST204",
+        message: "Could not find the 'rev' column of 'backups' in the schema cache",
+      },
+    ],
+  ])(
+    "bestätigter Fehler 'Spalte rev fehlt' (%j) → rev-unsupported (Update und Insert)",
+    async (error) => {
+      const upd = recordingTable(() => ({ data: null, error }));
+      expect(
+        await casWrite({
+          ...base,
+          table: upd.table,
+          observedToken: OBSERVED,
+          observedRev: "9",
+          useRev: true,
+        }),
+      ).toEqual({
+        kind: "rev-unsupported",
+      });
+      const ins = recordingTable(() => ({ data: null, error }));
+      expect(
+        await casWrite({ ...base, table: ins.table, observedToken: null, useRev: true }),
+      ).toEqual({
+        kind: "rev-unsupported",
+      });
+    },
+  );
+
+  it.each([
+    [{ code: "42703", message: "column backups.payload2 does not exist" }],
+    [{ code: "42703", message: "column backups.reverse does not exist" }],
+    [{ code: "42703", message: "" }],
+    [{ code: "42501", message: "permission denied for column rev" }],
+    [{ code: "PGRST204", message: "Could not find the 'other' column" }],
+    [{ code: "PGRST116", message: "rev" }],
+    [{ message: "column rev does not exist" }],
+  ])("jeder andere Fehler (%j) ist KEIN Rückfallsignal", async (error) => {
+    expect(isMissingRevColumnError(error)).toBe(false);
+    const { table } = recordingTable(() => ({ data: null, error }));
+    const out = await casWrite({
+      ...base,
+      table,
+      observedToken: OBSERVED,
+      observedRev: "9",
+      useRev: true,
+    });
+    expect(out.kind).not.toBe("rev-unsupported");
+  });
+
+  it("ohne useRev wird auch ein rev-Fehler nicht als Rückfall gedeutet", async () => {
+    const { table } = recordingTable(() => ({
+      data: null,
+      error: { code: "42703", message: "column backups.rev does not exist" },
+    }));
+    const out = await casWrite({ ...base, table, observedToken: OBSERVED });
+    expect(out).toEqual({ kind: "error", code: "42703" });
+  });
+
+  it("parseRev: nur exakt darstellbare positive ganze Zahlen; sonst null (nie gerundet)", () => {
+    expect(parseRev(1794901882456066)).toBe("1794901882456066");
+    expect(parseRev("1794901882456066")).toBe("1794901882456066");
+    expect(parseRev(9007199254740991)).toBe("9007199254740991");
+    expect(parseRev(2 ** 53 + 2)).toBeNull(); // über 2^53: bereits gerundet
+    expect(parseRev(0)).toBeNull();
+    expect(parseRev(-3)).toBeNull();
+    expect(parseRev(1.5)).toBeNull();
+    expect(parseRev("12ab")).toBeNull();
+    expect(parseRev(null)).toBeNull();
+    expect(parseRev(undefined)).toBeNull();
+  });
+
+  const pending: PendingWrite = {
+    observedToken: OBSERVED,
+    observedRev: "100",
+    attemptedToken: "2026-11-17T10:00:00.000Z",
+    fingerprint: "fp",
+    at: 1,
+  };
+  it("unklares Ergebnis: Revision unverändert → nicht angekommen; jede andere Revision → Konflikt (auch bei gleichem Token)", () => {
+    expect(resolvePendingWrite(pending, { token: OBSERVED, fingerprint: "x", rev: "100" })).toBe(
+      "not-landed",
+    );
+    expect(resolvePendingWrite(pending, { token: OBSERVED, fingerprint: "x", rev: "101" })).toBe(
+      "conflict",
+    );
+    expect(
+      resolvePendingWrite(pending, { token: "2026-12-01T00:00:00Z", fingerprint: "x", rev: "100" }),
+    ).toBe("not-landed");
+  });
+  it("Token + Inhalt gleich → übernehmen, unabhängig von der Revision", () => {
+    expect(
+      resolvePendingWrite(pending, {
+        token: "2026-11-17T10:00:00+00:00",
+        fingerprint: "fp",
+        rev: "105",
+      }),
+    ).toBe("adopt");
+  });
+  it("ohne bekannte Revision gilt weiter die Token-Regel", () => {
+    expect(
+      resolvePendingWrite(
+        { ...pending, observedRev: null },
+        { token: OBSERVED, fingerprint: "x", rev: "100" },
+      ),
+    ).toBe("not-landed");
+  });
+});

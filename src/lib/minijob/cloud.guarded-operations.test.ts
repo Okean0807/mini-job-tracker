@@ -857,6 +857,58 @@ describe("Gerätesperre bei Cloud-Wiederherstellung und Upload (Phase 5, PIN-Ric
     expect([...doubles.storage.records.values()][0]!.payload).not.toContain("9999");
   });
 
+  it("Option C – automatische Erst-Wiederherstellung (leeres Gerät) übernimmt NIE eine alte Cloud-PIN", async () => {
+    local = data({}, true); // nachweislich leer, keine Gerätesperre
+    cloud.remote = remoteWith({ pin: "9999", pinEnabled: true, autoBackup: true });
+    (cloud.remote as Remote)!.payload = {
+      ...((cloud.remote as Remote)!.payload as AppData),
+      shifts: shifts(2, "c"),
+    };
+    const mod = await started(true);
+    await settle();
+    expect(replaced.length).toBeGreaterThan(0);
+    const applied = replaced[replaced.length - 1]!;
+    expect((applied.settings as { pin?: string }).pin).toBeUndefined();
+    expect((applied.settings as { pinEnabled?: boolean }).pinEnabled).not.toBe(true);
+    expect(doubles.previews).toHaveLength(0); // automatisch: keine Bestätigung, also auch keine Übernahme
+    void mod;
+  });
+
+  it("Option C – automatischer Abgleich (Cloud neuer, lokal unverändert) übernimmt keine Alt-PIN und lässt die lokale unangetastet", async () => {
+    for (const localSettings of [{}, { pin: "4242", pinEnabled: true }]) {
+      replaced.length = 0;
+      window.localStorage.clear();
+      baseline(true);
+      local = {
+        ...data({ shifts: shifts(2) }, true),
+        settings: { autoBackup: true, onboarded: true, ...localSettings },
+      } as AppData;
+      cloud.remote = {
+        payload: {
+          ...data({ shifts: [...shifts(2), ...shifts(1, "n")] }, true),
+          settings: { autoBackup: true, onboarded: true, pin: "9999", pinEnabled: true },
+        },
+        updated_at: T1,
+      };
+      const mod = await started(true);
+      await settle();
+      expect(replaced.length).toBeGreaterThan(0);
+      const pin = (replaced[replaced.length - 1]!.settings as { pin?: string }).pin;
+      expect(pin).toBe((localSettings as { pin?: string }).pin); // undefined bzw. die lokale PIN, nie "9999"
+      void mod;
+    }
+  });
+
+  it("Option C – Konflikt 'Cloud behalten' ist eine bestätigte manuelle Wiederherstellung (Warnung sichtbar, Übernahme erlaubt)", async () => {
+    localWith({});
+    cloud.remote = remoteWith({ pin: "9999", pinEnabled: true });
+    setMeta({ localChangedAt: 1, localWorkChangedAt: 1, lastSyncedAt: null, remoteSeenAt: null });
+    const mod = await started(false);
+    await mod.resolveConflict("cloud");
+    expect(doubles.previews[0]!.deviceAuth).toBe("adopted");
+    expect((replaced[0]!.settings as { pin?: string }).pin).toBe("9999");
+  });
+
   it("Upload: PIN und Biometrie-ID verlassen das Gerät nie (Cloud-Payload ohne Gerätesperre)", async () => {
     dirtyBaseline(false);
     local = {
