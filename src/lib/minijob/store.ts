@@ -463,6 +463,10 @@ export function loadFromStorage() {
 export function activateScope(scope: StorageScope): boolean {
   if (loaded && sameScope(scope, getActiveScope())) return false;
   loaded = true;
+  // Gemerkten Text des verlassenen Namensraums freigeben (noch ist `activeScope` der alte): Kontodaten sollen nach
+  // Logout, Kontowechsel oder Löschung nicht im Arbeitsspeicher bleiben. Beim Wiedereintritt wird der gespeicherte Text
+  // beim ersten Speichern einmal neu geprüft.
+  lastWrittenRaw.delete(dataStorageKey());
   const languageSeed = state.settings.language ?? detectLanguage();
   const next = loadScopeState(scope, languageSeed);
   state = next.data;

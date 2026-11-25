@@ -406,3 +406,126 @@ describe("R-1 L3 – Unlesbarkeit nach dem ersten Speichern derselben Sitzung", 
     }
   });
 });
+
+/**
+ * Phase 5.26.4: Lebenszyklus des zuletzt geschriebenen Textes (`lastWrittenRaw`). Beim Verlassen eines Namensraums
+ * (Logout, Kontowechsel, Löschung mit anschließendem Abmelden) darf der gesamte Datentext dieses Namensraums nicht im
+ * Arbeitsspeicher des Stores zurückbleiben. Beobachtbar ist das nur über das Verhalten: ein freigegebener Eintrag zwingt
+ * das nächste Speichern dazu, den vorhandenen Text wieder zu prüfen (zu parsen); ein behaltener Eintrag nicht.
+ */
+describe("R-1 Speicher-Lebenszyklus – Namensraumwechsel gibt den gemerkten Text frei", () => {
+  const CORRUPT = '{"jobs":[{"id":"precious","name":"nicht verlieren"';
+
+  /** Wie oft wurde exakt `text` geparst, während `run` lief? */
+  function parseCountOf(text: string, run: () => void): number {
+    const spy = vi.spyOn(JSON, "parse");
+    try {
+      run();
+      return spy.mock.calls.filter(([arg]) => arg === text).length;
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it("Kontrolle: im selben Namensraum wird der eigene, unveränderte Text nicht erneut geparst", async () => {
+    const store = await freshStore();
+    store.loadFromStorage();
+    store.saveJob(job("g1"));
+    const stored = window.localStorage.getItem(GUEST_KEY) ?? "";
+    expect(parseCountOf(stored, () => store.saveJob(job("g2")))).toBe(0);
+  });
+
+  it("Wechsel auf den bereits aktiven Namensraum (No-op) gibt nichts frei", async () => {
+    const store = await freshStore();
+    const { GUEST_SCOPE } = await import("./storage-scope");
+    store.loadFromStorage();
+    store.saveJob(job("g1"));
+    expect(store.activateScope(GUEST_SCOPE)).toBe(false); // schon aktiv
+    const stored = window.localStorage.getItem(GUEST_KEY) ?? "";
+    expect(parseCountOf(stored, () => store.saveJob(job("g2")))).toBe(0);
+  });
+
+  it("Verlassen und Wiedereintreten: der gemerkte Text des verlassenen Namensraums ist freigegeben (erstes Speichern prüft erneut)", async () => {
+    const store = await freshStore();
+    const { userScope, GUEST_SCOPE } = await import("./storage-scope");
+    store.loadFromStorage();
+    store.saveJob(job("g1")); // Gast-Namensraum: Text gemerkt
+    store.activateScope(userScope("u1")); // Gast wird verlassen
+    store.activateScope(GUEST_SCOPE); // und wieder betreten
+    const stored = window.localStorage.getItem(GUEST_KEY) ?? "";
+    expect(stored).not.toBe("");
+    expect(parseCountOf(stored, () => store.saveJob(job("g2")))).toBe(1); // geprüft, nicht blind vertraut
+    // danach gilt wieder die schnelle Kurzprüfung
+    const storedAfter = window.localStorage.getItem(GUEST_KEY) ?? "";
+    expect(parseCountOf(storedAfter, () => store.saveJob(job("g3")))).toBe(0);
+  });
+
+  it("Kontolöschung mit anschließendem Abmelden: wieder angelegter Schlüssel wird nicht aufgrund eines alten Eintrags vertraut", async () => {
+    const store = await freshStore();
+    const { userScope, GUEST_SCOPE, clearUserScopeLocalData, scopedKey } =
+      await import("./storage-scope");
+    const scope = userScope("deleted-user");
+    const userKey = scopedKey("minijob-tracker-v1", scope);
+    store.loadFromStorage();
+    store.activateScope(scope);
+    store.saveJob(job("u1"));
+    const oldText = window.localStorage.getItem(userKey) ?? "";
+    expect(oldText).not.toBe("");
+    clearUserScopeLocalData("deleted-user"); // wie deleteMyAccount
+    expect(window.localStorage.getItem(userKey)).toBeNull();
+    store.activateScope(GUEST_SCOPE); // wie das SIGNED_OUT-Ereignis (cloud.ts leaveAccountScope)
+    window.localStorage.setItem(userKey, oldText); // derselbe Schlüssel taucht mit demselben Text wieder auf
+    store.activateScope(scope);
+    expect(parseCountOf(oldText, () => store.saveJob(job("u2")))).toBe(1);
+  });
+
+  it("L3 funktioniert nach dem Wechsel weiter: Unlesbarkeit nach Verlassen, Wiedereintreten und Speichern wird gesichert", async () => {
+    const store = await freshStore();
+    const { userScope, GUEST_SCOPE, scopedKey } = await import("./storage-scope");
+    const scope = userScope("u1");
+    const userKey = scopedKey("minijob-tracker-v1", scope);
+    const userSide = scopedKey("minijob-tracker-corrupt-v1", scope);
+    store.loadFromStorage();
+    store.activateScope(scope);
+    store.saveJob(job("u1"));
+    store.activateScope(GUEST_SCOPE);
+    store.activateScope(scope);
+    store.saveJob(job("u2"));
+    window.localStorage.setItem(userKey, CORRUPT);
+    store.saveJob(job("u3"));
+    expect(
+      (JSON.parse(window.localStorage.getItem(userSide) ?? "[]") as { raw: string }[]).map(
+        (p) => p.raw,
+      ),
+    ).toEqual([CORRUPT]);
+    expect(store.isPersistFailed()).toBe(false);
+  });
+
+  it("anderer Namensraum bleibt geschützt: Löschen eines fremden Kontos und Wechsel berühren den aktiven Gast-Schutz nicht", async () => {
+    const store = await freshStore();
+    const { userScope, GUEST_SCOPE, clearUserScopeLocalData } = await import("./storage-scope");
+    store.loadFromStorage();
+    store.saveJob(job("g1")); // Gast aktiv, Text gemerkt
+    store.activateScope(userScope("other")); // Gast verlassen (Eintrag freigegeben)
+    store.saveJob(job("o1"));
+    window.localStorage.setItem(GUEST_KEY, CORRUPT); // Gast-Schlüssel wird von außen unlesbar, während er nicht aktiv ist
+    clearUserScopeLocalData("unrelated-user"); // fremdes Konto, nichts passiert
+    store.activateScope(GUEST_SCOPE);
+    store.saveJob(job("g2")); // erstes Speichern im Gast: unlesbarer Text wird gesichert
+    expect(preserved().map((p) => p.raw)).toEqual([CORRUPT]);
+  });
+
+  it("Aufbewahrung und Dubletten unverändert über Namensraumwechsel hinweg", async () => {
+    window.localStorage.setItem(GUEST_KEY, CORRUPT);
+    const store = await freshStore();
+    const { userScope, GUEST_SCOPE } = await import("./storage-scope");
+    store.loadFromStorage();
+    store.saveJob(job("g1")); // sichert CORRUPT
+    store.activateScope(userScope("u1"));
+    store.activateScope(GUEST_SCOPE);
+    window.localStorage.setItem(GUEST_KEY, CORRUPT); // derselbe Text erneut
+    store.saveJob(job("g2"));
+    expect(preserved().map((p) => p.raw)).toEqual([CORRUPT]); // keine Dublette
+    expect(store.getData().jobs.map((j) => j.id)).toContain("g2");
+  });
+});
