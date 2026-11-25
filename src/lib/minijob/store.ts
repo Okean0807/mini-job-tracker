@@ -174,10 +174,109 @@ function setPersistFailed(failed: boolean) {
   persistListeners.forEach((l) => l(failed));
 }
 
+/**
+ * Phase 5.26 (R-1): Ein vorhandener, aber NICHT lesbarer Stand (kaputtes JSON, kein Objekt) wird beim Laden wie "leer"
+ * behandelt; das nächste Speichern hätte ihn still überschrieben. Vor dem ersten Schreiben eines Schlüssels wird deshalb
+ * einmal geprüft: ist der vorhandene Wert unlesbar, wird sein Originaltext unverändert in einen Nebenschlüssel gesichert
+ * (`minijob-tracker-corrupt-v1:<scope>`, höchstens drei verschiedene Texte, wiederholtes Sichern desselben Textes ist
+ * wirkungslos). Gelingt die Sicherung nicht (Speicher voll/blockiert), wird NICHT überschrieben: der Fehler wird wie jeder
+ * andere Speicherfehler gemeldet (`isPersistFailed`), der unlesbare Wert bleibt unberührt. Kein neuer Speicher, keine
+ * Änderung für lesbare oder fehlende Stände.
+ */
+export const CORRUPT_KEY_BASE = "minijob-tracker-corrupt-v1";
+const MAX_PRESERVED_UNREADABLE = 3;
+
+export interface PreservedUnreadable {
+  /** Zeitpunkt der Sicherung (ms). */
+  at: number;
+  /** Originaltext des unlesbaren Wertes, unverändert. */
+  raw: string;
+}
+
+/**
+ * Text, den dieser Store zuletzt selbst in einen Datenschlüssel geschrieben hat. Steht beim nächsten Speichern noch genau
+ * dieser Text dort, ist er lesbar und muss nicht erneut geparst werden. Jede Abweichung (anderer Tab, Erweiterung,
+ * DevTools, abgebrochener Schreibvorgang) wird dagegen vor dem Überschreiben geprüft (Phase 5.26.3, Einschränkung L3).
+ */
+const lastWrittenRaw = new Map<string, string>();
+
+function isReadableDocument(raw: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!isPlainRecord(parsed)) return false;
+    normalize(parsed as Partial<AppData>);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function readPreservedList(storageKey: string): PreservedUnreadable[] | null {
+  const existing = window.localStorage.getItem(storageKey);
+  if (!existing) return [];
+  try {
+    const parsed: unknown = JSON.parse(existing);
+    if (!Array.isArray(parsed)) return null;
+    const list: PreservedUnreadable[] = [];
+    for (const entry of parsed) {
+      if (
+        isPlainRecord(entry) &&
+        typeof entry["raw"] === "string" &&
+        typeof entry["at"] === "number"
+      ) {
+        list.push({ at: entry["at"], raw: entry["raw"] });
+      } else {
+        return null;
+      }
+    }
+    return list;
+  } catch {
+    return null;
+  }
+}
+
+/** Gesicherte unlesbare Stände eines Scopes (nur Lesen; leer, wenn keine oder nicht lesbar). */
+export function readPreservedUnreadable(scope: StorageScope): PreservedUnreadable[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return readPreservedList(scopedKey(CORRUPT_KEY_BASE, scope)) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** `true`, wenn der Originaltext danach gesichert ist (auch: war schon gesichert). Wirft bei Speicherfehlern. */
+function preserveUnreadable(scope: StorageScope, raw: string): boolean {
+  const storageKey = scopedKey(CORRUPT_KEY_BASE, scope);
+  const list = readPreservedList(storageKey);
+  // Eine selbst unlesbare Sicherungsliste wird nie überschrieben (sonst ginge der ältere Stand verloren).
+  if (list === null) return false;
+  if (list.some((entry) => entry.raw === raw)) return true;
+  const next = [...list, { at: Date.now(), raw }];
+  while (next.length > MAX_PRESERVED_UNREADABLE) next.shift();
+  window.localStorage.setItem(storageKey, JSON.stringify(next));
+  return true;
+}
+
+/** Vor jedem Schreiben eines Schlüssels: unlesbaren Bestand sichern. `false` = nicht überschreiben. */
+function protectExistingValue(key: string, scope: StorageScope): boolean {
+  const raw = window.localStorage.getItem(key);
+  if (!raw) return true;
+  if (lastWrittenRaw.get(key) === raw) return true; // unverändert seit unserem letzten Schreiben: lesbar, kein Parsen
+  return isReadableDocument(raw) || preserveUnreadable(scope, raw);
+}
+
 function persist() {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(dataStorageKey(), JSON.stringify(state));
+    const key = dataStorageKey();
+    if (!protectExistingValue(key, getActiveScope())) {
+      setPersistFailed(true);
+      return;
+    }
+    const serialized = JSON.stringify(state);
+    window.localStorage.setItem(key, serialized);
+    lastWrittenRaw.set(key, serialized);
     setPersistFailed(false);
   } catch {
     /* Speicher voll oder blockiert – sichtbar melden statt still verwerfen */
@@ -364,6 +463,10 @@ export function loadFromStorage() {
 export function activateScope(scope: StorageScope): boolean {
   if (loaded && sameScope(scope, getActiveScope())) return false;
   loaded = true;
+  // Gemerkten Text des verlassenen Namensraums freigeben (noch ist `activeScope` der alte): Kontodaten sollen nach
+  // Logout, Kontowechsel oder Löschung nicht im Arbeitsspeicher bleiben. Beim Wiedereintritt wird der gespeicherte Text
+  // beim ersten Speichern einmal neu geprüft.
+  lastWrittenRaw.delete(dataStorageKey());
   const languageSeed = state.settings.language ?? detectLanguage();
   const next = loadScopeState(scope, languageSeed);
   state = next.data;
