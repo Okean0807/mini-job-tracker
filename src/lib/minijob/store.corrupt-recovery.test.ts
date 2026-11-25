@@ -262,3 +262,147 @@ describe("R-1 – unlesbarer lokaler Stand wird vor dem Überschreiben gesichert
     expect(preserved().map((p) => p.raw)).toEqual(["garbage"]);
   });
 });
+
+/**
+ * Phase 5.26.3 (R-1, Einschränkung L3): Der Stand kann NACH dem ersten Speichern einer Sitzung unlesbar werden
+ * (anderer Tab, Erweiterung, DevTools, abgebrochener Schreibvorgang). Auch dann muss der Originaltext vor dem
+ * Überschreiben gesichert werden. "Zweiter Tab" wird als Rohschreibzugriff auf denselben Schlüssel nachgestellt: die
+ * App selbst schreibt immer `JSON.stringify(state)` und kann so nie unlesbaren Text erzeugen.
+ */
+describe("R-1 L3 – Unlesbarkeit nach dem ersten Speichern derselben Sitzung", () => {
+  const CORRUPT = '{"jobs":[{"id":"precious","name":"nicht verlieren"';
+  const CORRUPT_2 = "second {{ corruption";
+
+  it("Vorher: Unlesbar vor dem ersten Speichern wird gesichert (Kontrolle, unverändertes Verhalten)", async () => {
+    window.localStorage.setItem(GUEST_KEY, CORRUPT);
+    const a = await freshStore();
+    a.loadFromStorage();
+    a.saveJob(job("a1"));
+    expect(preserved().map((p) => p.raw)).toEqual([CORRUPT]);
+  });
+
+  it("L3: Unlesbar nach dem ersten Speichern desselben Tabs wird beim nächsten Speichern gesichert", async () => {
+    const a = await freshStore();
+    a.loadFromStorage();
+    a.saveJob(job("a1")); // erstes Speichern der Sitzung (Stand fehlt)
+    window.localStorage.setItem(GUEST_KEY, CORRUPT); // Außenstehender macht den Wert unlesbar
+    a.saveJob(job("a2"));
+    expect(preserved().map((p) => p.raw)).toEqual([CORRUPT]); // Originaltext exakt gesichert
+    const primary = JSON.parse(window.localStorage.getItem(GUEST_KEY) ?? "null");
+    expect(primary.jobs.map((j: { id: string }) => j.id).sort()).toEqual(["a1", "a2"]); // Hauptwert wieder lesbar
+    expect(a.isPersistFailed()).toBe(false);
+  });
+
+  it("zweiter Store/Tab macht den Wert unlesbar, nachdem beide gespeichert haben: Tab A sichert beim nächsten Speichern", async () => {
+    const a = await freshStore();
+    a.loadFromStorage();
+    a.saveJob(job("a1"));
+    const b = await freshStore(); // zweite Modulinstanz = zweiter Tab (eigener Speicher im Arbeitsspeicher)
+    b.loadFromStorage();
+    b.saveJob(job("b1"));
+    window.localStorage.setItem(GUEST_KEY, CORRUPT); // Rohschreibzugriff aus Tab B
+    a.saveJob(job("a2"));
+    expect(preserved().map((p) => p.raw)).toEqual([CORRUPT]);
+    // auch Tab B sichert nichts doppelt, wenn er danach speichert (Stand ist wieder lesbar)
+    b.saveJob(job("b2"));
+    expect(preserved().map((p) => p.raw)).toEqual([CORRUPT]);
+  });
+
+  it("Speicher voll bei der Sicherung nach dem ersten Speichern: unlesbarer Wert bleibt unberührt, danach klappt es", async () => {
+    const a = await freshStore();
+    a.loadFromStorage();
+    a.saveJob(job("a1"));
+    window.localStorage.setItem(GUEST_KEY, CORRUPT);
+    const flaky = installFlakyStorage();
+    flaky.failSet = (key) => key === SIDE_KEY;
+    a.saveJob(job("a2"));
+    expect(window.localStorage.getItem(GUEST_KEY)).toBe(CORRUPT); // nicht überschrieben
+    expect(window.localStorage.getItem(SIDE_KEY)).toBeNull();
+    expect(a.isPersistFailed()).toBe(true);
+    flaky.failSet = () => false; // Platz wieder frei
+    a.saveJob(job("a3"));
+    expect(preserved().map((p) => p.raw)).toEqual([CORRUPT]);
+    expect(a.isPersistFailed()).toBe(false);
+    expect(
+      JSON.parse(window.localStorage.getItem(GUEST_KEY) ?? "null").jobs.length,
+    ).toBeGreaterThanOrEqual(1);
+  });
+
+  it("blockierter Speicher (Lesen wirft) nach dem ersten Speichern: nichts wird überschrieben, Fehler gemeldet", async () => {
+    const a = await freshStore();
+    a.loadFromStorage();
+    a.saveJob(job("a1"));
+    const before = window.localStorage.getItem(GUEST_KEY);
+    const flaky = installFlakyStorage();
+    flaky.failGet = true;
+    a.saveJob(job("a2"));
+    expect(a.isPersistFailed()).toBe(true);
+    expect(flaky.setCalls).toEqual([]); // es wurde gar nichts geschrieben
+    flaky.failGet = false;
+    expect(window.localStorage.getItem(GUEST_KEY)).toBe(before);
+  });
+
+  it("gültiger Stand von einem anderen Tab geändert: bleibt gültig, keine Sicherung, bisheriges Last-write-wins", async () => {
+    const a = await freshStore();
+    a.loadFromStorage();
+    a.saveJob(job("a1"));
+    const b = await freshStore();
+    b.loadFromStorage();
+    b.saveJob(job("b1")); // Tab B schreibt gültige Daten (Tab B hat a1 aus dem Speicher geladen)
+    const afterB = JSON.parse(window.localStorage.getItem(GUEST_KEY) ?? "null");
+    expect(afterB.jobs.map((j: { id: string }) => j.id).sort()).toEqual(["a1", "b1"]);
+    a.saveJob(job("a2")); // Tab A kennt b1 nicht und schreibt seinen Arbeitsspeicher: wie bisher
+    expect(preserved()).toEqual([]);
+    const afterA = JSON.parse(window.localStorage.getItem(GUEST_KEY) ?? "null");
+    expect(afterA.jobs.map((j: { id: string }) => j.id).sort()).toEqual(["a1", "a2"]);
+    expect(a.isPersistFailed()).toBe(false);
+  });
+
+  it("wiederholtes Speichern erzeugt keine Dubletten; neuer unlesbarer Text wird zusätzlich gesichert", async () => {
+    const a = await freshStore();
+    a.loadFromStorage();
+    a.saveJob(job("a1"));
+    window.localStorage.setItem(GUEST_KEY, CORRUPT);
+    a.saveJob(job("a2"));
+    a.saveJob(job("a3"));
+    a.saveJob(job("a4"));
+    expect(preserved().map((p) => p.raw)).toEqual([CORRUPT]);
+    window.localStorage.setItem(GUEST_KEY, CORRUPT); // derselbe Text erneut von außen
+    a.saveJob(job("a5"));
+    expect(preserved().map((p) => p.raw)).toEqual([CORRUPT]); // keine Dublette
+    window.localStorage.setItem(GUEST_KEY, CORRUPT_2); // anderer Text
+    a.saveJob(job("a6"));
+    expect(preserved().map((p) => p.raw)).toEqual([CORRUPT, CORRUPT_2]);
+  });
+
+  it("gelöschter Stand (Schlüssel entfernt) nach dem ersten Speichern: normales Speichern, keine Sicherung", async () => {
+    const a = await freshStore();
+    a.loadFromStorage();
+    a.saveJob(job("a1"));
+    window.localStorage.removeItem(GUEST_KEY);
+    a.saveJob(job("a2"));
+    expect(preserved()).toEqual([]);
+    expect(JSON.parse(window.localStorage.getItem(GUEST_KEY) ?? "null").jobs.length).toBe(2);
+  });
+
+  it("Leistung: aufeinanderfolgendes Speichern parst den eigenen, unveränderten Wert nicht erneut", async () => {
+    const a = await freshStore();
+    a.loadFromStorage();
+    a.saveJob(job("a1")); // Prüfung des Anfangsstands (Schlüssel fehlt) und erste Schrift
+    a.saveJob(job("a2"));
+    const spy = vi.spyOn(JSON, "parse");
+    try {
+      a.saveJob(job("a3"));
+      a.saveJob(job("a4"));
+      const stored = window.localStorage.getItem(GUEST_KEY) ?? "";
+      expect(
+        spy.mock.calls.filter(
+          ([text]) =>
+            typeof text === "string" && text.length > 20 && stored.startsWith(text.slice(0, 20)),
+        ),
+      ).toEqual([]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});

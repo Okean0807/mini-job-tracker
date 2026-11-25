@@ -193,8 +193,12 @@ export interface PreservedUnreadable {
   raw: string;
 }
 
-/** Schlüssel (Daten), für die der vorhandene Wert in dieser Sitzung bereits geprüft/gesichert wurde. */
-const verifiedKeys = new Set<string>();
+/**
+ * Text, den dieser Store zuletzt selbst in einen Datenschlüssel geschrieben hat. Steht beim nächsten Speichern noch genau
+ * dieser Text dort, ist er lesbar und muss nicht erneut geparst werden. Jede Abweichung (anderer Tab, Erweiterung,
+ * DevTools, abgebrochener Schreibvorgang) wird dagegen vor dem Überschreiben geprüft (Phase 5.26.3, Einschränkung L3).
+ */
+const lastWrittenRaw = new Map<string, string>();
 
 function isReadableDocument(raw: string): boolean {
   try {
@@ -254,15 +258,12 @@ function preserveUnreadable(scope: StorageScope, raw: string): boolean {
   return true;
 }
 
-/** Vor dem ersten Schreiben eines Schlüssels: unlesbaren Bestand sichern. `false` = nicht überschreiben. */
+/** Vor jedem Schreiben eines Schlüssels: unlesbaren Bestand sichern. `false` = nicht überschreiben. */
 function protectExistingValue(key: string, scope: StorageScope): boolean {
-  if (verifiedKeys.has(key)) return true;
   const raw = window.localStorage.getItem(key);
-  if (!raw || isReadableDocument(raw) || preserveUnreadable(scope, raw)) {
-    verifiedKeys.add(key);
-    return true;
-  }
-  return false;
+  if (!raw) return true;
+  if (lastWrittenRaw.get(key) === raw) return true; // unverändert seit unserem letzten Schreiben: lesbar, kein Parsen
+  return isReadableDocument(raw) || preserveUnreadable(scope, raw);
 }
 
 function persist() {
@@ -273,7 +274,9 @@ function persist() {
       setPersistFailed(true);
       return;
     }
-    window.localStorage.setItem(key, JSON.stringify(state));
+    const serialized = JSON.stringify(state);
+    window.localStorage.setItem(key, serialized);
+    lastWrittenRaw.set(key, serialized);
     setPersistFailed(false);
   } catch {
     /* Speicher voll oder blockiert – sichtbar melden statt still verwerfen */
