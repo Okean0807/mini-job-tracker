@@ -34,6 +34,7 @@ import { markBackup } from "./notify";
 
 import { mergeDeviceAuthFromLocal, stripDeviceAuthForCloud } from "./device-auth";
 import { isValidPayload } from "./payload";
+import { casWrite, nextToken, type BackupsTable } from "./cloud-cas";
 import {
   activateScope,
   getActiveScope,
@@ -456,6 +457,17 @@ export class StaleSyncError extends Error {
   }
 }
 
+/**
+ * Phase 5.26 (R-4): Die Cloud-Sicherung hat sich seit der letzten Beobachtung geändert (oder eine solche Änderung ist seit
+ * dem letzten Abgleich sichtbar). Es wurde NICHTS überschrieben; der Nutzer entscheidet im Konflikt.
+ */
+export class CasStaleError extends Error {
+  constructor() {
+    super(t("error.syncCloudChanged"));
+    this.name = "CasStaleError";
+  }
+}
+
 /** Angemeldete Konto-Id laut Sync-Schicht (null = abgemeldet). */
 export function getCloudUserId(): string | null {
   return userId;
@@ -548,25 +560,32 @@ export function workFingerprint(data: Pick<AppData, "shifts" | "jobs">): string 
  */
 async function push(
   data: AppData,
-  preserveIfNewerThan?: { local: number | null; work: number | null },
-  isCurrent?: () => boolean,
+  preserveIfNewerThan: { local: number | null; work: number | null } | undefined,
+  isCurrent: (() => boolean) | undefined,
+  /** Exakter `updated_at`-String der zuletzt beobachteten Cloud-Zeile; `null` = es gab keine. */
+  observedToken: string | null,
 ): Promise<void> {
   if (!userId) throw new Error(t("error.notSignedIn"));
   // Owner guard: only ever upload data that was loaded from THIS account's namespace.
   if (!ownsLoadedData()) throw new Error(t("error.accountMismatch"));
   // Vor dem await festhalten: wohin die Metadaten gehören.
   const snap = snapshotOwner();
-  const updatedAt = new Date();
-  const { error } = await supabase.from("backups").upsert({
-    user_id: userId,
-    payload: payloadOf(data) as never,
-    updated_at: updatedAt.toISOString(),
+  // Phase 5.26 (R-4): bedingtes Schreiben (Compare-and-Swap) statt blindem `upsert`: ein vorhandener Stand wird nur
+  // ersetzt, wenn `updated_at` noch genau dem beobachteten Token entspricht; ohne beobachtete Zeile wird eingefügt.
+  // Ältere App-Versionen und direkte API-Aufrufer schreiben weiterhin blind (siehe cloud-cas.ts, GRENZEN).
+  const outcome = await casWrite({
+    table: supabase.from("backups") as unknown as BackupsTable,
+    userId,
+    observedToken,
+    payload: payloadOf(data),
+    token: nextToken(observedToken),
   });
   // Post-await-Guard: Konto/Scope gewechselt oder der Sync-Lauf wurde bereits
   // abgebrochen (z. B. Timeout) → keine Meta, kein markBackup, kein "synced".
   if (!stillOwner(snap) || (isCurrent && !isCurrent())) throw new StaleSyncError();
-  if (error) throw error;
-  const ts = updatedAt.getTime();
+  if (outcome.kind === "stale") throw new CasStaleError();
+  if (outcome.kind !== "written") throw new Error(t("error.sync"), { cause: outcome });
+  const ts = outcome.updatedAtMs;
   let nextLocal: number | null = null;
   let nextWork: number | null = null;
   if (preserveIfNewerThan) {
@@ -591,7 +610,12 @@ async function push(
   markBackup();
 }
 
-async function fetchRemote(): Promise<{ payload: AppData; updatedAt: number } | null> {
+async function fetchRemote(): Promise<{
+  payload: AppData;
+  updatedAt: number;
+  /** Exakter `updated_at`-String (Token für das bedingte Schreiben); `null`, wenn nicht lesbar. */
+  token: string | null;
+} | null> {
   if (!userId) throw new Error(t("error.notSignedIn"));
   const { data, error } = await supabase
     .from("backups")
@@ -604,6 +628,7 @@ async function fetchRemote(): Promise<{ payload: AppData; updatedAt: number } | 
   return {
     payload: data.payload as unknown as AppData,
     updatedAt: data.updated_at ? new Date(data.updated_at).getTime() : 0,
+    token: typeof data.updated_at === "string" && data.updated_at !== "" ? data.updated_at : null,
   };
 }
 
@@ -651,6 +676,16 @@ function applyRemote(remote: { payload: AppData; updatedAt: number }) {
 /* ---------- Öffentliche Aktionen ---------- */
 
 export async function backupNow(): Promise<void> {
+  await runBackup(false);
+}
+
+/**
+ * Sichern mit bedingtem Schreiben (R-4). Der Cloud-Stand wird zuerst gelesen: Hat er sich seit dem letzten Abgleich dieses
+ * Geräts geändert (oder kennt das Gerät ihn nicht), wird NICHT überschrieben, sondern ein Konflikt gemeldet. Nur nach der
+ * ausdrücklichen Entscheidung "lokalen Stand behalten" (`afterConflictDecision`) wird der frisch gelesene Stand ersetzt –
+ * auch dann nur, solange er sich bis zum Schreiben nicht erneut geändert hat.
+ */
+async function runBackup(afterConflictDecision: boolean): Promise<void> {
   if (!userId) throw new Error(t("error.notSignedIn"));
   if (!ownsLoadedData()) throw new Error(t("error.accountMismatch"));
   // Mutex: do not overlap forever with autoSync / another manual sync.
@@ -661,13 +696,25 @@ export async function backupNow(): Promise<void> {
   armSyncWatchdog(epoch);
   const snap = snapshotOwner();
   try {
-    await withSyncTimeout(push(getData(), undefined, () => epoch === syncEpoch));
+    await withSyncTimeout(
+      (async () => {
+        const remote = await fetchRemote();
+        if (epoch !== syncEpoch) throw new StaleSyncError();
+        if (!stillOwner(snap)) throw new StaleSyncError();
+        if (remote && remote.token === null) throw new Error(t("error.sync"));
+        if (remote && !afterConflictDecision && remote.updatedAt !== meta.remoteSeenAt) {
+          throw new CasStaleError();
+        }
+        await push(getData(), undefined, () => epoch === syncEpoch, remote?.token ?? null);
+      })(),
+    );
     // Lauf wurde abgebrochen (Kontowechsel/Timeout): nie als Erfolg melden.
     if (epoch !== syncEpoch) throw new StaleSyncError();
     if (!stillOwner(snap)) throw new StaleSyncError();
     setState({ status: "synced", pending: false, message: null, lastSyncedAt: meta.lastSyncedAt });
   } catch (error) {
     if (error instanceof StaleSyncError) abandonStaleEpoch(epoch);
+    else if (error instanceof CasStaleError) abandonWithConflict(epoch);
     else abandonSyncEpoch(epoch, error);
     throw error;
   } finally {
@@ -715,7 +762,7 @@ export async function restoreNow(): Promise<boolean> {
 
 /** Nutzerentscheidung bei einem Konflikt. */
 export async function resolveConflict(keep: "local" | "cloud"): Promise<void> {
-  if (keep === "local") await backupNow();
+  if (keep === "local") await runBackup(true);
   else await restoreNow();
 }
 
@@ -769,6 +816,49 @@ function abandonStaleEpoch(epoch: number): void {
   syncing = false;
   syncEpoch += 1;
   setState({ status: "idle", message: null });
+}
+
+/**
+ * R-4: Die Cloud hat sich geändert, der Schreibversuch wurde abgelehnt (nichts überschrieben). Manuelle Aktion: Konflikt
+ * melden, der Nutzer entscheidet.
+ */
+function abandonWithConflict(epoch: number): void {
+  if (epoch !== syncEpoch) return;
+  clearSyncWatchdog();
+  syncing = false;
+  syncEpoch += 1;
+  setState({ status: "conflict", pending: true, message: null });
+}
+
+/** Höchstens so viele aufeinanderfolgende abgelehnte automatische Schreibversuche, dann Fehler statt Schleife. */
+const MAX_STALE_WRITE_RETRIES = 3;
+let staleWriteRetries = 0;
+
+/**
+ * R-4: Automatischer Abgleich: der bedingte Schreibversuch wurde abgelehnt, weil jemand dazwischen geschrieben hat.
+ * Nichts wurde überschrieben; der Abgleich wird kurz darauf von vorn begonnen (neu lesen, neu entscheiden: wiederherstellen,
+ * Konflikt oder – bei gleichem Inhalt – stille Neu-Basis).
+ */
+function abandonAfterStaleWrite(epoch: number): void {
+  if (epoch !== syncEpoch) return;
+  clearSyncWatchdog();
+  syncing = false;
+  syncEpoch += 1;
+  staleWriteRetries += 1;
+  if (staleWriteRetries > MAX_STALE_WRITE_RETRIES) {
+    staleWriteRetries = 0;
+    failed(new CasStaleError());
+    return;
+  }
+  setState({ status: "idle", pending: true, message: null });
+  if (timeout) clearTimeout(timeout);
+  timeout = setTimeout(() => {
+    if (isOffline()) {
+      setState({ status: "offline", pending: true });
+      return;
+    }
+    void autoSync();
+  }, 500);
 }
 
 /**
@@ -888,10 +978,12 @@ async function autoSync(): Promise<void> {
       if (decision === "restore" && remote) applyRemote(remote);
       if (epoch !== syncEpoch) return;
       if (decision === "push") {
+        if (remote && remote.token === null) throw new Error(t("error.sync"));
         await push(
           local,
           { local: changedAtStart, work: workChangedAtStart },
           () => epoch === syncEpoch,
+          remote?.token ?? null,
         );
       }
       if (epoch !== syncEpoch) return;
@@ -907,8 +999,10 @@ async function autoSync(): Promise<void> {
         lastSyncedAt: meta.lastSyncedAt,
       });
     })());
+    staleWriteRetries = 0;
   } catch (error) {
-    abandonSyncEpoch(epoch, error);
+    if (error instanceof CasStaleError) abandonAfterStaleWrite(epoch);
+    else abandonSyncEpoch(epoch, error);
   } finally {
     if (epoch === syncEpoch) {
       clearSyncWatchdog();
@@ -992,6 +1086,7 @@ function adoptUser(id: string) {
 function cancelPendingSync(): void {
   if (timeout) clearTimeout(timeout);
   timeout = null;
+  staleWriteRetries = 0;
   clearSyncWatchdog();
   syncing = false;
   syncEpoch += 1;

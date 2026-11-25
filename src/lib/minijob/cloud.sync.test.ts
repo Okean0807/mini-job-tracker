@@ -20,6 +20,12 @@ const cloud = {
   upsertError: null as { message: string } | null,
   selectError: null as { message: string } | null,
   upserts: 0,
+  /** Art jedes Schreibversuchs (R-4: nur "insert" / "update", nie ein blindes upsert). */
+  writeKinds: [] as string[],
+  /** Aufrufe des (verbotenen) blinden `upsert`. */
+  blindUpserts: 0,
+  /** Läuft unmittelbar vor jedem Schreibversuch (simuliert ein anderes Gerät). */
+  beforeWrite: null as (() => void) | null,
   /** Blockiert den Cloud-Lesezugriff, um Parallelität zu testen. */
   gate: null as Promise<void> | null,
 };
@@ -27,36 +33,43 @@ const cloud = {
 let authCallback: ((event: string, session: unknown) => void) | null = null;
 let session: { user: { id: string } } | null = null;
 
-vi.mock("@/integrations/supabase/client", () => ({
-  supabase: {
-    from: () => ({
-      upsert: async (row: { payload: unknown; updated_at: string }) => {
-        cloud.upserts += 1;
-        if (cloud.gate) await cloud.gate;
-        if (cloud.upsertError) return { error: cloud.upsertError };
-        cloud.remote = { payload: row.payload, updated_at: row.updated_at };
-        return { error: null };
-      },
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => (
-            cloud.gate ? await cloud.gate : undefined,
-            cloud.selectError
-              ? { data: null, error: cloud.selectError }
-              : { data: cloud.remote, error: null }
-          ),
+vi.mock("@/integrations/supabase/client", async () => {
+  // Phase 5.26 (R-4): die App schreibt `backups` nur noch bedingt (insert / update mit user_id + beobachtetem
+  // updated_at); das Double bildet das nach und verbietet `upsert`. `cloud.upserts` zählt Schreibversuche.
+  const { makeBackupsTable } = await import("../../test-utils/backups-double");
+  return {
+    supabase: {
+      from: () =>
+        makeBackupsTable({
+          read: () => cloud.remote,
+          write: (_userId, row) => {
+            cloud.remote = row;
+          },
+          onUpsert: () => {
+            cloud.blindUpserts += 1;
+          },
+          onWrite: async (kind) => {
+            cloud.upserts += 1;
+            cloud.writeKinds.push(kind);
+            cloud.beforeWrite?.();
+            if (cloud.gate) await cloud.gate;
+            return cloud.upsertError ? { error: cloud.upsertError } : null;
+          },
+          onSelect: async () => {
+            if (cloud.gate) await cloud.gate;
+            return cloud.selectError ? { error: cloud.selectError } : null;
+          },
         }),
-      }),
-    }),
-    auth: {
-      getSession: async () => ({ data: { session } }),
-      onAuthStateChange: (cb: (event: string, s: unknown) => void) => {
-        authCallback = cb;
-        return { data: { subscription: { unsubscribe() {} } } };
+      auth: {
+        getSession: async () => ({ data: { session } }),
+        onAuthStateChange: (cb: (event: string, s: unknown) => void) => {
+          authCallback = cb;
+          return { data: { subscription: { unsubscribe() {} } } };
+        },
       },
     },
-  },
-}));
+  };
+});
 
 let local: AppData;
 let changeHook: ((data: AppData) => void) | null = null;
@@ -111,7 +124,8 @@ async function loadModule() {
 
 /** Wartet, bis die Micro-/Makrotask-Kette des Sync abgearbeitet ist. */
 async function settle() {
-  for (let i = 0; i < 8; i += 1) await Promise.resolve();
+  // Phase 5.26: der bedingte Schreibpfad (casWrite) braucht einige Mikrotask-Schritte mehr als das frühere `upsert`.
+  for (let i = 0; i < 24; i += 1) await Promise.resolve();
 }
 
 beforeEach(() => {
@@ -119,6 +133,9 @@ beforeEach(() => {
   cloud.upsertError = null;
   cloud.selectError = null;
   cloud.upserts = 0;
+  cloud.writeKinds = [];
+  cloud.blindUpserts = 0;
+  cloud.beforeWrite = null;
   cloud.gate = null;
   authCallback = null;
   changeHook = null;
@@ -1371,5 +1388,174 @@ describe("orders sync (v1.1)", () => {
     expect(metaAfter.localWorkChangedAt ?? null).toBe(workAtBefore);
     expect(workFingerprint(local)).toBe(fpBefore);
     expect(workFingerprint(local)).not.toContain("o-new");
+  });
+});
+
+/* ---------- Phase 5.26 (R-4): bedingtes Schreiben der Cloud-Sicherung ---------- */
+
+describe("R-4 – kein blindes Überschreiben der Cloud-Sicherung (bedingtes Schreiben)", () => {
+  const other = (shifts: number, offsetMs = 60_000) => ({
+    payload: makeData(shifts),
+    updated_at: new Date(Date.now() + offsetMs).toISOString(),
+  });
+
+  async function synced() {
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    // Uhr weiterlaufen lassen: sonst fallen Erst-Push und lokale Änderung auf dieselbe Millisekunde.
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(mod.getSyncState().status).toBe("synced");
+    return mod;
+  }
+
+  it("Erst-Sicherung ohne Cloud-Zeile: insert; Folge-Sicherung: bedingtes update; nie upsert", async () => {
+    const mod = await synced();
+    expect(cloud.writeKinds).toEqual(["insert"]);
+    local = makeData(2);
+    changeHook?.(local);
+    await vi.advanceTimersByTimeAsync(3000);
+    await settle();
+    expect(cloud.writeKinds).toEqual(["insert", "update"]);
+    expect((cloud.remote?.payload as AppData).shifts).toHaveLength(2);
+    expect(mod.getSyncState()).toMatchObject({ status: "synced", pending: false });
+    expect(cloud.blindUpserts).toBe(0);
+  });
+
+  it("anderes Gerät schreibt zwischen Lesen und Schreiben: Schreibversuch abgelehnt, nichts überschrieben, danach Konflikt", async () => {
+    const mod = await synced();
+    cloud.beforeWrite = () => {
+      cloud.beforeWrite = null;
+      cloud.remote = other(9); // fremder Stand, genau nach unserem Lesen
+    };
+    local = makeData(2);
+    changeHook?.(local);
+    await vi.advanceTimersByTimeAsync(3000);
+    await settle();
+    await vi.advanceTimersByTimeAsync(2000); // automatische Neubewertung nach der Ablehnung
+    await settle();
+    expect((cloud.remote?.payload as AppData).shifts).toHaveLength(9); // fremder Stand unverändert
+    expect(mod.getSyncState()).toMatchObject({ status: "conflict", pending: true });
+    expect(cloud.writeKinds.filter((k) => k === "update")).toHaveLength(1); // nur der abgelehnte Versuch
+  });
+
+  it("Einfügen scheitert, weil die Zeile inzwischen existiert (anderes Gerät): nichts überschrieben, Konflikt statt Verlust", async () => {
+    local = makeData(2);
+    cloud.beforeWrite = () => {
+      cloud.beforeWrite = null;
+      cloud.remote = other(7, 0);
+    };
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    await vi.advanceTimersByTimeAsync(3000);
+    await settle();
+    expect((cloud.remote?.payload as AppData).shifts).toHaveLength(7);
+    expect(cloud.blindUpserts).toBe(0);
+    expect(["conflict", "synced"]).toContain(mod.getSyncState().status);
+    expect((cloud.remote?.payload as AppData).shifts).toHaveLength(7);
+  });
+
+  it("manuelles Sichern bei geänderter Cloud: abgelehnt (CasStaleError), Konflikt gemeldet, Cloud unverändert", async () => {
+    const mod = await synced();
+    cloud.remote = other(9);
+    const before = cloud.upserts;
+    await expect(mod.backupNow()).rejects.toBeInstanceOf(mod.CasStaleError);
+    expect(cloud.upserts).toBe(before);
+    expect((cloud.remote?.payload as AppData).shifts).toHaveLength(9);
+    expect(mod.getSyncState()).toMatchObject({ status: "conflict", pending: true });
+  });
+
+  it("manuelles Sichern auf einem Gerät, das die vorhandene Cloud-Sicherung nie gesehen hat: kein Überschreiben", async () => {
+    local = makeData(2, false); // Auto-Backup aus: der Abgleich meldet höchstens einen Konflikt
+    cloud.remote = other(5, -60_000);
+    const mod = await loadModule();
+    mod.initCloudSync();
+    await settle();
+    await vi.advanceTimersByTimeAsync(3000);
+    const before = cloud.upserts;
+    await expect(mod.backupNow()).rejects.toBeInstanceOf(mod.CasStaleError);
+    expect(cloud.upserts).toBe(before);
+    expect((cloud.remote?.payload as AppData).shifts).toHaveLength(5);
+  });
+
+  it("manuelles Sichern bei unveränderter Cloud: bedingtes update gelingt", async () => {
+    const mod = await synced();
+    local = makeData(3);
+    await mod.backupNow();
+    expect(cloud.writeKinds.at(-1)).toBe("update");
+    expect((cloud.remote?.payload as AppData).shifts).toHaveLength(3);
+    expect(mod.getSyncState()).toMatchObject({ status: "synced" });
+  });
+
+  it('Konfliktentscheidung "lokal behalten": überschreibt den frisch gelesenen Stand; ändert er sich erneut, bleibt er geschützt', async () => {
+    const mod = await synced();
+    cloud.remote = other(9);
+    await expect(mod.backupNow()).rejects.toBeInstanceOf(mod.CasStaleError);
+    // bewusste Entscheidung: lokaler Stand gewinnt
+    local = makeData(4);
+    await mod.resolveConflict("local");
+    expect((cloud.remote?.payload as AppData).shifts).toHaveLength(4);
+    expect(mod.getSyncState()).toMatchObject({ status: "synced" });
+
+    // dasselbe, aber die Cloud ändert sich zwischen Lesen und Schreiben erneut
+    cloud.remote = other(8, 120_000);
+    await expect(mod.backupNow()).rejects.toBeInstanceOf(mod.CasStaleError);
+    cloud.beforeWrite = () => {
+      cloud.beforeWrite = null;
+      cloud.remote = other(6, 180_000);
+    };
+    await expect(mod.resolveConflict("local")).rejects.toBeInstanceOf(mod.CasStaleError);
+    expect((cloud.remote?.payload as AppData).shifts).toHaveLength(6);
+    expect(mod.getSyncState().status).toBe("conflict");
+  });
+
+  it("unklares Ergebnis (Fehler ohne Datenbankcode): kein Überschreiben fremder Daten, Wiederholung liest neu", async () => {
+    const mod = await synced();
+    cloud.upsertError = { message: "network down" };
+    local = makeData(2);
+    changeHook?.(local);
+    await vi.advanceTimersByTimeAsync(3000);
+    await settle();
+    expect(mod.getSyncState()).toMatchObject({ status: "error", pending: true });
+    // währenddessen schreibt ein anderes Gerät
+    cloud.upsertError = null;
+    cloud.remote = other(9);
+    mod.retryPending();
+    await settle();
+    await vi.advanceTimersByTimeAsync(2000);
+    await settle();
+    expect((cloud.remote?.payload as AppData).shifts).toHaveLength(9);
+    expect(mod.getSyncState().status).toBe("conflict");
+  });
+
+  it("dauerhaft abgelehnte Schreibversuche führen nach wenigen Wiederholungen zu einem Fehler, nicht zu einer Schleife", async () => {
+    const mod = await synced();
+    // Der Token der Cloud-Zeile bleibt zeitlich gleich, wechselt aber bei jedem Versuch die Schreibweise
+    // (so verhielte sich ein Server, dessen Filter den Token nie trifft).
+    let flip = false;
+    cloud.beforeWrite = () => {
+      flip = !flip;
+      const current = cloud.remote!;
+      const iso = new Date(current.updated_at).toISOString();
+      cloud.remote = {
+        ...current,
+        updated_at: flip ? iso.replace("Z", "+00:00") : iso,
+      };
+    };
+    local = makeData(2);
+    changeHook?.(local);
+    await vi.advanceTimersByTimeAsync(3000);
+    for (let i = 0; i < 6; i += 1) {
+      await settle();
+      await vi.advanceTimersByTimeAsync(600);
+    }
+    await settle();
+    const updates = cloud.writeKinds.filter((k) => k === "update").length;
+    expect(updates).toBeLessThanOrEqual(4); // 1 Versuch + höchstens 3 Wiederholungen
+    expect(mod.getSyncState().status).toBe("error");
+    expect(mod.getSyncState().message).toMatch(/Cloud|cloud/);
+    expect((cloud.remote?.payload as AppData).shifts).toHaveLength(1); // nie überschrieben
+    expect(cloud.blindUpserts).toBe(0);
   });
 });
