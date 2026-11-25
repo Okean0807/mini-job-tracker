@@ -33,14 +33,41 @@ let upsertAttempts = 0;
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     from: () => ({
-      upsert: async (row: { user_id: string; payload: AppData; updated_at: string }) => {
-        upsertAttempts += 1;
-        if (upsertGate) await upsertGate;
-        if (upsertError) return { error: upsertError };
-        upserts.push({ user_id: row.user_id, payload: row.payload });
-        backups.set(row.user_id, { payload: row.payload, updated_at: row.updated_at });
-        return { error: null };
+      // Phase 5.26 (R-4): die App schreibt `backups` nur noch bedingt (insert / update mit user_id + beobachtetem
+      // updated_at). `upserts` / `upsertAttempts` zählen weiterhin Schreibversuche bzw. erfolgreiche Schreibvorgänge;
+      // ein blindes `upsert` ist verboten.
+      upsert: () => {
+        throw new Error("blind upsert is forbidden (R-4: conditional writes only)");
       },
+      insert: (row: { user_id: string; payload: AppData; updated_at: string }) => ({
+        select: async () => {
+          upsertAttempts += 1;
+          if (upsertGate) await upsertGate;
+          if (upsertError) return { data: null, error: upsertError };
+          if (backups.has(row.user_id)) {
+            return { data: null, error: { code: "23505", message: "duplicate key" } };
+          }
+          upserts.push({ user_id: row.user_id, payload: row.payload });
+          backups.set(row.user_id, { payload: row.payload, updated_at: row.updated_at });
+          return { data: [{ updated_at: row.updated_at }], error: null };
+        },
+      }),
+      update: (row: { payload: AppData; updated_at: string }) => ({
+        eq: (_c1: string, uid: string) => ({
+          eq: (_c2: string, observed: string) => ({
+            select: async () => {
+              upsertAttempts += 1;
+              if (upsertGate) await upsertGate;
+              if (upsertError) return { data: null, error: upsertError };
+              const current = backups.get(uid);
+              if (!current || current.updated_at !== observed) return { data: [], error: null };
+              upserts.push({ user_id: uid, payload: row.payload });
+              backups.set(uid, { payload: row.payload, updated_at: row.updated_at });
+              return { data: [{ updated_at: row.updated_at }], error: null };
+            },
+          }),
+        }),
+      }),
       select: () => ({
         eq: (_col: string, uid: string) => ({
           maybeSingle: async () => {
